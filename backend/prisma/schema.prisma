@@ -1,0 +1,443 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  OPERATOR
+}
+
+enum LicenseStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+}
+
+enum SessionClientType {
+  MOBILE_APP
+  ADMIN_WEB
+  UNKNOWN
+}
+
+model User {
+  id                      String            @id @default(uuid())
+  email                   String            @unique
+  passwordHash            String
+  name                    String
+  isActive                Boolean           @default(true)
+  isPlatformAdmin         Boolean           @default(false)
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  memberships             Membership[]
+  adminAuditLogs          AdminAuditLog[]   @relation("AdminAuditActor")
+  deviceSessions          DeviceSession[]
+  sessionAuditActorLogs   SessionAuditLog[] @relation("SessionAuditActor")
+  sessionAuditSubjectLogs SessionAuditLog[] @relation("SessionAuditSubject")
+}
+
+model Company {
+  id               String            @id @default(uuid())
+  name             String
+  legalName        String
+  documentNumber   String?
+  slug             String            @unique
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  memberships      Membership[]
+  license          License?
+  adminAuditLogs   AdminAuditLog[]   @relation("AdminAuditCompany")
+  deviceSessions   DeviceSession[]
+  sessionAuditLogs SessionAuditLog[] @relation("SessionAuditCompany")
+  suppliers        Supplier[]
+  categories       Category[]
+  products         Product[]
+  customers        Customer[]
+  purchases        Purchase[]
+  sales            Sale[]
+  financialEvents  FinancialEvent[]
+  fiadoPayments    FiadoPayment[]
+  cashEvents       CashEvent[]
+}
+
+model Membership {
+  id             String          @id @default(uuid())
+  userId         String
+  companyId      String
+  role           MembershipRole  @default(OPERATOR)
+  isDefault      Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deviceSessions DeviceSession[]
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+}
+
+model License {
+  id         String        @id @default(uuid())
+  companyId  String        @unique
+  plan       String
+  status     LicenseStatus @default(TRIAL)
+  startsAt   DateTime
+  expiresAt  DateTime?
+  maxDevices Int?
+  syncEnabled Boolean      @default(true)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  company    Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([syncEnabled])
+  @@index([expiresAt])
+}
+
+model AdminAuditLog {
+  id              String    @id @default(uuid())
+  actorUserId     String
+  targetCompanyId String?
+  action          String
+  details         Json?
+  createdAt       DateTime  @default(now())
+  actorUser       User      @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  targetCompany   Company?  @relation("AdminAuditCompany", fields: [targetCompanyId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([targetCompanyId])
+}
+
+model DeviceSession {
+  id                    String            @id @default(uuid())
+  userId                String
+  companyId             String
+  membershipId          String
+  clientType            SessionClientType @default(MOBILE_APP)
+  clientInstanceId      String
+  deviceLabel           String?
+  platform              String?
+  appVersion            String?
+  refreshTokenHash      String            @unique
+  refreshTokenExpiresAt DateTime
+  lastSeenAt            DateTime          @default(now())
+  lastRefreshedAt       DateTime?
+  revokedAt             DateTime?
+  revokedReason         String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company               Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  membership            Membership        @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  auditLogs             SessionAuditLog[]
+
+  @@index([companyId, clientType, revokedAt])
+  @@index([companyId, clientType, clientInstanceId])
+  @@index([userId, companyId, revokedAt])
+  @@index([refreshTokenExpiresAt])
+  @@index([lastSeenAt])
+}
+
+model SessionAuditLog {
+  id              String         @id @default(uuid())
+  deviceSessionId String?
+  actorUserId     String?
+  subjectUserId   String?
+  companyId       String?
+  action          String
+  details         Json?
+  createdAt       DateTime       @default(now())
+  deviceSession   DeviceSession? @relation(fields: [deviceSessionId], references: [id], onDelete: SetNull)
+  actorUser       User?          @relation("SessionAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  subjectUser     User?          @relation("SessionAuditSubject", fields: [subjectUserId], references: [id], onDelete: SetNull)
+  company         Company?       @relation("SessionAuditCompany", fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([companyId])
+  @@index([deviceSessionId])
+  @@index([actorUserId])
+  @@index([subjectUserId])
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  companyId   String
+  localUuid   String
+  name        String
+  description String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  products    Product[]
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, updatedAt])
+  @@index([companyId, name])
+}
+
+model Product {
+  id             String   @id @default(uuid())
+  companyId      String
+  localUuid      String
+  categoryId     String?
+  name           String
+  description    String?
+  barcode        String?
+  productType    String   @default("unidade")
+  catalogType    String   @default("simple")
+  modelName      String?
+  variantLabel   String?
+  unitMeasure    String   @default("un")
+  costPriceCents Int      @default(0)
+  salePriceCents Int
+  stockMil       Int      @default(0)
+  isActive       Boolean  @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category       Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  saleItems      SaleItem[]
+  purchaseItems  PurchaseItem[]
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, updatedAt])
+  @@index([companyId, name])
+  @@index([companyId, barcode])
+  @@index([companyId, categoryId])
+  @@index([companyId, catalogType])
+  @@index([companyId, modelName])
+  @@index([companyId, variantLabel])
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  companyId String
+  localUuid String
+  name      String
+  phone     String?
+  address   String?
+  notes     String?
+  isActive  Boolean  @default(true)
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sales     Sale[]
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, updatedAt])
+  @@index([companyId, name])
+}
+
+model Supplier {
+  id               String     @id @default(uuid())
+  companyId        String
+  localUuid        String
+  name             String
+  tradeName        String?
+  phone            String?
+  email            String?
+  address          String?
+  document         String?
+  contactPerson    String?
+  notes            String?
+  isActive         Boolean    @default(true)
+  deletedAt        DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  company          Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  purchases        Purchase[]
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, updatedAt])
+  @@index([companyId, name])
+  @@index([companyId, document])
+}
+
+model Purchase {
+  id                 String            @id @default(uuid())
+  companyId          String
+  localUuid          String
+  supplierId         String
+  documentNumber     String?
+  notes              String?
+  purchasedAt        DateTime
+  dueDate            DateTime?
+  paymentMethod      String?
+  status             String
+  subtotalCents      Int
+  discountCents      Int               @default(0)
+  surchargeCents     Int               @default(0)
+  freightCents       Int               @default(0)
+  finalAmountCents   Int
+  paidAmountCents    Int               @default(0)
+  pendingAmountCents Int
+  canceledAt         DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  company            Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  supplier           Supplier          @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  items              PurchaseItem[]
+  payments           PurchasePayment[]
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, purchasedAt])
+  @@index([companyId, updatedAt])
+  @@index([companyId, status])
+  @@index([companyId, supplierId])
+}
+
+model PurchaseItem {
+  id                  String    @id @default(uuid())
+  purchaseId          String
+  localUuid           String
+  productId           String?
+  productNameSnapshot String
+  unitMeasureSnapshot String
+  quantityMil         Int
+  unitCostCents       Int
+  subtotalCents       Int
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  purchase            Purchase  @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product             Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@unique([purchaseId, localUuid])
+  @@index([purchaseId])
+  @@index([productId])
+}
+
+model PurchasePayment {
+  id            String    @id @default(uuid())
+  purchaseId    String
+  localUuid     String
+  amountCents   Int
+  paymentMethod String
+  paidAt        DateTime
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  purchase      Purchase  @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@unique([purchaseId, localUuid])
+  @@index([purchaseId, paidAt])
+}
+
+model Sale {
+  id               String     @id @default(uuid())
+  companyId        String
+  localUuid        String
+  customerId       String?
+  receiptNumber    String?
+  paymentType      String
+  paymentMethod    String
+  status           String     @default("active")
+  totalAmountCents Int
+  totalCostCents   Int
+  soldAt           DateTime
+  canceledAt       DateTime?
+  notes            String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  company          Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer         Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items            SaleItem[]
+  financialEvents  FinancialEvent[]
+  fiadoPayments    FiadoPayment[]
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, soldAt])
+  @@index([companyId, updatedAt])
+  @@index([companyId, status])
+}
+
+model SaleItem {
+  id                  String   @id @default(uuid())
+  saleId              String
+  productId           String?
+  productNameSnapshot String
+  quantityMil         Int
+  unitPriceCents      Int
+  totalPriceCents     Int
+  unitCostCents       Int
+  totalCostCents      Int
+  unitMeasure         String?
+  productType         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  sale                Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product             Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+model FinancialEvent {
+  id            String   @id @default(uuid())
+  companyId     String
+  saleId        String?
+  fiadoId       String?
+  eventType     String
+  localUuid     String
+  amountCents   Int
+  paymentType   String?
+  metadata      Json?
+  createdAt     DateTime
+  updatedAt     DateTime @updatedAt
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sale          Sale?    @relation(fields: [saleId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, createdAt])
+  @@index([companyId, eventType])
+  @@index([companyId, saleId])
+}
+
+model FiadoPayment {
+  id            String   @id @default(uuid())
+  companyId     String
+  saleId        String
+  localUuid     String
+  amountCents   Int
+  paymentMethod String
+  notes         String?
+  createdAt     DateTime
+  updatedAt     DateTime @updatedAt
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sale          Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, createdAt])
+  @@index([companyId, saleId])
+}
+
+model CashEvent {
+  id            String   @id @default(uuid())
+  companyId     String
+  localUuid     String
+  eventType     String
+  amountCents   Int
+  paymentMethod String?
+  referenceType String?
+  referenceId   String?
+  notes         String?
+  createdAt     DateTime
+  updatedAt     DateTime @updatedAt
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, createdAt])
+  @@index([companyId, eventType])
+}

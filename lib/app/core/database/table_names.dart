@@ -1,0 +1,26 @@
+abstract final class TableNames {
+  static const usuarios = 'usuarios';
+  static const categorias = 'categorias';
+  static const produtos = 'produtos';
+  static const clientes = 'clientes';
+  static const fornecedores = 'fornecedores';
+  static const vendas = 'vendas';
+  static const itensVenda = 'itens_venda';
+  static const compras = 'compras';
+  static const itensCompra = 'itens_compra';
+  static const compraPagamentos = 'compra_pagamentos';
+  static const fiado = 'fiado';
+  static const fiadoLancamentos = 'fiado_lancamentos';
+  static const contasReceber = 'contas_receber';
+  static const recebimentosContasReceber = 'recebimentos_contas_receber';
+  static const contasPagar = 'contas_pagar';
+  static const pagamentosContasPagar = 'pagamentos_contas_pagar';
+  static const custos = 'custos';
+  static const caixaSessoes = 'caixa_sessoes';
+  static const caixaMovimentos = 'caixa_movimentos';
+  static const configuracoes = 'configuracoes';
+  static const backupLogs = 'backup_logs';
+  static const syncRegistros = 'sync_registros';
+  static const syncQueue = 'sync_queue';
+  static const syncAuditLogs = 'sync_audit_logs';
+}

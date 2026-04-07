@@ -1,0 +1,71 @@
+abstract final class AppRouteNames {
+  static const login = 'login';
+  static const dashboard = 'dashboard';
+  static const accountCloud = 'account-cloud';
+  static const categories = 'categories';
+  static const categoryForm = 'category-form';
+  static const products = 'products';
+  static const productForm = 'product-form';
+  static const clients = 'clients';
+  static const clientForm = 'client-form';
+  static const suppliers = 'suppliers';
+  static const supplierForm = 'supplier-form';
+  static const supplierDetail = 'supplier-detail';
+  static const purchases = 'purchases';
+  static const purchaseForm = 'purchase-form';
+  static const purchaseDetail = 'purchase-detail';
+  static const sales = 'sales';
+  static const cart = 'cart';
+  static const checkout = 'checkout';
+  static const costs = 'costs';
+  static const fiado = 'fiado';
+  static const fiadoDetail = 'fiado-detail';
+  static const cash = 'cash';
+  static const cashCount = 'cash-count';
+  static const salesHistory = 'sales-history';
+  static const saleDetail = 'sale-detail';
+  static const saleReceipt = 'sale-receipt';
+  static const fiadoPaymentReceipt = 'fiado-payment-receipt';
+  static const reports = 'reports';
+  static const backup = 'backup';
+  static const system = 'system';
+  static const technicalSystem = 'technical-system';
+  static const admin = 'admin';
+}
+
+abstract final class AppRoutePaths {
+  static const login = '/login';
+  static const dashboard = '/';
+  static const accountCloud = '/conta';
+  static const categories = '/categorias';
+  static const categoryForm = '/categorias/form';
+  static const products = '/produtos';
+  static const productForm = '/produtos/form';
+  static const clients = '/clientes';
+  static const clientForm = '/clientes/form';
+  static const suppliers = '/fornecedores';
+  static const supplierForm = '/fornecedores/form';
+  static const supplierDetail = '/fornecedores/:supplierId';
+  static const purchases = '/compras';
+  static const purchaseForm = '/compras/form';
+  static const purchaseDetail = '/compras/:purchaseId';
+  static const sales = '/vendas';
+  static const cart = '/carrinho';
+  static const checkout = '/checkout';
+  static const costs = '/custos';
+  static const fiado = '/fiado';
+  static const fiadoDetail = '/fiado/:fiadoId';
+  static const cash = '/caixa';
+  static const cashCount = '/caixa/contagem';
+  static const salesHistory = '/historico-vendas';
+  static const saleDetail = '/historico-vendas/:saleId';
+  static const saleReceipt = '/comprovantes/vendas/:saleId';
+  static const fiadoPaymentReceipt =
+      '/comprovantes/fiado/:fiadoId/pagamentos/:entryId';
+  static const reports = '/relatorios';
+  static const backup = '/backup';
+  static const system = '/sistema';
+  static const technicalSystem = '/interno/sistema';
+  static const legacyAdmin = '/admin';
+  static const admin = '/interno/admin';
+}

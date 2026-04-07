@@ -1,0 +1,131 @@
+import 'package:erp_pdv_app/app/app.dart';
+import 'package:erp_pdv_app/app/core/database/app_database.dart';
+import 'package:erp_pdv_app/modules/dashboard/domain/entities/dashboard_metrics.dart';
+import 'package:erp_pdv_app/modules/dashboard/presentation/pages/dashboard_page.dart';
+import 'package:erp_pdv_app/modules/dashboard/presentation/providers/dashboard_providers.dart';
+import 'package:erp_pdv_app/modules/system/presentation/providers/system_providers.dart';
+import 'package:erp_pdv_app/app/routes/route_names.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+
+void main() {
+  testWidgets('app starts on login and allows offline entry', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appStartupProvider.overrideWith((ref) async {}),
+          dashboardMetricsProvider.overrideWith(
+            (ref) async => const DashboardMetrics(
+              soldTodayCents: 152340,
+              currentCashCents: 81300,
+              pendingFiadoCount: 4,
+              pendingFiadoCents: 92750,
+              realizedProfitTodayCents: 48210,
+            ),
+          ),
+          backendConnectionStatusProvider.overrideWith(
+            (ref) async => BackendConnectionStatus(
+              isConfigured: false,
+              isReachable: false,
+              companyLookupSucceeded: false,
+              endpointLabel: 'Uso local',
+              message: 'Modo local ativo.',
+              checkedAt: DateTime(2026, 4, 5, 10),
+            ),
+          ),
+          syncHealthOverviewProvider.overrideWith(
+            (ref) => const SyncHealthOverview(
+              totalPending: 0,
+              totalProcessing: 0,
+              totalSynced: 0,
+              totalErrors: 0,
+              totalBlocked: 0,
+              totalConflicts: 0,
+              totalAttempts: 0,
+              lastProcessedAt: null,
+              lastErrorAt: null,
+              nextRetryAt: null,
+            ),
+          ),
+        ],
+        child: const ErpPdvApp(),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('Tatuzin'), findsAtLeastNWidgets(1));
+    expect(find.text('Continuar offline'), findsOneWidget);
+
+    final continueOfflineButton = find.widgetWithText(
+      OutlinedButton,
+      'Continuar offline',
+    );
+
+    await tester.ensureVisible(continueOfflineButton);
+    await tester.pumpAndSettle();
+    await tester.tap(continueOfflineButton);
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DashboardPage), findsOneWidget);
+    expect(find.text('Tatuzin'), findsAtLeastNWidgets(1));
+    expect(find.text('Nova venda'), findsOneWidget);
+    expect(find.text('Vendido hoje'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.menu).first);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Drawer), findsOneWidget);
+
+    final drawerScrollable = find.descendant(
+      of: find.byType(Drawer),
+      matching: find.byType(Scrollable),
+    );
+
+    await tester.scrollUntilVisible(
+      find.text('Conta e nuvem'),
+      200,
+      scrollable: drawerScrollable,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Conta e nuvem'), findsOneWidget);
+    expect(find.text('Sistema'), findsNothing);
+    expect(find.text('Admin cloud'), findsNothing);
+
+    Navigator.of(tester.element(find.byType(Drawer))).pop();
+    await tester.pumpAndSettle();
+
+    GoRouter.of(
+      tester.element(find.byType(DashboardPage)),
+    ).goNamed(AppRouteNames.accountCloud);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Conta e nuvem'), findsAtLeastNWidgets(1));
+    expect(find.text('Sua conta'), findsOneWidget);
+    expect(find.text('Sua empresa'), findsOneWidget);
+    expect(find.text('Modo local'), findsWidgets);
+
+    final accountScrollable = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.text('Nuvem'),
+      200,
+      scrollable: accountScrollable,
+    );
+    await tester.scrollUntilVisible(
+      find.text('Ajuda e suporte'),
+      200,
+      scrollable: accountScrollable,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nuvem'), findsOneWidget);
+    expect(find.text('Sessao'), findsOneWidget);
+    expect(find.text('Ajuda e suporte'), findsOneWidget);
+    expect(find.text('Ferramentas internas'), findsNothing);
+    expect(find.text('Painel cloud interno'), findsNothing);
+  });
+}
