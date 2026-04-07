@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ERP PDV App
 
 Um aplicativo ERP/PDV profissional para pequenos negócios, desenvolvido em Flutter com arquitetura limpa e modular.
@@ -185,3 +186,6 @@ Contribuições são bem-vindas! Por favor:
 ---
 
 **Desenvolvido com ❤️ para pequenos negócios**
+=======
+# Tatuzin
+>>>>>>> b43957f48bf984823d863006a7fc43053469f59f
