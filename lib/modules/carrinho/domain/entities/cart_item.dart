@@ -33,7 +33,7 @@ class CartItem {
     required this.id,
     required this.productId,
     required this.productName,
-    required this.primaryPhotoPath,
+    this.primaryPhotoPath,
     required this.baseProductId,
     required this.baseProductName,
     required this.quantityMil,

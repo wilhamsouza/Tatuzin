@@ -296,8 +296,8 @@ class OrderDetailPage extends ConsumerWidget {
       return;
     }
 
-    final cartItems = detail.items
-        .map((entry) {
+    final List<CartItem> cartItems = detail.items
+        .map<CartItem>((entry) {
           final item = entry.item;
           final modifiers = entry.modifiers
               .map(
@@ -316,6 +316,7 @@ class OrderDetailPage extends ConsumerWidget {
             id: 'order_item_${item.id}',
             productId: item.productId,
             productName: item.productNameSnapshot,
+            primaryPhotoPath: null,
             baseProductId: item.baseProductId,
             baseProductName: null,
             quantityMil: item.quantityMil,
