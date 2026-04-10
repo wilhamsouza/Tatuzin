@@ -271,10 +271,20 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(_isEditing ? 'Editar produto' : 'Novo produto'),
-          bottom: const TabBar(
-            tabs: [
+          bottom: TabBar(
+            isScrollable: true,
+            labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+            labelStyle: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+            unselectedLabelStyle: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+            tabs: const [
               Tab(text: 'Informações'),
-              Tab(text: 'Preço e estoque'),
+              Tab(text: 'Preço/estoque'),
               Tab(text: 'Fotos'),
             ],
           ),
@@ -901,22 +911,49 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
           textCapitalization: TextCapitalization.sentences,
         ),
         const SizedBox(height: 20),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Base de grade',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            FilledButton.tonalIcon(
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final action = FilledButton.tonalIcon(
               onPressed: () => _openFashionGradeEntryEditor(),
               icon: const Icon(Icons.add_rounded),
               label: const Text('Nova combinação'),
-            ),
-          ],
+            );
+
+            if (constraints.maxWidth < 420) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Base de grade',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  action,
+                ],
+              );
+            }
+
+            return Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Base de grade',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Flexible(child: action),
+              ],
+            );
+          },
         ),
         const SizedBox(height: 6),
         Text(
@@ -990,32 +1027,64 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${_photos.length}/$_maxPhotos fotos',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  FilledButton.tonalIcon(
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final galleryButton = FilledButton.tonalIcon(
                     onPressed: _photos.length >= _maxPhotos || _isPickingPhoto
                         ? null
                         : () => _pickPhoto(ImageSource.gallery),
                     icon: const Icon(Icons.photo_library_outlined),
                     label: const Text('Galeria'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.tonalIcon(
+                  );
+                  final cameraButton = FilledButton.tonalIcon(
                     onPressed: _photos.length >= _maxPhotos || _isPickingPhoto
                         ? null
                         : () => _pickPhoto(ImageSource.camera),
                     icon: const Icon(Icons.photo_camera_outlined),
                     label: const Text('Câmera'),
-                  ),
-                ],
+                  );
+
+                  if (constraints.maxWidth < 460) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${_photos.length}/$_maxPhotos fotos',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [galleryButton, cameraButton],
+                        ),
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${_photos.length}/$_maxPhotos fotos',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(child: galleryButton),
+                      const SizedBox(width: 8),
+                      Flexible(child: cameraButton),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 12),
               GridView.builder(
@@ -2005,10 +2074,14 @@ class _NamePreviewCard extends StatelessWidget {
             children: [
               Icon(Icons.auto_awesome_rounded, color: colorScheme.primary),
               const SizedBox(width: 10),
-              Text(
-                title,
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ],
@@ -2246,6 +2319,8 @@ class _ProductPhotoTile extends StatelessWidget {
                   children: [
                     Text(
                       photo.isPrimary ? 'Foto principal' : 'Foto secundária',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.labelMedium?.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
@@ -2266,12 +2341,21 @@ class _ProductPhotoTile extends StatelessWidget {
                           onPressed: canMoveRight ? onMoveRight : null,
                           icon: const Icon(Icons.arrow_forward_rounded),
                         ),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: onMakePrimary,
-                          child: Text(
-                            photo.isPrimary ? 'Principal' : 'Tornar principal',
-                            style: const TextStyle(color: Colors.white),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: onMakePrimary,
+                              child: Text(
+                                photo.isPrimary
+                                    ? 'Principal'
+                                    : 'Tornar principal',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ),
                           ),
                         ),
                         IconButton(
@@ -2331,6 +2415,8 @@ class _EditableModifierGroupCard extends StatelessWidget {
                     children: [
                       Text(
                         group.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
@@ -2338,6 +2424,8 @@ class _EditableModifierGroupCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         '${group.isRequired ? 'Obrigatório' : 'Opcional'} • mín. ${group.minSelections} • máx. ${group.maxSelections ?? 'livre'}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                         ),
@@ -2424,9 +2512,15 @@ class _FashionGradeEntryCard extends StatelessWidget {
       elevation: 0,
       color: colorScheme.surfaceContainerLow,
       child: ListTile(
-        title: Text('${entry.sizeLabel} • ${entry.colorLabel}'),
+        title: Text(
+          '${entry.sizeLabel} • ${entry.colorLabel}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         subtitle: Text(
           'Estoque da combinação: ${entry.stockText.trim().isEmpty ? '0' : entry.stockText}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         trailing: Wrap(
           spacing: 4,
