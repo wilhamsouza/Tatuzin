@@ -61,7 +61,9 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     return Scaffold(
       appBar: AppBar(title: const Text(AppConstants.appName)),
       body: cart.isEmpty
-          ? const Center(child: Text('O carrinho esta vazio.'))
+          ? _CheckoutEmptyState(
+              onPressed: () => context.goNamed(AppRouteNames.sales),
+            )
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 188),
               children: [
@@ -123,13 +125,13 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                 const SizedBox(height: 12),
                 AppSectionCard(
                   title: 'Tipo da venda',
-                  subtitle: 'Defina como a operacao sera registrada.',
+                  subtitle: 'Defina como a operação será registrada.',
                   padding: sectionPadding,
                   child: Row(
                     children: [
                       Expanded(
                         child: _ChoiceCard(
-                          label: 'A vista',
+                          label: 'À vista',
                           subtitle: 'Recebimento imediato',
                           icon: Icons.payments_outlined,
                           selected: _saleType == SaleType.cash,
@@ -193,7 +195,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
 
                             return _ChoiceCard(
                               label: method.label,
-                              subtitle: 'Disponivel agora',
+                              subtitle: 'Disponível agora',
                               icon: method == PaymentMethod.cash
                                   ? Icons.payments_outlined
                                   : method == PaymentMethod.pix
@@ -239,8 +241,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                 AppSectionCard(
                   title: 'Cliente e vencimento',
                   subtitle: _saleType == SaleType.fiado
-                      ? 'Cliente e vencimento continuam obrigatorios para gerar a nota.'
-                      : 'Cliente opcional para vincular a venda ao historico.',
+                      ? 'Cliente e vencimento continuam obrigatórios para gerar a nota.'
+                      : 'Cliente opcional para vincular a venda ao histórico.',
                   padding: sectionPadding,
                   child: Column(
                     children: [
@@ -303,7 +305,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                 ),
                 const SizedBox(height: 12),
                 AppSectionCard(
-                  title: 'Observacao',
+                  title: 'Observação',
                   subtitle:
                       'Opcional. Use somente se precisar registrar contexto extra.',
                   padding: sectionPadding,
@@ -313,7 +315,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                     maxLines: 3,
                     textInputAction: TextInputAction.done,
                     decoration: const InputDecoration(
-                      hintText: 'Adicionar observacao',
+                      hintText: 'Adicionar observação',
                       isDense: true,
                     ),
                   ),
@@ -338,7 +340,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                   children: [
                     AppStatusBadge(
                       label: _saleType == SaleType.cash
-                          ? 'Fluxo a vista'
+                          ? 'Fluxo à vista'
                           : 'Fluxo fiado',
                       tone: _saleType == SaleType.cash
                           ? AppStatusTone.info
@@ -741,6 +743,79 @@ class _CheckoutItemRow extends StatelessWidget {
   }
 }
 
+class _CheckoutEmptyState extends StatelessWidget {
+  const _CheckoutEmptyState({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: colorScheme.outlineVariant),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.10),
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.shopping_cart_outlined,
+                      size: 34,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'O carrinho está vazio',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Adicione itens na venda para revisar o checkout por aqui.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  FilledButton.icon(
+                    onPressed: onPressed,
+                    icon: const Icon(Icons.storefront_rounded),
+                    label: const Text('Voltar para vendas'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ClientSelector extends StatelessWidget {
   const _ClientSelector({
     required this.selectedClient,
@@ -765,12 +840,12 @@ class _ClientSelector extends StatelessWidget {
         title: Text(
           selectedClient?.name ??
               (isRequired
-                  ? 'Selecionar cliente obrigatorio'
+                  ? 'Selecionar cliente obrigatório'
                   : 'Selecionar cliente (opcional)'),
         ),
         subtitle: Text(
           selectedClient == null
-              ? 'Cliente usado para fiado e historico da venda.'
+              ? 'Cliente usado para fiado e histórico da venda.'
               : [
                   if (selectedClient!.phone?.isNotEmpty ?? false)
                     selectedClient!.phone!,
@@ -780,7 +855,7 @@ class _ClientSelector extends StatelessWidget {
                 ].join(' - '),
         ),
         leading: AppStatusBadge(
-          label: isRequired ? 'Obrigatorio' : 'Opcional',
+          label: isRequired ? 'Obrigatório' : 'Opcional',
           tone: isRequired ? AppStatusTone.warning : AppStatusTone.neutral,
         ),
         trailing: Wrap(
