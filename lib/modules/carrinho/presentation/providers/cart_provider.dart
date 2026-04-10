@@ -98,7 +98,37 @@ class CartController extends Notifier<CartState> {
     );
   }
 
+  void updateItemNotes(String itemId, String? notes) {
+    final items = [...state.items];
+    final index = items.indexWhere((item) => item.id == itemId);
+    if (index == -1) {
+      return;
+    }
+
+    final current = items[index];
+    items[index] = CartItem(
+      id: current.id,
+      productId: current.productId,
+      productName: current.productName,
+      baseProductId: current.baseProductId,
+      baseProductName: current.baseProductName,
+      quantityMil: current.quantityMil,
+      availableStockMil: current.availableStockMil,
+      unitPriceCents: current.unitPriceCents,
+      unitMeasure: current.unitMeasure,
+      productType: current.productType,
+      modifiers: current.modifiers,
+      notes: _cleanNullable(notes),
+    );
+    state = CartState(items: items);
+  }
+
   void clear() {
     state = const CartState(items: []);
+  }
+
+  String? _cleanNullable(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 }
