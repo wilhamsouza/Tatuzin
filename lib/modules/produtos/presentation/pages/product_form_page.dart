@@ -114,138 +114,402 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEditing ? 'Editar produto' : 'Novo produto'),
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: _selectedCatalogType,
-              decoration: const InputDecoration(labelText: 'Tipo do cadastro'),
-              items: const [
-                DropdownMenuItem(
-                  value: ProductCatalogTypes.simple,
-                  child: Text('Simples'),
-                ),
-                DropdownMenuItem(
-                  value: ProductCatalogTypes.variant,
-                  child: Text('Com variacao'),
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_isEditing ? 'Editar produto' : 'Novo produto'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Informações'),
+              Tab(text: 'Preço e estoque'),
+              Tab(text: 'Fotos'),
+            ],
+          ),
+        ),
+        bottomNavigationBar: SafeArea(
+          minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: colorScheme.outlineVariant),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 18,
+                  offset: const Offset(0, -4),
                 ),
               ],
-              onChanged: (value) {
-                if (value == null) {
-                  return;
-                }
-                _changeCatalogType(value);
-              },
             ),
-            const SizedBox(height: 12),
-            Text(
-              _isVariantCatalog
-                  ? 'Use Modelo + Variacao para organizar SKUs sem quebrar o fluxo simples atual.'
-                  : 'Cadastre um produto individual normalmente para venda simples.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _isEditing
+                        ? 'Revise as abas e salve as alterações quando terminar.'
+                        : 'Preencha as abas para cadastrar o produto com mais clareza.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _isSaving ? null : _save,
+                      icon: _isSaving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.save_rounded),
+                      label: Text(
+                        _isEditing ? 'Salvar alterações' : 'Criar produto',
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            if (_isVariantCatalog) ...[
-              TextFormField(
-                controller: _modelNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Modelo',
-                  hintText: 'Ex.: Camiseta, Burger',
-                ),
-                textCapitalization: TextCapitalization.sentences,
-                validator: (value) {
-                  if (!_isVariantCatalog) {
-                    return null;
-                  }
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Informe o modelo';
-                  }
-                  return null;
-                },
-                onChanged: (_) => setState(() {}),
+          ),
+        ),
+        body: Form(
+          key: _formKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          child: TabBarView(
+            children: [
+              _buildInformationTab(
+                context,
+                categories: categories,
+                categoriesAsync: categoriesAsync,
+                baseProducts: baseProducts,
+                baseProductsAsync: baseProductsAsync,
+              ),
+              _buildPricingTab(context),
+              _buildPhotosTab(context),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInformationTab(
+    BuildContext context, {
+    required List<Category> categories,
+    required AsyncValue<List<Category>> categoriesAsync,
+    required List<BaseProduct> baseProducts,
+    required AsyncValue<List<BaseProduct>> baseProductsAsync,
+  }) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        _SectionCard(
+          title: 'Tipo do cadastro',
+          subtitle: _isVariantCatalog
+              ? 'Use modelo e variação para organizar produtos relacionados mantendo o fluxo atual.'
+              : 'Use cadastro simples para itens vendidos individualmente.',
+          child: Column(
+            children: [
+              _CatalogTypeSelector(
+                selectedValue: _selectedCatalogType,
+                onChanged: _changeCatalogType,
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: _variantLabelController,
-                decoration: const InputDecoration(
-                  labelText: 'Variacao',
-                  hintText: 'Ex.: P, M, G, Duplo',
-                ),
-                textCapitalization: TextCapitalization.sentences,
-                validator: (value) {
-                  if (!_isVariantCatalog) {
+              _NamePreviewCard(
+                title: _isVariantCatalog
+                    ? 'Nome final do item'
+                    : 'Nome exibido na venda',
+                preview: _finalPreviewLabel,
+                helperText: _isVariantCatalog
+                    ? 'O nome final combina modelo e variação para manter os SKUs organizados.'
+                    : 'Esse será o nome principal usado nas listagens e na venda.',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _SectionCard(
+          title: _isVariantCatalog
+              ? 'Estrutura da variação'
+              : 'Identificação do produto',
+          subtitle: _isVariantCatalog
+              ? 'Organize modelo, variação e vínculo com o produto base sem alterar o domínio atual.'
+              : 'Preencha as informações principais do produto.',
+          child: Column(
+            children: [
+              if (_isVariantCatalog) ...[
+                TextFormField(
+                  controller: _modelNameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Modelo',
+                    hintText: 'Ex.: Camiseta, Burger',
+                  ),
+                  textCapitalization: TextCapitalization.sentences,
+                  validator: (value) {
+                    if (!_isVariantCatalog) {
+                      return null;
+                    }
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Informe o modelo';
+                    }
                     return null;
-                  }
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Informe a variacao';
-                  }
-                  return null;
-                },
-                onChanged: (_) => setState(() {}),
+                  },
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _variantLabelController,
+                  decoration: const InputDecoration(
+                    labelText: 'Variação',
+                    hintText: 'Ex.: P, M, G, Duplo',
+                  ),
+                  textCapitalization: TextCapitalization.sentences,
+                  validator: (value) {
+                    if (!_isVariantCatalog) {
+                      return null;
+                    }
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Informe a variação';
+                    }
+                    return null;
+                  },
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<int?>(
+                  initialValue: _selectedBaseProductId,
+                  decoration: const InputDecoration(
+                    labelText: 'Produto base',
+                    hintText: 'Opcional para agrupar SKUs relacionados',
+                  ),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text('Usar base automática'),
+                    ),
+                    for (final baseProduct in baseProducts)
+                      DropdownMenuItem<int?>(
+                        value: baseProduct.id,
+                        child: Text(baseProduct.name),
+                      ),
+                  ],
+                  onChanged: baseProductsAsync.isLoading
+                      ? null
+                      : (value) =>
+                            setState(() => _selectedBaseProductId = value),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _extraAttributesController,
+                  decoration: const InputDecoration(
+                    labelText: 'Atributos extras',
+                    hintText: 'Uma linha por atributo no formato chave=valor',
+                    helperText: 'Opcional. Ex.: cor=preto',
+                  ),
+                  minLines: 3,
+                  maxLines: 6,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _modifierGroupsController,
+                  decoration: const InputDecoration(
+                    labelText: 'Modificadores',
+                    hintText:
+                        'Uma linha por grupo: Tamanho: P, M, G, +Extra:300',
+                    helperText: 'Opcional. Mantém o formato técnico atual.',
+                  ),
+                  minLines: 3,
+                  maxLines: 6,
+                ),
+              ] else ...[
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nome do produto',
+                    hintText: 'Ex.: Coxinha de frango',
+                  ),
+                  textCapitalization: TextCapitalization.sentences,
+                  validator: (value) {
+                    if (_isVariantCatalog) {
+                      return null;
+                    }
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Informe o nome do produto';
+                    }
+                    return null;
+                  },
+                  onChanged: (_) => setState(() {}),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _SectionCard(
+          title: 'Detalhes de apresentação',
+          subtitle: 'Descrição, categoria e contexto comercial do produto.',
+          child: Column(
+            children: [
+              TextFormField(
+                controller: _descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Descrição',
+                  hintText: 'Opcional',
+                ),
+                minLines: 3,
+                maxLines: 5,
+                textCapitalization: TextCapitalization.sentences,
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<int?>(
-                initialValue: _selectedBaseProductId,
-                decoration: const InputDecoration(
-                  labelText: 'Produto base',
-                  hintText: 'Opcional para agrupar SKUs',
-                ),
+                initialValue: _selectedCategoryId,
                 items: [
                   const DropdownMenuItem<int?>(
                     value: null,
-                    child: Text('Usar base automatica'),
+                    child: Text('Sem categoria'),
                   ),
-                  for (final baseProduct in baseProducts)
+                  for (final category in categories)
                     DropdownMenuItem<int?>(
-                      value: baseProduct.id,
-                      child: Text(baseProduct.name),
+                      value: category.id,
+                      child: Text(category.name),
                     ),
                 ],
-                onChanged: baseProductsAsync.isLoading
+                decoration: const InputDecoration(
+                  labelText: 'Categoria',
+                  helperText: 'Opcional. Facilita a organização dos produtos.',
+                ),
+                onChanged: categoriesAsync.isLoading
                     ? null
-                    : (value) => setState(() => _selectedBaseProductId = value),
+                    : (value) => setState(() => _selectedCategoryId = value),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPricingTab(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        _SectionCard(
+          title: 'Preço e estoque',
+          subtitle:
+              'Defina os dados comerciais do produto com foco em venda, margem e disponibilidade.',
+          child: Column(
+            children: [
+              TextFormField(
+                controller: _barcodeController,
+                decoration: const InputDecoration(
+                  labelText: 'Código de barras',
+                  hintText: 'Opcional',
+                ),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                initialValue: _selectedUnitMeasure,
+                decoration: const InputDecoration(
+                  labelText: 'Unidade de medida',
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'un', child: Text('Unidade (un)')),
+                  DropdownMenuItem(value: 'kg', child: Text('Quilograma (kg)')),
+                  DropdownMenuItem(value: 'g', child: Text('Grama (g)')),
+                  DropdownMenuItem(value: 'l', child: Text('Litro (l)')),
+                  DropdownMenuItem(value: 'ml', child: Text('Mililitro (ml)')),
+                  DropdownMenuItem(value: 'cx', child: Text('Caixa (cx)')),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _selectedUnitMeasure = value);
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _costController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Custo',
+                        helperText: 'Valor interno',
+                        prefixText: 'R\$ ',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _priceController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Preço de venda',
+                        helperText: 'Valor cobrado',
+                        prefixText: 'R\$ ',
+                      ),
+                      validator: (value) {
+                        final cents = MoneyParser.parseToCents(value ?? '');
+                        if (cents <= 0) {
+                          return 'Informe um preço de venda válido';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
               TextFormField(
-                controller: _extraAttributesController,
-                decoration: const InputDecoration(
-                  labelText: 'Atributos extras (opcional)',
-                  hintText: 'Uma linha por atributo: chave=valor',
+                controller: _stockController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
                 ),
-                minLines: 2,
-                maxLines: 5,
+                decoration: InputDecoration(
+                  labelText: _isEditing ? 'Estoque atual' : 'Estoque inicial',
+                  helperText:
+                      'Informe a quantidade conforme a unidade de medida',
+                ),
+                validator: (value) {
+                  final raw = (value ?? '').trim();
+                  if (!RegExp(r'\d').hasMatch(raw)) {
+                    return 'Informe um estoque válido';
+                  }
+                  final parsed = QuantityParser.parseToMil(value ?? '');
+                  if (parsed < 0) {
+                    return 'Informe um estoque válido';
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: _modifierGroupsController,
-                decoration: const InputDecoration(
-                  labelText: 'Modificadores (opcional)',
-                  hintText:
-                      'Uma linha por grupo: Grupo: opcao1, opcao2, -remocao, +adicional:300',
-                ),
-                minLines: 2,
-                maxLines: 6,
-              ),
-              const SizedBox(height: 12),
               Container(
-                padding: const EdgeInsets.all(14),
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer.withValues(alpha: 0.45),
-                  borderRadius: BorderRadius.circular(16),
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.38),
+                  borderRadius: BorderRadius.circular(18),
                 ),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(
-                      Icons.auto_awesome_rounded,
+                      Icons.inventory_2_outlined,
                       color: colorScheme.primary,
                     ),
                     const SizedBox(width: 12),
@@ -254,154 +518,126 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Nome final do item',
+                            'Status do produto',
                             style: theme.textTheme.labelMedium?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            _variantPreviewLabel,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
+                            _isActive
+                                ? 'Produto ativo para venda'
+                                : 'Produto inativo temporariamente',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
                       ),
                     ),
+                    Switch.adaptive(
+                      value: _isActive,
+                      onChanged: (value) => setState(() => _isActive = value),
+                    ),
                   ],
                 ),
               ),
-            ] else ...[
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Nome do produto'),
-                textCapitalization: TextCapitalization.sentences,
-                validator: (value) {
-                  if (_isVariantCatalog) {
-                    return null;
-                  }
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Informe o nome do produto';
-                  }
-                  return null;
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPhotosTab(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        _SectionCard(
+          title: 'Fotos do produto',
+          subtitle:
+              'A estrutura visual já está preparada para a próxima evolução do cadastro.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: 4,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 1.08,
+                ),
+                itemBuilder: (context, index) {
+                  final isPrimarySlot = index == 0;
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: colorScheme.outlineVariant),
+                    ),
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          isPrimarySlot
+                              ? Icons.add_a_photo_rounded
+                              : Icons.image_outlined,
+                          size: 28,
+                          color: colorScheme.primary,
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          isPrimarySlot
+                              ? 'Capa do produto'
+                              : 'Espaço reservado',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          isPrimarySlot
+                              ? 'Área pronta para adicionar a foto principal'
+                              : 'Estrutura preparada para futuras imagens',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
                 },
               ),
-            ],
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(
-                labelText: 'Descricao',
-                hintText: 'Opcional',
-              ),
-              minLines: 2,
-              maxLines: 4,
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<int?>(
-              initialValue: _selectedCategoryId,
-              items: [
-                const DropdownMenuItem<int?>(
-                  value: null,
-                  child: Text('Sem categoria'),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: null,
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                  label: const Text('Adicionar foto'),
                 ),
-                for (final category in categories)
-                  DropdownMenuItem<int?>(
-                    value: category.id,
-                    child: Text(category.name),
-                  ),
-              ],
-              decoration: const InputDecoration(labelText: 'Categoria'),
-              onChanged: categoriesAsync.isLoading
-                  ? null
-                  : (value) => setState(() => _selectedCategoryId = value),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _barcodeController,
-              decoration: const InputDecoration(
-                labelText: 'Codigo de barras',
-                hintText: 'Opcional',
               ),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              initialValue: _selectedUnitMeasure,
-              decoration: const InputDecoration(labelText: 'Unidade de medida'),
-              items: const [
-                DropdownMenuItem(value: 'un', child: Text('Unidade (un)')),
-                DropdownMenuItem(value: 'kg', child: Text('Quilograma (kg)')),
-                DropdownMenuItem(value: 'g', child: Text('Grama (g)')),
-                DropdownMenuItem(value: 'l', child: Text('Litro (l)')),
-                DropdownMenuItem(value: 'ml', child: Text('Mililitro (ml)')),
-                DropdownMenuItem(value: 'cx', child: Text('Caixa (cx)')),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() => _selectedUnitMeasure = value);
-                }
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _costController,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+              const SizedBox(height: 12),
+              Text(
+                'O suporte completo de fotos será expandido em uma próxima fase, sem persistência fake nesta etapa.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  height: 1.4,
+                ),
               ),
-              decoration: const InputDecoration(labelText: 'Custo'),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _priceController,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(labelText: 'Preco de venda'),
-              validator: (value) {
-                final cents = MoneyParser.parseToCents(value ?? '');
-                if (cents <= 0) {
-                  return 'Informe um preco de venda valido';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _stockController,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: InputDecoration(
-                labelText: _isEditing ? 'Estoque atual' : 'Estoque inicial',
-              ),
-              validator: (value) {
-                final raw = (value ?? '').trim();
-                if (!RegExp(r'\d').hasMatch(raw)) {
-                  return 'Informe um estoque valido';
-                }
-                final parsed = QuantityParser.parseToMil(value ?? '');
-                if (parsed < 0) {
-                  return 'Informe um estoque valido';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              value: _isActive,
-              title: const Text('Produto ativo'),
-              onChanged: (value) => setState(() => _isActive = value),
-            ),
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: _isSaving ? null : _save,
-              child: Text(_isEditing ? 'Salvar alteracoes' : 'Criar produto'),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -418,6 +654,18 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       return model;
     }
     return _buildVariantDisplayName(model, variation);
+  }
+
+  String get _finalPreviewLabel {
+    if (_isVariantCatalog) {
+      return _variantPreviewLabel;
+    }
+
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      return 'Ex.: Coxinha de frango';
+    }
+    return name;
   }
 
   void _changeCatalogType(String nextValue) {
@@ -526,7 +774,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       return '';
     }
     return product.modifierGroups
-        .map((group) => '${group.name}: ${group.options.length} opcoes')
+        .map((group) => '${group.name}: ${group.options.length} opções')
         .join('\n');
   }
 
@@ -652,5 +900,230 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   String? _cleanNullable(String? value) {
     final trimmed = value?.trim();
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: BorderSide(color: colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 18),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NamePreviewCard extends StatelessWidget {
+  const _NamePreviewCard({
+    required this.title,
+    required this.preview,
+    required this.helperText,
+  });
+
+  final String title;
+  final String preview;
+  final String helperText;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            colorScheme.primaryContainer,
+            colorScheme.surfaceContainerHigh,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded, color: colorScheme.primary),
+              const SizedBox(width: 10),
+              Text(
+                title,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            preview,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              height: 1.15,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            helperText,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CatalogTypeSelector extends StatelessWidget {
+  const _CatalogTypeSelector({
+    required this.selectedValue,
+    required this.onChanged,
+  });
+
+  final String selectedValue;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _CatalogTypeOption(
+            title: 'Simples',
+            subtitle: 'Cadastro direto para venda individual',
+            icon: Icons.inventory_2_outlined,
+            selected: selectedValue == ProductCatalogTypes.simple,
+            onTap: () => onChanged(ProductCatalogTypes.simple),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _CatalogTypeOption(
+            title: 'Com variação',
+            subtitle: 'Modelo + variação para organizar SKUs',
+            icon: Icons.layers_outlined,
+            selected: selectedValue == ProductCatalogTypes.variant,
+            onTap: () => onChanged(ProductCatalogTypes.variant),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CatalogTypeOption extends StatelessWidget {
+  const _CatalogTypeOption({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Material(
+      color: selected
+          ? colorScheme.primaryContainer.withValues(alpha: 0.6)
+          : colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected
+                  ? colorScheme.primary
+                  : colorScheme.outlineVariant,
+              width: selected ? 1.4 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                icon,
+                color: selected
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
