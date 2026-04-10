@@ -208,6 +208,349 @@ class AdminDashboardSnapshot {
   final AdminSyncSummary syncSummary;
 }
 
+class AdminSortMeta {
+  const AdminSortMeta({
+    required this.by,
+    required this.direction,
+  });
+
+  final String by;
+  final String direction;
+
+  factory AdminSortMeta.fromMap(Map<String, dynamic> map) {
+    return AdminSortMeta(
+      by: _readString(map, 'by'),
+      direction: _readString(map, 'direction'),
+    );
+  }
+
+  static AdminSortMeta? fromPayload(Map<String, dynamic> map) {
+    final nestedSort = map['sort'];
+    if (nestedSort is Map<String, dynamic>) {
+      return AdminSortMeta.fromMap(nestedSort);
+    }
+    return null;
+  }
+}
+
+class AdminPaginationMeta {
+  const AdminPaginationMeta({
+    required this.page,
+    required this.pageSize,
+    required this.total,
+    required this.count,
+    required this.hasNext,
+    required this.hasPrevious,
+  });
+
+  final int page;
+  final int pageSize;
+  final int total;
+  final int count;
+  final bool hasNext;
+  final bool hasPrevious;
+
+  factory AdminPaginationMeta.fromMap(Map<String, dynamic> map) {
+    return AdminPaginationMeta(
+      page: _readOptionalInt(map, 'page') ?? 1,
+      pageSize: _readOptionalInt(map, 'pageSize') ?? 20,
+      total: _readOptionalInt(map, 'total') ?? 0,
+      count: _readOptionalInt(map, 'count') ?? 0,
+      hasNext: map['hasNext'] == true,
+      hasPrevious: map['hasPrevious'] == true,
+    );
+  }
+
+  factory AdminPaginationMeta.fromPayload(Map<String, dynamic> map) {
+    final nestedPagination = map['pagination'];
+    if (nestedPagination is Map<String, dynamic>) {
+      return AdminPaginationMeta.fromMap(nestedPagination);
+    }
+    throw const FormatException(
+      'Campo "pagination" ausente no payload administrativo.',
+    );
+  }
+}
+
+class AdminPaginatedResult<T> {
+  const AdminPaginatedResult({
+    required this.items,
+    required this.pagination,
+    required this.filters,
+    required this.sort,
+  });
+
+  final List<T> items;
+  final AdminPaginationMeta pagination;
+  final Map<String, dynamic> filters;
+  final AdminSortMeta? sort;
+}
+
+class AdminCompaniesQuery {
+  const AdminCompaniesQuery({
+    this.page = 1,
+    this.pageSize = 20,
+    this.search,
+    this.isActive,
+    this.licenseStatus,
+    this.syncEnabled,
+    this.sortBy,
+    this.sortDirection,
+  });
+
+  final int page;
+  final int pageSize;
+  final String? search;
+  final bool? isActive;
+  final String? licenseStatus;
+  final bool? syncEnabled;
+  final String? sortBy;
+  final String? sortDirection;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      'page': '$page',
+      'pageSize': '$pageSize',
+      if (_normalized(search) case final value?) 'search': value,
+      if (isActive != null) 'isActive': '$isActive',
+      if (_normalized(licenseStatus) case final value?) 'licenseStatus': value,
+      if (syncEnabled != null) 'syncEnabled': '$syncEnabled',
+      if (_normalized(sortBy) case final value?) 'sortBy': value,
+      if (_normalized(sortDirection) case final value?) 'sortDirection': value,
+    };
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is AdminCompaniesQuery &&
+        other.page == page &&
+        other.pageSize == pageSize &&
+        other.search == search &&
+        other.isActive == isActive &&
+        other.licenseStatus == licenseStatus &&
+        other.syncEnabled == syncEnabled &&
+        other.sortBy == sortBy &&
+        other.sortDirection == sortDirection;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    page,
+    pageSize,
+    search,
+    isActive,
+    licenseStatus,
+    syncEnabled,
+    sortBy,
+    sortDirection,
+  );
+}
+
+class AdminLicensesQuery {
+  const AdminLicensesQuery({
+    this.page = 1,
+    this.pageSize = 20,
+    this.search,
+    this.status,
+    this.syncEnabled,
+    this.sortBy,
+    this.sortDirection,
+  });
+
+  final int page;
+  final int pageSize;
+  final String? search;
+  final String? status;
+  final bool? syncEnabled;
+  final String? sortBy;
+  final String? sortDirection;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      'page': '$page',
+      'pageSize': '$pageSize',
+      if (_normalized(search) case final value?) 'search': value,
+      if (_normalized(status) case final value?) 'status': value,
+      if (syncEnabled != null) 'syncEnabled': '$syncEnabled',
+      if (_normalized(sortBy) case final value?) 'sortBy': value,
+      if (_normalized(sortDirection) case final value?) 'sortDirection': value,
+    };
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is AdminLicensesQuery &&
+        other.page == page &&
+        other.pageSize == pageSize &&
+        other.search == search &&
+        other.status == status &&
+        other.syncEnabled == syncEnabled &&
+        other.sortBy == sortBy &&
+        other.sortDirection == sortDirection;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    page,
+    pageSize,
+    search,
+    status,
+    syncEnabled,
+    sortBy,
+    sortDirection,
+  );
+}
+
+class AdminAuditQuery {
+  const AdminAuditQuery({
+    this.page = 1,
+    this.pageSize = 20,
+    this.action,
+    this.actorUserId,
+    this.companyId,
+  });
+
+  final int page;
+  final int pageSize;
+  final String? action;
+  final String? actorUserId;
+  final String? companyId;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      'page': '$page',
+      'pageSize': '$pageSize',
+      if (_normalized(action) case final value?) 'action': value,
+      if (_normalized(actorUserId) case final value?) 'actorUserId': value,
+      if (_normalized(companyId) case final value?) 'companyId': value,
+    };
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is AdminAuditQuery &&
+        other.page == page &&
+        other.pageSize == pageSize &&
+        other.action == action &&
+        other.actorUserId == actorUserId &&
+        other.companyId == companyId;
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(page, pageSize, action, actorUserId, companyId);
+}
+
+class AdminSyncQuery {
+  const AdminSyncQuery({
+    this.page = 1,
+    this.pageSize = 20,
+    this.search,
+    this.licenseStatus,
+    this.syncEnabled,
+    this.sortBy,
+    this.sortDirection,
+  });
+
+  final int page;
+  final int pageSize;
+  final String? search;
+  final String? licenseStatus;
+  final bool? syncEnabled;
+  final String? sortBy;
+  final String? sortDirection;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      'page': '$page',
+      'pageSize': '$pageSize',
+      if (_normalized(search) case final value?) 'search': value,
+      if (_normalized(licenseStatus) case final value?) 'licenseStatus': value,
+      if (syncEnabled != null) 'syncEnabled': '$syncEnabled',
+      if (_normalized(sortBy) case final value?) 'sortBy': value,
+      if (_normalized(sortDirection) case final value?) 'sortDirection': value,
+    };
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is AdminSyncQuery &&
+        other.page == page &&
+        other.pageSize == pageSize &&
+        other.search == search &&
+        other.licenseStatus == licenseStatus &&
+        other.syncEnabled == syncEnabled &&
+        other.sortBy == sortBy &&
+        other.sortDirection == sortDirection;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    page,
+    pageSize,
+    search,
+    licenseStatus,
+    syncEnabled,
+    sortBy,
+    sortDirection,
+  );
+}
+
+class AdminSyncOperationalQuery {
+  const AdminSyncOperationalQuery({
+    this.page = 1,
+    this.pageSize = 20,
+    this.search,
+    this.licenseStatus,
+    this.syncEnabled,
+    this.sortBy,
+    this.sortDirection,
+  });
+
+  final int page;
+  final int pageSize;
+  final String? search;
+  final String? licenseStatus;
+  final bool? syncEnabled;
+  final String? sortBy;
+  final String? sortDirection;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      'page': '$page',
+      'pageSize': '$pageSize',
+      if (_normalized(search) case final value?) 'search': value,
+      if (_normalized(licenseStatus) case final value?) 'licenseStatus': value,
+      if (syncEnabled != null) 'syncEnabled': '$syncEnabled',
+      if (_normalized(sortBy) case final value?) 'sortBy': value,
+      if (_normalized(sortDirection) case final value?) 'sortDirection': value,
+    };
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is AdminSyncOperationalQuery &&
+        other.page == page &&
+        other.pageSize == pageSize &&
+        other.search == search &&
+        other.licenseStatus == licenseStatus &&
+        other.syncEnabled == syncEnabled &&
+        other.sortBy == sortBy &&
+        other.sortDirection == sortDirection;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    page,
+    pageSize,
+    search,
+    licenseStatus,
+    syncEnabled,
+    sortBy,
+    sortDirection,
+  );
+}
+
 class AdminCompanySummary {
   const AdminCompanySummary({
     required this.id,
@@ -567,25 +910,29 @@ class AdminAuditSummary {
     required this.totalEvents,
     required this.countsByAction,
     required this.recentEvents,
+    required this.pagination,
+    required this.filters,
+    required this.sort,
   });
 
   final int totalEvents;
   final Map<String, int> countsByAction;
   final List<AdminAuditEvent> recentEvents;
+  final AdminPaginationMeta pagination;
+  final Map<String, dynamic> filters;
+  final AdminSortMeta? sort;
 
   factory AdminAuditSummary.fromMap(Map<String, dynamic> map) {
+    final overview = _readOverviewPayload(map);
     return AdminAuditSummary(
-      totalEvents: _readOptionalInt(map, 'totalEvents') ?? 0,
-      countsByAction: {
-        for (final entry
-            in (map['countsByAction'] as List<dynamic>? ?? const <dynamic>[])
-                .whereType<Map<String, dynamic>>())
-          _readString(entry, 'action'): _readOptionalInt(entry, 'count') ?? 0,
-      },
-      recentEvents: (map['recentEvents'] as List<dynamic>? ?? const <dynamic>[])
-          .whereType<Map<String, dynamic>>()
+      totalEvents: _readOptionalInt(overview, 'totalEvents') ?? 0,
+      countsByAction: _countsByActionFromObject(overview['countsByAction']),
+      recentEvents: _readAdminItemMaps(map)
           .map(AdminAuditEvent.fromMap)
           .toList(),
+      pagination: AdminPaginationMeta.fromPayload(map),
+      filters: _readFiltersPayload(map),
+      sort: AdminSortMeta.fromPayload(map),
     );
   }
 }
@@ -634,16 +981,21 @@ class AdminSyncSummary {
     required this.syncEnabledCompanies,
     required this.licenseStatusCounts,
     required this.companySummaries,
+    required this.pagination,
+    required this.filters,
+    required this.sort,
   });
 
   final int totalCompanies;
   final int syncEnabledCompanies;
   final Map<String, int> licenseStatusCounts;
   final List<AdminSyncCompanySummary> companySummaries;
+  final AdminPaginationMeta pagination;
+  final Map<String, dynamic> filters;
+  final AdminSortMeta? sort;
 
   factory AdminSyncSummary.fromMap(Map<String, dynamic> map) {
-    final overview =
-        map['overview'] as Map<String, dynamic>? ?? const <String, dynamic>{};
+    final overview = _readOverviewPayload(map);
     return AdminSyncSummary(
       totalCompanies: _readOptionalInt(overview, 'totalCompanies') ?? 0,
       syncEnabledCompanies:
@@ -655,13 +1007,298 @@ class AdminSyncSummary {
                 .entries)
           entry.key: _normalizeToInt(entry.value),
       },
-      companySummaries:
-          (map['companies'] as List<dynamic>? ?? const <dynamic>[])
+      companySummaries: _readAdminItemMaps(map)
+          .map(AdminSyncCompanySummary.fromMap)
+          .toList(),
+      pagination: AdminPaginationMeta.fromPayload(map),
+      filters: _readFiltersPayload(map),
+      sort: AdminSortMeta.fromPayload(map),
+    );
+  }
+}
+
+class AdminSyncOperationalSummary {
+  const AdminSyncOperationalSummary({
+    required this.overview,
+    required this.capabilities,
+    required this.companies,
+    required this.pagination,
+    required this.filters,
+    required this.sort,
+  });
+
+  final AdminSyncOperationalOverview overview;
+  final AdminSyncOperationalCapabilities capabilities;
+  final List<AdminSyncOperationalCompanySummary> companies;
+  final AdminPaginationMeta pagination;
+  final Map<String, dynamic> filters;
+  final AdminSortMeta? sort;
+
+  factory AdminSyncOperationalSummary.fromMap(Map<String, dynamic> map) {
+    return AdminSyncOperationalSummary(
+      overview: AdminSyncOperationalOverview.fromMap(
+        _readOverviewPayload(map),
+      ),
+      capabilities: AdminSyncOperationalCapabilities.fromMap(
+        map['capabilities'] as Map<String, dynamic>? ??
+            const <String, dynamic>{},
+      ),
+      companies: _readAdminItemMaps(map)
+          .map(AdminSyncOperationalCompanySummary.fromMap)
+          .toList(),
+      pagination: AdminPaginationMeta.fromPayload(map),
+      filters: _readFiltersPayload(map),
+      sort: AdminSortMeta.fromPayload(map),
+    );
+  }
+}
+
+class AdminSyncOperationalOverview {
+  const AdminSyncOperationalOverview({
+    required this.totalCompanies,
+    required this.statusCounts,
+    required this.telemetryLevelCounts,
+  });
+
+  final int totalCompanies;
+  final Map<String, int> statusCounts;
+  final Map<String, int> telemetryLevelCounts;
+
+  factory AdminSyncOperationalOverview.fromMap(Map<String, dynamic> map) {
+    return AdminSyncOperationalOverview(
+      totalCompanies: _readOptionalInt(map, 'totalCompanies') ?? 0,
+      statusCounts: _readIntMap(map, 'statusCounts'),
+      telemetryLevelCounts: _readIntMap(map, 'telemetryLevelCounts'),
+    );
+  }
+}
+
+class AdminSyncOperationalCapabilities {
+  const AdminSyncOperationalCapabilities({
+    required this.observedSignals,
+    required this.unavailableSignals,
+    required this.observedFeatureKeys,
+    required this.telemetryGaps,
+    required this.notes,
+  });
+
+  final List<String> observedSignals;
+  final List<String> unavailableSignals;
+  final List<String> observedFeatureKeys;
+  final List<AdminTelemetryGap> telemetryGaps;
+  final List<String> notes;
+
+  factory AdminSyncOperationalCapabilities.fromMap(Map<String, dynamic> map) {
+    return AdminSyncOperationalCapabilities(
+      observedSignals: _readStringList(map['observedSignals']),
+      unavailableSignals: _readStringList(map['unavailableSignals']),
+      observedFeatureKeys: _readStringList(map['observedFeatureKeys']),
+      telemetryGaps: (map['telemetryGaps'] as List<dynamic>? ?? const <dynamic>[])
+          .whereType<Map<String, dynamic>>()
+          .map(AdminTelemetryGap.fromMap)
+          .toList(),
+      notes: _readStringList(map['notes']),
+    );
+  }
+}
+
+class AdminTelemetryGap {
+  const AdminTelemetryGap({
+    required this.featureKey,
+    required this.gapType,
+    required this.reason,
+  });
+
+  final String featureKey;
+  final String gapType;
+  final String reason;
+
+  factory AdminTelemetryGap.fromMap(Map<String, dynamic> map) {
+    return AdminTelemetryGap(
+      featureKey: _readString(map, 'featureKey'),
+      gapType: _readString(map, 'gapType'),
+      reason: _readString(map, 'reason'),
+    );
+  }
+}
+
+class AdminSyncOperationalCompanySummary {
+  const AdminSyncOperationalCompanySummary({
+    required this.companyId,
+    required this.companyName,
+    required this.companySlug,
+    required this.companyIsActive,
+    required this.licenseStatus,
+    required this.syncEnabled,
+    required this.activeSessionsCount,
+    required this.activeMobileSessionsCount,
+    required this.lastSessionSeenAt,
+    required this.observedRemoteRecordCount,
+    required this.lastObservedRemoteChangeAt,
+    required this.remoteCoverage,
+    required this.status,
+    required this.statusSource,
+    required this.statusReason,
+    required this.telemetryAvailability,
+    required this.observedFeatures,
+  });
+
+  final String companyId;
+  final String companyName;
+  final String companySlug;
+  final bool companyIsActive;
+  final String licenseStatus;
+  final bool syncEnabled;
+  final int activeSessionsCount;
+  final int activeMobileSessionsCount;
+  final DateTime? lastSessionSeenAt;
+  final int observedRemoteRecordCount;
+  final DateTime? lastObservedRemoteChangeAt;
+  final AdminRemoteCoverage remoteCoverage;
+  final String status;
+  final String statusSource;
+  final String statusReason;
+  final AdminTelemetryAvailability telemetryAvailability;
+  final List<AdminObservedFeature> observedFeatures;
+
+  factory AdminSyncOperationalCompanySummary.fromMap(
+    Map<String, dynamic> map,
+  ) {
+    return AdminSyncOperationalCompanySummary(
+      companyId: _readString(map, 'companyId'),
+      companyName: _readString(map, 'companyName'),
+      companySlug: _readString(map, 'companySlug'),
+      companyIsActive: map['companyIsActive'] == true,
+      licenseStatus: _readString(map, 'licenseStatus'),
+      syncEnabled: map['syncEnabled'] == true,
+      activeSessionsCount: _readOptionalInt(map, 'activeSessionsCount') ?? 0,
+      activeMobileSessionsCount:
+          _readOptionalInt(map, 'activeMobileSessionsCount') ?? 0,
+      lastSessionSeenAt: _readOptionalDateTime(map, 'lastSessionSeenAt'),
+      observedRemoteRecordCount:
+          _readOptionalInt(map, 'observedRemoteRecordCount') ?? 0,
+      lastObservedRemoteChangeAt:
+          _readOptionalDateTime(map, 'lastObservedRemoteChangeAt'),
+      remoteCoverage: AdminRemoteCoverage.fromMap(
+        map['remoteCoverage'] as Map<String, dynamic>? ??
+            const <String, dynamic>{},
+      ),
+      status: _readString(map, 'status'),
+      statusSource: _readString(map, 'statusSource'),
+      statusReason: _readString(map, 'statusReason'),
+      telemetryAvailability: AdminTelemetryAvailability.fromMap(
+        map['telemetryAvailability'] as Map<String, dynamic>? ??
+            const <String, dynamic>{},
+      ),
+      observedFeatures:
+          (map['observedFeatures'] as List<dynamic>? ?? const <dynamic>[])
               .whereType<Map<String, dynamic>>()
-              .map(AdminSyncCompanySummary.fromMap)
+              .map(AdminObservedFeature.fromMap)
               .toList(),
     );
   }
+}
+
+class AdminRemoteCoverage {
+  const AdminRemoteCoverage({
+    required this.observedFeatureCount,
+    required this.featuresWithRemoteRecords,
+    required this.telemetryScope,
+  });
+
+  final int observedFeatureCount;
+  final int featuresWithRemoteRecords;
+  final String telemetryScope;
+
+  factory AdminRemoteCoverage.fromMap(Map<String, dynamic> map) {
+    return AdminRemoteCoverage(
+      observedFeatureCount: _readOptionalInt(map, 'observedFeatureCount') ?? 0,
+      featuresWithRemoteRecords:
+          _readOptionalInt(map, 'featuresWithRemoteRecords') ?? 0,
+      telemetryScope: _readString(
+        map,
+        'telemetryScope',
+        fallback: 'partial_remote_mirror',
+      ),
+    );
+  }
+}
+
+class AdminTelemetryAvailability {
+  const AdminTelemetryAvailability({
+    required this.level,
+    required this.hasDeviceSessionSignals,
+    required this.hasRemoteMirrorSignals,
+    required this.hasLocalQueueSignals,
+    required this.hasConflictSignals,
+    required this.hasRetrySignals,
+    required this.hasClientRepairSignals,
+  });
+
+  final String level;
+  final bool hasDeviceSessionSignals;
+  final bool hasRemoteMirrorSignals;
+  final bool hasLocalQueueSignals;
+  final bool hasConflictSignals;
+  final bool hasRetrySignals;
+  final bool hasClientRepairSignals;
+
+  factory AdminTelemetryAvailability.fromMap(Map<String, dynamic> map) {
+    return AdminTelemetryAvailability(
+      level: _readString(map, 'level', fallback: 'limited'),
+      hasDeviceSessionSignals: map['hasDeviceSessionSignals'] == true,
+      hasRemoteMirrorSignals: map['hasRemoteMirrorSignals'] == true,
+      hasLocalQueueSignals: map['hasLocalQueueSignals'] == true,
+      hasConflictSignals: map['hasConflictSignals'] == true,
+      hasRetrySignals: map['hasRetrySignals'] == true,
+      hasClientRepairSignals: map['hasClientRepairSignals'] == true,
+    );
+  }
+}
+
+class AdminObservedFeature {
+  const AdminObservedFeature({
+    required this.featureKey,
+    required this.displayName,
+    required this.remoteRecordCount,
+    required this.lastObservedRemoteChangeAt,
+    required this.observationKind,
+  });
+
+  final String featureKey;
+  final String displayName;
+  final int remoteRecordCount;
+  final DateTime? lastObservedRemoteChangeAt;
+  final String observationKind;
+
+  factory AdminObservedFeature.fromMap(Map<String, dynamic> map) {
+    return AdminObservedFeature(
+      featureKey: _readString(map, 'featureKey'),
+      displayName: _readString(map, 'displayName'),
+      remoteRecordCount: _readOptionalInt(map, 'remoteRecordCount') ?? 0,
+      lastObservedRemoteChangeAt:
+          _readOptionalDateTime(map, 'lastObservedRemoteChangeAt'),
+      observationKind: _readString(map, 'observationKind'),
+    );
+  }
+}
+
+List<Map<String, dynamic>> readAdminItems(
+  Map<String, dynamic> map,
+) {
+  return _readAdminItemMaps(map);
+}
+
+Map<String, dynamic> readAdminFilters(Map<String, dynamic> map) {
+  return _readFiltersPayload(map);
+}
+
+String? _normalized(String? value) {
+  if (value == null) {
+    return null;
+  }
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
 }
 
 class AdminSyncCompanySummary {
@@ -755,4 +1392,68 @@ int _normalizeToInt(Object? rawValue) {
     return int.tryParse(rawValue.trim()) ?? 0;
   }
   return 0;
+}
+
+Map<String, int> _readIntMap(Map<String, dynamic> map, String key) {
+  final value = map[key];
+  if (value is! Map<String, dynamic>) {
+    return const <String, int>{};
+  }
+
+  return <String, int>{
+    for (final entry in value.entries) entry.key: _normalizeToInt(entry.value),
+  };
+}
+
+List<String> _readStringList(Object? rawValue) {
+  if (rawValue is! List<dynamic>) {
+    return const <String>[];
+  }
+
+  return rawValue
+      .whereType<String>()
+      .map((value) => value.trim())
+      .where((value) => value.isNotEmpty)
+      .toList(growable: false);
+}
+
+Map<String, dynamic> _readOverviewPayload(Map<String, dynamic> map) {
+  final overview = map['overview'];
+  if (overview is Map<String, dynamic>) {
+    return overview;
+  }
+  return const <String, dynamic>{};
+}
+
+Map<String, dynamic> _readFiltersPayload(Map<String, dynamic> map) {
+  final filters = map['filters'];
+  if (filters is Map<String, dynamic>) {
+    return Map<String, dynamic>.unmodifiable(filters);
+  }
+  return const <String, dynamic>{};
+}
+
+List<Map<String, dynamic>> _readAdminItemMaps(Map<String, dynamic> map) {
+  final primaryItems = map['items'];
+  if (primaryItems is List<dynamic>) {
+    return primaryItems.whereType<Map<String, dynamic>>().toList(growable: false);
+  }
+  return const <Map<String, dynamic>>[];
+}
+
+Map<String, int> _countsByActionFromObject(Object? rawValue) {
+  if (rawValue is List<dynamic>) {
+    return <String, int>{
+      for (final entry in rawValue.whereType<Map<String, dynamic>>())
+        _readString(entry, 'action'): _readOptionalInt(entry, 'count') ?? 0,
+    };
+  }
+
+  if (rawValue is Map<String, dynamic>) {
+    return <String, int>{
+      for (final entry in rawValue.entries) entry.key: _normalizeToInt(entry.value),
+    };
+  }
+
+  return const <String, int>{};
 }

@@ -24,6 +24,10 @@ class Product {
     required this.catalogType,
     required this.modelName,
     required this.variantLabel,
+    required this.baseProductId,
+    required this.baseProductName,
+    this.variantAttributes = const <ProductVariantAttribute>[],
+    this.modifierGroups = const <ProductModifierGroup>[],
     required this.unitMeasure,
     required this.costCents,
     required this.salePriceCents,
@@ -48,6 +52,10 @@ class Product {
   final String catalogType;
   final String? modelName;
   final String? variantLabel;
+  final int? baseProductId;
+  final String? baseProductName;
+  final List<ProductVariantAttribute> variantAttributes;
+  final List<ProductModifierGroup> modifierGroups;
   final String unitMeasure;
   final int costCents;
   final int salePriceCents;
@@ -65,6 +73,13 @@ class Product {
   bool get isVariantCatalog =>
       ProductCatalogTypes.normalize(catalogType) == ProductCatalogTypes.variant;
 
+  int get modifierGroupCount => modifierGroups.length;
+
+  int get modifierOptionCount => modifierGroups.fold<int>(
+    0,
+    (total, group) => total + group.options.length,
+  );
+
   String get displayName {
     final resolvedModel = modelName?.trim();
     final resolvedVariant = variantLabel?.trim();
@@ -73,7 +88,7 @@ class Product {
         resolvedModel.isNotEmpty &&
         resolvedVariant != null &&
         resolvedVariant.isNotEmpty) {
-      return '$resolvedModel — $resolvedVariant';
+      return '$resolvedModel - $resolvedVariant';
     }
     return name;
   }
@@ -88,7 +103,26 @@ class Product {
         resolvedVariant.isEmpty) {
       return null;
     }
-    return 'Variação $resolvedVariant';
+    return 'Variacao $resolvedVariant';
+  }
+
+  String? get variantAttributesSummary {
+    if (variantAttributes.isEmpty) {
+      return null;
+    }
+    final labels = variantAttributes
+        .where(
+          (attribute) =>
+              attribute.key != 'legacy_variant_label' &&
+              attribute.key != 'model' &&
+              attribute.key != 'variant',
+        )
+        .map((attribute) => '${attribute.key}: ${attribute.value}')
+        .toList(growable: false);
+    if (labels.isEmpty) {
+      return null;
+    }
+    return labels.join(' - ');
   }
 }
 
@@ -101,6 +135,9 @@ class ProductInput {
     this.catalogType = ProductCatalogTypes.simple,
     this.modelName,
     this.variantLabel,
+    this.baseProductId,
+    this.variantAttributes = const <ProductVariantAttributeInput>[],
+    this.modifierGroups,
     required this.unitMeasure,
     required this.costCents,
     required this.salePriceCents,
@@ -115,9 +152,82 @@ class ProductInput {
   final String catalogType;
   final String? modelName;
   final String? variantLabel;
+  final int? baseProductId;
+  final List<ProductVariantAttributeInput> variantAttributes;
+  final List<ProductModifierGroupInput>? modifierGroups;
   final String unitMeasure;
   final int costCents;
   final int salePriceCents;
   final int stockMil;
   final bool isActive;
+}
+
+class ProductVariantAttribute {
+  const ProductVariantAttribute({required this.key, required this.value});
+
+  final String key;
+  final String value;
+}
+
+class ProductVariantAttributeInput {
+  const ProductVariantAttributeInput({required this.key, required this.value});
+
+  final String key;
+  final String value;
+}
+
+class ProductModifierGroup {
+  const ProductModifierGroup({
+    required this.name,
+    required this.isRequired,
+    required this.minSelections,
+    required this.maxSelections,
+    this.options = const <ProductModifierOption>[],
+  });
+
+  final String name;
+  final bool isRequired;
+  final int minSelections;
+  final int? maxSelections;
+  final List<ProductModifierOption> options;
+}
+
+class ProductModifierOption {
+  const ProductModifierOption({
+    required this.name,
+    required this.adjustmentType,
+    required this.priceDeltaCents,
+  });
+
+  final String name;
+  final String adjustmentType;
+  final int priceDeltaCents;
+}
+
+class ProductModifierGroupInput {
+  const ProductModifierGroupInput({
+    required this.name,
+    this.isRequired = false,
+    this.minSelections = 0,
+    this.maxSelections,
+    this.options = const <ProductModifierOptionInput>[],
+  });
+
+  final String name;
+  final bool isRequired;
+  final int minSelections;
+  final int? maxSelections;
+  final List<ProductModifierOptionInput> options;
+}
+
+class ProductModifierOptionInput {
+  const ProductModifierOptionInput({
+    required this.name,
+    this.adjustmentType = 'add',
+    this.priceDeltaCents = 0,
+  });
+
+  final String name;
+  final String adjustmentType;
+  final int priceDeltaCents;
 }

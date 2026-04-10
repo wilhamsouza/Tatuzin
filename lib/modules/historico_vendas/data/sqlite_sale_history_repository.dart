@@ -18,12 +18,15 @@ class SqliteSaleHistoryRepository implements SaleHistoryRepository {
       '''
       SELECT
         v.*,
+        vpo.pedido_operacional_id AS pedido_operacional_id,
         c.nome AS cliente_nome,
         f.id AS fiado_id,
         f.status AS fiado_status,
         f.valor_aberto_centavos AS fiado_valor_aberto_centavos,
         f.vencimento AS fiado_vencimento
       FROM ${TableNames.vendas} v
+      LEFT JOIN ${TableNames.vendasPedidosOperacionais} vpo
+        ON vpo.venda_id = v.id
       LEFT JOIN ${TableNames.clientes} c ON c.id = v.cliente_id
       LEFT JOIN ${TableNames.fiado} f ON f.venda_id = v.id
       WHERE v.id = ?
@@ -43,10 +46,19 @@ class SqliteSaleHistoryRepository implements SaleHistoryRepository {
       orderBy: 'id ASC',
     );
 
-    return SaleDetail(
-      sale: _mapSaleRecord(saleRows.first),
-      items: itemRows.map(_mapItemDetail).toList(),
-    );
+    final items = <SaleItemDetail>[];
+    for (final row in itemRows) {
+      final itemId = row['id'] as int;
+      final modifierRows = await database.query(
+        TableNames.itensVendaModificadores,
+        where: 'item_venda_id = ?',
+        whereArgs: [itemId],
+        orderBy: 'id ASC',
+      );
+      items.add(_mapItemDetail(row, modifierRows: modifierRows));
+    }
+
+    return SaleDetail(sale: _mapSaleRecord(saleRows.first), items: items);
   }
 
   @override
@@ -62,12 +74,15 @@ class SqliteSaleHistoryRepository implements SaleHistoryRepository {
     final buffer = StringBuffer('''
       SELECT DISTINCT
         v.*,
+        vpo.pedido_operacional_id AS pedido_operacional_id,
         c.nome AS cliente_nome,
         f.id AS fiado_id,
         f.status AS fiado_status,
         f.valor_aberto_centavos AS fiado_valor_aberto_centavos,
         f.vencimento AS fiado_vencimento
       FROM ${TableNames.vendas} v
+      LEFT JOIN ${TableNames.vendasPedidosOperacionais} vpo
+        ON vpo.venda_id = v.id
       LEFT JOIN ${TableNames.clientes} c ON c.id = v.cliente_id
       LEFT JOIN ${TableNames.fiado} f ON f.venda_id = v.id
       LEFT JOIN ${TableNames.itensVenda} iv ON iv.venda_id = v.id
@@ -101,8 +116,10 @@ class SqliteSaleHistoryRepository implements SaleHistoryRepository {
            c.nome LIKE ? COLLATE NOCASE
            OR iv.nome_produto_snapshot LIKE ? COLLATE NOCASE
            OR v.numero_cupom LIKE ? COLLATE NOCASE
+           OR CAST(vpo.pedido_operacional_id AS TEXT) LIKE ?
          )
       ''');
+      args.add('%$trimmedQuery%');
       args.add('%$trimmedQuery%');
       args.add('%$trimmedQuery%');
       args.add('%$trimmedQuery%');
@@ -121,6 +138,7 @@ class SqliteSaleHistoryRepository implements SaleHistoryRepository {
       receiptNumber: row['numero_cupom'] as String,
       saleType: SaleTypeX.fromDb(row['tipo_venda'] as String),
       paymentMethod: PaymentMethodX.fromDb(row['forma_pagamento'] as String),
+      operationalOrderId: row['pedido_operacional_id'] as int?,
       status: SaleStatusX.fromDb(row['status'] as String),
       totalCents: row['valor_total_centavos'] as int,
       finalCents: row['valor_final_centavos'] as int,
@@ -142,7 +160,10 @@ class SqliteSaleHistoryRepository implements SaleHistoryRepository {
     );
   }
 
-  SaleItemDetail _mapItemDetail(Map<String, Object?> row) {
+  SaleItemDetail _mapItemDetail(
+    Map<String, Object?> row, {
+    required List<Map<String, Object?>> modifierRows,
+  }) {
     return SaleItemDetail(
       id: row['id'] as int,
       productId: row['produto_id'] as int,
@@ -154,6 +175,20 @@ class SqliteSaleHistoryRepository implements SaleHistoryRepository {
       costTotalCents: row['custo_total_centavos'] as int,
       unitMeasure: row['unidade_medida_snapshot'] as String,
       productType: row['tipo_produto_snapshot'] as String,
+      itemNotes: row['observacao_item_snapshot'] as String?,
+      modifiers: modifierRows.map(_mapModifierSnapshot).toList(),
+    );
+  }
+
+  SaleItemModifierSnapshot _mapModifierSnapshot(Map<String, Object?> row) {
+    return SaleItemModifierSnapshot(
+      modifierGroupId: row['grupo_modificador_id'] as int?,
+      modifierOptionId: row['opcao_modificador_id'] as int?,
+      groupNameSnapshot: row['nome_grupo_snapshot'] as String?,
+      optionNameSnapshot: row['nome_opcao_snapshot'] as String,
+      adjustmentTypeSnapshot: row['tipo_ajuste_snapshot'] as String,
+      priceDeltaCents: row['preco_delta_centavos'] as int? ?? 0,
+      quantity: row['quantidade'] as int? ?? 1,
     );
   }
 }

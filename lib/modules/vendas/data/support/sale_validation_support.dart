@@ -1,0 +1,96 @@
+import 'package:sqflite/sqflite.dart';
+
+import '../../../../app/core/database/table_names.dart';
+import '../../../../app/core/errors/app_exceptions.dart';
+import '../../domain/entities/checkout_input.dart';
+import '../../domain/entities/sale_enums.dart';
+
+class SaleValidationSupport {
+  const SaleValidationSupport._();
+
+  static void validateCompletionInput({
+    required CheckoutInput input,
+    required SaleType saleType,
+  }) {
+    if (input.finalTotalCents <= 0) {
+      throw const ValidationException(
+        'O valor final da venda precisa ser maior que zero.',
+      );
+    }
+
+    if (saleType == SaleType.fiado && input.dueDate == null) {
+      throw const ValidationException(
+        'Informe o vencimento para registrar uma venda fiado.',
+      );
+    }
+  }
+
+  static Future<void> ensureClientExists(
+    DatabaseExecutor txn,
+    int clientId,
+  ) async {
+    final clientRows = await txn.query(
+      TableNames.clientes,
+      columns: ['id', 'deletado_em'],
+      where: 'id = ?',
+      whereArgs: [clientId],
+      limit: 1,
+    );
+
+    if (clientRows.isEmpty || clientRows.first['deletado_em'] != null) {
+      throw const ValidationException(
+        'Cliente selecionado nao esta disponivel.',
+      );
+    }
+  }
+
+  static Future<void> ensureOperationalOrderCanBeConverted(
+    DatabaseExecutor txn, {
+    required int orderId,
+  }) async {
+    final rows = await txn.rawQuery(
+      '''
+      SELECT
+        p.status AS status,
+        vpo.venda_id AS venda_id
+      FROM ${TableNames.pedidosOperacionais} p
+      LEFT JOIN ${TableNames.vendasPedidosOperacionais} vpo
+        ON vpo.pedido_operacional_id = p.id
+      WHERE p.id = ?
+      LIMIT 1
+    ''',
+      [orderId],
+    );
+
+    if (rows.isEmpty) {
+      throw ValidationException(
+        'Pedido operacional #$orderId nao foi encontrado.',
+      );
+    }
+
+    final row = rows.first;
+    final linkedSaleId = row['venda_id'] as int?;
+    if (linkedSaleId != null) {
+      throw ValidationException(
+        'Pedido operacional #$orderId ja foi convertido na venda #$linkedSaleId.',
+      );
+    }
+
+    final status = row['status'] as String?;
+    if (status == 'canceled') {
+      throw ValidationException(
+        'Pedido operacional #$orderId esta cancelado e nao pode ser convertido.',
+      );
+    }
+    if (status == 'delivered') {
+      throw ValidationException(
+        'Pedido operacional #$orderId ja foi encerrado e nao pode ser convertido novamente.',
+      );
+    }
+  }
+
+  static String? cleanNullable(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+}

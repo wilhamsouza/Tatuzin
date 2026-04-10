@@ -113,8 +113,13 @@ export const adminSyncQuerySchema = paginationQuerySchema.extend({
   sortDirection: sortDirectionSchema.default('asc'),
 });
 
+export const adminSyncOperationalQuerySchema = adminSyncQuerySchema;
+
 export type AdminLicensePatchInput = z.infer<typeof adminLicensePatchSchema>;
 export type AdminCompaniesQueryInput = z.infer<typeof adminCompaniesQuerySchema>;
 export type AdminLicensesQueryInput = z.infer<typeof adminLicensesQuerySchema>;
 export type AdminAuditQueryInput = z.infer<typeof adminAuditQuerySchema>;
 export type AdminSyncQueryInput = z.infer<typeof adminSyncQuerySchema>;
+export type AdminSyncOperationalQueryInput = z.infer<
+  typeof adminSyncOperationalQuerySchema
+>;

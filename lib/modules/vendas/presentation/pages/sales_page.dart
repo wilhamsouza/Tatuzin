@@ -8,8 +8,12 @@ import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_input.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
+import '../../../carrinho/domain/entities/cart_item.dart';
 import '../../../carrinho/presentation/providers/cart_provider.dart';
+import '../../../produtos/domain/entities/modifier_group.dart';
+import '../../../produtos/domain/entities/modifier_option.dart';
 import '../../../produtos/domain/entities/product.dart';
+import '../../../produtos/presentation/providers/product_providers.dart';
 import '../providers/sales_providers.dart';
 
 class SalesPage extends ConsumerStatefulWidget {
@@ -91,6 +95,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   onScan: _scanBarcode,
                   onOpenHistory: () =>
                       context.pushNamed(AppRouteNames.salesHistory),
+                  onOpenOrders: () => context.pushNamed(AppRouteNames.orders),
                   onOpenCart: () => context.pushNamed(AppRouteNames.cart),
                   onOpenCheckout: cart.isEmpty
                       ? null
@@ -104,12 +109,24 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       return Center(
                         child: Padding(
                           padding: EdgeInsets.all(horizontalPadding),
-                          child: Text(
-                            'Nenhum produto dispon\u00edvel com esse filtro.',
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Nenhum produto dispon\u00edvel com esse filtro.',
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.bodyLarge?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              OutlinedButton.icon(
+                                onPressed: () =>
+                                    context.pushNamed(AppRouteNames.orders),
+                                icon: const Icon(Icons.receipt_long_rounded),
+                                label: const Text('Abrir pedidos operacionais'),
+                              ),
+                            ],
                           ),
                         ),
                       );
@@ -242,6 +259,7 @@ class _CompactSalesHeader extends StatelessWidget {
     required this.onClear,
     required this.onScan,
     required this.onOpenHistory,
+    required this.onOpenOrders,
     required this.onOpenCart,
     required this.onOpenCheckout,
   });
@@ -254,6 +272,7 @@ class _CompactSalesHeader extends StatelessWidget {
   final VoidCallback onClear;
   final VoidCallback onScan;
   final VoidCallback onOpenHistory;
+  final VoidCallback onOpenOrders;
   final VoidCallback onOpenCart;
   final VoidCallback? onOpenCheckout;
 
@@ -339,6 +358,12 @@ class _CompactSalesHeader extends StatelessWidget {
             ),
             const SizedBox(width: 6),
             _HeaderActionIconButton(
+              tooltip: 'Pedidos',
+              icon: Icons.receipt_long_rounded,
+              onTap: onOpenOrders,
+            ),
+            const SizedBox(width: 6),
+            _HeaderActionIconButton(
               tooltip: cartIsEmpty ? 'Carrinho' : 'Carrinho ($cartItems)',
               icon: Icons.shopping_cart_checkout_rounded,
               onTap: onOpenCart,
@@ -347,7 +372,7 @@ class _CompactSalesHeader extends StatelessWidget {
             const SizedBox(width: 6),
             _HeaderActionIconButton(
               tooltip: 'Checkout',
-              icon: Icons.receipt_long_rounded,
+              icon: Icons.point_of_sale_rounded,
               onTap: onOpenCheckout,
               isEnabled: onOpenCheckout != null,
             ),
@@ -645,8 +670,11 @@ class _ProductTile extends ConsumerWidget {
     );
   }
 
-  void _addProduct(BuildContext context, WidgetRef ref) {
-    final added = ref.read(cartProvider.notifier).addProduct(product);
+  Future<void> _addProduct(BuildContext context, WidgetRef ref) async {
+    final added = await _addProductWithCompatibility(context, ref);
+    if (added == null) {
+      return;
+    }
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -658,6 +686,230 @@ class _ProductTile extends ConsumerWidget {
           ),
         ),
       );
+  }
+
+  Future<bool?> _addProductWithCompatibility(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final hasOperationalModifiers =
+        product.baseProductId != null && product.modifierGroupCount > 0;
+    if (!hasOperationalModifiers) {
+      return ref.read(cartProvider.notifier).addProduct(product);
+    }
+
+    final customization = await showModalBottomSheet<_CartCustomizationResult>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _CustomizeCartItemSheet(product: product),
+    );
+    if (customization == null) {
+      return null;
+    }
+
+    return ref
+        .read(cartProvider.notifier)
+        .addCustomizedProduct(
+          product,
+          modifiers: customization.modifiers,
+          notes: customization.notes,
+        );
+  }
+}
+
+class _CartCustomizationResult {
+  const _CartCustomizationResult({
+    required this.modifiers,
+    required this.notes,
+  });
+
+  final List<CartItemModifier> modifiers;
+  final String? notes;
+}
+
+class _CustomizeCartItemSheet extends ConsumerStatefulWidget {
+  const _CustomizeCartItemSheet({required this.product});
+
+  final Product product;
+
+  @override
+  ConsumerState<_CustomizeCartItemSheet> createState() =>
+      _CustomizeCartItemSheetState();
+}
+
+class _CustomizeCartItemSheetState
+    extends ConsumerState<_CustomizeCartItemSheet> {
+  final _notesController = TextEditingController();
+  final Set<int> _selectedOptionIds = <int>{};
+  final Map<int, ModifierGroup> _groupsById = <int, ModifierGroup>{};
+  final Map<int, ModifierOption> _optionsById = <int, ModifierOption>{};
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 12,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.product.displayName,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            AppFormatters.currencyFromCents(widget.product.salePriceCents),
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 12),
+          if (_isLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_groupsById.isNotEmpty)
+            SizedBox(
+              height: 260,
+              child: ListView(
+                children: _groupsById.values
+                    .map((group) {
+                      final options = _optionsById.values
+                          .where((option) => option.groupId == group.id)
+                          .toList(growable: false);
+                      return ExpansionTile(
+                        title: Text(group.name),
+                        subtitle: Text(
+                          group.isRequired ? 'Obrigatorio' : 'Opcional',
+                        ),
+                        children: options
+                            .map((option) {
+                              final selected = _selectedOptionIds.contains(
+                                option.id,
+                              );
+                              return CheckboxListTile(
+                                value: selected,
+                                title: Text(option.name),
+                                subtitle: Text(
+                                  option.priceDeltaCents == 0
+                                      ? option.adjustmentType
+                                      : '${option.adjustmentType} (${AppFormatters.currencyFromCents(option.priceDeltaCents)})',
+                                ),
+                                onChanged: (value) {
+                                  setState(() {
+                                    if (value == true) {
+                                      _selectedOptionIds.add(option.id);
+                                    } else {
+                                      _selectedOptionIds.remove(option.id);
+                                    }
+                                  });
+                                },
+                              );
+                            })
+                            .toList(growable: false),
+                      );
+                    })
+                    .toList(growable: false),
+              ),
+            ),
+          TextField(
+            controller: _notesController,
+            decoration: const InputDecoration(
+              labelText: 'Observacao do item (opcional)',
+            ),
+            minLines: 1,
+            maxLines: 2,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => Navigator.of(context).pop(
+                _CartCustomizationResult(
+                  modifiers: _buildModifiers(),
+                  notes: _cleanNullable(_notesController.text),
+                ),
+              ),
+              icon: const Icon(Icons.add_shopping_cart_rounded),
+              label: const Text('Adicionar no carrinho'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _load() async {
+    final baseProductId = widget.product.baseProductId;
+    if (baseProductId == null) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    final localCatalog = ref.read(localCatalogRepositoryProvider);
+    final groups = await localCatalog.listModifierGroups(baseProductId);
+    for (final group in groups) {
+      _groupsById[group.id] = group;
+      final options = await localCatalog.listModifierOptions(group.id);
+      for (final option in options) {
+        _optionsById[option.id] = option;
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() => _isLoading = false);
+  }
+
+  List<CartItemModifier> _buildModifiers() {
+    final modifiers = <CartItemModifier>[];
+    for (final optionId in _selectedOptionIds) {
+      final option = _optionsById[optionId];
+      if (option == null) {
+        continue;
+      }
+      final group = _groupsById[option.groupId];
+      modifiers.add(
+        CartItemModifier(
+          modifierGroupId: group?.id,
+          modifierOptionId: option.id,
+          groupName: group?.name ?? 'Grupo',
+          optionName: option.name,
+          adjustmentType: option.adjustmentType,
+          priceDeltaCents: option.priceDeltaCents,
+        ),
+      );
+    }
+    return modifiers;
+  }
+
+  String? _cleanNullable(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 }
 

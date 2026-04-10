@@ -117,29 +117,39 @@ class AdminApiService {
     ]);
 
     adminDebugLog('admin.dashboard.bootstrap.completed', {
-      'companies': (results[0] as List<AdminCompanySummary>).length,
+      'companies': (results[0] as AdminPaginatedResult<AdminCompanySummary>)
+          .items
+          .length,
       'auditEvents': (results[1] as AdminAuditSummary).recentEvents.length,
       'syncCompanies': (results[2] as AdminSyncSummary).companySummaries.length,
     });
 
     return AdminDashboardSnapshot(
-      companies: results[0] as List<AdminCompanySummary>,
+      companies:
+          (results[0] as AdminPaginatedResult<AdminCompanySummary>).items,
       auditSummary: results[1] as AdminAuditSummary,
       syncSummary: results[2] as AdminSyncSummary,
     );
   }
 
-  Future<List<AdminCompanySummary>> fetchCompanies() async {
+  Future<AdminPaginatedResult<AdminCompanySummary>> fetchCompanies({
+    AdminCompaniesQuery? query,
+  }) async {
     final response = await _apiClient.getJson(
       '/admin/companies',
       accessToken: await _readRequiredToken(),
+      queryParameters: query?.toQueryParameters(),
     );
 
     final payload = response as Map<String, dynamic>? ?? const <String, dynamic>{};
-    return (payload['items'] as List<dynamic>? ?? const <dynamic>[])
-        .whereType<Map<String, dynamic>>()
-        .map(AdminCompanySummary.fromMap)
-        .toList();
+    return AdminPaginatedResult<AdminCompanySummary>(
+      items: readAdminItems(payload)
+          .map(AdminCompanySummary.fromMap)
+          .toList(),
+      pagination: AdminPaginationMeta.fromPayload(payload),
+      filters: readAdminFilters(payload),
+      sort: AdminSortMeta.fromPayload(payload),
+    );
   }
 
   Future<AdminCompanyDetail> fetchCompanyDetail(String companyId) async {
@@ -157,17 +167,24 @@ class AdminApiService {
     return AdminCompanyDetail.fromMap(response);
   }
 
-  Future<List<AdminLicenseSnapshot>> fetchLicenses() async {
+  Future<AdminPaginatedResult<AdminLicenseSnapshot>> fetchLicenses({
+    AdminLicensesQuery? query,
+  }) async {
     final response = await _apiClient.getJson(
       '/admin/licenses',
       accessToken: await _readRequiredToken(),
+      queryParameters: query?.toQueryParameters(),
     );
 
     final payload = response as Map<String, dynamic>? ?? const <String, dynamic>{};
-    return (payload['items'] as List<dynamic>? ?? const <dynamic>[])
-        .whereType<Map<String, dynamic>>()
-        .map(AdminLicenseSnapshot.fromMap)
-        .toList();
+    return AdminPaginatedResult<AdminLicenseSnapshot>(
+      items: readAdminItems(payload)
+          .map(AdminLicenseSnapshot.fromMap)
+          .toList(),
+      pagination: AdminPaginationMeta.fromPayload(payload),
+      filters: readAdminFilters(payload),
+      sort: AdminSortMeta.fromPayload(payload),
+    );
   }
 
   Future<AdminLicenseSnapshot> updateLicense({
@@ -202,10 +219,13 @@ class AdminApiService {
     return AdminLicenseSnapshot.fromMap(license);
   }
 
-  Future<AdminAuditSummary> fetchAuditSummary() async {
+  Future<AdminAuditSummary> fetchAuditSummary({
+    AdminAuditQuery? query,
+  }) async {
     final response = await _apiClient.getJson(
       '/admin/audit/summary',
       accessToken: await _readRequiredToken(),
+      queryParameters: query?.toQueryParameters(),
     );
 
     if (response is! Map<String, dynamic>) {
@@ -217,10 +237,13 @@ class AdminApiService {
     return AdminAuditSummary.fromMap(response);
   }
 
-  Future<AdminSyncSummary> fetchSyncSummary() async {
+  Future<AdminSyncSummary> fetchSyncSummary({
+    AdminSyncQuery? query,
+  }) async {
     final response = await _apiClient.getJson(
       '/admin/sync/summary',
       accessToken: await _readRequiredToken(),
+      queryParameters: query?.toQueryParameters(),
     );
 
     if (response is! Map<String, dynamic>) {
@@ -230,6 +253,25 @@ class AdminApiService {
     }
 
     return AdminSyncSummary.fromMap(response);
+  }
+
+  Future<AdminSyncOperationalSummary> fetchSyncOperationalSummary({
+    AdminSyncOperationalQuery? query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/sync/operational-summary',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query?.toQueryParameters(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message:
+            'A API nao retornou o resumo operacional de sync no formato esperado.',
+      );
+    }
+
+    return AdminSyncOperationalSummary.fromMap(response);
   }
 
   Future<String> _readRequiredToken() async {

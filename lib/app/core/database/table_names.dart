@@ -6,6 +6,8 @@ abstract final class TableNames {
   static const fornecedores = 'fornecedores';
   static const vendas = 'vendas';
   static const itensVenda = 'itens_venda';
+  static const itensVendaModificadores = 'itens_venda_modificadores';
+  static const vendasPedidosOperacionais = 'vendas_pedidos_operacionais';
   static const compras = 'compras';
   static const itensCompra = 'itens_compra';
   static const compraPagamentos = 'compra_pagamentos';
@@ -23,4 +25,13 @@ abstract final class TableNames {
   static const syncRegistros = 'sync_registros';
   static const syncQueue = 'sync_queue';
   static const syncAuditLogs = 'sync_audit_logs';
+  static const produtosBase = 'produtos_base';
+  static const produtosBaseVariantes = 'produtos_base_variantes';
+  static const produtoVarianteAtributos = 'produto_variante_atributos';
+  static const gruposModificadores = 'grupos_modificadores';
+  static const opcoesModificadores = 'opcoes_modificadores';
+  static const pedidosOperacionais = 'pedidos_operacionais';
+  static const pedidosOperacionaisItens = 'pedidos_operacionais_itens';
+  static const pedidosOperacionaisItemModificadores =
+      'pedidos_operacionais_item_modificadores';
 }

@@ -164,13 +164,24 @@ class SqliteReportRepository implements ReportRepository {
       [startIso, endIso],
     );
 
-    final paymentRows = await database.query(
-      TableNames.caixaMovimentos,
-      columns: ['tipo_movimento', 'valor_centavos', 'descricao'],
-      where:
-          "tipo_movimento IN ('venda', 'recebimento_fiado') AND valor_centavos > 0 AND criado_em >= ? AND criado_em < ?",
-      whereArgs: [startIso, endIso],
-      orderBy: 'criado_em DESC, id DESC',
+    final paymentRows = await database.rawQuery(
+      '''
+      SELECT
+        mov.tipo_movimento,
+        mov.valor_centavos,
+        mov.descricao,
+        sale.forma_pagamento AS sale_payment_method
+      FROM ${TableNames.caixaMovimentos} mov
+      LEFT JOIN ${TableNames.vendas} sale
+        ON mov.referencia_tipo = 'venda'
+        AND sale.id = mov.referencia_id
+      WHERE mov.tipo_movimento IN ('venda', 'recebimento_fiado')
+        AND mov.valor_centavos > 0
+        AND mov.criado_em >= ?
+        AND mov.criado_em < ?
+      ORDER BY mov.criado_em DESC, mov.id DESC
+    ''',
+      [startIso, endIso],
     );
 
     final soldProductRows = await database.rawQuery(
@@ -215,9 +226,9 @@ class SqliteReportRepository implements ReportRepository {
 
     final paymentSummaryMap = <PaymentMethod, _PaymentAccumulator>{};
     for (final row in paymentRows) {
-      final paymentMethod = PaymentMethodNoteCodec.parse(
-        row['descricao'] as String?,
-      );
+      final paymentMethod =
+          PaymentMethodNoteCodec.parse(row['descricao'] as String?) ??
+          _paymentMethodFromDb(row['sale_payment_method'] as String?);
       if (paymentMethod == null) {
         continue;
       }
@@ -294,6 +305,13 @@ class SqliteReportRepository implements ReportRepository {
       return value.toInt();
     }
     return 0;
+  }
+
+  PaymentMethod? _paymentMethodFromDb(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return null;
+    }
+    return PaymentMethodX.fromDb(value);
   }
 }
 

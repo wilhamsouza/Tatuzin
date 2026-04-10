@@ -214,6 +214,13 @@ class AccountCloudPage extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
+                  Text(
+                    'O admin web e a superficie administrativa principal. Os atalhos abaixo permanecem apenas como apoio interno dentro do app.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   Wrap(
                     spacing: 10,
                     runSpacing: 10,
@@ -227,7 +234,7 @@ class AccountCloudPage extends ConsumerWidget {
                       ),
                       if (internalAccess.canOpenAdminCloud)
                         AppButton.secondary(
-                          label: 'Painel cloud interno',
+                          label: 'Admin interno de apoio',
                           icon: Icons.admin_panel_settings_outlined,
                           compact: true,
                           onPressed: () => context.goNamed(AppRouteNames.admin),

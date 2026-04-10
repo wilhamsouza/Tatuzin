@@ -42,7 +42,7 @@ class ReceiptPreviewPage extends ConsumerWidget {
                 child: AppSectionCard(
                   title: 'Ações do comprovante',
                   subtitle:
-                      'Visualize, salve em PDF ou compartilhe o documento comercial.',
+                      'Visualize, salve em PDF ou compartilhe o comprovante comercial (separado do ticket operacional).',
                   child: ReceiptActionBar(
                     request: request,
                     showViewAction: false,

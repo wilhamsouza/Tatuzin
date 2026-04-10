@@ -10,11 +10,13 @@ import {
   type AdminAuditQueryInput,
   type AdminCompaniesQueryInput,
   type AdminLicensesQueryInput,
+  type AdminSyncOperationalQueryInput,
   type AdminSyncQueryInput,
   adminAuditQuerySchema,
   adminCompaniesQuerySchema,
   adminLicensePatchSchema,
   adminLicensesQuerySchema,
+  adminSyncOperationalQuerySchema,
   adminSyncQuerySchema,
 } from './admin.schemas';
 import { AdminService } from './admin.service';
@@ -147,6 +149,17 @@ adminRouter.get(
   asyncHandler(async (request, response) => {
     const summary = await adminService.getSyncSummary(
       request.query as unknown as AdminSyncQueryInput,
+    );
+    response.json(summary);
+  }),
+);
+
+adminRouter.get(
+  '/sync/operational-summary',
+  validateQuery(adminSyncOperationalQuerySchema),
+  asyncHandler(async (request, response) => {
+    const summary = await adminService.getSyncOperationalSummary(
+      request.query as unknown as AdminSyncOperationalQueryInput,
     );
     response.json(summary);
   }),

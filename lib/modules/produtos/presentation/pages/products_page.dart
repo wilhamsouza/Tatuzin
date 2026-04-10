@@ -39,8 +39,8 @@ class ProductsPage extends ConsumerWidget {
             child: AppPageHeader(
               title: 'Produtos',
               subtitle:
-                  'Gerencie o catálogo com nome comercial, variações simples, preço, estoque e código de barras.',
-              badgeLabel: 'Catálogo',
+                  'Gerencie o catalogo com SKUs vendaveis, base de produto, variacoes e modificadores locais.',
+              badgeLabel: 'Catalogo',
               badgeIcon: Icons.inventory_2_rounded,
             ),
           ),
@@ -48,7 +48,7 @@ class ProductsPage extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
             child: AppInput(
               prefixIcon: const Icon(Icons.search),
-              hintText: 'Buscar por nome, modelo, variação ou código',
+              hintText: 'Buscar por nome, base, variacao, atributo ou codigo',
               onChanged: (value) {
                 ref.read(productSearchQueryProvider.notifier).state = value;
               },
@@ -77,7 +77,7 @@ class ProductsPage extends ConsumerWidget {
                     separatorBuilder: (_, __) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final product = products[index];
-                      final showModelHeader = _shouldShowModelHeader(
+                      final showGroupHeader = _shouldShowGroupHeader(
                         products: products,
                         index: index,
                       );
@@ -85,11 +85,11 @@ class ProductsPage extends ConsumerWidget {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (showModelHeader) ...[
+                          if (showGroupHeader) ...[
                             Padding(
                               padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
                               child: Text(
-                                product.modelName!,
+                                product.baseProductName ?? product.modelName!,
                                 style: Theme.of(context).textTheme.titleSmall
                                     ?.copyWith(fontWeight: FontWeight.w800),
                               ),
@@ -116,14 +116,15 @@ class ProductsPage extends ConsumerWidget {
     );
   }
 
-  bool _shouldShowModelHeader({
+  bool _shouldShowGroupHeader({
     required List<Product> products,
     required int index,
   }) {
     final current = products[index];
+    final currentGroup = (current.baseProductName ?? current.modelName)?.trim();
     if (!current.isVariantCatalog ||
-        current.modelName == null ||
-        current.modelName!.trim().isEmpty) {
+        currentGroup == null ||
+        currentGroup.isEmpty) {
       return false;
     }
 
@@ -132,9 +133,10 @@ class ProductsPage extends ConsumerWidget {
     }
 
     final previous = products[index - 1];
-    final currentGroup = current.modelName!.trim().toLowerCase();
-    final previousGroup = previous.modelName?.trim().toLowerCase();
-    return currentGroup != previousGroup;
+    final previousGroup = (previous.baseProductName ?? previous.modelName)
+        ?.trim()
+        .toLowerCase();
+    return currentGroup.toLowerCase() != previousGroup;
   }
 }
 
@@ -148,10 +150,12 @@ class _ProductTile extends ConsumerWidget {
     final theme = Theme.of(context);
     final subtitleParts = <String>[
       if (product.catalogSubtitle != null) product.catalogSubtitle!,
+      if (product.variantAttributesSummary != null)
+        product.variantAttributesSummary!,
       if (product.categoryName?.trim().isNotEmpty ?? false)
         product.categoryName!,
       if (product.barcode?.trim().isNotEmpty ?? false)
-        'Cód. ${product.barcode}',
+        'Cod. ${product.barcode}',
     ];
 
     return Card(
@@ -176,7 +180,7 @@ class _ProductTile extends ConsumerWidget {
                       if (subtitleParts.isNotEmpty) ...[
                         const SizedBox(height: 6),
                         Text(
-                          subtitleParts.join(' • '),
+                          subtitleParts.join(' - '),
                           style: theme.textTheme.bodySmall,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -217,7 +221,7 @@ class _ProductTile extends ConsumerWidget {
               runSpacing: 10,
               children: [
                 _ProductMetric(
-                  label: 'Preço de venda',
+                  label: 'Preco de venda',
                   value: AppFormatters.currencyFromCents(
                     product.salePriceCents,
                   ),
@@ -228,11 +232,17 @@ class _ProductTile extends ConsumerWidget {
                       '${AppFormatters.quantityFromMil(product.stockMil)} ${product.unitMeasure}',
                 ),
                 AppStatusBadge(
-                  label: product.isVariantCatalog ? 'Com variação' : 'Simples',
+                  label: product.isVariantCatalog ? 'Com variacao' : 'Simples',
                   tone: product.isVariantCatalog
                       ? AppStatusTone.info
                       : AppStatusTone.neutral,
                 ),
+                if (product.modifierGroupCount > 0)
+                  AppStatusBadge(
+                    label:
+                        '${product.modifierGroupCount} grupos / ${product.modifierOptionCount} opcoes',
+                    tone: AppStatusTone.info,
+                  ),
                 AppStatusBadge(
                   label: product.isActive ? 'Ativo' : 'Inativo',
                   tone: product.isActive
@@ -280,14 +290,14 @@ class _ProductTile extends ConsumerWidget {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Produto "${product.displayName}" excluído.')),
+        SnackBar(content: Text('Produto "${product.displayName}" excluido.')),
       );
     } catch (error) {
       if (!context.mounted) {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível excluir o produto: $error')),
+        SnackBar(content: Text('Nao foi possivel excluir o produto: $error')),
       );
     }
   }

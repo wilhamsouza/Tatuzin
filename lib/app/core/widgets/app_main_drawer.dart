@@ -417,7 +417,7 @@ class AppMainDrawer extends ConsumerWidget {
               const ListTile(
                 title: Text('Ferramentas internas'),
                 subtitle: Text(
-                  'Acesso reservado para suporte, homologacao e evolucao do produto.',
+                  'Acesso reservado para suporte, homologacao e evolucao do produto. O admin web continua sendo a superficie administrativa principal.',
                 ),
               ),
               if (access.canOpenTechnicalSystem)
@@ -434,9 +434,9 @@ class AppMainDrawer extends ConsumerWidget {
               if (access.canOpenAdminCloud)
                 ListTile(
                   leading: const Icon(Icons.admin_panel_settings_outlined),
-                  title: const Text('Painel cloud interno'),
+                  title: const Text('Admin interno de apoio'),
                   subtitle: const Text(
-                    'Acompanhar a camada administrativa da plataforma.',
+                    'Consulta interna e provisoria dentro do app. Use o admin web como superficie administrativa principal.',
                   ),
                   onTap: () =>
                       Navigator.of(sheetContext).pop(AppRouteNames.admin),

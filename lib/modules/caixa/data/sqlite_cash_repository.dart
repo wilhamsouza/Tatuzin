@@ -102,9 +102,8 @@ class SqliteCashRepository implements CashRepository {
 
     final totalEntriesCents = movements.fold<int>(
       0,
-      (sum, item) => item.movement.amountCents > 0
-          ? sum + item.movement.amountCents
-          : sum,
+      (sum, item) =>
+          item.movement.amountCents > 0 ? sum + item.movement.amountCents : sum,
     );
     final totalOutflowsCents = movements.fold<int>(
       0,
@@ -437,12 +436,15 @@ class SqliteCashRepository implements CashRepository {
       '''
       SELECT
         v.*,
+        vpo.pedido_operacional_id AS pedido_operacional_id,
         c.nome AS cliente_nome,
         f.id AS fiado_id,
         f.status AS fiado_status,
         f.valor_aberto_centavos AS fiado_valor_aberto_centavos,
         f.vencimento AS fiado_vencimento
       FROM ${TableNames.vendas} v
+      LEFT JOIN ${TableNames.vendasPedidosOperacionais} vpo
+        ON vpo.venda_id = v.id
       LEFT JOIN ${TableNames.clientes} c ON c.id = v.cliente_id
       LEFT JOIN ${TableNames.fiado} f ON f.venda_id = v.id
       WHERE v.data_venda >= ?
@@ -593,6 +595,7 @@ class SqliteCashRepository implements CashRepository {
       receiptNumber: row['numero_cupom'] as String,
       saleType: SaleTypeX.fromDb(row['tipo_venda'] as String),
       paymentMethod: PaymentMethodX.fromDb(row['forma_pagamento'] as String),
+      operationalOrderId: row['pedido_operacional_id'] as int?,
       status: SaleStatusX.fromDb(row['status'] as String),
       totalCents: row['valor_total_centavos'] as int,
       finalCents: row['valor_final_centavos'] as int,

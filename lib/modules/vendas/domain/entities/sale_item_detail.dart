@@ -10,6 +10,8 @@ class SaleItemDetail {
     required this.costTotalCents,
     required this.unitMeasure,
     required this.productType,
+    this.itemNotes,
+    this.modifiers = const <SaleItemModifierSnapshot>[],
   });
 
   final int id;
@@ -22,6 +24,33 @@ class SaleItemDetail {
   final int costTotalCents;
   final String unitMeasure;
   final String productType;
+  final String? itemNotes;
+  final List<SaleItemModifierSnapshot> modifiers;
 
   int get quantityUnits => quantityMil ~/ 1000;
+
+  int get modifiersUnitDeltaCents => modifiers.fold<int>(
+    0,
+    (sum, modifier) => sum + (modifier.priceDeltaCents * modifier.quantity),
+  );
+}
+
+class SaleItemModifierSnapshot {
+  const SaleItemModifierSnapshot({
+    this.modifierGroupId,
+    this.modifierOptionId,
+    this.groupNameSnapshot,
+    required this.optionNameSnapshot,
+    required this.adjustmentTypeSnapshot,
+    this.priceDeltaCents = 0,
+    this.quantity = 1,
+  });
+
+  final int? modifierGroupId;
+  final int? modifierOptionId;
+  final String? groupNameSnapshot;
+  final String optionNameSnapshot;
+  final String adjustmentTypeSnapshot;
+  final int priceDeltaCents;
+  final int quantity;
 }

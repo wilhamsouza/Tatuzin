@@ -32,6 +32,10 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+**/build/
+.env
+.env.*
+backend/.local-postgres/
 
 # Symbolication related
 app.*.symbols

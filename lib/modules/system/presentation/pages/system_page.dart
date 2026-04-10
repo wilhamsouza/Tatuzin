@@ -16,17 +16,27 @@ import '../../../../app/core/sync/sync_reconciliation_result.dart';
 import '../../../../app/core/sync/sync_repair_action.dart';
 import '../../../../app/core/sync/sync_repair_action_type.dart';
 import '../../../../app/core/sync/sync_repair_decision.dart';
+import '../../../../app/core/sync/sync_batch_result.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
+import '../helpers/system_feedback_helpers.dart';
+import '../helpers/system_page_helpers.dart';
 import '../providers/system_providers.dart';
+import '../widgets/system_backend_status_section.dart';
+import '../widgets/system_financial_events_section.dart';
+import '../widgets/system_mock_auth_section.dart';
+import '../widgets/system_reconciliation_section.dart';
+import '../widgets/system_repair_section.dart';
+import '../widgets/system_remote_auth_section.dart';
+import '../widgets/system_session_section.dart';
+import '../widgets/system_support_widgets.dart';
+import '../widgets/system_sync_health_section.dart';
+import '../widgets/system_sync_queue_section.dart';
 import '../widgets/sync_audit_card.dart';
-import '../widgets/sync_feature_card.dart';
 import '../widgets/sync_repair_action_sheet.dart';
-import '../widgets/sync_repair_card.dart';
-import '../widgets/sync_reconciliation_card.dart';
 
 class SystemPage extends ConsumerStatefulWidget {
   const SystemPage({super.key});
@@ -88,46 +98,46 @@ class _SystemPageState extends ConsumerState<SystemPage> {
         queueSummariesAsync.valueOrNull ?? const <SyncQueueFeatureSummary>[];
     final reconciliationResults =
         reconciliationState.valueOrNull ?? const <SyncReconciliationResult>[];
-    final supplierSummary = _findQueueSummary(queueSummaries, 'suppliers');
-    final categorySummary = _findQueueSummary(queueSummaries, 'categories');
-    final productSummary = _findQueueSummary(queueSummaries, 'products');
-    final customerSummary = _findQueueSummary(queueSummaries, 'customers');
-    final purchaseSummary = _findQueueSummary(queueSummaries, 'purchases');
-    final salesSummary = _findQueueSummary(queueSummaries, 'sales');
-    final financialEventSummary = _findQueueSummary(
+    final supplierSummary = findQueueSummary(queueSummaries, 'suppliers');
+    final categorySummary = findQueueSummary(queueSummaries, 'categories');
+    final productSummary = findQueueSummary(queueSummaries, 'products');
+    final customerSummary = findQueueSummary(queueSummaries, 'customers');
+    final purchaseSummary = findQueueSummary(queueSummaries, 'purchases');
+    final salesSummary = findQueueSummary(queueSummaries, 'sales');
+    final financialEventSummary = findQueueSummary(
       queueSummaries,
       'financial_events',
     );
-    final cashEventSummary = _findQueueSummary(queueSummaries, 'cash_events');
-    final supplierReconciliation = _findReconciliationResult(
+    final cashEventSummary = findQueueSummary(queueSummaries, 'cash_events');
+    final supplierReconciliation = findReconciliationResult(
       reconciliationResults,
       'suppliers',
     );
-    final categoryReconciliation = _findReconciliationResult(
+    final categoryReconciliation = findReconciliationResult(
       reconciliationResults,
       'categories',
     );
-    final productReconciliation = _findReconciliationResult(
+    final productReconciliation = findReconciliationResult(
       reconciliationResults,
       'products',
     );
-    final customerReconciliation = _findReconciliationResult(
+    final customerReconciliation = findReconciliationResult(
       reconciliationResults,
       'customers',
     );
-    final purchaseReconciliation = _findReconciliationResult(
+    final purchaseReconciliation = findReconciliationResult(
       reconciliationResults,
       'purchases',
     );
-    final salesReconciliation = _findReconciliationResult(
+    final salesReconciliation = findReconciliationResult(
       reconciliationResults,
       'sales',
     );
-    final financialReconciliation = _findReconciliationResult(
+    final financialReconciliation = findReconciliationResult(
       reconciliationResults,
       'financial_events',
     );
-    final reconciliationOverview = _buildReconciliationOverview(
+    final reconciliationOverview = buildReconciliationOverview(
       reconciliationResults,
     );
     final supplierRepairs =
@@ -171,63 +181,9 @@ class _SystemPageState extends ConsumerState<SystemPage> {
             emphasized: true,
           ),
           const SizedBox(height: 18),
-          AppSectionCard(
-            title: 'Sessao e tenant ativos',
-            subtitle:
-                'Contexto operacional centralizado para conviver com sessao local, mock e remota real.',
-            trailing: AppStatusBadge(
-              label: authStatus.sessionLabel,
-              tone: authStatus.isRemoteAuthenticated
-                  ? AppStatusTone.success
-                  : authStatus.isMockAuthenticated
-                  ? AppStatusTone.info
-                  : AppStatusTone.warning,
-              icon: authStatus.isRemoteAuthenticated
-                  ? Icons.verified_user_outlined
-                  : authStatus.isMockAuthenticated
-                  ? Icons.science_outlined
-                  : Icons.offline_bolt_rounded,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _InfoRow(label: 'Usuario', value: authStatus.userLabel),
-                _InfoRow(label: 'Perfil', value: session.user.roleLabel),
-                _InfoRow(
-                  label: 'E-mail ativo',
-                  value: authStatus.email ?? 'Nao autenticado',
-                ),
-                _InfoRow(
-                  label: 'Empresa ativa',
-                  value: authStatus.companyLabel,
-                ),
-                _InfoRow(
-                  label: 'Plano cloud',
-                  value: authStatus.licensePlanLabel,
-                ),
-                _InfoRow(
-                  label: 'Status da licenca',
-                  value: authStatus.licenseStatusLabel,
-                ),
-                _InfoRow(label: 'Cloud/sync', value: authStatus.cloudSyncLabel),
-                _InfoRow(
-                  label: 'Validade',
-                  value: authStatus.licenseExpiresAt == null
-                      ? 'Sem vencimento'
-                      : AppFormatters.shortDate(authStatus.licenseExpiresAt!),
-                ),
-                _InfoRow(
-                  label: 'Tenant remoto',
-                  value: session.company.hasRemoteIdentity
-                      ? session.company.remoteId!
-                      : 'Nao vinculado',
-                ),
-                _InfoRow(
-                  label: 'Inicio da sessao',
-                  value: AppFormatters.shortDateTime(session.startedAt),
-                ),
-              ],
-            ),
+          SystemSessionSection(
+            session: session,
+            authStatus: authStatus,
           ),
           const SizedBox(height: 18),
           AppSectionCard(
@@ -242,17 +198,26 @@ class _SystemPageState extends ConsumerState<SystemPage> {
             child: _buildDataModeSection(context, environment, guard, theme),
           ),
           const SizedBox(height: 18),
-          AppSectionCard(
-            title: 'API real de desenvolvimento',
-            subtitle:
-                'Saude do backend local e validacao do tenant remoto sem acoplar vendas, caixa ou relatorios a HTTP.',
-            child: backendStatusAsync.when(
-              data: (status) => _buildBackendStatusSection(status),
-              loading: () => const Padding(
+          backendStatusAsync.when(
+            data: (status) => SystemBackendStatusSection(
+              status: status,
+              onTestConnection: () =>
+                  ref.invalidate(backendConnectionStatusProvider),
+            ),
+            loading: () => const AppSectionCard(
+              title: 'API real de desenvolvimento',
+              subtitle:
+                  'Saude do backend local e validacao do tenant remoto sem acoplar vendas, caixa ou relatorios a HTTP.',
+              child: Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: Center(child: CircularProgressIndicator()),
               ),
-              error: (error, _) => Text(
+            ),
+            error: (error, _) => AppSectionCard(
+              title: 'API real de desenvolvimento',
+              subtitle:
+                  'Saude do backend local e validacao do tenant remoto sem acoplar vendas, caixa ou relatorios a HTTP.',
+              child: Text(
                 error.toString(),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.error,
@@ -261,29 +226,21 @@ class _SystemPageState extends ConsumerState<SystemPage> {
             ),
           ),
           const SizedBox(height: 18),
-          AppSectionCard(
-            title: 'Autenticacao remota real',
-            subtitle:
-                'Login incremental para desenvolvimento local. O app continua operando offline mesmo sem sessao remota.',
-            trailing: AppStatusBadge(
-              label: authStatus.isRemoteAuthenticated
-                  ? 'Sessao remota ativa'
-                  : 'Sem sessao remota',
-              tone: authStatus.isRemoteAuthenticated
-                  ? AppStatusTone.success
-                  : AppStatusTone.neutral,
-              icon: authStatus.isRemoteAuthenticated
-                  ? Icons.lock_open_rounded
-                  : Icons.lock_outline_rounded,
-            ),
-            child: _buildRemoteAuthSection(context, authState, authStatus),
+          SystemRemoteAuthSection(
+            authState: authState,
+            authStatus: authStatus,
+            emailController: _emailController,
+            passwordController: _passwordController,
+            onRemoteSignIn: () => _handleRemoteSignIn(context),
+            onRestoreRemoteSession: () => _handleRestoreRemoteSession(context),
+            onSignOut: () => _handleSignOut(context),
           ),
           const SizedBox(height: 18),
-          AppSectionCard(
-            title: 'Autenticacao mock',
-            subtitle:
-                'Ferramenta de diagnostico preservada para testar contexto remoto sem depender do backend real.',
-            child: _buildMockAuthSection(context, authState, authStatus),
+          SystemMockAuthSection(
+            authState: authState,
+            authStatus: authStatus,
+            onMockSignIn: () => _handleMockSignIn(context),
+            onSignOut: () => _handleSignOut(context),
           ),
           const SizedBox(height: 18),
           AppSectionCard(
@@ -312,577 +269,81 @@ class _SystemPageState extends ConsumerState<SystemPage> {
             ),
           ),
           const SizedBox(height: 18),
-          AppSectionCard(
-            title: 'Saude da sincronizacao',
-            subtitle:
-                'Visao consolidada da fila persistida, retries, bloqueios por dependencia e conflitos iniciais dos cadastros sincronizaveis.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _ModeChip(
-                      label: '${syncHealth.totalPending} pendente(s)',
-                      icon: Icons.pending_actions_rounded,
-                    ),
-                    _ModeChip(
-                      label: '${syncHealth.totalProcessing} processando',
-                      icon: Icons.sync_rounded,
-                    ),
-                    _ModeChip(
-                      label: '${syncHealth.totalSynced} sincronizado(s)',
-                      icon: Icons.cloud_done_outlined,
-                    ),
-                    _ModeChip(
-                      label: '${syncHealth.totalErrors} erro(s)',
-                      icon: Icons.error_outline_rounded,
-                    ),
-                    _ModeChip(
-                      label: '${syncHealth.totalBlocked} bloqueado(s)',
-                      icon: Icons.link_off_rounded,
-                    ),
-                    _ModeChip(
-                      label: '${syncHealth.totalConflicts} conflito(s)',
-                      icon: Icons.warning_amber_rounded,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  syncHealth.lastProcessedAt == null
-                      ? 'Ainda sem processamento concluido nesta base local.'
-                      : 'Ultimo processamento de fila em ${AppFormatters.shortDateTime(syncHealth.lastProcessedAt!)}.',
-                  style: theme.textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Tentativas acumuladas na fila: ${syncHealth.totalAttempts}.',
-                  style: theme.textTheme.bodyMedium,
-                ),
-                if (syncHealth.nextRetryAt != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Proximo retry automatico elegivel em ${AppFormatters.shortDateTime(syncHealth.nextRetryAt!)}.',
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                ],
-                if (syncHealth.lastErrorAt != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Ultima falha registrada em ${AppFormatters.shortDateTime(syncHealth.lastErrorAt!)}.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: batchSyncState.isLoading || !canRunManualSync
-                          ? null
-                          : () => _handleSyncAll(context),
-                      icon: const Icon(Icons.cloud_sync_outlined),
-                      label: Text(
-                        batchSyncState.isLoading
-                            ? 'Sincronizando...'
-                            : 'Sincronizar tudo',
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: batchSyncState.isLoading || !canRunManualSync
-                          ? null
-                          : () => _handleRetryPending(context),
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Reprocessar pendentes'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          SystemSyncHealthSection(
+            syncHealth: syncHealth,
+            isLoading: batchSyncState.isLoading,
+            canRunManualSync: canRunManualSync,
+            onSyncAll: () => _handleSyncAll(context),
+            onRetryPending: () => _handleRetryPending(context),
           ),
           const SizedBox(height: 18),
-          AppSectionCard(
-            title: 'Fila de sincronizacao por feature',
-            subtitle:
-                'Processamento ordenado de fornecedores, categorias, produtos, clientes, compras e vendas, sempre preservando o SQLite como base operacional local e o backend como espelho progressivo.',
-            child: Column(
-              children: [
-                SyncFeatureCard(
-                  title: 'Fornecedores',
-                  summary: supplierSummary,
-                  description: canRunManualSync
-                      ? 'Primeira etapa das compras remotas. Garante vinculo consistente antes do envio das compras.'
-                      : 'Entre com login remoto e ative o modo hibrido pronto para sincronizar os fornecedores.',
-                  buttonLabel: 'Sincronizar fornecedores',
-                  isEnabled: canRunManualSync,
-                  isLoading: batchSyncState.isLoading,
-                  onPressed: () => _handleSupplierSync(context),
-                ),
-                const SizedBox(height: 12),
-                SyncFeatureCard(
-                  title: 'Categorias',
-                  summary: categorySummary,
-                  description: canRunManualSync
-                      ? 'Primeira etapa da fila. Consolida dependencias de catalogo antes do push de produtos.'
-                      : 'Entre com login remoto e ative o modo hibrido pronto para sincronizar as categorias.',
-                  buttonLabel: 'Sincronizar categorias',
-                  isEnabled: canRunManualSync,
-                  isLoading: batchSyncState.isLoading,
-                  onPressed: () => _handleCategorySync(context),
-                ),
-                const SizedBox(height: 12),
-                SyncFeatureCard(
-                  title: 'Produtos',
-                  summary: productSummary,
-                  description: canRunManualSync
-                      ? 'Respeita dependencia de categoria remota, aplica retry controlado e detecta conflito basico por updatedAt.'
-                      : 'Entre com login remoto e ative o modo hibrido pronto para sincronizar os produtos.',
-                  buttonLabel: 'Sincronizar produtos',
-                  isEnabled: canRunManualSync,
-                  isLoading: batchSyncState.isLoading,
-                  onPressed: () => _handleProductSync(context),
-                ),
-                const SizedBox(height: 12),
-                SyncFeatureCard(
-                  title: 'Clientes',
-                  summary: customerSummary,
-                  description: canRunManualSync
-                      ? 'Mantem o cadastro local offline, reprocessa falhas elegiveis e aplica soft delete remoto com seguranca.'
-                      : 'Entre com login remoto e ative o modo hibrido pronto para sincronizar os clientes.',
-                  buttonLabel: 'Sincronizar clientes',
-                  isEnabled: canRunManualSync,
-                  isLoading: batchSyncState.isLoading,
-                  onPressed: () => _handleClientSync(context),
-                ),
-                const SizedBox(height: 12),
-                SyncFeatureCard(
-                  title: 'Compras',
-                  summary: purchaseSummary,
-                  description: canRunManualSync
-                      ? 'Espelha compras locais com itens e pagamentos, sem reaplicar estoque ou caixa no retorno remoto.'
-                      : 'Entre com login remoto e ative o modo hibrido pronto para sincronizar as compras.',
-                  buttonLabel: 'Sincronizar compras',
-                  isEnabled: canRunManualSync,
-                  isLoading: batchSyncState.isLoading,
-                  onPressed: () => _handlePurchaseSync(context),
-                ),
-                const SizedBox(height: 12),
-                SyncFeatureCard(
-                  title: 'Vendas',
-                  summary: salesSummary,
-                  description: canRunManualSync
-                      ? 'Espelha vendas locais ativas no backend com idempotencia por localUuid. Caixa, fiado, lucro e relatorios continuam 100% locais nesta fase.'
-                      : 'Entre com login remoto e ative o modo hibrido pronto para espelhar as vendas locais.',
-                  buttonLabel: 'Sincronizar vendas',
-                  isEnabled: canRunManualSync,
-                  isLoading: batchSyncState.isLoading,
-                  onPressed: () => _handleSalesSync(context),
-                ),
-              ],
-            ),
+          SystemSyncQueueSection(
+            canRunManualSync: canRunManualSync,
+            isLoading: batchSyncState.isLoading,
+            supplierSummary: supplierSummary,
+            categorySummary: categorySummary,
+            productSummary: productSummary,
+            customerSummary: customerSummary,
+            purchaseSummary: purchaseSummary,
+            salesSummary: salesSummary,
+            onSupplierSync: () => _handleSupplierSync(context),
+            onCategorySync: () => _handleCategorySync(context),
+            onProductSync: () => _handleProductSync(context),
+            onClientSync: () => _handleClientSync(context),
+            onPurchaseSync: () => _handlePurchaseSync(context),
+            onSalesSync: () => _handleSalesSync(context),
           ),
           const SizedBox(height: 18),
-          AppSectionCard(
-            title: 'Eventos financeiros remotos',
-            subtitle:
-                'Cancelamentos de venda e pagamentos de fiado entram em uma trilha unica de eventos financeiros. O backend apenas espelha os eventos; caixa, fiado, lucro e relatorios continuam locais.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: batchSyncState.isLoading || !canRunManualSync
-                          ? null
-                          : () => _handleFinancialSyncAll(context),
-                      icon: const Icon(Icons.account_balance_wallet_outlined),
-                      label: const Text('Sincronizar eventos'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: batchSyncState.isLoading || !canRunManualSync
-                          ? null
-                          : () => _handleFinancialRetry(context),
-                      icon: const Icon(Icons.restart_alt_rounded),
-                      label: const Text('Reprocessar eventos'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                SyncFeatureCard(
-                  title: 'Eventos financeiros',
-                  summary: financialEventSummary,
-                  description: canRunManualSync
-                      ? 'Inclui cancelamentos de venda e pagamentos de fiado com idempotencia por localUuid, sem recalcular saldo, lucro ou relatorios no backend.'
-                      : 'Entre com login remoto e ative o modo hibrido pronto para espelhar os eventos financeiros.',
-                  buttonLabel: 'Sincronizar eventos',
-                  isEnabled: canRunManualSync,
-                  isLoading: batchSyncState.isLoading,
-                  onPressed: () => _handleFinancialSyncAll(context),
-                ),
-                const SizedBox(height: 12),
-                SyncFeatureCard(
-                  title: 'Espelho de caixa preservado',
-                  summary: cashEventSummary,
-                  description: canRunManualSync
-                      ? 'O espelhamento de caixa ja existente foi preservado e continua isolado da contabilidade local.'
-                      : 'Entre com login remoto e ative o modo hibrido pronto para espelhar os eventos de caixa.',
-                  buttonLabel: 'Sincronizar caixa',
-                  isEnabled: canRunManualSync,
-                  isLoading: batchSyncState.isLoading,
-                  onPressed: () => _handleCashEventSync(context),
-                ),
-              ],
-            ),
+          SystemFinancialEventsSection(
+            canRunManualSync: canRunManualSync,
+            isLoading: batchSyncState.isLoading,
+            financialEventSummary: financialEventSummary,
+            cashEventSummary: cashEventSummary,
+            onFinancialSync: () => _handleFinancialSyncAll(context),
+            onFinancialRetry: () => _handleFinancialRetry(context),
+            onCashEventSync: () => _handleCashEventSync(context),
           ),
           const SizedBox(height: 18),
-          AppSectionCard(
-            title: 'Reconciliação local vs remoto',
-            subtitle:
-                'Compara SQLite e espelho remoto sem alterar automaticamente os dados operacionais. Divergencias continuam visiveis para diagnostico e reparo controlado.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _ModeChip(
-                      label: '${reconciliationOverview.$1} consistente(s)',
-                      icon: Icons.cloud_done_outlined,
-                    ),
-                    _ModeChip(
-                      label: '${reconciliationOverview.$2} pendente(s)',
-                      icon: Icons.pending_actions_rounded,
-                    ),
-                    _ModeChip(
-                      label: '${reconciliationOverview.$3} divergencia(s)',
-                      icon: Icons.compare_arrows_rounded,
-                    ),
-                    _ModeChip(
-                      label: '${reconciliationOverview.$4} conflito(s)',
-                      icon: Icons.warning_amber_rounded,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    FilledButton.icon(
-                      onPressed:
-                          reconciliationState.isLoading || !canRunManualSync
-                          ? null
-                          : () => _handleRunReconciliation(context),
-                      icon: const Icon(Icons.rule_folder_outlined),
-                      label: Text(
-                        reconciliationState.isLoading
-                            ? 'Reconciliando...'
-                            : 'Executar reconciliacao',
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                if (reconciliationState.hasError)
-                  Text(
-                    reconciliationState.error.toString(),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  )
-                else if (reconciliationResults.isEmpty)
-                  Text(
-                    'Execute a reconciliacao manual para comparar o estado local com o espelho remoto por feature.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  )
-                else
-                  Column(
-                    children: [
-                      if (supplierReconciliation != null)
-                        SyncReconciliationCard(
-                          result: supplierReconciliation,
-                          canRunReconciliation: canRunManualSync,
-                          isLoading: reconciliationState.isLoading,
-                          onRepair: () => _handleRepairFeature(
-                            context,
-                            supplierReconciliation.featureKey,
-                          ),
-                        ),
-                      if (supplierReconciliation != null)
-                        const SizedBox(height: 12),
-                      if (categoryReconciliation != null)
-                        SyncReconciliationCard(
-                          result: categoryReconciliation,
-                          canRunReconciliation: canRunManualSync,
-                          isLoading: reconciliationState.isLoading,
-                          onRepair: () => _handleRepairFeature(
-                            context,
-                            categoryReconciliation.featureKey,
-                          ),
-                        ),
-                      if (categoryReconciliation != null)
-                        const SizedBox(height: 12),
-                      if (productReconciliation != null)
-                        SyncReconciliationCard(
-                          result: productReconciliation,
-                          canRunReconciliation: canRunManualSync,
-                          isLoading: reconciliationState.isLoading,
-                          onRepair: () => _handleRepairFeature(
-                            context,
-                            productReconciliation.featureKey,
-                          ),
-                        ),
-                      if (productReconciliation != null)
-                        const SizedBox(height: 12),
-                      if (customerReconciliation != null)
-                        SyncReconciliationCard(
-                          result: customerReconciliation,
-                          canRunReconciliation: canRunManualSync,
-                          isLoading: reconciliationState.isLoading,
-                          onRepair: () => _handleRepairFeature(
-                            context,
-                            customerReconciliation.featureKey,
-                          ),
-                        ),
-                      if (customerReconciliation != null)
-                        const SizedBox(height: 12),
-                      if (purchaseReconciliation != null)
-                        SyncReconciliationCard(
-                          result: purchaseReconciliation,
-                          canRunReconciliation: canRunManualSync,
-                          isLoading: reconciliationState.isLoading,
-                          onRepair: () => _handleRepairFeature(
-                            context,
-                            purchaseReconciliation.featureKey,
-                          ),
-                        ),
-                      if (purchaseReconciliation != null)
-                        const SizedBox(height: 12),
-                      if (salesReconciliation != null)
-                        SyncReconciliationCard(
-                          result: salesReconciliation,
-                          canRunReconciliation: canRunManualSync,
-                          isLoading: reconciliationState.isLoading,
-                          onRepair: () => _handleRepairFeature(
-                            context,
-                            salesReconciliation.featureKey,
-                          ),
-                        ),
-                      if (salesReconciliation != null)
-                        const SizedBox(height: 12),
-                      if (financialReconciliation != null)
-                        SyncReconciliationCard(
-                          result: financialReconciliation,
-                          canRunReconciliation: canRunManualSync,
-                          isLoading: reconciliationState.isLoading,
-                          onRepair: () => _handleRepairFeature(
-                            context,
-                            financialReconciliation.featureKey,
-                          ),
-                        ),
-                    ],
-                  ),
-              ],
-            ),
+          SystemReconciliationSection(
+            overview: reconciliationOverview,
+            canRunManualSync: canRunManualSync,
+            isLoading: reconciliationState.isLoading,
+            errorMessage: reconciliationState.hasError
+                ? reconciliationState.error.toString()
+                : null,
+            supplierReconciliation: supplierReconciliation,
+            categoryReconciliation: categoryReconciliation,
+            productReconciliation: productReconciliation,
+            customerReconciliation: customerReconciliation,
+            purchaseReconciliation: purchaseReconciliation,
+            salesReconciliation: salesReconciliation,
+            financialReconciliation: financialReconciliation,
+            onRunReconciliation: () => _handleRunReconciliation(context),
+            onRepairFeature: (featureKey) =>
+                _handleRepairFeature(context, featureKey),
           ),
           const SizedBox(height: 18),
-          AppSectionCard(
-            title: 'Repair mode avancado',
-            subtitle:
-                'Correcao assistida e auditavel de vinculos, bloqueios e reenvios seguros, sem tocar nas regras operacionais locais.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _ModeChip(
-                      label: '${repairSummary.totalIssues} issue(s)',
-                      icon: Icons.build_circle_outlined,
-                    ),
-                    _ModeChip(
-                      label: '${repairSummary.autoSafeCount} seguro(s)',
-                      icon: Icons.auto_fix_high_rounded,
-                    ),
-                    _ModeChip(
-                      label: '${repairSummary.assistedSafeCount} assistido(s)',
-                      icon: Icons.handyman_outlined,
-                    ),
-                    _ModeChip(
-                      label:
-                          '${repairSummary.manualReviewCount} revisao manual',
-                      icon: Icons.manage_search_rounded,
-                    ),
-                    if (repairSummary.batchSafeCount > 0)
-                      _ModeChip(
-                        label: '${repairSummary.batchSafeCount} em lote',
-                        icon: Icons.playlist_add_check_circle_outlined,
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    FilledButton.icon(
-                      onPressed: repairState.isLoading || !canRunManualSync
-                          ? null
-                          : () => _handleRunSafeRepairs(context),
-                      icon: const Icon(Icons.auto_fix_high_rounded),
-                      label: Text(
-                        repairState.isLoading
-                            ? 'Aplicando reparos...'
-                            : 'Executar reparos seguros',
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed:
-                          reconciliationState.isLoading || !canRunManualSync
-                          ? null
-                          : () => _handleRunReconciliation(context),
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Atualizar diagnostico'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                if (repairState.hasError)
-                  Text(
-                    repairState.error.toString(),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  )
-                else if (repairSummary.totalIssues == 0)
-                  Text(
-                    'Nenhuma issue reparavel foi identificada no ultimo diagnostico. Execute a reconciliacao para atualizar esta leitura.',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  )
-                else
-                  Column(
-                    children: [
-                      SyncRepairCard(
-                        title: 'Fornecedores',
-                        decisions: supplierRepairs,
-                        canRunRepair: canRunManualSync,
-                        isLoading: repairState.isLoading,
-                        onRunSafeRepairs: supplierRepairs.isEmpty
-                            ? null
-                            : () => _handleRunSafeRepairsForFeature(
-                                context,
-                                'suppliers',
-                              ),
-                        onOpenDecision: (decision) =>
-                            _handleOpenRepairDecision(context, decision),
-                      ),
-                      const SizedBox(height: 12),
-                      SyncRepairCard(
-                        title: 'Categorias',
-                        decisions: categoryRepairs,
-                        canRunRepair: canRunManualSync,
-                        isLoading: repairState.isLoading,
-                        onRunSafeRepairs: categoryRepairs.isEmpty
-                            ? null
-                            : () => _handleRunSafeRepairsForFeature(
-                                context,
-                                'categories',
-                              ),
-                        onOpenDecision: (decision) =>
-                            _handleOpenRepairDecision(context, decision),
-                      ),
-                      const SizedBox(height: 12),
-                      SyncRepairCard(
-                        title: 'Produtos',
-                        decisions: productRepairs,
-                        canRunRepair: canRunManualSync,
-                        isLoading: repairState.isLoading,
-                        onRunSafeRepairs: productRepairs.isEmpty
-                            ? null
-                            : () => _handleRunSafeRepairsForFeature(
-                                context,
-                                'products',
-                              ),
-                        onOpenDecision: (decision) =>
-                            _handleOpenRepairDecision(context, decision),
-                      ),
-                      const SizedBox(height: 12),
-                      SyncRepairCard(
-                        title: 'Clientes',
-                        decisions: customerRepairs,
-                        canRunRepair: canRunManualSync,
-                        isLoading: repairState.isLoading,
-                        onRunSafeRepairs: customerRepairs.isEmpty
-                            ? null
-                            : () => _handleRunSafeRepairsForFeature(
-                                context,
-                                'customers',
-                              ),
-                        onOpenDecision: (decision) =>
-                            _handleOpenRepairDecision(context, decision),
-                      ),
-                      const SizedBox(height: 12),
-                      SyncRepairCard(
-                        title: 'Compras',
-                        decisions: purchaseRepairs,
-                        canRunRepair: canRunManualSync,
-                        isLoading: repairState.isLoading,
-                        onRunSafeRepairs: purchaseRepairs.isEmpty
-                            ? null
-                            : () => _handleRunSafeRepairsForFeature(
-                                context,
-                                'purchases',
-                              ),
-                        onOpenDecision: (decision) =>
-                            _handleOpenRepairDecision(context, decision),
-                      ),
-                      const SizedBox(height: 12),
-                      SyncRepairCard(
-                        title: 'Vendas',
-                        decisions: salesRepairs,
-                        canRunRepair: canRunManualSync,
-                        isLoading: repairState.isLoading,
-                        onRunSafeRepairs: salesRepairs.isEmpty
-                            ? null
-                            : () => _handleRunSafeRepairsForFeature(
-                                context,
-                                'sales',
-                              ),
-                        onOpenDecision: (decision) =>
-                            _handleOpenRepairDecision(context, decision),
-                      ),
-                      const SizedBox(height: 12),
-                      SyncRepairCard(
-                        title: 'Eventos financeiros',
-                        decisions: financialRepairs,
-                        canRunRepair: canRunManualSync,
-                        isLoading: repairState.isLoading,
-                        onRunSafeRepairs: financialRepairs.isEmpty
-                            ? null
-                            : () => _handleRunSafeRepairsForFeature(
-                                context,
-                                'financial_events',
-                              ),
-                        onOpenDecision: (decision) =>
-                            _handleOpenRepairDecision(context, decision),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
+          SystemRepairSection(
+            summary: repairSummary,
+            canRunManualSync: canRunManualSync,
+            isRepairLoading: repairState.isLoading,
+            isReconciliationLoading: reconciliationState.isLoading,
+            errorMessage: repairState.hasError
+                ? repairState.error.toString()
+                : null,
+            supplierRepairs: supplierRepairs,
+            categoryRepairs: categoryRepairs,
+            productRepairs: productRepairs,
+            customerRepairs: customerRepairs,
+            purchaseRepairs: purchaseRepairs,
+            salesRepairs: salesRepairs,
+            financialRepairs: financialRepairs,
+            onRunSafeRepairs: () => _handleRunSafeRepairs(context),
+            onRefreshDiagnostics: () => _handleRunReconciliation(context),
+            onRunSafeRepairsForFeature: (featureKey) =>
+                _handleRunSafeRepairsForFeature(context, featureKey),
+            onOpenDecision: (decision) =>
+                _handleOpenRepairDecision(context, decision),
           ),
           const SizedBox(height: 18),
           AppSectionCard(
@@ -1027,15 +488,15 @@ class _SystemPageState extends ConsumerState<SystemPage> {
           spacing: 10,
           runSpacing: 10,
           children: [
-            const _ModeChip(
+            const SystemModeChip(
               label: 'SQLite local ativo',
               icon: Icons.dns_rounded,
             ),
-            _ModeChip(
+            SystemModeChip(
               label: environment.endpointConfig.summaryLabel,
               icon: Icons.cloud_queue_rounded,
             ),
-            _ModeChip(
+            SystemModeChip(
               label: guard.allowRemoteRoutes
                   ? 'Remoto liberado'
                   : 'Remoto em espera',
@@ -1049,184 +510,18 @@ class _SystemPageState extends ConsumerState<SystemPage> {
           style: theme.textTheme.bodyMedium,
         ),
         const SizedBox(height: 14),
-        _InfoRow(label: 'Ambiente', value: environment.name),
-        _InfoRow(
+        SystemInfoRow(label: 'Ambiente', value: environment.name),
+        SystemInfoRow(
           label: 'Auth remota',
           value: environment.authEnabled
               ? 'Real habilitada para desenvolvimento'
               : 'Desativada no modo local',
         ),
-        _InfoRow(
+        SystemInfoRow(
           label: 'Sync remota',
           value: environment.remoteSyncEnabled
               ? 'Preparado para fase futura'
               : 'Ainda isolado do operacional',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBackendStatusSection(BackendConnectionStatus status) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _StateTile(
-          icon: status.isReachable
-              ? Icons.cloud_done_outlined
-              : Icons.cloud_off_outlined,
-          title: status.isReachable
-              ? 'Backend local alcancavel'
-              : status.isConfigured
-              ? 'Backend configurado, mas indisponivel'
-              : 'Backend remoto ainda nao configurado',
-          subtitle: status.message,
-        ),
-        const SizedBox(height: 14),
-        _InfoRow(label: 'Endpoint', value: status.endpointLabel),
-        _InfoRow(
-          label: 'Ultima verificacao',
-          value: AppFormatters.shortDateTime(status.checkedAt),
-        ),
-        _InfoRow(
-          label: 'Tenant remoto',
-          value: status.remoteCompanyName ?? 'Nao validado',
-        ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: () => ref.invalidate(backendConnectionStatusProvider),
-          icon: const Icon(Icons.wifi_tethering_rounded),
-          label: const Text('Testar conexao'),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRemoteAuthSection(
-    BuildContext context,
-    AsyncValue<void> authState,
-    AuthStatusSnapshot authStatus,
-  ) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _StateTile(
-          icon: authStatus.isRemoteAuthenticated
-              ? Icons.hub_rounded
-              : Icons.login_rounded,
-          title: authStatus.isRemoteAuthenticated
-              ? 'Login remoto validado'
-              : 'Use o backend local para autenticar',
-          subtitle: authStatus.isRemoteAuthenticated
-              ? 'Sessao remota ativa e tenant resolvido pelo backend. Os modulos operacionais continuam locais nesta fase.'
-              : 'Ative um modo com backend, confirme o endpoint e entre com o usuario seeded para validar a arquitetura real.',
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _emailController,
-          enabled: !authState.isLoading,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
-            labelText: 'E-mail',
-            prefixIcon: Icon(Icons.alternate_email_rounded),
-          ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _passwordController,
-          enabled: !authState.isLoading,
-          obscureText: true,
-          decoration: const InputDecoration(
-            labelText: 'Senha',
-            prefixIcon: Icon(Icons.password_rounded),
-          ),
-        ),
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            FilledButton.icon(
-              onPressed:
-                  authState.isLoading || !authStatus.canAttemptRemoteLogin
-                  ? null
-                  : () => _handleRemoteSignIn(context),
-              icon: const Icon(Icons.login_rounded),
-              label: Text(
-                authState.isLoading && !authStatus.isRemoteAuthenticated
-                    ? 'Entrando...'
-                    : 'Entrar com backend',
-              ),
-            ),
-            OutlinedButton.icon(
-              onPressed:
-                  authState.isLoading || !authStatus.canAttemptRemoteLogin
-                  ? null
-                  : () => _handleRestoreRemoteSession(context),
-              icon: const Icon(Icons.history_toggle_off_rounded),
-              label: const Text('Restaurar sessao'),
-            ),
-            OutlinedButton.icon(
-              onPressed: authState.isLoading || !authStatus.isAuthenticated
-                  ? null
-                  : () => _handleSignOut(context),
-              icon: const Icon(Icons.logout_rounded),
-              label: const Text('Sair da sessao atual'),
-            ),
-          ],
-        ),
-        if (authState.hasError) ...[
-          const SizedBox(height: 12),
-          Text(
-            authState.error.toString(),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.error,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildMockAuthSection(
-    BuildContext context,
-    AsyncValue<void> authState,
-    AuthStatusSnapshot authStatus,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _StateTile(
-          icon: authStatus.isMockAuthenticated
-              ? Icons.badge_outlined
-              : Icons.science_outlined,
-          title: authStatus.isMockAuthenticated
-              ? 'Sessao mock ativa'
-              : 'Sessao mock disponivel',
-          subtitle: authStatus.isMockAuthenticated
-              ? 'A identidade mock continua util para testar a arquitetura hibrida quando voce nao quiser subir a API real.'
-              : 'O fluxo mock continua coexistindo com o login real para validar a arquitetura sem bloquear a operacao local.',
-        ),
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            FilledButton.icon(
-              onPressed: authState.isLoading || authStatus.isAuthenticated
-                  ? null
-                  : () => _handleMockSignIn(context),
-              icon: const Icon(Icons.science_outlined),
-              label: const Text('Entrar com mock'),
-            ),
-            OutlinedButton.icon(
-              onPressed: authState.isLoading || !authStatus.isMockAuthenticated
-                  ? null
-                  : () => _handleSignOut(context),
-              icon: const Icon(Icons.logout_rounded),
-              label: const Text('Encerrar mock'),
-            ),
-          ],
         ),
       ],
     );
@@ -1268,7 +563,7 @@ class _SystemPageState extends ConsumerState<SystemPage> {
       final session = await ref
           .read(authControllerProvider.notifier)
           .signInMock();
-      if (!mounted) {
+      if (!context.mounted) {
         return;
       }
       messenger.showSnackBar(
@@ -1279,7 +574,7 @@ class _SystemPageState extends ConsumerState<SystemPage> {
         ),
       );
     } catch (_) {
-      if (!mounted) {
+      if (!context.mounted) {
         return;
       }
     }
@@ -1296,7 +591,7 @@ class _SystemPageState extends ConsumerState<SystemPage> {
           );
       ref.invalidate(backendConnectionStatusProvider);
       ref.invalidate(syncReconciliationControllerProvider);
-      if (!mounted) {
+      if (!context.mounted) {
         return;
       }
       messenger.showSnackBar(
@@ -1307,7 +602,7 @@ class _SystemPageState extends ConsumerState<SystemPage> {
         ),
       );
     } catch (_) {
-      if (!mounted) {
+      if (!context.mounted) {
         return;
       }
     }
@@ -1321,7 +616,7 @@ class _SystemPageState extends ConsumerState<SystemPage> {
           .restoreRemoteSession();
       ref.invalidate(backendConnectionStatusProvider);
       ref.invalidate(syncReconciliationControllerProvider);
-      if (!mounted) {
+      if (!context.mounted) {
         return;
       }
 
@@ -1330,7 +625,7 @@ class _SystemPageState extends ConsumerState<SystemPage> {
           : 'Sessao remota restaurada para ${session.user.displayName}.';
       messenger.showSnackBar(SnackBar(content: Text(message)));
     } catch (_) {
-      if (!mounted) {
+      if (!context.mounted) {
         return;
       }
     }
@@ -1342,7 +637,7 @@ class _SystemPageState extends ConsumerState<SystemPage> {
       await ref.read(authControllerProvider.notifier).signOutCurrentSession();
       ref.invalidate(backendConnectionStatusProvider);
       ref.invalidate(syncReconciliationControllerProvider);
-      if (!mounted) {
+      if (!context.mounted) {
         return;
       }
       messenger.showSnackBar(
@@ -1351,260 +646,150 @@ class _SystemPageState extends ConsumerState<SystemPage> {
         ),
       );
     } catch (_) {
-      if (!mounted) {
+      if (!context.mounted) {
         return;
       }
     }
   }
 
   Future<void> _handleProductSync(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final result = await ref
-          .read(catalogSyncControllerProvider.notifier)
-          .syncFeature('products');
-      if (!mounted) {
-        return;
-      }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Produtos processados: ${result.processedCount}, sincronizados: ${result.syncedCount}, bloqueados: ${result.blockedCount}, conflitos: ${result.conflictCount}, falhas: ${result.failedCount}.',
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-    }
+    await _runFeatureSync(
+      context,
+      featureKey: 'products',
+      featureLabel: 'Produtos',
+      syncedLabel: 'sincronizados',
+      blockedLabel: 'bloqueados',
+    );
   }
 
   Future<void> _handleSupplierSync(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final result = await ref
-          .read(catalogSyncControllerProvider.notifier)
-          .syncFeature('suppliers');
-      if (!mounted) {
-        return;
-      }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Fornecedores processados: ${result.processedCount}, sincronizados: ${result.syncedCount}, bloqueados: ${result.blockedCount}, conflitos: ${result.conflictCount}, falhas: ${result.failedCount}.',
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-    }
+    await _runFeatureSync(
+      context,
+      featureKey: 'suppliers',
+      featureLabel: 'Fornecedores',
+      syncedLabel: 'sincronizados',
+      blockedLabel: 'bloqueados',
+    );
   }
 
   Future<void> _handleCategorySync(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final result = await ref
-          .read(catalogSyncControllerProvider.notifier)
-          .syncFeature('categories');
-      if (!mounted) {
-        return;
-      }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Categorias processadas: ${result.processedCount}, sincronizadas: ${result.syncedCount}, bloqueadas: ${result.blockedCount}, conflitos: ${result.conflictCount}, falhas: ${result.failedCount}.',
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-    }
+    await _runFeatureSync(
+      context,
+      featureKey: 'categories',
+      featureLabel: 'Categorias',
+      syncedLabel: 'sincronizadas',
+      blockedLabel: 'bloqueadas',
+    );
   }
 
   Future<void> _handleClientSync(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final result = await ref
-          .read(catalogSyncControllerProvider.notifier)
-          .syncFeature('customers');
-      if (!mounted) {
-        return;
-      }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Clientes processados: ${result.processedCount}, sincronizados: ${result.syncedCount}, bloqueados: ${result.blockedCount}, conflitos: ${result.conflictCount}, falhas: ${result.failedCount}.',
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-    }
+    await _runFeatureSync(
+      context,
+      featureKey: 'customers',
+      featureLabel: 'Clientes',
+      syncedLabel: 'sincronizados',
+      blockedLabel: 'bloqueados',
+    );
   }
 
   Future<void> _handlePurchaseSync(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final result = await ref
-          .read(catalogSyncControllerProvider.notifier)
-          .syncFeature('purchases');
-      if (!mounted) {
-        return;
-      }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Compras processadas: ${result.processedCount}, sincronizadas: ${result.syncedCount}, bloqueadas: ${result.blockedCount}, conflitos: ${result.conflictCount}, falhas: ${result.failedCount}.',
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-    }
+    await _runFeatureSync(
+      context,
+      featureKey: 'purchases',
+      featureLabel: 'Compras',
+      syncedLabel: 'sincronizadas',
+      blockedLabel: 'bloqueadas',
+    );
   }
 
   Future<void> _handleSalesSync(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final result = await ref
-          .read(catalogSyncControllerProvider.notifier)
-          .syncFeature('sales');
-      if (!mounted) {
-        return;
-      }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Vendas processadas: ${result.processedCount}, sincronizadas: ${result.syncedCount}, bloqueadas: ${result.blockedCount}, conflitos: ${result.conflictCount}, falhas: ${result.failedCount}.',
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-    }
+    await _runFeatureSync(
+      context,
+      featureKey: 'sales',
+      featureLabel: 'Vendas',
+      syncedLabel: 'sincronizadas',
+      blockedLabel: 'bloqueadas',
+    );
   }
 
   Future<void> _handleCashEventSync(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final result = await ref
-          .read(catalogSyncControllerProvider.notifier)
-          .syncFeature('cash_events');
-      if (!mounted) {
-        return;
-      }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Eventos de caixa processados: ${result.processedCount}, sincronizados: ${result.syncedCount}, bloqueados: ${result.blockedCount}, conflitos: ${result.conflictCount}, falhas: ${result.failedCount}.',
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-    }
+    await _runFeatureSync(
+      context,
+      featureKey: 'cash_events',
+      featureLabel: 'Eventos de caixa',
+      syncedLabel: 'sincronizados',
+      blockedLabel: 'bloqueados',
+    );
   }
 
   Future<void> _handleFinancialSyncAll(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final result = await ref
-          .read(catalogSyncControllerProvider.notifier)
-          .syncFeature('financial_events');
-      if (!mounted) {
-        return;
-      }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Eventos financeiros processados. Processados: ${result.processedCount}, sync: ${result.syncedCount}, bloqueados: ${result.blockedCount}, conflitos: ${result.conflictCount}, falhas: ${result.failedCount}.',
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-    }
+    await _runBatchSyncAction(
+      context,
+      action: (controller) => controller.syncFeature('financial_events'),
+      messageBuilder: buildFinancialSyncMessage,
+    );
   }
 
   Future<void> _handleFinancialRetry(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final result = await ref
-          .read(catalogSyncControllerProvider.notifier)
-          .retryFeatures(const <String>['financial_events']);
-      if (!mounted) {
-        return;
-      }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Reprocessamento de eventos financeiros concluido. Processados: ${result.processedCount}, sync: ${result.syncedCount}, bloqueados: ${result.blockedCount}, conflitos: ${result.conflictCount}, falhas: ${result.failedCount}.',
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-    }
+    await _runBatchSyncAction(
+      context,
+      action: (controller) =>
+          controller.retryFeatures(const <String>['financial_events']),
+      messageBuilder: buildRetryMessage,
+    );
   }
 
   Future<void> _handleSyncAll(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final result = await ref
-          .read(catalogSyncControllerProvider.notifier)
-          .syncAll();
-      if (!mounted) {
-        return;
-      }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            '${result.message} Processados: ${result.processedCount}, sync: ${result.syncedCount}, bloqueados: ${result.blockedCount}, conflitos: ${result.conflictCount}, falhas: ${result.failedCount}.',
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-    }
+    await _runBatchSyncAction(
+      context,
+      action: (controller) => controller.syncAll(),
+      messageBuilder: buildRetryMessage,
+    );
   }
 
   Future<void> _handleRetryPending(BuildContext context) async {
+    await _runBatchSyncAction(
+      context,
+      action: (controller) => controller.retryPending(),
+      messageBuilder: buildRetryMessage,
+    );
+  }
+
+  Future<void> _runFeatureSync(
+    BuildContext context, {
+    required String featureKey,
+    required String featureLabel,
+    required String syncedLabel,
+    required String blockedLabel,
+  }) async {
+    await _runBatchSyncAction(
+      context,
+      action: (controller) => controller.syncFeature(featureKey),
+      messageBuilder: (result) => buildFeatureSyncMessage(
+        featureLabel: featureLabel,
+        syncedLabel: syncedLabel,
+        blockedLabel: blockedLabel,
+        result: result,
+      ),
+    );
+  }
+
+  Future<void> _runBatchSyncAction(
+    BuildContext context, {
+    required Future<SyncBatchResult> Function(CatalogSyncController controller)
+    action,
+    required String Function(SyncBatchResult result) messageBuilder,
+  }) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final result = await ref
-          .read(catalogSyncControllerProvider.notifier)
-          .retryPending();
-      if (!mounted) {
+      final controller = ref.read(catalogSyncControllerProvider.notifier);
+      final result = await action(controller);
+      if (!context.mounted) {
         return;
       }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            '${result.message} Processados: ${result.processedCount}, sync: ${result.syncedCount}, bloqueados: ${result.blockedCount}, conflitos: ${result.conflictCount}, falhas: ${result.failedCount}.',
-          ),
-        ),
-      );
+      showSystemSnackbar(messenger, messageBuilder(result));
     } catch (_) {
-      if (!mounted) {
+      if (!context.mounted) {
         return;
       }
     }
@@ -1619,14 +804,8 @@ class _SystemPageState extends ConsumerState<SystemPage> {
       if (!mounted) {
         return;
       }
-      final overview = _buildReconciliationOverview(results);
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Reconciliacao concluida. Consistentes: ${overview.$1}, pendentes: ${overview.$2}, divergentes: ${overview.$3}, conflitos: ${overview.$4}.',
-          ),
-        ),
-      );
+      final overview = buildReconciliationOverview(results);
+      showSystemSnackbar(messenger, buildReconciliationMessage(overview));
     } catch (_) {
       if (!mounted) {
         return;
@@ -1643,13 +822,7 @@ class _SystemPageState extends ConsumerState<SystemPage> {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            '${result.message} Solicitados: ${result.requestedCount}, aplicados: ${result.appliedCount}, ignorados: ${result.skippedCount}, falhas: ${result.failedCount}.',
-          ),
-        ),
-      );
+      showSystemSnackbar(messenger, buildRepairMessage(result));
     } catch (_) {
       if (!mounted) {
         return;
@@ -1669,12 +842,9 @@ class _SystemPageState extends ConsumerState<SystemPage> {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            '${_displayNameForFeature(featureKey)}: ${result.message} Aplicados: ${result.appliedCount}, ignorados: ${result.skippedCount}, falhas: ${result.failedCount}.',
-          ),
-        ),
+      showSystemSnackbar(
+        messenger,
+        buildFeatureRepairMessage(featureKey: featureKey, result: result),
       );
     } catch (_) {
       if (!mounted) {
@@ -1713,11 +883,11 @@ class _SystemPageState extends ConsumerState<SystemPage> {
         return;
       }
       final messenger = ScaffoldMessenger.of(context);
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            '${action.type.label}: ${result.message} Aplicados: ${result.appliedCount}, ignorados: ${result.skippedCount}, falhas: ${result.failedCount}.',
-          ),
+      showSystemSnackbar(
+        messenger,
+        buildRepairActionMessage(
+          actionLabel: action.type.label,
+          result: result,
         ),
       );
     } catch (_) {
@@ -1769,13 +939,11 @@ class _SystemPageState extends ConsumerState<SystemPage> {
       if (!mounted) {
         return;
       }
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            repairedCount == 0
-                ? 'Nenhum item elegivel para reenvio em ${_displayNameForFeature(featureKey).toLowerCase()}.'
-                : '$repairedCount item(ns) de ${_displayNameForFeature(featureKey).toLowerCase()} foram marcados para reenvio.',
-          ),
+      showSystemSnackbar(
+        messenger,
+        buildRepairFeatureQueueMessage(
+          featureKey: featureKey,
+          repairedCount: repairedCount,
         ),
       );
     } catch (_) {
@@ -1785,185 +953,6 @@ class _SystemPageState extends ConsumerState<SystemPage> {
     }
   }
 
-  SyncQueueFeatureSummary? _findQueueSummary(
-    List<SyncQueueFeatureSummary> summaries,
-    String featureKey,
-  ) {
-    for (final summary in summaries) {
-      if (summary.featureKey == featureKey) {
-        return summary;
-      }
-    }
-
-    return null;
-  }
-
-  SyncReconciliationResult? _findReconciliationResult(
-    List<SyncReconciliationResult> results,
-    String featureKey,
-  ) {
-    for (final result in results) {
-      if (result.featureKey == featureKey) {
-        return result;
-      }
-    }
-
-    return null;
-  }
-
-  (int, int, int, int) _buildReconciliationOverview(
-    List<SyncReconciliationResult> results,
-  ) {
-    var consistent = 0;
-    var pending = 0;
-    var divergent = 0;
-    var conflicts = 0;
-
-    for (final result in results) {
-      consistent += result.consistentCount;
-      pending += result.pendingSyncCount;
-      divergent +=
-          result.outOfSyncCount +
-          result.missingRemoteCount +
-          result.invalidLinkCount +
-          result.remoteOnlyCount +
-          result.orphanRemoteCount;
-      conflicts += result.conflictCount;
-    }
-
-    return (consistent, pending, divergent, conflicts);
-  }
-
-  String _displayNameForFeature(String featureKey) {
-    switch (featureKey) {
-      case 'suppliers':
-        return 'Fornecedores';
-      case 'categories':
-        return 'Categorias';
-      case 'products':
-        return 'Produtos';
-      case 'customers':
-        return 'Clientes';
-      case 'purchases':
-        return 'Compras';
-      case 'sales':
-        return 'Vendas';
-      case 'financial_events':
-        return 'Eventos financeiros';
-      default:
-        return featureKey;
-    }
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 132,
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              value,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ModeChip extends StatelessWidget {
-  const _ModeChip({required this.label, required this.icon});
-
-  final String label;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [Icon(icon, size: 18), const SizedBox(width: 8), Text(label)],
-      ),
-    );
-  }
-}
-
-class _StateTile extends StatelessWidget {
-  const _StateTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: colorScheme.primaryContainer,
-            child: Icon(icon, color: colorScheme.onPrimaryContainer),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _RemoteDiagnosticTile extends StatelessWidget {
@@ -2021,7 +1010,7 @@ class _RemoteDiagnosticTile extends StatelessWidget {
                 runSpacing: 8,
                 children: diagnostic.capabilities
                     .map(
-                      (capability) => _ModeChip(
+                      (capability) => SystemModeChip(
                         label: capability,
                         icon: Icons.memory_rounded,
                       ),
@@ -2063,31 +1052,31 @@ class _SyncSummaryTile extends StatelessWidget {
               spacing: 10,
               runSpacing: 10,
               children: [
-                _ModeChip(
+                SystemModeChip(
                   label: '${summary.totalRecords} registro(s)',
                   icon: Icons.inventory_2_outlined,
                 ),
-                _ModeChip(
+                SystemModeChip(
                   label: '${summary.localOnlyCount} local',
                   icon: Icons.offline_pin_rounded,
                 ),
                 if (summary.pendingUploadCount > 0)
-                  _ModeChip(
+                  SystemModeChip(
                     label: '${summary.pendingUploadCount} upload',
                     icon: Icons.upload_rounded,
                   ),
                 if (summary.pendingUpdateCount > 0)
-                  _ModeChip(
+                  SystemModeChip(
                     label: '${summary.pendingUpdateCount} update',
                     icon: Icons.system_update_alt_rounded,
                   ),
                 if (summary.conflictCount > 0)
-                  _ModeChip(
+                  SystemModeChip(
                     label: '${summary.conflictCount} conflito',
                     icon: Icons.warning_amber_rounded,
                   ),
                 if (summary.errorCount > 0)
-                  _ModeChip(
+                  SystemModeChip(
                     label: '${summary.errorCount} erro',
                     icon: Icons.error_outline_rounded,
                   ),
