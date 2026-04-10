@@ -31,6 +31,7 @@ abstract final class AppMigrations {
     const MigrationStep(version: 15, up: _createVersion15Schema),
     const MigrationStep(version: 16, up: _createVersion16Schema),
     const MigrationStep(version: 17, up: _createVersion17Schema),
+    const MigrationStep(version: 18, up: _createVersion18Schema),
   ];
 
   static Future<void> runCreate(DatabaseExecutor db, int version) async {
@@ -2510,6 +2511,167 @@ abstract final class AppMigrations {
         COALESCE(p.atualizado_em, '$nowIso')
       FROM ${TableNames.produtos} p
       WHERE TRIM(COALESCE(p.foto_path, '')) <> ''
+    ''');
+  }
+
+  static Future<void> _createVersion18Schema(DatabaseExecutor db) async {
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.caixaSessoes,
+      columnName: 'aguardando_confirmacao_troco_inicial',
+      columnDefinition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.caixaSessoes,
+      columnName: 'total_entradas_dinheiro_centavos',
+      columnDefinition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.caixaSessoes,
+      columnName: 'total_recebimentos_fiado_dinheiro_centavos',
+      columnDefinition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.caixaSessoes,
+      columnName: 'total_recebimentos_fiado_pix_centavos',
+      columnDefinition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.caixaSessoes,
+      columnName: 'total_recebimentos_fiado_cartao_centavos',
+      columnDefinition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.caixaSessoes,
+      columnName: 'saldo_esperado_centavos',
+      columnDefinition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.caixaSessoes,
+      columnName: 'saldo_contado_centavos',
+      columnDefinition: 'INTEGER',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.caixaSessoes,
+      columnName: 'diferenca_centavos',
+      columnDefinition: 'INTEGER',
+    );
+
+    await db.execute('''
+      UPDATE ${TableNames.caixaSessoes}
+      SET aguardando_confirmacao_troco_inicial = CASE
+        WHEN status = 'aberto' AND troco_inicial_centavos = 0 THEN 1
+        ELSE COALESCE(aguardando_confirmacao_troco_inicial, 0)
+      END
+    ''');
+
+    await db.execute('''
+      UPDATE ${TableNames.caixaSessoes}
+      SET total_entradas_dinheiro_centavos = COALESCE((
+        SELECT SUM(
+          CASE
+            WHEN mov.tipo_movimento = 'venda'
+             AND mov.valor_centavos > 0
+             AND substr(COALESCE(mov.descricao, ''), 1, 13) = '[pm:dinheiro]'
+            THEN mov.valor_centavos
+            WHEN mov.tipo_movimento = 'cancelamento'
+             AND mov.referencia_tipo = 'venda'
+             AND mov.valor_centavos < 0
+             AND substr(COALESCE(mov.descricao, ''), 1, 13) = '[pm:dinheiro]'
+            THEN mov.valor_centavos
+            ELSE 0
+          END
+        )
+        FROM ${TableNames.caixaMovimentos} mov
+        WHERE mov.sessao_id = ${TableNames.caixaSessoes}.id
+      ), 0),
+      total_recebimentos_fiado_dinheiro_centavos = COALESCE((
+        SELECT SUM(
+          CASE
+            WHEN mov.tipo_movimento = 'recebimento_fiado'
+             AND mov.valor_centavos > 0
+             AND substr(COALESCE(mov.descricao, ''), 1, 13) = '[pm:dinheiro]'
+            THEN mov.valor_centavos
+            WHEN mov.tipo_movimento = 'cancelamento'
+             AND mov.referencia_tipo = 'fiado'
+             AND mov.valor_centavos < 0
+             AND substr(COALESCE(mov.descricao, ''), 1, 13) = '[pm:dinheiro]'
+            THEN mov.valor_centavos
+            ELSE 0
+          END
+        )
+        FROM ${TableNames.caixaMovimentos} mov
+        WHERE mov.sessao_id = ${TableNames.caixaSessoes}.id
+      ), 0),
+      total_recebimentos_fiado_pix_centavos = COALESCE((
+        SELECT SUM(
+          CASE
+            WHEN mov.tipo_movimento = 'recebimento_fiado'
+             AND mov.valor_centavos > 0
+             AND substr(COALESCE(mov.descricao, ''), 1, 8) = '[pm:pix]'
+            THEN mov.valor_centavos
+            WHEN mov.tipo_movimento = 'cancelamento'
+             AND mov.referencia_tipo = 'fiado'
+             AND mov.valor_centavos < 0
+             AND substr(COALESCE(mov.descricao, ''), 1, 8) = '[pm:pix]'
+            THEN mov.valor_centavos
+            ELSE 0
+          END
+        )
+        FROM ${TableNames.caixaMovimentos} mov
+        WHERE mov.sessao_id = ${TableNames.caixaSessoes}.id
+      ), 0),
+      total_recebimentos_fiado_cartao_centavos = COALESCE((
+        SELECT SUM(
+          CASE
+            WHEN mov.tipo_movimento = 'recebimento_fiado'
+             AND mov.valor_centavos > 0
+             AND substr(COALESCE(mov.descricao, ''), 1, 11) = '[pm:cartao]'
+            THEN mov.valor_centavos
+            WHEN mov.tipo_movimento = 'cancelamento'
+             AND mov.referencia_tipo = 'fiado'
+             AND mov.valor_centavos < 0
+             AND substr(COALESCE(mov.descricao, ''), 1, 11) = '[pm:cartao]'
+            THEN mov.valor_centavos
+            ELSE 0
+          END
+        )
+        FROM ${TableNames.caixaMovimentos} mov
+        WHERE mov.sessao_id = ${TableNames.caixaSessoes}.id
+      ), 0)
+    ''');
+
+    await db.execute('''
+      UPDATE ${TableNames.caixaSessoes}
+      SET saldo_esperado_centavos =
+            troco_inicial_centavos
+          + total_entradas_dinheiro_centavos
+          + total_recebimentos_fiado_dinheiro_centavos
+          + total_suprimentos_centavos
+          - total_sangrias_centavos,
+          saldo_final_centavos =
+            troco_inicial_centavos
+          + total_entradas_dinheiro_centavos
+          + total_recebimentos_fiado_dinheiro_centavos
+          + total_suprimentos_centavos
+          - total_sangrias_centavos,
+          diferenca_centavos = CASE
+            WHEN saldo_contado_centavos IS NULL THEN NULL
+            ELSE saldo_contado_centavos - (
+              troco_inicial_centavos
+              + total_entradas_dinheiro_centavos
+              + total_recebimentos_fiado_dinheiro_centavos
+              + total_suprimentos_centavos
+              - total_sangrias_centavos
+            )
+          END
     ''');
   }
 }

@@ -29,6 +29,8 @@ class SqliteCashRepository implements CashRepository {
       _syncQueueRepository = SqliteSyncQueueRepository(_appDatabase);
 
   static const String cashEventFeatureKey = SyncFeatureKeys.cashEvents;
+  static const String _autoOpenedNote =
+      'Sessão aberta automaticamente para registrar movimento financeiro.';
 
   final AppDatabase _appDatabase;
   final AppOperationalContext _operationalContext;
@@ -43,7 +45,7 @@ class SqliteCashRepository implements CashRepository {
       return null;
     }
 
-    return _mapSession(row);
+    return _mapSession(await _loadSessionRow(database, row['id'] as int));
   }
 
   @override
@@ -67,31 +69,14 @@ class SqliteCashRepository implements CashRepository {
   @override
   Future<List<CashSession>> listSessions() async {
     final database = await _appDatabase.database;
-    final rows = await database.query(
-      TableNames.caixaSessoes,
-      orderBy: 'aberta_em DESC, id DESC',
-    );
-
+    final rows = await _loadSessionRows(database);
     return rows.map(_mapSession).toList();
   }
 
   @override
   Future<CashSessionDetail> fetchSessionDetail(int sessionId) async {
     final database = await _appDatabase.database;
-    final sessionRows = await database.query(
-      TableNames.caixaSessoes,
-      where: 'id = ?',
-      whereArgs: [sessionId],
-      limit: 1,
-    );
-
-    if (sessionRows.isEmpty) {
-      throw const ValidationException(
-        'Sessão de caixa não encontrada para detalhamento.',
-      );
-    }
-
-    final session = _mapSession(sessionRows.first);
+    final session = _mapSession(await _loadSessionRow(database, sessionId));
     final periodEnd = session.closedAt ?? DateTime.now();
     final movements = await _loadSessionMovementDetails(database, sessionId);
     final sales = await _loadSessionSales(
@@ -127,12 +112,14 @@ class SqliteCashRepository implements CashRepository {
       totalEntriesCents: totalEntriesCents,
       totalOutflowsCents: totalOutflowsCents,
       totalCashSalesReceivedCents: session.totalSalesCents,
-      totalFiadoReceiptsCents: session.totalFiadoReceiptsCents,
+      totalFiadoReceiptsCashCents: session.fiadoReceiptsCashCents,
+      totalFiadoReceiptsPixCents: session.fiadoReceiptsPixCents,
+      totalFiadoReceiptsCardCents: session.fiadoReceiptsCardCents,
       totalManualEntriesCents: session.totalSuppliesCents,
       totalManualWithdrawalsCents: session.totalWithdrawalsCents,
-      countedAmountCents: null,
-      reportedBalanceCents: null,
-      differenceCents: null,
+      countedAmountCents: session.countedBalanceCents,
+      reportedBalanceCents: session.expectedBalanceCents,
+      differenceCents: session.differenceCents,
     );
   }
 
@@ -158,28 +145,75 @@ class SqliteCashRepository implements CashRepository {
         'aberta_em': now.toIso8601String(),
         'fechada_em': null,
         'troco_inicial_centavos': initialFloatCents,
+        'aguardando_confirmacao_troco_inicial': 0,
+        'total_entradas_dinheiro_centavos': 0,
         'total_suprimentos_centavos': 0,
         'total_sangrias_centavos': 0,
         'total_vendas_centavos': 0,
         'total_recebimentos_fiado_centavos': 0,
+        'total_recebimentos_fiado_dinheiro_centavos': 0,
+        'total_recebimentos_fiado_pix_centavos': 0,
+        'total_recebimentos_fiado_cartao_centavos': 0,
+        'saldo_esperado_centavos': initialFloatCents,
+        'saldo_contado_centavos': null,
+        'diferenca_centavos': null,
         'saldo_final_centavos': initialFloatCents,
         'status': CashSessionStatus.open.dbValue,
         'observacao': _cleanNullable(notes),
       });
 
-      final row = (await txn.query(
-        TableNames.caixaSessoes,
-        where: 'id = ?',
-        whereArgs: [sessionId],
-        limit: 1,
-      )).first;
-
-      return _mapSession(row);
+      return _mapSession(await _loadSessionRow(txn, sessionId));
     });
   }
 
   @override
-  Future<CashSession> closeSession({String? notes}) async {
+  Future<CashSession> confirmAutoOpenedSession({
+    required int initialFloatCents,
+  }) async {
+    final database = await _appDatabase.database;
+
+    return database.transaction<CashSession>((txn) async {
+      final row = await CashDatabaseSupport.getOpenSessionRow(txn);
+      if (row == null) {
+        throw const ValidationException(
+          'Nao existe um caixa aberto aguardando confirmacao.',
+        );
+      }
+
+      final sessionId = row['id'] as int;
+      final updatedNotes =
+          _removeAutomaticOpeningNote(row['observacao'] as String?);
+      final expectedBalance = CashSessionMathSupport.calculateExpectedBalance(
+        initialFloatCents: initialFloatCents,
+        cashEntriesCents: row['total_entradas_dinheiro_centavos'] as int? ?? 0,
+        fiadoReceiptsCashCents:
+            row['total_recebimentos_fiado_dinheiro_centavos'] as int? ?? 0,
+        suppliesCents: row['total_suprimentos_centavos'] as int? ?? 0,
+        withdrawalsCents: row['total_sangrias_centavos'] as int? ?? 0,
+      );
+
+      await txn.update(
+        TableNames.caixaSessoes,
+        {
+          'troco_inicial_centavos': initialFloatCents,
+          'aguardando_confirmacao_troco_inicial': 0,
+          'saldo_esperado_centavos': expectedBalance,
+          'saldo_final_centavos': expectedBalance,
+          'observacao': updatedNotes,
+        },
+        where: 'id = ?',
+        whereArgs: [sessionId],
+      );
+
+      return _mapSession(await _loadSessionRow(txn, sessionId));
+    });
+  }
+
+  @override
+  Future<CashSession> closeSession({
+    required int countedBalanceCents,
+    String? notes,
+  }) async {
     final database = await _appDatabase.database;
 
     return database.transaction<CashSession>((txn) async {
@@ -190,6 +224,12 @@ class SqliteCashRepository implements CashRepository {
         );
       }
 
+      final sessionId = row['id'] as int;
+      final expectedBalance =
+          row['saldo_esperado_centavos'] as int? ??
+          row['saldo_final_centavos'] as int? ??
+          0;
+      final differenceCents = countedBalanceCents - expectedBalance;
       final closedAt = DateTime.now().toIso8601String();
       final updatedNotes = _mergeNotes(row['observacao'] as String?, notes);
 
@@ -197,21 +237,17 @@ class SqliteCashRepository implements CashRepository {
         TableNames.caixaSessoes,
         {
           'fechada_em': closedAt,
+          'aguardando_confirmacao_troco_inicial': 0,
+          'saldo_contado_centavos': countedBalanceCents,
+          'diferenca_centavos': differenceCents,
           'status': CashSessionStatus.closed.dbValue,
           'observacao': updatedNotes,
         },
         where: 'id = ?',
-        whereArgs: [row['id']],
+        whereArgs: [sessionId],
       );
 
-      final updatedRow = (await txn.query(
-        TableNames.caixaSessoes,
-        where: 'id = ?',
-        whereArgs: [row['id']],
-        limit: 1,
-      )).first;
-
-      return _mapSession(updatedRow);
+      return _mapSession(await _loadSessionRow(txn, sessionId));
     });
   }
 
@@ -386,6 +422,56 @@ class SqliteCashRepository implements CashRepository {
     return row == null ? null : row['id'] as int;
   }
 
+  Future<List<Map<String, Object?>>> _loadSessionRows(
+    DatabaseExecutor db,
+  ) async {
+    return db.rawQuery(
+      '''
+      ${_sessionSelectSql()}
+      ORDER BY sess.aberta_em DESC, sess.id DESC
+    ''',
+    );
+  }
+
+  Future<Map<String, Object?>> _loadSessionRow(
+    DatabaseExecutor db,
+    int sessionId,
+  ) async {
+    final rows = await db.rawQuery(
+      '''
+      ${_sessionSelectSql()}
+      WHERE sess.id = ?
+      LIMIT 1
+    ''',
+      [sessionId],
+    );
+
+    if (rows.isEmpty) {
+      throw const ValidationException(
+        'Sessao de caixa nao encontrada para detalhamento.',
+      );
+    }
+
+    return rows.first;
+  }
+
+  String _sessionSelectSql() {
+    return '''
+      SELECT
+        sess.*,
+        COALESCE(
+          NULLIF(TRIM(usr.nome), ''),
+          CASE
+            WHEN sess.usuario_id = ${_operationalContext.currentLocalUserId ?? -1}
+            THEN '${_escapeSql(_operationalContext.session.user.displayName)}'
+            ELSE 'Operador local'
+          END
+        ) AS operador_nome
+      FROM ${TableNames.caixaSessoes} sess
+      LEFT JOIN ${TableNames.usuarios} usr ON usr.id = sess.usuario_id
+    ''';
+  }
+
   Future<List<CashSessionMovementDetail>> _loadSessionMovementDetails(
     Database database,
     int sessionId,
@@ -511,17 +597,36 @@ class SqliteCashRepository implements CashRepository {
       id: row['id'] as int,
       uuid: row['uuid'] as String,
       userId: row['usuario_id'] as int?,
+      operatorName:
+          row['operador_nome'] as String? ??
+          _operationalContext.session.user.displayName,
       openedAt: DateTime.parse(row['aberta_em'] as String),
       closedAt: row['fechada_em'] == null
           ? null
           : DateTime.parse(row['fechada_em'] as String),
       initialFloatCents: row['troco_inicial_centavos'] as int? ?? 0,
-      totalSuppliesCents: row['total_suprimentos_centavos'] as int? ?? 0,
-      totalWithdrawalsCents: row['total_sangrias_centavos'] as int? ?? 0,
-      totalSalesCents: row['total_vendas_centavos'] as int? ?? 0,
-      totalFiadoReceiptsCents:
-          row['total_recebimentos_fiado_centavos'] as int? ?? 0,
-      finalBalanceCents: row['saldo_final_centavos'] as int? ?? 0,
+      awaitingInitialFloatConfirmation:
+          (row['aguardando_confirmacao_troco_inicial'] as int? ?? 0) == 1,
+      cashEntriesCents:
+          row['total_entradas_dinheiro_centavos'] as int? ??
+          row['total_vendas_centavos'] as int? ??
+          0,
+      withdrawalsCents: row['total_sangrias_centavos'] as int? ?? 0,
+      suppliesCents: row['total_suprimentos_centavos'] as int? ?? 0,
+      fiadoReceiptsCashCents:
+          row['total_recebimentos_fiado_dinheiro_centavos'] as int? ??
+          row['total_recebimentos_fiado_centavos'] as int? ??
+          0,
+      fiadoReceiptsPixCents:
+          row['total_recebimentos_fiado_pix_centavos'] as int? ?? 0,
+      fiadoReceiptsCardCents:
+          row['total_recebimentos_fiado_cartao_centavos'] as int? ?? 0,
+      expectedBalanceCents:
+          row['saldo_esperado_centavos'] as int? ??
+          row['saldo_final_centavos'] as int? ??
+          0,
+      countedBalanceCents: row['saldo_contado_centavos'] as int?,
+      differenceCents: row['diferenca_centavos'] as int?,
       status: CashSessionStatusX.fromDb(row['status'] as String),
       notes: row['observacao'] as String?,
     );
@@ -623,7 +728,7 @@ class SqliteCashRepository implements CashRepository {
   }) {
     switch (type) {
       case CashMovementType.sale:
-        return 'Venda à vista';
+        return 'Venda a vista';
       case CashMovementType.fiadoReceipt:
         return 'Pagamento de fiado';
       case CashMovementType.supply:
@@ -658,7 +763,7 @@ class SqliteCashRepository implements CashRepository {
       return 'Fiado da venda $receiptNumber';
     }
     if (referenceType == 'manual') {
-      return 'Lançamento manual';
+      return 'Lancamento manual';
     }
     if (referenceId != null) {
       return '${referenceType.toUpperCase()} #$referenceId';
@@ -678,6 +783,23 @@ class SqliteCashRepository implements CashRepository {
     return value == null ? null : SaleStatusX.fromDb(value);
   }
 
+  String? _removeAutomaticOpeningNote(String? current) {
+    final cleanedCurrent = _cleanNullable(current);
+    if (cleanedCurrent == null) {
+      return null;
+    }
+
+    final lines = cleanedCurrent
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty && line != _autoOpenedNote)
+        .toList(growable: false);
+    if (lines.isEmpty) {
+      return null;
+    }
+    return lines.join('\n');
+  }
+
   String? _mergeNotes(String? current, String? appended) {
     final cleanedCurrent = _cleanNullable(current);
     final cleanedAppended = _cleanNullable(appended);
@@ -695,5 +817,9 @@ class SqliteCashRepository implements CashRepository {
   String? _cleanNullable(String? value) {
     final trimmed = value?.trim();
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
+  String _escapeSql(String value) {
+    return value.replaceAll("'", "''");
   }
 }

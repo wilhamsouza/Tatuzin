@@ -13,7 +13,9 @@ class CashSessionDetail {
     required this.totalEntriesCents,
     required this.totalOutflowsCents,
     required this.totalCashSalesReceivedCents,
-    required this.totalFiadoReceiptsCents,
+    required this.totalFiadoReceiptsCashCents,
+    required this.totalFiadoReceiptsPixCents,
+    required this.totalFiadoReceiptsCardCents,
     required this.totalManualEntriesCents,
     required this.totalManualWithdrawalsCents,
     required this.countedAmountCents,
@@ -29,12 +31,19 @@ class CashSessionDetail {
   final int totalEntriesCents;
   final int totalOutflowsCents;
   final int totalCashSalesReceivedCents;
-  final int totalFiadoReceiptsCents;
+  final int totalFiadoReceiptsCashCents;
+  final int totalFiadoReceiptsPixCents;
+  final int totalFiadoReceiptsCardCents;
   final int totalManualEntriesCents;
   final int totalManualWithdrawalsCents;
   final int? countedAmountCents;
   final int? reportedBalanceCents;
   final int? differenceCents;
+
+  int get totalFiadoReceiptsCents =>
+      totalFiadoReceiptsCashCents +
+      totalFiadoReceiptsPixCents +
+      totalFiadoReceiptsCardCents;
 
   int get amountToZeroCents => session.finalBalanceCents.abs();
 

@@ -6,7 +6,13 @@ class CloseCashSessionUseCase {
 
   final CashRepository _cashRepository;
 
-  Future<CashSession> call({String? notes}) {
-    return _cashRepository.closeSession(notes: notes);
+  Future<CashSession> call({
+    required int countedBalanceCents,
+    String? notes,
+  }) {
+    return _cashRepository.closeSession(
+      countedBalanceCents: countedBalanceCents,
+      notes: notes,
+    );
   }
 }

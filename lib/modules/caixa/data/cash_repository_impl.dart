@@ -24,8 +24,27 @@ class CashRepositoryImpl implements CashRepository {
   final DataAccessPolicy _dataAccessPolicy;
 
   @override
-  Future<CashSession> closeSession({String? notes}) async {
-    return _executeWrite(() => _localRepository.closeSession(notes: notes));
+  Future<CashSession> closeSession({
+    required int countedBalanceCents,
+    String? notes,
+  }) async {
+    return _executeWrite(
+      () => _localRepository.closeSession(
+        countedBalanceCents: countedBalanceCents,
+        notes: notes,
+      ),
+    );
+  }
+
+  @override
+  Future<CashSession> confirmAutoOpenedSession({
+    required int initialFloatCents,
+  }) async {
+    return _executeWrite(
+      () => _localRepository.confirmAutoOpenedSession(
+        initialFloatCents: initialFloatCents,
+      ),
+    );
   }
 
   @override
