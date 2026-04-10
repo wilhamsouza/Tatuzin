@@ -13,11 +13,37 @@ import '../../../pedidos/presentation/providers/order_providers.dart';
 import '../../domain/entities/cart_item.dart';
 import '../providers/cart_provider.dart';
 
-class CartPage extends ConsumerWidget {
+class CartPage extends ConsumerStatefulWidget {
   const CartPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CartPage> createState() => _CartPageState();
+}
+
+class _CartPageState extends ConsumerState<CartPage> {
+  late final TextEditingController _deliveryFieldController;
+  late final TextEditingController _couponController;
+  _CartDeliveryType _deliveryType = _CartDeliveryType.pickup;
+  String? _couponFeedback;
+  String? _appliedCouponCode;
+  int _discountCents = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _deliveryFieldController = TextEditingController();
+    _couponController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _deliveryFieldController.dispose();
+    _couponController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -25,6 +51,12 @@ class CartPage extends ConsumerWidget {
     final totalItemsLabel = cart.totalItems == 1
         ? '1 item'
         : '${cart.totalItems} itens';
+    final subtotalCents = cart.totalCents;
+    final freightCents = _deliveryType == _CartDeliveryType.delivery ? 799 : 0;
+    final totalCents = (subtotalCents + freightCents - _discountCents).clamp(
+      0,
+      1 << 31,
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -49,9 +81,9 @@ class CartPage extends ConsumerWidget {
               onSelected: (value) async {
                 switch (value) {
                   case _CartMenuAction.operationalOrder:
-                    await _createOperationalOrder(context, ref, cart);
+                    await _createOperationalOrder(context, cart);
                   case _CartMenuAction.clear:
-                    await _clearCart(context, ref);
+                    await _clearCart(context);
                 }
               },
               itemBuilder: (context) => const [
@@ -79,110 +111,216 @@ class CartPage extends ConsumerWidget {
           ? _EmptyCartState(
               onPressed: () => context.goNamed(AppRouteNames.sales),
             )
-          : ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 176),
-              itemCount: cart.items.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final item = cart.items[index];
-                return _CartItemCard(
-                  item: item,
-                  onRemove: () =>
-                      ref.read(cartProvider.notifier).removeItem(item.id),
-                  onDecrease: () =>
-                      ref.read(cartProvider.notifier).decreaseQuantity(item.id),
-                  onIncrease: () {
-                    final increased = ref
-                        .read(cartProvider.notifier)
-                        .increaseQuantity(item.id);
-                    if (!increased) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Estoque insuficiente para aumentar.'),
-                        ),
-                      );
-                    }
-                  },
-                  onEditNotes: () => _editItemNotes(context, ref, item),
-                );
-              },
-            ),
+          : _buildFilledBody(context, cart),
       bottomNavigationBar: cart.isEmpty
           ? null
-          : SafeArea(
-              minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Card(
-                elevation: 0,
-                color: colorScheme.surfaceContainerLow,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  side: BorderSide(color: colorScheme.outlineVariant),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Resumo da venda',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _CartMetric(
-                              label: 'Itens',
-                              value: totalItemsLabel,
-                              icon: Icons.shopping_bag_outlined,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _CartMetric(
-                              label: 'Total',
-                              value: AppFormatters.currencyFromCents(
-                                cart.totalCents,
-                              ),
-                              icon: Icons.payments_outlined,
-                              emphasize: true,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          onPressed: () =>
-                              context.pushNamed(AppRouteNames.checkout),
-                          icon: const Icon(Icons.arrow_forward_rounded),
-                          label: const Text('Finalizar pedido'),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'O pedido operacional continua disponível no menu do carrinho.',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+          : _buildSummaryBar(
+              context,
+              totalItemsLabel: totalItemsLabel,
+              subtotalCents: subtotalCents,
+              freightCents: freightCents,
+              totalCents: totalCents,
             ),
     );
   }
 
-  Future<void> _editItemNotes(
-    BuildContext context,
-    WidgetRef ref,
-    CartItem item,
-  ) async {
+  Widget _buildFilledBody(BuildContext context, CartState cart) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 220),
+      children: [
+        for (var index = 0; index < cart.items.length; index++) ...[
+          _CartItemCard(
+            item: cart.items[index],
+            onRemove: () => ref
+                .read(cartProvider.notifier)
+                .removeItem(cart.items[index].id),
+            onDecrease: () => ref
+                .read(cartProvider.notifier)
+                .decreaseQuantity(cart.items[index].id),
+            onIncrease: () {
+              final increased = ref
+                  .read(cartProvider.notifier)
+                  .increaseQuantity(cart.items[index].id);
+              if (!increased) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Estoque insuficiente para aumentar.'),
+                  ),
+                );
+              }
+            },
+            onEditNotes: () => _editItemNotes(context, cart.items[index]),
+          ),
+          if (index < cart.items.length - 1) const SizedBox(height: 12),
+        ],
+        const SizedBox(height: 16),
+        _DeliverySectionCard(
+          selectedType: _deliveryType,
+          controller: _deliveryFieldController,
+          onTypeChanged: (nextType) {
+            setState(() {
+              _deliveryType = nextType;
+              _deliveryFieldController.clear();
+            });
+          },
+        ),
+        const SizedBox(height: 12),
+        _CouponSectionCard(
+          controller: _couponController,
+          feedback: _couponFeedback,
+          appliedCouponCode: _appliedCouponCode,
+          onApply: () => _applyCoupon(cart.totalCents),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryBar(
+    BuildContext context, {
+    required String totalItemsLabel,
+    required int subtotalCents,
+    required int freightCents,
+    required int totalCents,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return SafeArea(
+      minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: Card(
+        elevation: 0,
+        color: colorScheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(color: colorScheme.outlineVariant),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Resumo da venda',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _CartMetric(
+                      label: 'Itens',
+                      value: totalItemsLabel,
+                      icon: Icons.shopping_bag_outlined,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _CartMetric(
+                      label: 'Total final',
+                      value: AppFormatters.currencyFromCents(totalCents),
+                      icon: Icons.payments_outlined,
+                      emphasize: true,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              _SummaryLine(
+                label: 'Subtotal',
+                value: AppFormatters.currencyFromCents(subtotalCents),
+              ),
+              const SizedBox(height: 8),
+              _SummaryLine(
+                label: _deliveryType.summaryLabel,
+                value: freightCents == 0
+                    ? 'Grátis'
+                    : AppFormatters.currencyFromCents(freightCents),
+              ),
+              if (_discountCents > 0) ...[
+                const SizedBox(height: 8),
+                _SummaryLine(
+                  label: 'Desconto',
+                  value: '- ${AppFormatters.currencyFromCents(_discountCents)}',
+                  emphasize: true,
+                ),
+              ],
+              const SizedBox(height: 12),
+              Divider(color: colorScheme.outlineVariant),
+              const SizedBox(height: 12),
+              _SummaryLine(
+                label: 'Total a pagar',
+                value: AppFormatters.currencyFromCents(totalCents),
+                emphasize: true,
+                largeValue: true,
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => context.pushNamed(AppRouteNames.checkout),
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                  label: const Text('Finalizar pedido'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _summarySupportText(),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _applyCoupon(int subtotalCents) async {
+    final code = _couponController.text.trim().toUpperCase();
+    setState(() {
+      if (code.isEmpty) {
+        _appliedCouponCode = null;
+        _discountCents = 0;
+        _couponFeedback = 'Digite um cupom para testar o desconto visual.';
+        return;
+      }
+
+      if (code == 'TATU5') {
+        _appliedCouponCode = code;
+        _discountCents = subtotalCents >= 500 ? 500 : subtotalCents;
+        _couponFeedback =
+            'Cupom aplicado localmente para visualização. O checkout segue sem integração automática.';
+        return;
+      }
+
+      _appliedCouponCode = null;
+      _discountCents = 0;
+      _couponFeedback =
+          'Cupom não reconhecido nesta etapa. O campo ainda é apenas visual.';
+    });
+  }
+
+  String _summarySupportText() {
+    final contextualValue = _deliveryFieldController.text.trim();
+    return switch (_deliveryType) {
+      _CartDeliveryType.delivery when contextualValue.isNotEmpty =>
+        'Entrega configurada para o CEP $contextualValue. O pedido operacional continua disponível no menu do carrinho.',
+      _CartDeliveryType.delivery =>
+        'Selecione o CEP se quiser registrar a referência visual da entrega. O pedido operacional continua disponível no menu do carrinho.',
+      _CartDeliveryType.table when contextualValue.isNotEmpty =>
+        'Mesa $contextualValue informada para apoiar a operação. O pedido operacional continua disponível no menu do carrinho.',
+      _CartDeliveryType.table =>
+        'Informe a mesa para organizar o atendimento visualmente. O pedido operacional continua disponível no menu do carrinho.',
+      _CartDeliveryType.pickup =>
+        'Retirada selecionada. O pedido operacional continua disponível no menu do carrinho.',
+    };
+  }
+
+  Future<void> _editItemNotes(BuildContext context, CartItem item) async {
     final controller = TextEditingController(text: item.notes ?? '');
     final saved = await showDialog<bool>(
       context: context,
@@ -237,7 +375,7 @@ class CartPage extends ConsumerWidget {
     }
   }
 
-  Future<void> _clearCart(BuildContext context, WidgetRef ref) async {
+  Future<void> _clearCart(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -265,7 +403,6 @@ class CartPage extends ConsumerWidget {
 
   Future<void> _createOperationalOrder(
     BuildContext context,
-    WidgetRef ref,
     CartState cart,
   ) async {
     try {
@@ -335,6 +472,40 @@ class CartPage extends ConsumerWidget {
 
 enum _CartMenuAction { operationalOrder, clear }
 
+enum _CartDeliveryType { delivery, pickup, table }
+
+extension on _CartDeliveryType {
+  String get label => switch (this) {
+    _CartDeliveryType.delivery => 'Delivery / envio',
+    _CartDeliveryType.pickup => 'Retirada',
+    _CartDeliveryType.table => 'Mesa',
+  };
+
+  String get summaryLabel => switch (this) {
+    _CartDeliveryType.delivery => 'Frete',
+    _CartDeliveryType.pickup => 'Retirada',
+    _CartDeliveryType.table => 'Atendimento em mesa',
+  };
+
+  String? get fieldLabel => switch (this) {
+    _CartDeliveryType.delivery => 'CEP',
+    _CartDeliveryType.table => 'Número da mesa',
+    _CartDeliveryType.pickup => null,
+  };
+
+  String? get hintText => switch (this) {
+    _CartDeliveryType.delivery => 'Ex.: 01310-100',
+    _CartDeliveryType.table => 'Ex.: 12',
+    _CartDeliveryType.pickup => null,
+  };
+
+  IconData get icon => switch (this) {
+    _CartDeliveryType.delivery => Icons.local_shipping_outlined,
+    _CartDeliveryType.pickup => Icons.store_mall_directory_outlined,
+    _CartDeliveryType.table => Icons.table_restaurant_outlined,
+  };
+}
+
 class _CartItemCard extends StatelessWidget {
   const _CartItemCard({
     required this.item,
@@ -373,29 +544,8 @@ class _CartItemCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (item.primaryPhotoPath?.trim().isNotEmpty ?? false) ...[
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: SizedBox(
-                      width: 72,
-                      height: 72,
-                      child: Image.file(
-                        File(item.primaryPhotoPath!),
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerLow,
-                          ),
-                          child: Icon(
-                            Icons.image_not_supported_outlined,
-                            color: colorScheme.primary,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                ],
+                _CartThumbnail(path: item.primaryPhotoPath),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -572,6 +722,212 @@ class _CartItemCard extends StatelessWidget {
                 ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CartThumbnail extends StatelessWidget {
+  const _CartThumbnail({required this.path});
+
+  final String? path;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasPath = path?.trim().isNotEmpty ?? false;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: SizedBox(
+        width: 72,
+        height: 72,
+        child: hasPath
+            ? Image.file(
+                File(path!),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    _thumbnailPlaceholder(colorScheme),
+              )
+            : _thumbnailPlaceholder(colorScheme),
+      ),
+    );
+  }
+
+  Widget _thumbnailPlaceholder(ColorScheme colorScheme) {
+    return DecoratedBox(
+      decoration: BoxDecoration(color: colorScheme.surfaceContainerLow),
+      child: Icon(Icons.inventory_2_outlined, color: colorScheme.primary),
+    );
+  }
+}
+
+class _DeliverySectionCard extends StatelessWidget {
+  const _DeliverySectionCard({
+    required this.selectedType,
+    required this.controller,
+    required this.onTypeChanged,
+  });
+
+  final _CartDeliveryType selectedType;
+  final TextEditingController controller;
+  final ValueChanged<_CartDeliveryType> onTypeChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Card(
+      elevation: 0,
+      color: colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: BorderSide(color: colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Tipo de entrega',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Escolha como este pedido será organizado antes do checkout.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _CartDeliveryType.values
+                  .map(
+                    (type) => ChoiceChip(
+                      selected: selectedType == type,
+                      avatar: Icon(type.icon, size: 18),
+                      label: Text(type.label),
+                      onSelected: (_) => onTypeChanged(type),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+            if (selectedType.fieldLabel != null) ...[
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                keyboardType: selectedType == _CartDeliveryType.table
+                    ? TextInputType.number
+                    : TextInputType.streetAddress,
+                decoration: InputDecoration(
+                  labelText: selectedType.fieldLabel,
+                  hintText: selectedType.hintText,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CouponSectionCard extends StatelessWidget {
+  const _CouponSectionCard({
+    required this.controller,
+    required this.feedback,
+    required this.appliedCouponCode,
+    required this.onApply,
+  });
+
+  final TextEditingController controller;
+  final String? feedback;
+  final String? appliedCouponCode;
+  final VoidCallback onApply;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Card(
+      elevation: 0,
+      color: colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: BorderSide(color: colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Cupom',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (appliedCouponCode != null)
+                  Chip(
+                    label: Text(
+                      appliedCouponCode!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Use um código para simular desconto visual sem mudar o fluxo atual de venda.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(
+                      labelText: 'Código do cupom',
+                      hintText: 'Ex.: TATU5',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                FilledButton.tonal(
+                  onPressed: onApply,
+                  child: const Text('Aplicar'),
+                ),
+              ],
+            ),
+            if (feedback != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                feedback!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  height: 1.35,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -806,6 +1162,53 @@ class _CartMetric extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SummaryLine extends StatelessWidget {
+  const _SummaryLine({
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+    this.largeValue = false,
+  });
+
+  final String label;
+  final String value;
+  final bool emphasize;
+  final bool largeValue;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: emphasize ? colorScheme.primary : colorScheme.onSurface,
+              fontWeight: emphasize ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          value,
+          textAlign: TextAlign.right,
+          style:
+              (largeValue
+                      ? theme.textTheme.titleLarge
+                      : theme.textTheme.titleSmall)
+                  ?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: emphasize ? colorScheme.primary : null,
+                  ),
+        ),
+      ],
     );
   }
 }
