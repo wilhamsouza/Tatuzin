@@ -39,8 +39,8 @@ class ProductsPage extends ConsumerWidget {
             child: AppPageHeader(
               title: 'Produtos',
               subtitle:
-                  'Gerencie o catalogo com SKUs vendaveis, base de produto, variacoes e modificadores locais.',
-              badgeLabel: 'Catalogo',
+                  'Gerencie o catálogo com SKUs vendáveis, base de produto, variações, nichos e modificadores locais.',
+              badgeLabel: 'Catálogo',
               badgeIcon: Icons.inventory_2_rounded,
             ),
           ),
@@ -48,7 +48,7 @@ class ProductsPage extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
             child: AppInput(
               prefixIcon: const Icon(Icons.search),
-              hintText: 'Buscar por nome, base, variacao, atributo ou codigo',
+              hintText: 'Buscar por nome, base, variação, atributo ou código',
               onChanged: (value) {
                 ref.read(productSearchQueryProvider.notifier).state = value;
               },
@@ -221,7 +221,7 @@ class _ProductTile extends ConsumerWidget {
               runSpacing: 10,
               children: [
                 _ProductMetric(
-                  label: 'Preco de venda',
+                  label: 'Preço de venda',
                   value: AppFormatters.currencyFromCents(
                     product.salePriceCents,
                   ),
@@ -232,15 +232,21 @@ class _ProductTile extends ConsumerWidget {
                       '${AppFormatters.quantityFromMil(product.stockMil)} ${product.unitMeasure}',
                 ),
                 AppStatusBadge(
-                  label: product.isVariantCatalog ? 'Com variacao' : 'Simples',
+                  label: product.isVariantCatalog ? 'Com variação' : 'Simples',
                   tone: product.isVariantCatalog
                       ? AppStatusTone.info
                       : AppStatusTone.neutral,
                 ),
+                AppStatusBadge(
+                  label: product.isFoodNiche ? 'Alimentação' : 'Moda',
+                  tone: product.isFoodNiche
+                      ? AppStatusTone.warning
+                      : AppStatusTone.info,
+                ),
                 if (product.modifierGroupCount > 0)
                   AppStatusBadge(
                     label:
-                        '${product.modifierGroupCount} grupos / ${product.modifierOptionCount} opcoes',
+                        '${product.modifierGroupCount} grupos / ${product.modifierOptionCount} opções',
                     tone: AppStatusTone.info,
                   ),
                 AppStatusBadge(
@@ -297,7 +303,7 @@ class _ProductTile extends ConsumerWidget {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Nao foi possivel excluir o produto: $error')),
+        SnackBar(content: Text('Não foi possível excluir o produto: $error')),
       );
     }
   }

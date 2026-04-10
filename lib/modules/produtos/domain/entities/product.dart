@@ -11,6 +11,17 @@ abstract final class ProductCatalogTypes {
   }
 }
 
+abstract final class ProductNiches {
+  static const food = 'alimentacao';
+  static const fashion = 'moda';
+
+  static const values = <String>[food, fashion];
+
+  static String normalize(String? value) {
+    return value == fashion ? fashion : food;
+  }
+}
+
 class Product {
   const Product({
     required this.id,
@@ -21,6 +32,7 @@ class Product {
     required this.categoryName,
     required this.barcode,
     required this.productType,
+    required this.niche,
     required this.catalogType,
     required this.modelName,
     required this.variantLabel,
@@ -49,6 +61,7 @@ class Product {
   final String? categoryName;
   final String? barcode;
   final String productType;
+  final String niche;
   final String catalogType;
   final String? modelName;
   final String? variantLabel;
@@ -72,6 +85,11 @@ class Product {
 
   bool get isVariantCatalog =>
       ProductCatalogTypes.normalize(catalogType) == ProductCatalogTypes.variant;
+
+  bool get isFoodNiche => ProductNiches.normalize(niche) == ProductNiches.food;
+
+  bool get isFashionNiche =>
+      ProductNiches.normalize(niche) == ProductNiches.fashion;
 
   int get modifierGroupCount => modifierGroups.length;
 
@@ -103,7 +121,7 @@ class Product {
         resolvedVariant.isEmpty) {
       return null;
     }
-    return 'Variacao $resolvedVariant';
+    return 'Variação $resolvedVariant';
   }
 
   String? get variantAttributesSummary {
@@ -115,7 +133,8 @@ class Product {
           (attribute) =>
               attribute.key != 'legacy_variant_label' &&
               attribute.key != 'model' &&
-              attribute.key != 'variant',
+              attribute.key != 'variant' &&
+              !_isReservedNicheAttribute(attribute.key),
         )
         .map((attribute) => '${attribute.key}: ${attribute.value}')
         .toList(growable: false);
@@ -123,6 +142,10 @@ class Product {
       return null;
     }
     return labels.join(' - ');
+  }
+
+  bool _isReservedNicheAttribute(String key) {
+    return key.startsWith('food_') || key.startsWith('fashion_');
   }
 }
 
@@ -132,6 +155,7 @@ class ProductInput {
     this.description,
     this.categoryId,
     this.barcode,
+    this.niche = ProductNiches.food,
     this.catalogType = ProductCatalogTypes.simple,
     this.modelName,
     this.variantLabel,
@@ -149,6 +173,7 @@ class ProductInput {
   final String? description;
   final int? categoryId;
   final String? barcode;
+  final String niche;
   final String catalogType;
   final String? modelName;
   final String? variantLabel;
