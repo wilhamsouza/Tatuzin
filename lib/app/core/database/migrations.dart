@@ -29,6 +29,7 @@ abstract final class AppMigrations {
     const MigrationStep(version: 13, up: _createVersion13Schema),
     const MigrationStep(version: 14, up: _createVersion14Schema),
     const MigrationStep(version: 15, up: _createVersion15Schema),
+    const MigrationStep(version: 16, up: _createVersion16Schema),
   ];
 
   static Future<void> runCreate(DatabaseExecutor db, int version) async {
@@ -2425,6 +2426,24 @@ abstract final class AppMigrations {
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_vendas_pedidos_operacionais_venda
       ON ${TableNames.vendasPedidosOperacionais}(venda_id)
+    ''');
+  }
+
+  static Future<void> _createVersion16Schema(DatabaseExecutor db) async {
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.produtos,
+      columnName: 'nicho',
+      columnDefinition:
+          "TEXT NOT NULL DEFAULT 'alimentacao' CHECK (nicho IN ('alimentacao', 'moda'))",
+    );
+
+    await db.execute('''
+      UPDATE ${TableNames.produtos}
+      SET nicho = 'alimentacao'
+      WHERE nicho IS NULL
+         OR TRIM(nicho) = ''
+         OR nicho NOT IN ('alimentacao', 'moda')
     ''');
   }
 }

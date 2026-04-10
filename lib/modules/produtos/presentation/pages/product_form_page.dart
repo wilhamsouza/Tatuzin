@@ -32,16 +32,27 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   late final TextEditingController _costController;
   late final TextEditingController _priceController;
   late final TextEditingController _stockController;
+  late final TextEditingController _foodAllergensController;
+  late final TextEditingController _foodPrepTimeController;
+  late final TextEditingController _foodOperationalAvailabilityController;
+  late final TextEditingController _fashionCompositionController;
+  late final TextEditingController _fashionWeightController;
+  late final TextEditingController _fashionBrandController;
+  late final TextEditingController _fashionTagsController;
+  late final TextEditingController _fashionSizeHintController;
   late bool _isActive;
   int? _selectedCategoryId;
   int? _selectedBaseProductId;
   late String _selectedUnitMeasure;
+  late String _selectedNiche;
   late String _selectedCatalogType;
   bool _isSaving = false;
 
   bool get _isEditing => widget.initialProduct != null;
   bool get _isVariantCatalog =>
       _selectedCatalogType == ProductCatalogTypes.variant;
+  bool get _isFoodNiche => _selectedNiche == ProductNiches.food;
+  bool get _isFashionNiche => _selectedNiche == ProductNiches.fashion;
 
   @override
   void initState() {
@@ -84,10 +95,42 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     _stockController = TextEditingController(
       text: AppFormatters.quantityFromMil(product?.stockMil ?? 0),
     );
+    _foodAllergensController = TextEditingController(
+      text: _findVariantAttributeValue(product, 'food_allergens') ?? '',
+    );
+    _foodPrepTimeController = TextEditingController(
+      text: _findVariantAttributeValue(product, 'food_prep_time_minutes') ?? '',
+    );
+    _foodOperationalAvailabilityController = TextEditingController(
+      text:
+          _findVariantAttributeValue(
+            product,
+            'food_operational_availability',
+          ) ??
+          '',
+    );
+    _fashionCompositionController = TextEditingController(
+      text: _findVariantAttributeValue(product, 'fashion_composition') ?? '',
+    );
+    _fashionWeightController = TextEditingController(
+      text: _findVariantAttributeValue(product, 'fashion_weight_grams') ?? '',
+    );
+    _fashionBrandController = TextEditingController(
+      text: _findVariantAttributeValue(product, 'fashion_brand') ?? '',
+    );
+    _fashionTagsController = TextEditingController(
+      text: _buildDelimitedAttributeList(
+        _findVariantAttributeValue(product, 'fashion_tags'),
+      ),
+    );
+    _fashionSizeHintController = TextEditingController(
+      text: _findVariantAttributeValue(product, 'fashion_size_grid_hint') ?? '',
+    );
     _isActive = product?.isActive ?? true;
     _selectedCategoryId = product?.categoryId;
     _selectedBaseProductId = product?.baseProductId;
     _selectedUnitMeasure = product?.unitMeasure ?? 'un';
+    _selectedNiche = ProductNiches.normalize(product?.niche);
   }
 
   @override
@@ -102,6 +145,14 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     _costController.dispose();
     _priceController.dispose();
     _stockController.dispose();
+    _foodAllergensController.dispose();
+    _foodPrepTimeController.dispose();
+    _foodOperationalAvailabilityController.dispose();
+    _fashionCompositionController.dispose();
+    _fashionWeightController.dispose();
+    _fashionBrandController.dispose();
+    _fashionTagsController.dispose();
+    _fashionSizeHintController.dispose();
     super.dispose();
   }
 
@@ -210,12 +261,16 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
         _SectionCard(
-          title: 'Tipo do cadastro',
-          subtitle: _isVariantCatalog
-              ? 'Use modelo e variação para organizar produtos relacionados mantendo o fluxo atual.'
-              : 'Use cadastro simples para itens vendidos individualmente.',
+          title: 'Nicho e tipo do cadastro',
+          subtitle:
+              'Defina o nicho do produto para liberar campos mais adequados sem quebrar a estrutura atual.',
           child: Column(
             children: [
+              _ProductNicheSelector(
+                selectedValue: _selectedNiche,
+                onChanged: (value) => setState(() => _selectedNiche = value),
+              ),
+              const SizedBox(height: 16),
               _CatalogTypeSelector(
                 selectedValue: _selectedCatalogType,
                 onChanged: _changeCatalogType,
@@ -232,6 +287,18 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
               ),
             ],
           ),
+        ),
+        const SizedBox(height: 16),
+        _SectionCard(
+          title: _isFoodNiche
+              ? 'Configurações de alimentação'
+              : 'Configurações de moda',
+          subtitle: _isFoodNiche
+              ? 'Use atributos enxutos para alérgenos, preparo e disponibilidade operacional.'
+              : 'Use atributos enxutos para marca, composição, peso e preparação de grade.',
+          child: _isFoodNiche
+              ? _buildFoodFields(context)
+              : _buildFashionFields(context),
         ),
         const SizedBox(height: 16),
         _SectionCard(
@@ -315,18 +382,20 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                   minLines: 3,
                   maxLines: 6,
                 ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _modifierGroupsController,
-                  decoration: const InputDecoration(
-                    labelText: 'Modificadores',
-                    hintText:
-                        'Uma linha por grupo: Tamanho: P, M, G, +Extra:300',
-                    helperText: 'Opcional. Mantém o formato técnico atual.',
+                if (!_isFoodNiche) ...[
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _modifierGroupsController,
+                    decoration: const InputDecoration(
+                      labelText: 'Modificadores',
+                      hintText:
+                          'Uma linha por grupo: Tamanho: P, M, G, +Extra:300',
+                      helperText: 'Opcional. Mantém o formato técnico atual.',
+                    ),
+                    minLines: 3,
+                    maxLines: 6,
                   ),
-                  minLines: 3,
-                  maxLines: 6,
-                ),
+                ],
               ] else ...[
                 TextFormField(
                   controller: _nameController,
@@ -549,6 +618,165 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     );
   }
 
+  Widget _buildFoodFields(BuildContext context) {
+    return Column(
+      children: [
+        TextFormField(
+          controller: _foodAllergensController,
+          decoration: const InputDecoration(
+            labelText: 'Alérgenos',
+            hintText: 'Ex.: leite, glúten, castanhas',
+            helperText:
+                'Separe por vírgulas para reabrir e editar com facilidade.',
+          ),
+          textCapitalization: TextCapitalization.sentences,
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _foodPrepTimeController,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Tempo de preparo (minutos)',
+            hintText: 'Ex.: 15',
+            helperText: 'Opcional. Use apenas números.',
+          ),
+          validator: (value) {
+            final trimmed = (value ?? '').trim();
+            if (trimmed.isEmpty) {
+              return null;
+            }
+            final minutes = int.tryParse(trimmed);
+            if (minutes == null || minutes < 0) {
+              return 'Informe um tempo de preparo válido';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _foodOperationalAvailabilityController,
+          decoration: const InputDecoration(
+            labelText: 'Disponibilidade operacional',
+            hintText: 'Ex.: almoço, jantar, fim de semana',
+            helperText: 'Texto livre para orientar operação e atendimento.',
+          ),
+          textCapitalization: TextCapitalization.sentences,
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _modifierGroupsController,
+          decoration: const InputDecoration(
+            labelText: 'Grupos de complementos',
+            hintText: 'Uma linha por grupo: Extras: Bacon, Queijo, +Molho:200',
+            helperText:
+                'Reaproveita modifierGroups para adicionais e remoções do item.',
+          ),
+          minLines: 3,
+          maxLines: 6,
+        ),
+        const SizedBox(height: 16),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
+          ),
+          child: const Text(
+            'Os grupos de complementos continuam usando os modificadores já existentes, preservando compatibilidade com o fluxo atual.',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFashionFields(BuildContext context) {
+    return Column(
+      children: [
+        TextFormField(
+          controller: _fashionBrandController,
+          decoration: const InputDecoration(
+            labelText: 'Marca',
+            hintText: 'Ex.: Tatuzin Studio',
+          ),
+          textCapitalization: TextCapitalization.words,
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _fashionCompositionController,
+          decoration: const InputDecoration(
+            labelText: 'Composição',
+            hintText: 'Ex.: 100% algodão',
+          ),
+          textCapitalization: TextCapitalization.sentences,
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: _fashionWeightController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Peso em gramas',
+                  hintText: 'Ex.: 220',
+                ),
+                validator: (value) {
+                  final trimmed = (value ?? '').trim();
+                  if (trimmed.isEmpty) {
+                    return null;
+                  }
+                  final grams = int.tryParse(trimmed);
+                  if (grams == null || grams < 0) {
+                    return 'Informe um peso válido';
+                  }
+                  return null;
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextFormField(
+                controller: _fashionTagsController,
+                decoration: const InputDecoration(
+                  labelText: 'Tags',
+                  hintText: 'Ex.: casual, verão, premium',
+                ),
+                textCapitalization: TextCapitalization.words,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _fashionSizeHintController,
+          decoration: const InputDecoration(
+            labelText: 'Preparação para grade',
+            hintText: 'Ex.: grade PP ao GG, coleção cápsula',
+            helperText:
+                'Campo preparatório para futura expansão da grade/variação.',
+          ),
+          textCapitalization: TextCapitalization.sentences,
+        ),
+        if (!_isVariantCatalog) ...[
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+            ),
+            child: const Text(
+              'Se quiser trabalhar com grade de tamanhos ou cores, você pode migrar este cadastro para "Com variação" sem perder a compatibilidade do modelo atual.',
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildPhotosTab(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -700,7 +928,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         modelName: modelName,
         variantLabel: variantLabel,
       );
-      final modifierGroups = _isVariantCatalog
+      final modifierGroups = (_isVariantCatalog || _isFoodNiche)
           ? _parseModifierGroups(_modifierGroupsController.text)
           : null;
       final resolvedName = _isVariantCatalog
@@ -711,6 +939,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         description: _descriptionController.text,
         categoryId: _selectedCategoryId,
         barcode: _barcodeController.text,
+        niche: _selectedNiche,
         catalogType: _selectedCatalogType,
         modelName: _isVariantCatalog ? modelName : null,
         variantLabel: _isVariantCatalog ? variantLabel : null,
@@ -762,7 +991,8 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
           (attribute) =>
               attribute.key != 'legacy_variant_label' &&
               attribute.key != 'model' &&
-              attribute.key != 'variant',
+              attribute.key != 'variant' &&
+              !_isReservedNicheAttribute(attribute.key),
         )
         .map((attribute) => '${attribute.key}=${attribute.value}')
         .toList(growable: false);
@@ -782,15 +1012,12 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     required String? modelName,
     required String? variantLabel,
   }) {
-    if (!_isVariantCatalog) {
-      return const <ProductVariantAttributeInput>[];
-    }
-
     final attributes = <ProductVariantAttributeInput>[
-      if (modelName != null)
+      if (_isVariantCatalog && modelName != null)
         ProductVariantAttributeInput(key: 'model', value: modelName),
-      if (variantLabel != null)
+      if (_isVariantCatalog && variantLabel != null)
         ProductVariantAttributeInput(key: 'variant', value: variantLabel),
+      ..._buildNicheAttributes(),
     ];
 
     final lines = _extraAttributesController.text.split('\n');
@@ -814,8 +1041,44 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     return attributes;
   }
 
+  List<ProductVariantAttributeInput> _buildNicheAttributes() {
+    final attributes = <ProductVariantAttributeInput>[];
+
+    void addAttribute(String key, String? value) {
+      final normalizedValue = _cleanNullable(value);
+      if (normalizedValue == null) {
+        return;
+      }
+      attributes.add(
+        ProductVariantAttributeInput(key: key, value: normalizedValue),
+      );
+    }
+
+    if (_isFoodNiche) {
+      addAttribute('food_allergens', _foodAllergensController.text);
+      addAttribute('food_prep_time_minutes', _foodPrepTimeController.text);
+      addAttribute(
+        'food_operational_availability',
+        _foodOperationalAvailabilityController.text,
+      );
+    }
+
+    if (_isFashionNiche) {
+      addAttribute('fashion_brand', _fashionBrandController.text);
+      addAttribute('fashion_composition', _fashionCompositionController.text);
+      addAttribute('fashion_weight_grams', _fashionWeightController.text);
+      addAttribute(
+        'fashion_tags',
+        _normalizeCommaSeparatedValues(_fashionTagsController.text),
+      );
+      addAttribute('fashion_size_grid_hint', _fashionSizeHintController.text);
+    }
+
+    return attributes;
+  }
+
   List<ProductModifierGroupInput>? _parseModifierGroups(String raw) {
-    if (!_isVariantCatalog) {
+    if (!_isVariantCatalog && !_isFoodNiche) {
       return null;
     }
 
@@ -895,6 +1158,41 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       return model;
     }
     return widget.initialProduct?.name ?? '';
+  }
+
+  String? _findVariantAttributeValue(Product? product, String key) {
+    if (product == null) {
+      return null;
+    }
+
+    for (final attribute in product.variantAttributes) {
+      if (attribute.key == key) {
+        return attribute.value;
+      }
+    }
+
+    return null;
+  }
+
+  String _buildDelimitedAttributeList(String? value) {
+    final normalized = _normalizeCommaSeparatedValues(value);
+    return normalized?.replaceAll('|', ', ') ?? '';
+  }
+
+  String? _normalizeCommaSeparatedValues(String? raw) {
+    final tokens = (raw ?? '')
+        .split(',')
+        .map((token) => token.trim())
+        .where((token) => token.isNotEmpty)
+        .toList(growable: false);
+    if (tokens.isEmpty) {
+      return null;
+    }
+    return tokens.join('|');
+  }
+
+  bool _isReservedNicheAttribute(String key) {
+    return key.startsWith('food_') || key.startsWith('fashion_');
   }
 
   String? _cleanNullable(String? value) {
@@ -1016,6 +1314,43 @@ class _NamePreviewCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ProductNicheSelector extends StatelessWidget {
+  const _ProductNicheSelector({
+    required this.selectedValue,
+    required this.onChanged,
+  });
+
+  final String selectedValue;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _CatalogTypeOption(
+            title: 'Alimentação',
+            subtitle: 'Lanches, pratos, bebidas e complementos',
+            icon: Icons.restaurant_menu_rounded,
+            selected: selectedValue == ProductNiches.food,
+            onTap: () => onChanged(ProductNiches.food),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _CatalogTypeOption(
+            title: 'Moda',
+            subtitle: 'Peças, coleções, grade e atributos têxteis',
+            icon: Icons.checkroom_rounded,
+            selected: selectedValue == ProductNiches.fashion,
+            onTap: () => onChanged(ProductNiches.fashion),
+          ),
+        ),
+      ],
     );
   }
 }

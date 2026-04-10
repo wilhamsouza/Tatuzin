@@ -9,6 +9,7 @@ class RemoteProductRecord {
     required this.description,
     required this.barcode,
     required this.productType,
+    required this.niche,
     required this.catalogType,
     required this.modelName,
     required this.variantLabel,
@@ -34,6 +35,7 @@ class RemoteProductRecord {
       description: json['description'] as String?,
       barcode: json['barcode'] as String?,
       productType: (json['productType'] as String?) ?? 'unidade',
+      niche: ProductNiches.normalize(json['niche'] as String?),
       catalogType: ProductCatalogTypes.normalize(
         json['catalogType'] as String?,
       ),
@@ -64,6 +66,7 @@ class RemoteProductRecord {
       description: product.description,
       barcode: product.barcode,
       productType: product.productType,
+      niche: product.niche,
       catalogType: product.catalogType,
       modelName: product.modelName,
       variantLabel: product.variantLabel,
@@ -85,6 +88,7 @@ class RemoteProductRecord {
   final String? description;
   final String? barcode;
   final String productType;
+  final String niche;
   final String catalogType;
   final String? modelName;
   final String? variantLabel;
@@ -118,6 +122,7 @@ class RemoteProductRecord {
       'description': description,
       'barcode': barcode,
       'productType': productType,
+      'niche': niche,
       'catalogType': catalogType,
       'modelName': modelName,
       'variantLabel': variantLabel,

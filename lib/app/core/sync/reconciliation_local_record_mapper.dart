@@ -144,6 +144,7 @@ class ReconciliationLocalRecordMapper {
         'description': row['descricao'] as String?,
         'barcode': row['codigo_barras'] as String?,
         'productType': row['tipo_produto'] as String? ?? 'unidade',
+        'niche': row['nicho'] as String? ?? 'alimentacao',
         'catalogType': (row['catalog_type'] as String?) ?? 'simple',
         'modelName': row['model_name'] as String?,
         'variantLabel': row['variant_label'] as String?,

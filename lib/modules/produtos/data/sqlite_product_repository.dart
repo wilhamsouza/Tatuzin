@@ -50,6 +50,7 @@ class SqliteProductRepository implements ProductRepository {
         'foto_path': null,
         'codigo_barras': _cleanNullable(input.barcode),
         'tipo_produto': 'unidade',
+        'nicho': _normalizeNiche(input.niche),
         'catalog_type': _normalizeCatalogType(input.catalogType),
         'model_name': _cleanNullable(input.modelName),
         'variant_label': _cleanNullable(input.variantLabel),
@@ -197,6 +198,7 @@ class SqliteProductRepository implements ProductRepository {
           'descricao': _cleanNullable(input.description),
           'categoria_id': input.categoryId,
           'codigo_barras': _cleanNullable(input.barcode),
+          'nicho': _normalizeNiche(input.niche),
           'catalog_type': _normalizeCatalogType(input.catalogType),
           'model_name': _cleanNullable(input.modelName),
           'variant_label': _cleanNullable(input.variantLabel),
@@ -364,6 +366,7 @@ class SqliteProductRepository implements ProductRepository {
             'categoria_id': mappedCategoryId,
             'codigo_barras': remote.barcode,
             'tipo_produto': remote.productType,
+            'nicho': _normalizeNiche(remote.niche),
             'catalog_type': remote.catalogType,
             'model_name': remote.modelName,
             'variant_label': remote.variantLabel,
@@ -389,6 +392,7 @@ class SqliteProductRepository implements ProductRepository {
           'foto_path': null,
           'codigo_barras': remote.barcode,
           'tipo_produto': remote.productType,
+          'nicho': _normalizeNiche(remote.niche),
           'catalog_type': remote.catalogType,
           'model_name': remote.modelName,
           'variant_label': remote.variantLabel,
@@ -446,6 +450,7 @@ class SqliteProductRepository implements ProductRepository {
           'categoria_id': mappedCategoryId,
           'codigo_barras': remote.barcode,
           'tipo_produto': remote.productType,
+          'nicho': _normalizeNiche(remote.niche),
           'catalog_type': remote.catalogType,
           'model_name': remote.modelName,
           'variant_label': remote.variantLabel,
@@ -941,6 +946,7 @@ class SqliteProductRepository implements ProductRepository {
       categoryName: row['categoria_nome'] as String?,
       barcode: row['codigo_barras'] as String?,
       productType: row['tipo_produto'] as String,
+      niche: _normalizeNiche(row['nicho'] as String?),
       catalogType:
           (row['catalog_type'] as String?) ?? ProductCatalogTypes.simple,
       modelName: row['model_name'] as String?,
@@ -1040,5 +1046,9 @@ class SqliteProductRepository implements ProductRepository {
 
   String _normalizeCatalogType(String? value) {
     return ProductCatalogTypes.normalize(value);
+  }
+
+  String _normalizeNiche(String? value) {
+    return ProductNiches.normalize(value);
   }
 }
