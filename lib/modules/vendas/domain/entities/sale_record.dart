@@ -7,6 +7,7 @@ class SaleRecord {
     required this.receiptNumber,
     required this.saleType,
     required this.paymentMethod,
+    required this.operationalOrderId,
     required this.status,
     required this.totalCents,
     required this.finalCents,
@@ -28,6 +29,7 @@ class SaleRecord {
   final String receiptNumber;
   final SaleType saleType;
   final PaymentMethod paymentMethod;
+  final int? operationalOrderId;
   final SaleStatus status;
   final int totalCents;
   final int finalCents;

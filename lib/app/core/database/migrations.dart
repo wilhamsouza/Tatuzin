@@ -27,6 +27,8 @@ abstract final class AppMigrations {
     const MigrationStep(version: 11, up: _createVersion11Schema),
     const MigrationStep(version: 12, up: _createVersion12Schema),
     const MigrationStep(version: 13, up: _createVersion13Schema),
+    const MigrationStep(version: 14, up: _createVersion14Schema),
+    const MigrationStep(version: 15, up: _createVersion15Schema),
   ];
 
   static Future<void> runCreate(DatabaseExecutor db, int version) async {
@@ -1989,6 +1991,440 @@ abstract final class AppMigrations {
         cp.cancelado_em
       FROM ${TableNames.contasPagar} cp
       WHERE cp.tipo_origem = 'manual'
+    ''');
+  }
+
+  static Future<void> _createVersion14Schema(DatabaseExecutor db) async {
+    final nowIso = DateTime.now().toIso8601String();
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.produtosBase} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        nome TEXT NOT NULL,
+        descricao TEXT,
+        categoria_id INTEGER,
+        ativo INTEGER NOT NULL DEFAULT 1,
+        criado_em TEXT NOT NULL,
+        atualizado_em TEXT NOT NULL,
+        FOREIGN KEY (categoria_id) REFERENCES ${TableNames.categorias}(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.produtosBaseVariantes} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        produto_base_id INTEGER NOT NULL,
+        produto_id INTEGER NOT NULL UNIQUE,
+        criado_em TEXT NOT NULL,
+        atualizado_em TEXT NOT NULL,
+        FOREIGN KEY (produto_base_id) REFERENCES ${TableNames.produtosBase}(id) ON DELETE CASCADE,
+        FOREIGN KEY (produto_id) REFERENCES ${TableNames.produtos}(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.produtoVarianteAtributos} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        produto_id INTEGER NOT NULL,
+        chave TEXT NOT NULL,
+        valor TEXT NOT NULL,
+        criado_em TEXT NOT NULL,
+        atualizado_em TEXT NOT NULL,
+        FOREIGN KEY (produto_id) REFERENCES ${TableNames.produtos}(id) ON DELETE CASCADE,
+        UNIQUE (produto_id, chave)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.gruposModificadores} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        produto_base_id INTEGER NOT NULL,
+        nome TEXT NOT NULL,
+        obrigatorio INTEGER NOT NULL DEFAULT 0,
+        min_selecoes INTEGER NOT NULL DEFAULT 0,
+        max_selecoes INTEGER,
+        ativo INTEGER NOT NULL DEFAULT 1,
+        criado_em TEXT NOT NULL,
+        atualizado_em TEXT NOT NULL,
+        FOREIGN KEY (produto_base_id) REFERENCES ${TableNames.produtosBase}(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.opcoesModificadores} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        grupo_modificador_id INTEGER NOT NULL,
+        nome TEXT NOT NULL,
+        tipo_ajuste TEXT NOT NULL CHECK (tipo_ajuste IN ('add', 'remove')),
+        preco_delta_centavos INTEGER NOT NULL DEFAULT 0,
+        linked_produto_id INTEGER,
+        ativo INTEGER NOT NULL DEFAULT 1,
+        ordem INTEGER NOT NULL DEFAULT 0,
+        criado_em TEXT NOT NULL,
+        atualizado_em TEXT NOT NULL,
+        FOREIGN KEY (grupo_modificador_id) REFERENCES ${TableNames.gruposModificadores}(id) ON DELETE CASCADE,
+        FOREIGN KEY (linked_produto_id) REFERENCES ${TableNames.produtos}(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.pedidosOperacionais} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL CHECK (
+          status IN ('draft', 'open', 'in_preparation', 'ready', 'delivered', 'canceled')
+        ),
+        observacao TEXT,
+        criado_em TEXT NOT NULL,
+        atualizado_em TEXT NOT NULL,
+        fechado_em TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.pedidosOperacionaisItens} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        pedido_operacional_id INTEGER NOT NULL,
+        produto_id INTEGER NOT NULL,
+        nome_produto_snapshot TEXT NOT NULL,
+        quantidade_mil INTEGER NOT NULL,
+        valor_unitario_centavos INTEGER NOT NULL DEFAULT 0,
+        subtotal_centavos INTEGER NOT NULL DEFAULT 0,
+        observacao TEXT,
+        criado_em TEXT NOT NULL,
+        atualizado_em TEXT NOT NULL,
+        FOREIGN KEY (pedido_operacional_id) REFERENCES ${TableNames.pedidosOperacionais}(id) ON DELETE CASCADE,
+        FOREIGN KEY (produto_id) REFERENCES ${TableNames.produtos}(id) ON DELETE RESTRICT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.pedidosOperacionaisItemModificadores} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        pedido_operacional_item_id INTEGER NOT NULL,
+        grupo_modificador_id INTEGER,
+        opcao_modificador_id INTEGER,
+        nome_grupo_snapshot TEXT,
+        nome_opcao_snapshot TEXT NOT NULL,
+        tipo_ajuste_snapshot TEXT NOT NULL CHECK (tipo_ajuste_snapshot IN ('add', 'remove')),
+        preco_delta_centavos INTEGER NOT NULL DEFAULT 0,
+        quantidade INTEGER NOT NULL DEFAULT 1,
+        criado_em TEXT NOT NULL,
+        atualizado_em TEXT NOT NULL,
+        FOREIGN KEY (pedido_operacional_item_id) REFERENCES ${TableNames.pedidosOperacionaisItens}(id) ON DELETE CASCADE,
+        FOREIGN KEY (grupo_modificador_id) REFERENCES ${TableNames.gruposModificadores}(id) ON DELETE SET NULL,
+        FOREIGN KEY (opcao_modificador_id) REFERENCES ${TableNames.opcoesModificadores}(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_produtos_base_nome
+      ON ${TableNames.produtosBase}(nome)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_produtos_base_variantes_base
+      ON ${TableNames.produtosBaseVariantes}(produto_base_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_produto_variante_atributos_produto
+      ON ${TableNames.produtoVarianteAtributos}(produto_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_grupos_modificadores_base
+      ON ${TableNames.gruposModificadores}(produto_base_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_opcoes_modificadores_grupo
+      ON ${TableNames.opcoesModificadores}(grupo_modificador_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_pedidos_operacionais_status
+      ON ${TableNames.pedidosOperacionais}(status, atualizado_em DESC)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_pedidos_operacionais_itens_pedido
+      ON ${TableNames.pedidosOperacionaisItens}(pedido_operacional_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_pedidos_item_modificadores_item
+      ON ${TableNames.pedidosOperacionaisItemModificadores}(pedido_operacional_item_id)
+    ''');
+
+    await db.execute('''
+      INSERT OR IGNORE INTO ${TableNames.produtosBase} (
+        uuid,
+        nome,
+        descricao,
+        categoria_id,
+        ativo,
+        criado_em,
+        atualizado_em
+      )
+      SELECT
+        'base:' || p.uuid,
+        COALESCE(NULLIF(TRIM(p.model_name), ''), p.nome),
+        p.descricao,
+        p.categoria_id,
+        COALESCE(p.ativo, 1),
+        COALESCE(p.criado_em, '$nowIso'),
+        COALESCE(p.atualizado_em, '$nowIso')
+      FROM ${TableNames.produtos} p
+    ''');
+
+    await db.execute('''
+      INSERT OR IGNORE INTO ${TableNames.produtosBaseVariantes} (
+        uuid,
+        produto_base_id,
+        produto_id,
+        criado_em,
+        atualizado_em
+      )
+      SELECT
+        'link:' || p.uuid,
+        b.id,
+        p.id,
+        COALESCE(p.criado_em, '$nowIso'),
+        COALESCE(p.atualizado_em, '$nowIso')
+      FROM ${TableNames.produtos} p
+      INNER JOIN ${TableNames.produtosBase} b
+        ON b.uuid = 'base:' || p.uuid
+    ''');
+
+    await db.execute('''
+      INSERT INTO ${TableNames.produtoVarianteAtributos} (
+        uuid,
+        produto_id,
+        chave,
+        valor,
+        criado_em,
+        atualizado_em
+      )
+      SELECT
+        'attr:legacy_variant_label:' || p.uuid,
+        p.id,
+        'legacy_variant_label',
+        TRIM(p.variant_label),
+        COALESCE(p.criado_em, '$nowIso'),
+        COALESCE(p.atualizado_em, '$nowIso')
+      FROM ${TableNames.produtos} p
+      WHERE TRIM(COALESCE(p.variant_label, '')) <> ''
+      ON CONFLICT(produto_id, chave) DO UPDATE SET
+        valor = excluded.valor,
+        atualizado_em = excluded.atualizado_em
+    ''');
+
+    await db.execute('''
+      DELETE FROM ${TableNames.produtoVarianteAtributos}
+      WHERE chave = 'legacy_variant_label'
+        AND produto_id IN (
+          SELECT id
+          FROM ${TableNames.produtos}
+          WHERE TRIM(COALESCE(variant_label, '')) = ''
+        )
+    ''');
+
+    await db.execute(
+      'DROP TRIGGER IF EXISTS trg_produtos_local_catalog_after_insert',
+    );
+    await db.execute('''
+      CREATE TRIGGER trg_produtos_local_catalog_after_insert
+      AFTER INSERT ON ${TableNames.produtos}
+      BEGIN
+        INSERT OR IGNORE INTO ${TableNames.produtosBase} (
+          uuid,
+          nome,
+          descricao,
+          categoria_id,
+          ativo,
+          criado_em,
+          atualizado_em
+        ) VALUES (
+          'base:' || NEW.uuid,
+          COALESCE(NULLIF(TRIM(NEW.model_name), ''), NEW.nome),
+          NEW.descricao,
+          NEW.categoria_id,
+          COALESCE(NEW.ativo, 1),
+          COALESCE(NEW.criado_em, NEW.atualizado_em, '$nowIso'),
+          COALESCE(NEW.atualizado_em, NEW.criado_em, '$nowIso')
+        );
+
+        INSERT OR IGNORE INTO ${TableNames.produtosBaseVariantes} (
+          uuid,
+          produto_base_id,
+          produto_id,
+          criado_em,
+          atualizado_em
+        )
+        SELECT
+          'link:' || NEW.uuid,
+          b.id,
+          NEW.id,
+          COALESCE(NEW.criado_em, NEW.atualizado_em, '$nowIso'),
+          COALESCE(NEW.atualizado_em, NEW.criado_em, '$nowIso')
+        FROM ${TableNames.produtosBase} b
+        WHERE b.uuid = 'base:' || NEW.uuid;
+
+        INSERT INTO ${TableNames.produtoVarianteAtributos} (
+          uuid,
+          produto_id,
+          chave,
+          valor,
+          criado_em,
+          atualizado_em
+        )
+        SELECT
+          'attr:legacy_variant_label:' || NEW.uuid,
+          NEW.id,
+          'legacy_variant_label',
+          TRIM(NEW.variant_label),
+          COALESCE(NEW.criado_em, NEW.atualizado_em, '$nowIso'),
+          COALESCE(NEW.atualizado_em, NEW.criado_em, '$nowIso')
+        WHERE TRIM(COALESCE(NEW.variant_label, '')) <> ''
+        ON CONFLICT(produto_id, chave) DO UPDATE SET
+          valor = excluded.valor,
+          atualizado_em = excluded.atualizado_em;
+
+        DELETE FROM ${TableNames.produtoVarianteAtributos}
+        WHERE produto_id = NEW.id
+          AND chave = 'legacy_variant_label'
+          AND TRIM(COALESCE(NEW.variant_label, '')) = '';
+      END
+    ''');
+
+    await db.execute(
+      'DROP TRIGGER IF EXISTS trg_produtos_local_catalog_after_update',
+    );
+    await db.execute('''
+      CREATE TRIGGER trg_produtos_local_catalog_after_update
+      AFTER UPDATE ON ${TableNames.produtos}
+      BEGIN
+        INSERT OR IGNORE INTO ${TableNames.produtosBase} (
+          uuid,
+          nome,
+          descricao,
+          categoria_id,
+          ativo,
+          criado_em,
+          atualizado_em
+        ) VALUES (
+          'base:' || NEW.uuid,
+          COALESCE(NULLIF(TRIM(NEW.model_name), ''), NEW.nome),
+          NEW.descricao,
+          NEW.categoria_id,
+          COALESCE(NEW.ativo, 1),
+          COALESCE(NEW.criado_em, NEW.atualizado_em, '$nowIso'),
+          COALESCE(NEW.atualizado_em, NEW.criado_em, '$nowIso')
+        );
+
+        INSERT OR IGNORE INTO ${TableNames.produtosBaseVariantes} (
+          uuid,
+          produto_base_id,
+          produto_id,
+          criado_em,
+          atualizado_em
+        )
+        SELECT
+          'link:' || NEW.uuid,
+          b.id,
+          NEW.id,
+          COALESCE(NEW.criado_em, NEW.atualizado_em, '$nowIso'),
+          COALESCE(NEW.atualizado_em, NEW.criado_em, '$nowIso')
+        FROM ${TableNames.produtosBase} b
+        WHERE b.uuid = 'base:' || NEW.uuid;
+
+        UPDATE ${TableNames.produtosBase}
+        SET
+          nome = COALESCE(NULLIF(TRIM(NEW.model_name), ''), NEW.nome),
+          descricao = NEW.descricao,
+          categoria_id = NEW.categoria_id,
+          ativo = COALESCE(NEW.ativo, 1),
+          atualizado_em = COALESCE(NEW.atualizado_em, '$nowIso')
+        WHERE uuid = 'base:' || NEW.uuid;
+
+        INSERT INTO ${TableNames.produtoVarianteAtributos} (
+          uuid,
+          produto_id,
+          chave,
+          valor,
+          criado_em,
+          atualizado_em
+        )
+        SELECT
+          'attr:legacy_variant_label:' || NEW.uuid,
+          NEW.id,
+          'legacy_variant_label',
+          TRIM(NEW.variant_label),
+          COALESCE(NEW.criado_em, NEW.atualizado_em, '$nowIso'),
+          COALESCE(NEW.atualizado_em, NEW.criado_em, '$nowIso')
+        WHERE TRIM(COALESCE(NEW.variant_label, '')) <> ''
+        ON CONFLICT(produto_id, chave) DO UPDATE SET
+          valor = excluded.valor,
+          atualizado_em = excluded.atualizado_em;
+
+        DELETE FROM ${TableNames.produtoVarianteAtributos}
+        WHERE produto_id = NEW.id
+          AND chave = 'legacy_variant_label'
+          AND TRIM(COALESCE(NEW.variant_label, '')) = '';
+      END
+    ''');
+  }
+
+  static Future<void> _createVersion15Schema(DatabaseExecutor db) async {
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.itensVenda,
+      columnName: 'observacao_item_snapshot',
+      columnDefinition: 'TEXT',
+    );
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.itensVendaModificadores} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        item_venda_id INTEGER NOT NULL,
+        grupo_modificador_id INTEGER,
+        opcao_modificador_id INTEGER,
+        nome_grupo_snapshot TEXT,
+        nome_opcao_snapshot TEXT NOT NULL,
+        tipo_ajuste_snapshot TEXT NOT NULL CHECK (tipo_ajuste_snapshot IN ('add', 'remove')),
+        preco_delta_centavos INTEGER NOT NULL DEFAULT 0,
+        quantidade INTEGER NOT NULL DEFAULT 1,
+        criado_em TEXT NOT NULL,
+        atualizado_em TEXT NOT NULL,
+        FOREIGN KEY (item_venda_id) REFERENCES ${TableNames.itensVenda}(id) ON DELETE CASCADE,
+        FOREIGN KEY (grupo_modificador_id) REFERENCES ${TableNames.gruposModificadores}(id) ON DELETE SET NULL,
+        FOREIGN KEY (opcao_modificador_id) REFERENCES ${TableNames.opcoesModificadores}(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.vendasPedidosOperacionais} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        venda_id INTEGER NOT NULL UNIQUE,
+        pedido_operacional_id INTEGER NOT NULL UNIQUE,
+        criado_em TEXT NOT NULL,
+        atualizado_em TEXT NOT NULL,
+        FOREIGN KEY (venda_id) REFERENCES ${TableNames.vendas}(id) ON DELETE CASCADE,
+        FOREIGN KEY (pedido_operacional_id) REFERENCES ${TableNames.pedidosOperacionais}(id) ON DELETE RESTRICT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_itens_venda_modificadores_item
+      ON ${TableNames.itensVendaModificadores}(item_venda_id)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_vendas_pedidos_operacionais_venda
+      ON ${TableNames.vendasPedidosOperacionais}(venda_id)
     ''');
   }
 }

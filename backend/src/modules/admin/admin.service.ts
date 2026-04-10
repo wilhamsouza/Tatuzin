@@ -7,18 +7,24 @@ import type {
 
 import { prisma } from '../../database/prisma';
 import {
-  buildPaginatedResponse,
-  buildPaginationMeta,
+  buildAdminListResponse,
 } from '../../shared/http/api-response';
 import { toPaginationParams } from '../../shared/http/pagination';
 import { logger } from '../../shared/observability/logger';
 import { AppError } from '../../shared/http/app-error';
 import { AuthSessionService } from '../auth/auth-session.service';
+import {
+  classifySyncOperationalStatus,
+  observedSyncFeatureCatalog,
+  telemetryGapFeatures,
+  unavailableOperationalSignals,
+} from './admin-sync-operational';
 import type {
   AdminAuditQueryInput,
   AdminCompaniesQueryInput,
   AdminLicensePatchInput,
   AdminLicensesQueryInput,
+  AdminSyncOperationalQueryInput,
   AdminSyncQueryInput,
 } from './admin.schemas';
 
@@ -86,6 +92,17 @@ type SessionAuditEventWithRelations = Prisma.SessionAuditLogGetPayload<{
   };
 }>;
 
+type SyncObservedFeatureAggregate = {
+  featureKey: string;
+  displayName: string;
+  remoteRecordCount: number;
+  lastObservedRemoteChangeAt: string | null;
+};
+
+type SyncObservedFeatureSnapshot = SyncObservedFeatureAggregate & {
+  observationKind: 'remote_mirror';
+};
+
 export class AdminService {
   constructor(private readonly sessionService = new AuthSessionService()) {}
 
@@ -119,22 +136,23 @@ export class AdminService {
       }),
     ]);
 
-    return {
-      ...buildPaginatedResponse({
-        items: companies.map((company) => this.toCompanySummary(company)),
-        page: query.page,
-        pageSize: query.pageSize,
-        total,
-      }),
+    const items = companies.map((company) => this.toCompanySummary(company));
+    return buildAdminListResponse({
+      items,
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
       filters: {
         search: query.search ?? null,
         isActive: query.isActive ?? null,
         licenseStatus: query.licenseStatus ?? null,
         syncEnabled: query.syncEnabled ?? null,
       },
-      sortBy: query.sortBy,
-      sortDirection: query.sortDirection,
-    };
+      sort: {
+        by: query.sortBy,
+        direction: query.sortDirection,
+      },
+    });
   }
 
   async getCompany(companyId: string) {
@@ -231,23 +249,24 @@ export class AdminService {
       }),
     ]);
 
-    return {
-      ...buildPaginatedResponse({
-        items: licenses.map((license) =>
-          this.toLicenseDto(license, license.company),
-        ),
-        page: query.page,
-        pageSize: query.pageSize,
-        total,
-      }),
+    const items = licenses.map((license) =>
+      this.toLicenseDto(license, license.company),
+    );
+    return buildAdminListResponse({
+      items,
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
       filters: {
         search: query.search ?? null,
         status: query.status ?? null,
         syncEnabled: query.syncEnabled ?? null,
       },
-      sortBy: query.sortBy,
-      sortDirection: query.sortDirection,
-    };
+      sort: {
+        by: query.sortBy,
+        direction: query.sortDirection,
+      },
+    });
   }
 
   async getLicense(companyId: string) {
@@ -462,24 +481,26 @@ export class AdminService {
       })
       .slice((query.page - 1) * query.pageSize, query.page * query.pageSize);
 
-    return {
-      totalEvents,
-      countsByAction: [...countsByAction.entries()]
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([action, count]) => ({ action, count })),
-      recentEvents: mergedEvents,
-      pagination: buildPaginationMeta({
-        items: mergedEvents,
-        page: query.page,
-        pageSize: query.pageSize,
-        total: totalEvents,
-      }),
+    const countsByActionItems = [...countsByAction.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([action, count]) => ({ action, count }));
+
+    return buildAdminListResponse({
+      items: mergedEvents,
+      page: query.page,
+      pageSize: query.pageSize,
+      total: totalEvents,
       filters: {
         action: query.action ?? null,
         actorUserId: query.actorUserId ?? null,
         companyId: query.companyId ?? null,
       },
-    };
+      sort: null,
+      overview: {
+        totalEvents,
+        countsByAction: countsByActionItems,
+      },
+    });
   }
 
   async getSyncSummary(query: AdminSyncQueryInput) {
@@ -569,27 +590,197 @@ export class AdminService {
       query.page * query.pageSize,
     );
 
-    return {
-      overview: {
-        totalCompanies: companies.length,
-        syncEnabledCompanies,
-        licenseStatusCounts: statusCounts,
-      },
-      companies: pagedCompanies,
-      pagination: buildPaginationMeta({
-        items: pagedCompanies,
-        page: query.page,
-        pageSize: query.pageSize,
-        total: companies.length,
-      }),
+    const overview = {
+      totalCompanies: companies.length,
+      syncEnabledCompanies,
+      licenseStatusCounts: statusCounts,
+    };
+
+    return buildAdminListResponse({
+      items: pagedCompanies,
+      page: query.page,
+      pageSize: query.pageSize,
+      total: companies.length,
       filters: {
         search: query.search ?? null,
         licenseStatus: query.licenseStatus ?? null,
         syncEnabled: query.syncEnabled ?? null,
       },
-      sortBy: query.sortBy,
-      sortDirection: query.sortDirection,
+      sort: {
+        by: query.sortBy,
+        direction: query.sortDirection,
+      },
+      overview,
+    });
+  }
+
+  async getSyncOperationalSummary(query: AdminSyncOperationalQueryInput) {
+    const where = this.buildCompanyWhere({
+      search: query.search,
+      isActive: undefined,
+      licenseStatus: query.licenseStatus,
+      syncEnabled: query.syncEnabled,
+    });
+
+    const companies = await prisma.company.findMany({
+      where,
+      include: {
+        license: true,
+      },
+    });
+
+    const companyIds = companies.map((company) => company.id);
+    const [sessionSignals, featureSignals] = await Promise.all([
+      this.collectActiveSessionSignals(companyIds),
+      this.collectObservedFeatureSignals(companyIds),
+    ]);
+
+    const companySummaries = companies.map((company) => {
+      const licenseStatus =
+        company.license == null ? 'without_license' : company.license.status.toLowerCase();
+      const companySessionSignals = sessionSignals.get(company.id) ?? {
+        activeSessionsCount: 0,
+        activeMobileSessionsCount: 0,
+        lastSessionSeenAt: null,
+      };
+      const observedFeatures = this.buildObservedFeatureSnapshots(
+        company.id,
+        featureSignals,
+      );
+      const observedRemoteRecordCount = observedFeatures.reduce(
+        (total, feature) => total + feature.remoteRecordCount,
+        0,
+      );
+      const featuresWithRemoteRecords = observedFeatures.filter(
+        (feature) => feature.remoteRecordCount > 0,
+      ).length;
+      const lastObservedRemoteChangeAt = observedFeatures.reduce<string | null>(
+        (latest, feature) => {
+          if (feature.lastObservedRemoteChangeAt == null) {
+            return latest;
+          }
+          if (latest == null) {
+            return feature.lastObservedRemoteChangeAt;
+          }
+          return new Date(feature.lastObservedRemoteChangeAt) >
+            new Date(latest)
+            ? feature.lastObservedRemoteChangeAt
+            : latest;
+        },
+        null,
+      );
+
+      const classification = classifySyncOperationalStatus({
+        companyIsActive: company.isActive,
+        hasLicense: company.license != null,
+        licenseStatus,
+        syncEnabled: company.license?.syncEnabled ?? false,
+        activeMobileSessionsCount: companySessionSignals.activeMobileSessionsCount,
+        observedRemoteRecordCount,
+      });
+
+      return {
+        companyId: company.id,
+        companyName: company.name,
+        companySlug: company.slug,
+        companyIsActive: company.isActive,
+        licenseStatus,
+        syncEnabled: company.license?.syncEnabled ?? false,
+        activeSessionsCount: companySessionSignals.activeSessionsCount,
+        activeMobileSessionsCount: companySessionSignals.activeMobileSessionsCount,
+        lastSessionSeenAt: companySessionSignals.lastSessionSeenAt,
+        observedRemoteRecordCount,
+        lastObservedRemoteChangeAt,
+        remoteCoverage: {
+          observedFeatureCount: observedFeatures.length,
+          featuresWithRemoteRecords,
+          telemetryScope: 'partial_remote_mirror',
+        },
+        status: classification.status,
+        statusSource: classification.statusSource,
+        statusReason: classification.statusReason,
+        telemetryAvailability: {
+          level: classification.telemetryLevel,
+          hasDeviceSessionSignals: true,
+          hasRemoteMirrorSignals: true,
+          hasLocalQueueSignals: false,
+          hasConflictSignals: false,
+          hasRetrySignals: false,
+          hasClientRepairSignals: false,
+        },
+        observedFeatures,
+      };
+    });
+
+    const sortedCompanies = companySummaries.sort((left, right) =>
+      this.compareSyncOperationalCompanies(left, right, query),
+    );
+    const pagedCompanies = sortedCompanies.slice(
+      (query.page - 1) * query.pageSize,
+      query.page * query.pageSize,
+    );
+
+    const statusCounts = {
+      healthy: 0,
+      attention: 0,
+      sync_disabled: 0,
+      license_inactive: 0,
+      telemetry_limited: 0,
     };
+    const telemetryLevelCounts = {
+      blocked: 0,
+      partial: 0,
+      limited: 0,
+    };
+
+    for (const company of companySummaries) {
+      statusCounts[company.status] += 1;
+      telemetryLevelCounts[company.telemetryAvailability.level] += 1;
+    }
+
+    const overview = {
+      totalCompanies: companySummaries.length,
+      statusCounts,
+      telemetryLevelCounts,
+    };
+    const capabilities = {
+      observedSignals: [
+        'company_status',
+        'license_status',
+        'license_sync_enabled',
+        'device_sessions',
+        'remote_entity_counts',
+        'remote_entity_timestamps',
+      ],
+      unavailableSignals: [...unavailableOperationalSignals],
+      observedFeatureKeys: observedSyncFeatureCatalog.map(
+        (feature) => feature.featureKey,
+      ),
+      telemetryGaps: telemetryGapFeatures,
+      notes: [
+        'lastObservedRemoteChangeAt vem do maior updatedAt observado nas entidades remotas conhecidas pelo backend.',
+        'status=healthy e uma inferencia limitada: o backend nao enxerga fila local, conflito, retry ou repair do app.',
+        'status=telemetry_limited indica ausencia de telemetria suficiente, nao ausencia de problema.',
+      ],
+    };
+
+    return buildAdminListResponse({
+      items: pagedCompanies,
+      page: query.page,
+      pageSize: query.pageSize,
+      total: companySummaries.length,
+      filters: {
+        search: query.search ?? null,
+        licenseStatus: query.licenseStatus ?? null,
+        syncEnabled: query.syncEnabled ?? null,
+      },
+      sort: {
+        by: query.sortBy,
+        direction: query.sortDirection,
+      },
+      overview,
+      capabilities,
+    });
   }
 
   private buildCompanyWhere(
@@ -786,6 +977,224 @@ export class AdminService {
       default:
         return left.companyName.localeCompare(right.companyName) * factor;
     }
+  }
+
+  private compareSyncOperationalCompanies(
+    left: {
+      companyName: string;
+      observedRemoteRecordCount: number;
+      licenseStatus: string;
+    },
+    right: {
+      companyName: string;
+      observedRemoteRecordCount: number;
+      licenseStatus: string;
+    },
+    query: Pick<AdminSyncOperationalQueryInput, 'sortBy' | 'sortDirection'>,
+  ) {
+    const factor = query.sortDirection === 'asc' ? 1 : -1;
+
+    switch (query.sortBy) {
+      case 'remoteRecordCount':
+        return (
+          (left.observedRemoteRecordCount - right.observedRemoteRecordCount) *
+          factor
+        );
+      case 'licenseStatus':
+        return left.licenseStatus.localeCompare(right.licenseStatus) * factor;
+      default:
+        return left.companyName.localeCompare(right.companyName) * factor;
+    }
+  }
+
+  private async collectActiveSessionSignals(companyIds: string[]) {
+    if (companyIds.length === 0) {
+      return new Map<
+        string,
+        {
+          activeSessionsCount: number;
+          activeMobileSessionsCount: number;
+          lastSessionSeenAt: string | null;
+        }
+      >();
+    }
+
+    const activeSessions = await prisma.deviceSession.findMany({
+      where: {
+        companyId: {
+          in: companyIds,
+        },
+        revokedAt: null,
+        refreshTokenExpiresAt: {
+          gt: new Date(),
+        },
+      },
+      select: {
+        companyId: true,
+        clientType: true,
+        lastSeenAt: true,
+      },
+    });
+
+    const map = new Map<
+      string,
+      {
+        activeSessionsCount: number;
+        activeMobileSessionsCount: number;
+        lastSessionSeenAt: string | null;
+      }
+    >();
+
+    for (const session of activeSessions) {
+      const current = map.get(session.companyId) ?? {
+        activeSessionsCount: 0,
+        activeMobileSessionsCount: 0,
+        lastSessionSeenAt: null,
+      };
+
+      current.activeSessionsCount += 1;
+      if (session.clientType === 'MOBILE_APP') {
+        current.activeMobileSessionsCount += 1;
+      }
+
+      const lastSeenIso = session.lastSeenAt.toISOString();
+      if (
+        current.lastSessionSeenAt == null ||
+        new Date(lastSeenIso) > new Date(current.lastSessionSeenAt)
+      ) {
+        current.lastSessionSeenAt = lastSeenIso;
+      }
+
+      map.set(session.companyId, current);
+    }
+
+    return map;
+  }
+
+  private async collectObservedFeatureSignals(companyIds: string[]) {
+    if (companyIds.length === 0) {
+      return new Map<string, Map<string, SyncObservedFeatureAggregate>>();
+    }
+
+    const [
+      categories,
+      products,
+      customers,
+      suppliers,
+      purchases,
+      sales,
+      financialEvents,
+      cashEvents,
+      fiadoPayments,
+    ] = await Promise.all([
+      prisma.category.groupBy({
+        by: ['companyId'],
+        where: { companyId: { in: companyIds } },
+        _count: { _all: true },
+        _max: { updatedAt: true },
+      }),
+      prisma.product.groupBy({
+        by: ['companyId'],
+        where: { companyId: { in: companyIds } },
+        _count: { _all: true },
+        _max: { updatedAt: true },
+      }),
+      prisma.customer.groupBy({
+        by: ['companyId'],
+        where: { companyId: { in: companyIds } },
+        _count: { _all: true },
+        _max: { updatedAt: true },
+      }),
+      prisma.supplier.groupBy({
+        by: ['companyId'],
+        where: { companyId: { in: companyIds } },
+        _count: { _all: true },
+        _max: { updatedAt: true },
+      }),
+      prisma.purchase.groupBy({
+        by: ['companyId'],
+        where: { companyId: { in: companyIds } },
+        _count: { _all: true },
+        _max: { updatedAt: true },
+      }),
+      prisma.sale.groupBy({
+        by: ['companyId'],
+        where: { companyId: { in: companyIds } },
+        _count: { _all: true },
+        _max: { updatedAt: true },
+      }),
+      prisma.financialEvent.groupBy({
+        by: ['companyId'],
+        where: { companyId: { in: companyIds } },
+        _count: { _all: true },
+        _max: { updatedAt: true },
+      }),
+      prisma.cashEvent.groupBy({
+        by: ['companyId'],
+        where: { companyId: { in: companyIds } },
+        _count: { _all: true },
+        _max: { updatedAt: true },
+      }),
+      prisma.fiadoPayment.groupBy({
+        by: ['companyId'],
+        where: { companyId: { in: companyIds } },
+        _count: { _all: true },
+        _max: { updatedAt: true },
+      }),
+    ]);
+
+    const byCompany = new Map<string, Map<string, SyncObservedFeatureAggregate>>();
+
+    const registerFeature = (
+      featureKey: string,
+      displayName: string,
+      rows: Array<{
+        companyId: string;
+        _count: { _all: number };
+        _max: { updatedAt: Date | null };
+      }>,
+    ) => {
+      for (const row of rows) {
+        const current = byCompany.get(row.companyId) ?? new Map();
+        current.set(featureKey, {
+          featureKey,
+          displayName,
+          remoteRecordCount: row._count._all,
+          lastObservedRemoteChangeAt: row._max.updatedAt?.toISOString() ?? null,
+        });
+        byCompany.set(row.companyId, current);
+      }
+    };
+
+    registerFeature('categories', 'Categorias', categories);
+    registerFeature('products', 'Produtos', products);
+    registerFeature('customers', 'Clientes', customers);
+    registerFeature('suppliers', 'Fornecedores', suppliers);
+    registerFeature('purchases', 'Compras', purchases);
+    registerFeature('sales', 'Vendas', sales);
+    registerFeature('financial_events', 'Eventos financeiros', financialEvents);
+    registerFeature('cash_events', 'Eventos de caixa', cashEvents);
+    registerFeature('fiado_payments', 'Pagamentos de fiado', fiadoPayments);
+
+    return byCompany;
+  }
+
+  private buildObservedFeatureSnapshots(
+    companyId: string,
+    byCompany: Map<string, Map<string, SyncObservedFeatureAggregate>>,
+  ): SyncObservedFeatureSnapshot[] {
+    const aggregates = byCompany.get(companyId) ?? new Map();
+    return observedSyncFeatureCatalog.map((feature) => {
+      const aggregate = aggregates.get(feature.featureKey);
+      return {
+        featureKey: feature.featureKey,
+        displayName: feature.displayName,
+        remoteRecordCount: aggregate?.remoteRecordCount ?? 0,
+        lastObservedRemoteChangeAt:
+          aggregate?.lastObservedRemoteChangeAt ?? null,
+        observationKind: 'remote_mirror' as const,
+      };
+    });
   }
 
   private toAdminAuditEventDto(

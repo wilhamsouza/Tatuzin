@@ -40,11 +40,13 @@ final adminDashboardProvider = FutureProvider<AdminDashboardSnapshot>((ref) asyn
   return ref.watch(adminApiServiceProvider).fetchDashboard();
 });
 
-final adminCompaniesProvider = FutureProvider<List<AdminCompanySummary>>((
-  ref,
-) async {
+final adminCompaniesProvider =
+    FutureProvider.family<
+      AdminPaginatedResult<AdminCompanySummary>,
+      AdminCompaniesQuery
+    >((ref, query) async {
   ref.watch(adminRefreshTickProvider);
-  return ref.watch(adminApiServiceProvider).fetchCompanies();
+  return ref.watch(adminApiServiceProvider).fetchCompanies(query: query);
 });
 
 final adminCompanyDetailProvider =
@@ -53,17 +55,32 @@ final adminCompanyDetailProvider =
       return ref.watch(adminApiServiceProvider).fetchCompanyDetail(companyId);
     });
 
-final adminLicensesProvider = FutureProvider<List<AdminLicenseSnapshot>>((ref) async {
+final adminLicensesProvider = FutureProvider.family<
+  AdminPaginatedResult<AdminLicenseSnapshot>,
+  AdminLicensesQuery
+>((ref, query) async {
   ref.watch(adminRefreshTickProvider);
-  return ref.watch(adminApiServiceProvider).fetchLicenses();
+  return ref.watch(adminApiServiceProvider).fetchLicenses(query: query);
 });
 
-final adminAuditSummaryProvider = FutureProvider<AdminAuditSummary>((ref) async {
+final adminAuditSummaryProvider =
+    FutureProvider.family<AdminAuditSummary, AdminAuditQuery>((ref, query) async {
   ref.watch(adminRefreshTickProvider);
-  return ref.watch(adminApiServiceProvider).fetchAuditSummary();
+  return ref.watch(adminApiServiceProvider).fetchAuditSummary(query: query);
 });
 
-final adminSyncSummaryProvider = FutureProvider<AdminSyncSummary>((ref) async {
+final adminSyncSummaryProvider =
+    FutureProvider.family<AdminSyncSummary, AdminSyncQuery>((ref, query) async {
   ref.watch(adminRefreshTickProvider);
-  return ref.watch(adminApiServiceProvider).fetchSyncSummary();
+  return ref.watch(adminApiServiceProvider).fetchSyncSummary(query: query);
+});
+
+final adminSyncOperationalSummaryProvider = FutureProvider.family<
+  AdminSyncOperationalSummary,
+  AdminSyncOperationalQuery
+>((ref, query) async {
+  ref.watch(adminRefreshTickProvider);
+  return ref
+      .watch(adminApiServiceProvider)
+      .fetchSyncOperationalSummary(query: query);
 });

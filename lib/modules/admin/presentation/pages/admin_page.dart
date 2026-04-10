@@ -19,29 +19,38 @@ class AdminPage extends ConsumerWidget {
     final overviewAsync = ref.watch(adminOverviewProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Admin')),
+      appBar: AppBar(title: const Text('Admin interno')),
       drawer: const AppMainDrawer(),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
           const AppPageHeader(
-            title: 'Painel administrativo',
+            title: 'Admin interno de apoio',
             subtitle:
-                'Controle minimo de tenants, licencas, saude de sync e auditoria cloud do Tatuzin.',
-            badgeLabel: 'Cloud e licenciamento',
+                'Superficie interna e provisoria para suporte no app. O painel administrativo principal do Tatuzin fica no admin web.',
+            badgeLabel: 'Uso interno',
             badgeIcon: Icons.admin_panel_settings_rounded,
             emphasized: true,
+          ),
+          const SizedBox(height: 18),
+          const AppSectionCard(
+            title: 'Superficie principal',
+            subtitle:
+                'Esta tela nao substitui o painel administrativo oficial da plataforma.',
+            child: Text(
+              'Use o admin web como interface principal para operacao administrativa. Esta area interna permanece apenas como apoio temporario para suporte e homologacao dentro do app.',
+            ),
           ),
           const SizedBox(height: 18),
           if (!authStatus.isRemoteAuthenticated || !authStatus.isPlatformAdmin)
             AppSectionCard(
               title: 'Acesso restrito',
               subtitle:
-                  'Esta area exige sessao remota com perfil administrativo interno.',
+                  'Esta area interna exige sessao remota com perfil administrativo de suporte.',
               child: Text(
                 !authStatus.isRemoteAuthenticated
-                    ? 'Faca login remoto para consultar licencas e tenants.'
-                    : 'Seu usuario atual nao possui acesso ao painel administrativo.',
+                    ? 'Faca login remoto para usar este apoio interno.'
+                    : 'Seu usuario atual nao possui acesso ao admin interno.',
               ),
             )
           else
@@ -57,7 +66,7 @@ class AdminPage extends ConsumerWidget {
                   AppSectionCard(
                     title: 'Empresas e licencas',
                     subtitle:
-                        'Tenants ativos, status de licenca e capacidade cloud por empresa.',
+                        'Consulta interna e resumida de tenants, licencas e capacidade cloud por empresa.',
                     child: Column(
                       children: overview.companies
                           .map(

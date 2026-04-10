@@ -230,7 +230,7 @@ class ReceiptPdfService {
               horizontalInside: pw.BorderSide(color: PdfColors.grey300),
             ),
             columnWidths: const {
-              0: pw.FlexColumnWidth(4),
+              0: pw.FlexColumnWidth(5),
               1: pw.FlexColumnWidth(2),
               2: pw.FlexColumnWidth(2),
               3: pw.FlexColumnWidth(2),
@@ -239,7 +239,7 @@ class ReceiptPdfService {
               pw.TableRow(
                 decoration: const pw.BoxDecoration(color: PdfColors.grey200),
                 children: [
-                  _tableCell('Item', bold: true),
+                  _tableCell('Descricao', bold: true),
                   _tableCell('Qtd', bold: true, alignRight: true),
                   _tableCell('Unit.', bold: true, alignRight: true),
                   _tableCell('Subtotal', bold: true, alignRight: true),

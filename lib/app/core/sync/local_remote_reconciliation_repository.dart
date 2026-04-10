@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:sqflite/sqflite.dart';
 
 import '../../../modules/categorias/data/datasources/categories_remote_datasource.dart';
@@ -9,7 +7,6 @@ import '../../../modules/clientes/data/models/remote_customer_record.dart';
 import '../../../modules/compras/data/datasources/purchases_remote_datasource.dart';
 import '../../../modules/compras/data/models/remote_purchase_record.dart';
 import '../../../modules/compras/data/sqlite_purchase_repository.dart';
-import '../../../modules/compras/domain/entities/purchase_status.dart';
 import '../../../modules/fiado/data/sqlite_fiado_repository.dart';
 import '../../../modules/fornecedores/data/datasources/suppliers_remote_datasource.dart';
 import '../../../modules/fornecedores/data/models/remote_supplier_record.dart';
@@ -18,11 +15,23 @@ import '../../../modules/produtos/data/models/remote_product_record.dart';
 import '../../../modules/vendas/data/datasources/sales_remote_datasource.dart';
 import '../../../modules/vendas/data/models/remote_sale_record.dart';
 import '../../../modules/vendas/data/sqlite_sale_repository.dart';
-import '../../../modules/vendas/domain/entities/sale_enums.dart';
-import '../app_context/record_identity.dart';
 import '../database/app_database.dart';
 import '../database/table_names.dart';
 import 'financial_events_remote_datasource.dart';
+import 'reconciliation_decision_policy.dart';
+import 'reconciliation_decision_support.dart';
+import 'reconciliation_local_comparable_record.dart';
+import 'reconciliation_local_rich_loader.dart';
+import 'reconciliation_local_simple_loader.dart';
+import 'reconciliation_payload_support.dart';
+import 'reconciliation_repair_dispatch.dart';
+import 'reconciliation_repair_issue_dispatch.dart';
+import 'reconciliation_repair_metadata_support.dart';
+import 'reconciliation_repair_queue_support.dart';
+import 'reconciliation_repair_relink_support.dart';
+import 'reconciliation_retry_dependency_dispatch.dart';
+import 'reconciliation_remote_comparable_record.dart';
+import 'reconciliation_remote_record_mapper.dart';
 import 'remote_financial_event_record.dart';
 import 'sqlite_sync_audit_repository.dart';
 import 'sqlite_sync_metadata_repository.dart';
@@ -44,7 +53,6 @@ import 'sync_repair_decision.dart';
 import 'sync_repair_repository.dart';
 import 'sync_repair_result.dart';
 import 'sync_repair_summary.dart';
-import 'sync_repair_target.dart';
 import 'sync_repairability.dart';
 import 'sync_status.dart';
 
@@ -175,7 +183,9 @@ class LocalRemoteReconciliationRepository
     }
 
     decisions.sort((left, right) {
-      final severity = _repairPriority(right).compareTo(_repairPriority(left));
+      final severity = ReconciliationDecisionSupport.repairPriority(
+        right,
+      ).compareTo(ReconciliationDecisionSupport.repairPriority(left));
       if (severity != 0) {
         return severity;
       }
@@ -238,7 +248,10 @@ class LocalRemoteReconciliationRepository
     final freshResults = <SyncReconciliationResult>[
       await reconcileFeature(action.target.featureKey),
     ];
-    final decision = _findDecision(buildDecisions(freshResults), action.target);
+    final decision = ReconciliationDecisionSupport.findDecision(
+      buildDecisions(freshResults),
+      action.target,
+    );
     if (decision == null) {
       await _syncAuditRepository.log(
         featureKey: action.target.featureKey,
@@ -262,7 +275,10 @@ class LocalRemoteReconciliationRepository
       );
     }
 
-    final issue = _findIssue(freshResults, action.target);
+    final issue = ReconciliationDecisionSupport.findIssue(
+      freshResults,
+      action.target,
+    );
     if (issue == null) {
       return SyncRepairResult(
         requestedCount: 1,
@@ -337,7 +353,7 @@ class LocalRemoteReconciliationRepository
       });
 
       final refreshed = await reconcileFeature(action.target.featureKey);
-      final afterIssue = _findIssue(<SyncReconciliationResult>[
+      final afterIssue = ReconciliationDecisionSupport.findIssue(<SyncReconciliationResult>[
         refreshed,
       ], action.target);
       await _logRepairOutcome(
@@ -742,611 +758,147 @@ class LocalRemoteReconciliationRepository
     return map;
   }
 
-  Future<List<_LocalComparableRecord>> _loadLocalCategories({
+  Future<List<ReconciliationLocalComparableRecord>> _loadLocalCategories({
     required Map<int, SyncMetadata> metadataByLocalId,
     required Map<String, SyncQueueItem> queueByEntityKey,
   }) async {
     final database = await _appDatabase.database;
-    final rows = await database.rawQuery('''
-      SELECT
-        id,
-        uuid,
-        nome,
-        descricao,
-        ativo,
-        criado_em,
-        atualizado_em,
-        deletado_em
-      FROM ${TableNames.categorias}
-      ORDER BY nome COLLATE NOCASE ASC, id ASC
-    ''');
-
-    return rows.map((row) {
-      final localId = row['id'] as int;
-      final metadata = metadataByLocalId[localId];
-      return _LocalComparableRecord(
-        featureKey: SyncFeatureKeys.categories,
-        entityType: 'category',
-        localId: localId,
-        localUuid: row['uuid'] as String,
-        remoteId: metadata?.identity.remoteId,
-        label: row['nome'] as String? ?? 'Categoria',
-        createdAt: DateTime.parse(row['criado_em'] as String),
-        updatedAt: DateTime.parse(row['atualizado_em'] as String),
-        metadataStatus: metadata?.status,
-        queueItem:
-            queueByEntityKey[_entityKey(
-              SyncFeatureKeys.categories,
-              'category',
-              localId,
-            )],
-        lastError: metadata?.lastError,
-        lastErrorType: metadata?.lastErrorType,
-        payload: <String, dynamic>{
-          'name': row['nome'] as String? ?? '',
-          'description': row['descricao'] as String?,
-          'isActive': (row['ativo'] as int? ?? 0) == 1,
-          'deletedAt': row['deletado_em'] as String?,
-        },
-        allowRepair: true,
-      );
-    }).toList();
-  }
-
-  Future<List<_LocalComparableRecord>> _loadLocalProducts({
-    required Map<int, SyncMetadata> metadataByLocalId,
-    required Map<String, SyncQueueItem> queueByEntityKey,
-  }) async {
-    final database = await _appDatabase.database;
-    final rows = await database.rawQuery('''
-      SELECT
-        p.id,
-        p.uuid,
-        p.nome,
-        p.descricao,
-        p.codigo_barras,
-        p.tipo_produto,
-        p.catalog_type,
-        p.model_name,
-        p.variant_label,
-        p.unidade_medida,
-        p.custo_centavos,
-        p.preco_venda_centavos,
-        p.estoque_mil,
-        p.ativo,
-        p.criado_em,
-        p.atualizado_em,
-        p.deletado_em,
-        p.categoria_id,
-        c.nome AS categoria_nome,
-        category_sync.remote_id AS categoria_remote_id
-      FROM ${TableNames.produtos} p
-      LEFT JOIN ${TableNames.categorias} c ON c.id = p.categoria_id
-      LEFT JOIN ${TableNames.syncRegistros} category_sync
-        ON category_sync.feature_key = '${SyncFeatureKeys.categories}'
-        AND category_sync.local_id = p.categoria_id
-      ORDER BY p.nome COLLATE NOCASE ASC, p.id ASC
-    ''');
-
-    return rows.map((row) {
-      final localId = row['id'] as int;
-      final metadata = metadataByLocalId[localId];
-      return _LocalComparableRecord(
-        featureKey: SyncFeatureKeys.products,
-        entityType: 'product',
-        localId: localId,
-        localUuid: row['uuid'] as String,
-        remoteId: metadata?.identity.remoteId,
-        label: row['nome'] as String? ?? 'Produto',
-        createdAt: DateTime.parse(row['criado_em'] as String),
-        updatedAt: DateTime.parse(row['atualizado_em'] as String),
-        metadataStatus: metadata?.status,
-        queueItem:
-            queueByEntityKey[_entityKey(
-              SyncFeatureKeys.products,
-              'product',
-              localId,
-            )],
-        lastError: metadata?.lastError,
-        lastErrorType: metadata?.lastErrorType,
-        payload: <String, dynamic>{
-          'name': row['nome'] as String? ?? '',
-          'categoryId': row['categoria_remote_id'] as String?,
-          'description': row['descricao'] as String?,
-          'barcode': row['codigo_barras'] as String?,
-          'productType': row['tipo_produto'] as String? ?? 'unidade',
-          'catalogType': (row['catalog_type'] as String?) ?? 'simple',
-          'modelName': row['model_name'] as String?,
-          'variantLabel': row['variant_label'] as String?,
-          'unitMeasure': row['unidade_medida'] as String? ?? 'un',
-          'costPriceCents': row['custo_centavos'] as int? ?? 0,
-          'salePriceCents': row['preco_venda_centavos'] as int? ?? 0,
-          'stockMil': row['estoque_mil'] as int? ?? 0,
-          'isActive': (row['ativo'] as int? ?? 0) == 1,
-          'deletedAt': row['deletado_em'] as String?,
-        },
-        allowRepair: true,
-      );
-    }).toList();
-  }
-
-  Future<List<_LocalComparableRecord>> _loadLocalCustomers({
-    required Map<int, SyncMetadata> metadataByLocalId,
-    required Map<String, SyncQueueItem> queueByEntityKey,
-  }) async {
-    final database = await _appDatabase.database;
-    final rows = await database.rawQuery('''
-      SELECT
-        id,
-        uuid,
-        nome,
-        telefone,
-        endereco,
-        observacao,
-        ativo,
-        criado_em,
-        atualizado_em,
-        deletado_em
-      FROM ${TableNames.clientes}
-      ORDER BY nome COLLATE NOCASE ASC, id ASC
-    ''');
-
-    return rows.map((row) {
-      final localId = row['id'] as int;
-      final metadata = metadataByLocalId[localId];
-      return _LocalComparableRecord(
-        featureKey: SyncFeatureKeys.customers,
-        entityType: 'customer',
-        localId: localId,
-        localUuid: row['uuid'] as String,
-        remoteId: metadata?.identity.remoteId,
-        label: row['nome'] as String? ?? 'Cliente',
-        createdAt: DateTime.parse(row['criado_em'] as String),
-        updatedAt: DateTime.parse(row['atualizado_em'] as String),
-        metadataStatus: metadata?.status,
-        queueItem:
-            queueByEntityKey[_entityKey(
-              SyncFeatureKeys.customers,
-              'customer',
-              localId,
-            )],
-        lastError: metadata?.lastError,
-        lastErrorType: metadata?.lastErrorType,
-        payload: <String, dynamic>{
-          'name': row['nome'] as String? ?? '',
-          'phone': row['telefone'] as String?,
-          'address': row['endereco'] as String?,
-          'notes': row['observacao'] as String?,
-          'isActive': (row['ativo'] as int? ?? 0) == 1,
-          'deletedAt': row['deletado_em'] as String?,
-        },
-        allowRepair: true,
-      );
-    }).toList();
-  }
-
-  Future<List<_LocalComparableRecord>> _loadLocalSuppliers({
-    required Map<int, SyncMetadata> metadataByLocalId,
-    required Map<String, SyncQueueItem> queueByEntityKey,
-  }) async {
-    final database = await _appDatabase.database;
-    final rows = await database.rawQuery('''
-      SELECT
-        id,
-        uuid,
-        nome,
-        nome_fantasia,
-        telefone,
-        email,
-        endereco,
-        documento,
-        contato_responsavel,
-        observacao,
-        ativo,
-        criado_em,
-        atualizado_em,
-        deletado_em
-      FROM ${TableNames.fornecedores}
-      ORDER BY nome COLLATE NOCASE ASC, id ASC
-    ''');
-
-    return rows.map((row) {
-      final localId = row['id'] as int;
-      final metadata = metadataByLocalId[localId];
-      return _LocalComparableRecord(
-        featureKey: SyncFeatureKeys.suppliers,
-        entityType: 'supplier',
-        localId: localId,
-        localUuid: row['uuid'] as String,
-        remoteId: metadata?.identity.remoteId,
-        label: row['nome'] as String? ?? 'Fornecedor',
-        createdAt: DateTime.parse(row['criado_em'] as String),
-        updatedAt: DateTime.parse(row['atualizado_em'] as String),
-        metadataStatus: metadata?.status,
-        queueItem:
-            queueByEntityKey[_entityKey(
-              SyncFeatureKeys.suppliers,
-              'supplier',
-              localId,
-            )],
-        lastError: metadata?.lastError,
-        lastErrorType: metadata?.lastErrorType,
-        payload: <String, dynamic>{
-          'localUuid': row['uuid'] as String,
-          'name': row['nome'] as String? ?? '',
-          'tradeName': row['nome_fantasia'] as String?,
-          'phone': row['telefone'] as String?,
-          'email': row['email'] as String?,
-          'address': row['endereco'] as String?,
-          'document': row['documento'] as String?,
-          'contactPerson': row['contato_responsavel'] as String?,
-          'notes': row['observacao'] as String?,
-          'isActive': (row['ativo'] as int? ?? 0) == 1,
-          'deletedAt': row['deletado_em'] as String?,
-        },
-        allowRepair: true,
-      );
-    }).toList();
-  }
-
-  Future<List<_LocalComparableRecord>> _loadLocalPurchases({
-    required Map<int, SyncMetadata> metadataByLocalId,
-    required Map<String, SyncQueueItem> queueByEntityKey,
-  }) async {
-    final database = await _appDatabase.database;
-    final idRows = await database.query(
-      TableNames.compras,
-      columns: const ['id'],
-      orderBy: 'data_compra DESC, id DESC',
+    return ReconciliationLocalSimpleLoader.loadCategories(
+      database,
+      metadataByLocalId: metadataByLocalId,
+      queueByEntityKey: queueByEntityKey,
     );
-
-    final records = <_LocalComparableRecord>[];
-    for (final row in idRows) {
-      final localId = row['id'] as int;
-      final purchase = await _purchaseRepository.findPurchaseForSync(localId);
-      if (purchase == null) {
-        continue;
-      }
-      final metadata = metadataByLocalId[localId];
-      records.add(
-        _LocalComparableRecord(
-          featureKey: SyncFeatureKeys.purchases,
-          entityType: 'purchase',
-          localId: localId,
-          localUuid: purchase.purchaseUuid,
-          remoteId: metadata?.identity.remoteId ?? purchase.remoteId,
-          label: purchase.documentNumber?.trim().isNotEmpty == true
-              ? 'Compra ${purchase.documentNumber}'
-              : 'Compra #$localId',
-          createdAt: purchase.createdAt,
-          updatedAt: purchase.updatedAt,
-          metadataStatus: metadata?.status,
-          queueItem:
-              queueByEntityKey[_entityKey(
-                SyncFeatureKeys.purchases,
-                'purchase',
-                localId,
-              )],
-          lastError: metadata?.lastError,
-          lastErrorType: metadata?.lastErrorType,
-          payload: <String, dynamic>{
-            'localUuid': purchase.purchaseUuid,
-            'supplierId': purchase.supplierRemoteId,
-            'documentNumber': purchase.documentNumber,
-            'notes': purchase.notes,
-            'purchasedAt': purchase.purchasedAt.toIso8601String(),
-            'dueDate': purchase.dueDate?.toIso8601String(),
-            'paymentMethod': purchase.paymentMethod?.dbValue,
-            'status': purchase.status.dbValue,
-            'subtotalCents': purchase.subtotalCents,
-            'discountCents': purchase.discountCents,
-            'surchargeCents': purchase.surchargeCents,
-            'freightCents': purchase.freightCents,
-            'finalAmountCents': purchase.finalAmountCents,
-            'paidAmountCents': purchase.paidAmountCents,
-            'pendingAmountCents': purchase.pendingAmountCents,
-            'canceledAt': purchase.cancelledAt?.toIso8601String(),
-            'items': purchase.items
-                .map(
-                  (item) => <String, dynamic>{
-                    'localUuid': item.itemUuid,
-                    'productId': item.productRemoteId,
-                    'productNameSnapshot': item.productNameSnapshot,
-                    'unitMeasureSnapshot': item.unitMeasureSnapshot,
-                    'quantityMil': item.quantityMil,
-                    'unitCostCents': item.unitCostCents,
-                    'subtotalCents': item.subtotalCents,
-                  },
-                )
-                .toList(),
-            'payments': purchase.payments
-                .map(
-                  (payment) => <String, dynamic>{
-                    'localUuid': payment.paymentUuid,
-                    'amountCents': payment.amountCents,
-                    'paymentMethod': payment.paymentMethod.dbValue,
-                    'paidAt': payment.paidAt.toIso8601String(),
-                    'notes': payment.notes,
-                  },
-                )
-                .toList(),
-          },
-          allowRepair: true,
-        ),
-      );
-    }
-
-    return records;
   }
 
-  Future<List<_LocalComparableRecord>> _loadLocalSales({
+  Future<List<ReconciliationLocalComparableRecord>> _loadLocalProducts({
     required Map<int, SyncMetadata> metadataByLocalId,
     required Map<String, SyncQueueItem> queueByEntityKey,
   }) async {
     final database = await _appDatabase.database;
-    final idRows = await database.query(
-      TableNames.vendas,
-      columns: const ['id'],
-      orderBy: 'data_venda DESC, id DESC',
+    return ReconciliationLocalRichLoader.loadProducts(
+      database,
+      metadataByLocalId: metadataByLocalId,
+      queueByEntityKey: queueByEntityKey,
     );
-
-    final records = <_LocalComparableRecord>[];
-    for (final row in idRows) {
-      final localId = row['id'] as int;
-      final payload = await _saleRepository.findSaleForSync(localId);
-      if (payload == null) {
-        continue;
-      }
-      final metadata = metadataByLocalId[localId];
-      records.add(
-        _LocalComparableRecord(
-          featureKey: SyncFeatureKeys.sales,
-          entityType: 'sale',
-          localId: payload.saleId,
-          localUuid: payload.saleUuid,
-          remoteId: payload.remoteId,
-          label: 'Cupom ${payload.receiptNumber}',
-          createdAt: payload.soldAt,
-          updatedAt: payload.updatedAt,
-          metadataStatus: payload.syncStatus,
-          queueItem:
-              queueByEntityKey[_entityKey(
-                SyncFeatureKeys.sales,
-                'sale',
-                payload.saleId,
-              )],
-          lastError: metadata?.lastError,
-          lastErrorType: metadata?.lastErrorType,
-          payload: _normalizedSalePayload(
-            RemoteSaleRecord.fromSyncPayload(payload).toCreateBody(),
-          ),
-          allowRepair: payload.status.name != 'cancelled',
-        ),
-      );
-    }
-    return records;
   }
 
-  Future<List<_LocalComparableRecord>> _loadLocalFinancialEvents({
+  Future<List<ReconciliationLocalComparableRecord>> _loadLocalCustomers({
+    required Map<int, SyncMetadata> metadataByLocalId,
+    required Map<String, SyncQueueItem> queueByEntityKey,
+  }) async {
+    final database = await _appDatabase.database;
+    return ReconciliationLocalSimpleLoader.loadCustomers(
+      database,
+      metadataByLocalId: metadataByLocalId,
+      queueByEntityKey: queueByEntityKey,
+    );
+  }
+
+  Future<List<ReconciliationLocalComparableRecord>> _loadLocalSuppliers({
+    required Map<int, SyncMetadata> metadataByLocalId,
+    required Map<String, SyncQueueItem> queueByEntityKey,
+  }) async {
+    final database = await _appDatabase.database;
+    return ReconciliationLocalSimpleLoader.loadSuppliers(
+      database,
+      metadataByLocalId: metadataByLocalId,
+      queueByEntityKey: queueByEntityKey,
+    );
+  }
+
+  Future<List<ReconciliationLocalComparableRecord>> _loadLocalPurchases({
+    required Map<int, SyncMetadata> metadataByLocalId,
+    required Map<String, SyncQueueItem> queueByEntityKey,
+  }) async {
+    final database = await _appDatabase.database;
+    return ReconciliationLocalRichLoader.loadPurchases(
+      database,
+      metadataByLocalId: metadataByLocalId,
+      queueByEntityKey: queueByEntityKey,
+      purchaseRepository: _purchaseRepository,
+    );
+  }
+
+  Future<List<ReconciliationLocalComparableRecord>> _loadLocalSales({
+    required Map<int, SyncMetadata> metadataByLocalId,
+    required Map<String, SyncQueueItem> queueByEntityKey,
+  }) async {
+    final database = await _appDatabase.database;
+    return ReconciliationLocalRichLoader.loadSales(
+      database,
+      metadataByLocalId: metadataByLocalId,
+      queueByEntityKey: queueByEntityKey,
+      saleRepository: _saleRepository,
+    );
+  }
+
+  Future<List<ReconciliationLocalComparableRecord>> _loadLocalFinancialEvents({
     required Map<int, SyncMetadata> cancellationMetadataByLocalId,
     required Map<int, SyncMetadata> paymentMetadataByLocalId,
     required Map<String, SyncQueueItem> queueByEntityKey,
   }) async {
     final database = await _appDatabase.database;
-    final records = <_LocalComparableRecord>[];
-
-    final canceledSaleRows = await database.query(
-      TableNames.vendas,
-      columns: const ['id'],
-      where: 'status = ? AND cancelada_em IS NOT NULL',
-      whereArgs: const ['cancelada'],
-      orderBy: 'cancelada_em DESC, id DESC',
-    );
-    for (final row in canceledSaleRows) {
-      final saleId = row['id'] as int;
-      final payload = await _saleRepository.findSaleCancellationForSync(saleId);
-      if (payload == null) {
-        continue;
-      }
-      final metadata = cancellationMetadataByLocalId[saleId];
-      records.add(
-        _LocalComparableRecord(
-          featureKey: SyncFeatureKeys.financialEvents,
-          entityType: 'sale_canceled_event',
-          localId: payload.saleId,
-          localUuid: payload.saleUuid,
-          remoteId: payload.remoteId,
-          label: 'Cancelamento venda #${payload.saleId}',
-          createdAt: payload.canceledAt,
-          updatedAt: payload.updatedAt,
-          metadataStatus: payload.syncStatus,
-          queueItem:
-              queueByEntityKey[_entityKey(
-                SyncFeatureKeys.financialEvents,
-                'sale_canceled_event',
-                payload.saleId,
-              )],
-          lastError: metadata?.lastError,
-          lastErrorType: metadata?.lastErrorType,
-          payload: RemoteFinancialEventRecord(
-            remoteId: payload.remoteId ?? '',
-            companyId: '',
-            saleId: payload.saleRemoteId,
-            fiadoId: null,
-            eventType: 'sale_canceled',
-            localUuid: payload.saleUuid,
-            amountCents: payload.amountCents,
-            paymentType: payload.paymentType,
-            createdAt: payload.canceledAt,
-            updatedAt: payload.updatedAt,
-            metadata: <String, dynamic>{
-              'saleLocalId': payload.saleId,
-              if (payload.notes != null && payload.notes!.trim().isNotEmpty)
-                'notes': payload.notes!.trim(),
-            },
-          ).toCreateBody(),
-          allowRepair:
-              payload.saleRemoteId != null && payload.saleRemoteId!.isNotEmpty,
-        ),
-      );
-    }
-
-    final paymentRows = await database.query(
-      TableNames.fiadoLancamentos,
-      columns: const ['id'],
-      where: 'tipo_lancamento = ?',
-      whereArgs: const ['pagamento'],
-      orderBy: 'data_lancamento DESC, id DESC',
-    );
-    for (final row in paymentRows) {
-      final paymentId = row['id'] as int;
-      final payload = await _fiadoRepository.findPaymentForSync(paymentId);
-      if (payload == null) {
-        continue;
-      }
-      final metadata = paymentMetadataByLocalId[paymentId];
-      records.add(
-        _LocalComparableRecord(
-          featureKey: SyncFeatureKeys.financialEvents,
-          entityType: 'fiado_payment_event',
-          localId: payload.entryId,
-          localUuid: payload.entryUuid,
-          remoteId: payload.remoteId,
-          label: 'Pagamento fiado #${payload.entryId}',
-          createdAt: payload.createdAt,
-          updatedAt: payload.updatedAt,
-          metadataStatus: payload.syncStatus,
-          queueItem:
-              queueByEntityKey[_entityKey(
-                SyncFeatureKeys.financialEvents,
-                'fiado_payment_event',
-                payload.entryId,
-              )],
-          lastError: metadata?.lastError,
-          lastErrorType: metadata?.lastErrorType,
-          payload: RemoteFinancialEventRecord(
-            remoteId: payload.remoteId ?? '',
-            companyId: '',
-            saleId: payload.saleRemoteId,
-            fiadoId: payload.fiadoUuid,
-            eventType: 'fiado_payment',
-            localUuid: payload.entryUuid,
-            amountCents: payload.amountCents,
-            paymentType: payload.paymentMethod.dbValue,
-            createdAt: payload.createdAt,
-            updatedAt: payload.updatedAt,
-            metadata: <String, dynamic>{
-              'fiadoLocalId': payload.fiadoId,
-              'paymentEntryLocalId': payload.entryId,
-              if (payload.notes != null && payload.notes!.trim().isNotEmpty)
-                'notes': payload.notes!.trim(),
-            },
-          ).toCreateBody(),
-          allowRepair:
-              payload.saleRemoteId != null && payload.saleRemoteId!.isNotEmpty,
-        ),
-      );
-    }
-
-    return records;
-  }
-
-  _RemoteComparableRecord _mapRemoteCategory(RemoteCategoryRecord remote) {
-    return _RemoteComparableRecord(
-      entityType: 'category',
-      remoteId: remote.remoteId,
-      localUuid: remote.localUuid,
-      label: remote.name,
-      updatedAt: remote.updatedAt,
-      payload: remote.toUpsertBody(),
+    return ReconciliationLocalRichLoader.loadFinancialEvents(
+      database,
+      cancellationMetadataByLocalId: cancellationMetadataByLocalId,
+      paymentMetadataByLocalId: paymentMetadataByLocalId,
+      queueByEntityKey: queueByEntityKey,
+      saleRepository: _saleRepository,
+      fiadoRepository: _fiadoRepository,
     );
   }
 
-  _RemoteComparableRecord _mapRemoteSupplier(RemoteSupplierRecord remote) {
-    return _RemoteComparableRecord(
-      entityType: 'supplier',
-      remoteId: remote.remoteId,
-      localUuid: remote.localUuid,
-      label: remote.name,
-      updatedAt: remote.updatedAt,
-      payload: remote.toUpsertBody(),
-    );
+  ReconciliationRemoteComparableRecord _mapRemoteCategory(
+    RemoteCategoryRecord remote,
+  ) {
+    return ReconciliationRemoteRecordMapper.mapCategory(remote);
   }
 
-  _RemoteComparableRecord _mapRemoteProduct(RemoteProductRecord remote) {
-    return _RemoteComparableRecord(
-      entityType: 'product',
-      remoteId: remote.remoteId,
-      localUuid: remote.localUuid,
-      label: remote.displayName,
-      updatedAt: remote.updatedAt,
-      payload: remote.toUpsertBody(),
-    );
+  ReconciliationRemoteComparableRecord _mapRemoteSupplier(
+    RemoteSupplierRecord remote,
+  ) {
+    return ReconciliationRemoteRecordMapper.mapSupplier(remote);
   }
 
-  _RemoteComparableRecord _mapRemotePurchase(RemotePurchaseRecord remote) {
-    return _RemoteComparableRecord(
-      entityType: 'purchase',
-      remoteId: remote.remoteId,
-      localUuid: remote.localUuid,
-      label: remote.documentNumber?.trim().isNotEmpty == true
-          ? 'Compra ${remote.documentNumber}'
-          : 'Compra ${remote.remoteId}',
-      updatedAt: remote.updatedAt,
-      payload: remote.toUpsertBody(),
-    );
+  ReconciliationRemoteComparableRecord _mapRemoteProduct(
+    RemoteProductRecord remote,
+  ) {
+    return ReconciliationRemoteRecordMapper.mapProduct(remote);
   }
 
-  _RemoteComparableRecord _mapRemoteCustomer(RemoteCustomerRecord remote) {
-    return _RemoteComparableRecord(
-      entityType: 'customer',
-      remoteId: remote.remoteId,
-      localUuid: remote.localUuid,
-      label: remote.name,
-      updatedAt: remote.updatedAt,
-      payload: remote.toUpsertBody(),
-    );
+  ReconciliationRemoteComparableRecord _mapRemotePurchase(
+    RemotePurchaseRecord remote,
+  ) {
+    return ReconciliationRemoteRecordMapper.mapPurchase(remote);
   }
 
-  _RemoteComparableRecord _mapRemoteSale(RemoteSaleRecord remote) {
-    return _RemoteComparableRecord(
-      entityType: 'sale',
-      remoteId: remote.remoteId,
-      localUuid: remote.localUuid,
-      label: remote.receiptNumber ?? 'Venda ${remote.remoteId}',
-      updatedAt: remote.updatedAt,
-      payload: _normalizedSalePayload(remote.toCreateBody()),
-    );
+  ReconciliationRemoteComparableRecord _mapRemoteCustomer(
+    RemoteCustomerRecord remote,
+  ) {
+    return ReconciliationRemoteRecordMapper.mapCustomer(remote);
   }
 
-  _RemoteComparableRecord _mapRemoteFinancialEvent(
+  ReconciliationRemoteComparableRecord _mapRemoteSale(RemoteSaleRecord remote) {
+    return ReconciliationRemoteRecordMapper.mapSale(remote);
+  }
+
+  ReconciliationRemoteComparableRecord _mapRemoteFinancialEvent(
     RemoteFinancialEventRecord remote,
   ) {
-    return _RemoteComparableRecord(
-      entityType: remote.eventType == 'sale_canceled'
-          ? 'sale_canceled_event'
-          : 'fiado_payment_event',
-      remoteId: remote.remoteId,
-      localUuid: remote.localUuid,
-      label: remote.eventType == 'sale_canceled'
-          ? 'Cancelamento remoto ${remote.localUuid}'
-          : 'Pagamento remoto ${remote.localUuid}',
-      updatedAt: remote.updatedAt,
-      payload: remote.toCreateBody(),
-    );
+    return ReconciliationRemoteRecordMapper.mapFinancialEvent(remote);
   }
 
   SyncReconciliationResult _reconcileComparableFeature({
     required String featureKey,
     required String displayName,
-    required List<_LocalComparableRecord> localRecords,
-    required List<_RemoteComparableRecord> remoteRecords,
+    required List<ReconciliationLocalComparableRecord> localRecords,
+    required List<ReconciliationRemoteComparableRecord> remoteRecords,
     bool preferOrphanRemoteWhenLocalUuidAvailable = false,
   }) {
-    final remoteById = <String, _RemoteComparableRecord>{
+    final remoteById = <String, ReconciliationRemoteComparableRecord>{
       for (final remote in remoteRecords) remote.remoteId: remote,
     };
-    final remoteByLocalUuid = <String, _RemoteComparableRecord>{
+    final remoteByLocalUuid = <String, ReconciliationRemoteComparableRecord>{
       for (final remote in remoteRecords)
         if (remote.localUuid != null && remote.localUuid!.isNotEmpty)
           remote.localUuid!: remote,
@@ -1388,15 +940,19 @@ class LocalRemoteReconciliationRepository
               : 'O backend possui um registro sem correspondente local.',
           remoteId: remote.remoteId,
           remoteUpdatedAt: remote.updatedAt,
-          remotePayloadSignature: _payloadSignature(remote.payload),
+          remotePayloadSignature: ReconciliationPayloadSupport.payloadSignature(
+            remote.payload,
+          ),
         ),
       );
     }
 
     issues.sort((left, right) {
-      final severityCompare = _severityOf(
+      final severityCompare = ReconciliationDecisionSupport.severityOf(
         right.status,
-      ).compareTo(_severityOf(left.status));
+      ).compareTo(
+        ReconciliationDecisionSupport.severityOf(left.status),
+      );
       if (severityCompare != 0) {
         return severityCompare;
       }
@@ -1416,9 +972,9 @@ class LocalRemoteReconciliationRepository
   }
 
   SyncReconciliationIssue _buildIssueForLocalRecord(
-    _LocalComparableRecord local, {
-    required Map<String, _RemoteComparableRecord> remoteById,
-    required Map<String, _RemoteComparableRecord> remoteByLocalUuid,
+    ReconciliationLocalComparableRecord local, {
+    required Map<String, ReconciliationRemoteComparableRecord> remoteById,
+    required Map<String, ReconciliationRemoteComparableRecord> remoteByLocalUuid,
     required Set<String> matchedRemoteIds,
   }) {
     final remoteByLinkedId = local.remoteId == null
@@ -1426,8 +982,12 @@ class LocalRemoteReconciliationRepository
         : remoteById[local.remoteId!];
     final remoteByUuid = remoteByLocalUuid[local.localUuid];
     final remote = remoteByLinkedId ?? remoteByUuid;
-    final pendingMetadata = _hasPendingMetadata(local.metadataStatus);
-    final hasPendingQueue = _hasPendingQueue(local.queueItem);
+    final pendingMetadata = ReconciliationDecisionSupport.hasPendingMetadata(
+      local.metadataStatus,
+    );
+    final hasPendingQueue = ReconciliationDecisionSupport.hasPendingQueue(
+      local.queueItem,
+    );
 
     if ((local.queueItem?.status == SyncQueueStatus.conflict) ||
         local.metadataStatus == SyncStatus.conflict) {
@@ -1450,17 +1010,19 @@ class LocalRemoteReconciliationRepository
         queueStatus: local.queueItem?.status,
         lastError: local.lastError,
         lastErrorType: local.lastErrorType,
-        localPayloadSignature: _payloadSignature(local.payload),
+        localPayloadSignature: ReconciliationPayloadSupport.payloadSignature(
+          local.payload,
+        ),
         remotePayloadSignature: remote == null
             ? null
-            : _payloadSignature(remote.payload),
+            : ReconciliationPayloadSupport.payloadSignature(remote.payload),
       );
     }
 
     if (local.remoteId == null || local.remoteId!.isEmpty) {
       if (remoteByUuid != null) {
         matchedRemoteIds.add(remoteByUuid.remoteId);
-        final signaturesMatch = _signaturesMatch(
+        final signaturesMatch = ReconciliationPayloadSupport.signaturesMatch(
           local.payload,
           remoteByUuid.payload,
         );
@@ -1487,8 +1049,13 @@ class LocalRemoteReconciliationRepository
           lastError: local.lastError,
           lastErrorType: local.lastErrorType,
           canMarkForResync: local.allowRepair,
-          localPayloadSignature: _payloadSignature(local.payload),
-          remotePayloadSignature: _payloadSignature(remoteByUuid.payload),
+          localPayloadSignature: ReconciliationPayloadSupport.payloadSignature(
+            local.payload,
+          ),
+          remotePayloadSignature:
+              ReconciliationPayloadSupport.payloadSignature(
+                remoteByUuid.payload,
+              ),
         );
       }
 
@@ -1502,7 +1069,7 @@ class LocalRemoteReconciliationRepository
             : SyncReconciliationStatus.localOnly,
         reasonCode: pending ? 'local_pending' : 'local_only',
         message: pending
-            ? _pendingMessage(local)
+            ? ReconciliationDecisionSupport.pendingMessage(local)
             : 'O registro continua apenas na base local, sem vinculo remoto.',
         localEntityId: local.localId,
         localUuid: local.localUuid,
@@ -1512,7 +1079,9 @@ class LocalRemoteReconciliationRepository
         lastError: local.lastError,
         lastErrorType: local.lastErrorType,
         canMarkForResync: local.allowRepair,
-        localPayloadSignature: _payloadSignature(local.payload),
+        localPayloadSignature: ReconciliationPayloadSupport.payloadSignature(
+          local.payload,
+        ),
       );
     }
 
@@ -1534,7 +1103,9 @@ class LocalRemoteReconciliationRepository
         lastError: local.lastError,
         lastErrorType: local.lastErrorType,
         canMarkForResync: local.allowRepair,
-        localPayloadSignature: _payloadSignature(local.payload),
+        localPayloadSignature: ReconciliationPayloadSupport.payloadSignature(
+          local.payload,
+        ),
       );
     }
 
@@ -1561,8 +1132,13 @@ class LocalRemoteReconciliationRepository
         lastError: local.lastError,
         lastErrorType: local.lastErrorType,
         canMarkForResync: local.allowRepair,
-        localPayloadSignature: _payloadSignature(local.payload),
-        remotePayloadSignature: _payloadSignature(remoteByLinkedId.payload),
+        localPayloadSignature: ReconciliationPayloadSupport.payloadSignature(
+          local.payload,
+        ),
+        remotePayloadSignature:
+            ReconciliationPayloadSupport.payloadSignature(
+              remoteByLinkedId.payload,
+            ),
       );
     }
 
@@ -1573,7 +1149,7 @@ class LocalRemoteReconciliationRepository
         entityLabel: local.label,
         status: SyncReconciliationStatus.pendingSync,
         reasonCode: 'pending_with_remote_link',
-        message: _pendingMessage(local),
+        message: ReconciliationDecisionSupport.pendingMessage(local),
         localEntityId: local.localId,
         localUuid: local.localUuid,
         remoteId: local.remoteId,
@@ -1584,12 +1160,21 @@ class LocalRemoteReconciliationRepository
         lastError: local.lastError,
         lastErrorType: local.lastErrorType,
         canMarkForResync: local.allowRepair,
-        localPayloadSignature: _payloadSignature(local.payload),
-        remotePayloadSignature: _payloadSignature(remoteByLinkedId.payload),
+        localPayloadSignature: ReconciliationPayloadSupport.payloadSignature(
+          local.payload,
+        ),
+        remotePayloadSignature:
+            ReconciliationPayloadSupport.payloadSignature(
+              remoteByLinkedId.payload,
+            ),
       );
     }
 
-    if (!_signaturesMatch(local.payload, remoteByLinkedId.payload)) {
+    if (
+        !ReconciliationPayloadSupport.signaturesMatch(
+          local.payload,
+          remoteByLinkedId.payload,
+        )) {
       return SyncReconciliationIssue(
         featureKey: local.featureKey,
         entityType: local.entityType,
@@ -1608,8 +1193,13 @@ class LocalRemoteReconciliationRepository
         lastError: local.lastError,
         lastErrorType: local.lastErrorType,
         canMarkForResync: local.allowRepair,
-        localPayloadSignature: _payloadSignature(local.payload),
-        remotePayloadSignature: _payloadSignature(remoteByLinkedId.payload),
+        localPayloadSignature: ReconciliationPayloadSupport.payloadSignature(
+          local.payload,
+        ),
+        remotePayloadSignature:
+            ReconciliationPayloadSupport.payloadSignature(
+              remoteByLinkedId.payload,
+            ),
       );
     }
 
@@ -1629,56 +1219,13 @@ class LocalRemoteReconciliationRepository
       queueStatus: local.queueItem?.status,
       lastError: local.lastError,
       lastErrorType: local.lastErrorType,
-      localPayloadSignature: _payloadSignature(local.payload),
-      remotePayloadSignature: _payloadSignature(remoteByLinkedId.payload),
+      localPayloadSignature: ReconciliationPayloadSupport.payloadSignature(
+        local.payload,
+      ),
+      remotePayloadSignature: ReconciliationPayloadSupport.payloadSignature(
+        remoteByLinkedId.payload,
+      ),
     );
-  }
-
-  bool _hasPendingMetadata(SyncStatus? status) {
-    return status == SyncStatus.pendingUpload ||
-        status == SyncStatus.pendingUpdate ||
-        status == SyncStatus.syncError;
-  }
-
-  bool _hasPendingQueue(SyncQueueItem? item) {
-    if (item == null) {
-      return false;
-    }
-
-    return item.status == SyncQueueStatus.pendingUpload ||
-        item.status == SyncQueueStatus.pendingUpdate ||
-        item.status == SyncQueueStatus.processing ||
-        item.status == SyncQueueStatus.syncError ||
-        item.status == SyncQueueStatus.blockedDependency;
-  }
-
-  String _pendingMessage(_LocalComparableRecord local) {
-    final queueItem = local.queueItem;
-    if (queueItem == null) {
-      return 'O registro local ainda aguarda envio para o backend.';
-    }
-
-    switch (queueItem.status) {
-      case SyncQueueStatus.pendingUpload:
-      case SyncQueueStatus.pendingUpdate:
-        return 'O item esta aguardando a proxima rodada da fila de sincronizacao.';
-      case SyncQueueStatus.processing:
-        return 'O item esta em processamento pela fila de sincronizacao.';
-      case SyncQueueStatus.syncError:
-        return local.lastError ??
-            queueItem.lastError ??
-            'O item falhou na ultima tentativa e aguarda novo processamento.';
-      case SyncQueueStatus.blockedDependency:
-        return queueItem.lastError ??
-            local.lastError ??
-            'O item aguarda uma dependencia remota antes de ser reenviado.';
-      case SyncQueueStatus.conflict:
-        return queueItem.conflictReason ??
-            local.lastError ??
-            'Existe um conflito em aberto para este item.';
-      case SyncQueueStatus.synced:
-        return 'O item ainda nao foi revalidado contra o espelho remoto.';
-    }
   }
 
   Future<SyncReconciliationResult> _buildFetchFailureResult({
@@ -1744,26 +1291,26 @@ class LocalRemoteReconciliationRepository
       return false;
     }
 
-    switch (featureKey) {
-      case SyncFeatureKeys.suppliers:
+    switch (ReconciliationRepairIssueDispatch.resolve(featureKey)) {
+      case RepairIssueDispatchTarget.repairSupplier:
         return _repairSupplier(txn, localEntityId);
-      case SyncFeatureKeys.categories:
+      case RepairIssueDispatchTarget.repairCategory:
         return _repairCategory(txn, localEntityId);
-      case SyncFeatureKeys.products:
+      case RepairIssueDispatchTarget.repairProduct:
         return _repairProduct(txn, localEntityId);
-      case SyncFeatureKeys.customers:
+      case RepairIssueDispatchTarget.repairCustomer:
         return _repairCustomer(txn, localEntityId);
-      case SyncFeatureKeys.purchases:
+      case RepairIssueDispatchTarget.repairPurchase:
         return _repairPurchase(txn, localEntityId);
-      case SyncFeatureKeys.sales:
+      case RepairIssueDispatchTarget.repairSale:
         return _repairSale(txn, localEntityId);
-      case SyncFeatureKeys.financialEvents:
+      case RepairIssueDispatchTarget.repairFinancialEvent:
         return _repairFinancialEvent(
           txn,
           entityType: issue.entityType,
           localEntityId: localEntityId,
         );
-      default:
+      case RepairIssueDispatchTarget.unsupported:
         return false;
     }
   }
@@ -2270,408 +1817,11 @@ class LocalRemoteReconciliationRepository
     return '$featureKey:$entityType:$localEntityId';
   }
 
-  bool _signaturesMatch(
-    Map<String, dynamic> local,
-    Map<String, dynamic> remote,
-  ) {
-    return _payloadSignature(local) == _payloadSignature(remote);
-  }
-
-  String _payloadSignature(Map<String, dynamic> payload) {
-    return jsonEncode(_canonicalize(payload));
-  }
-
-  Object? _canonicalize(Object? value) {
-    if (value is Map<String, dynamic>) {
-      final sortedKeys = value.keys.toList()..sort();
-      return <String, Object?>{
-        for (final key in sortedKeys) key: _canonicalize(value[key]),
-      };
-    }
-    if (value is List) {
-      return value.map(_canonicalize).toList();
-    }
-    return value;
-  }
-
-  Map<String, dynamic> _normalizedSalePayload(Map<String, dynamic> payload) {
-    final items = payload['items'];
-    if (items is! List) {
-      return payload;
-    }
-
-    final sortedItems =
-        items
-            .whereType<Map<String, dynamic>>()
-            .map((item) => Map<String, dynamic>.from(item))
-            .toList()
-          ..sort((left, right) {
-            final nameCompare = (left['productNameSnapshot'] as String? ?? '')
-                .compareTo(right['productNameSnapshot'] as String? ?? '');
-            if (nameCompare != 0) {
-              return nameCompare;
-            }
-            final quantityCompare = (left['quantityMil'] as int? ?? 0)
-                .compareTo(right['quantityMil'] as int? ?? 0);
-            if (quantityCompare != 0) {
-              return quantityCompare;
-            }
-            return (left['totalPriceCents'] as int? ?? 0).compareTo(
-              right['totalPriceCents'] as int? ?? 0,
-            );
-          });
-
-    return <String, dynamic>{...payload, 'items': sortedItems};
-  }
-
-  int _severityOf(SyncReconciliationStatus status) {
-    switch (status) {
-      case SyncReconciliationStatus.conflict:
-        return 100;
-      case SyncReconciliationStatus.invalidLink:
-        return 90;
-      case SyncReconciliationStatus.missingRemote:
-      case SyncReconciliationStatus.missingLocal:
-        return 80;
-      case SyncReconciliationStatus.outOfSync:
-        return 70;
-      case SyncReconciliationStatus.orphanRemote:
-      case SyncReconciliationStatus.remoteOnly:
-        return 60;
-      case SyncReconciliationStatus.pendingSync:
-        return 50;
-      case SyncReconciliationStatus.localOnly:
-        return 40;
-      case SyncReconciliationStatus.unknown:
-        return 30;
-      case SyncReconciliationStatus.consistent:
-        return 0;
-    }
-  }
-
-  SyncReconciliationIssue? _findIssue(
-    List<SyncReconciliationResult> results,
-    SyncRepairTarget target,
-  ) {
-    for (final result in results) {
-      for (final issue in result.issues) {
-        final localKey =
-            issue.localEntityId?.toString() ??
-            issue.localUuid ??
-            issue.remoteId ??
-            'na';
-        final stableKey = '${issue.featureKey}:${issue.entityType}:$localKey';
-        if (stableKey == target.stableKey) {
-          return issue;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  SyncRepairDecision? _findDecision(
-    List<SyncRepairDecision> decisions,
-    SyncRepairTarget target,
-  ) {
-    for (final decision in decisions) {
-      if (decision.stableKey == target.stableKey) {
-        return decision;
-      }
-    }
-
-    return null;
-  }
-
-  int _repairPriority(SyncRepairDecision decision) {
-    final repairabilityWeight = switch (decision.repairability) {
-      SyncRepairability.autoSafe => 50,
-      SyncRepairability.assistedSafe => 40,
-      SyncRepairability.manualReviewOnly => 20,
-      SyncRepairability.blocked => 10,
-      SyncRepairability.notRepairableYet => 0,
-    };
-
-    return _severityOf(decision.status) +
-        repairabilityWeight +
-        (decision.isBatchSafe ? 5 : 0);
-  }
-
   SyncRepairDecision _buildDecision(
     SyncReconciliationIssue issue,
     List<SyncReconciliationIssue> allIssues,
   ) {
-    final remoteMatch = _findSignatureMatchedRemoteIssue(issue, allIssues);
-    final target = SyncRepairTarget(
-      featureKey: issue.featureKey,
-      entityType: issue.entityType,
-      entityLabel: issue.entityLabel,
-      localEntityId: issue.localEntityId,
-      localUuid: issue.localUuid,
-      remoteId: issue.remoteId ?? remoteMatch?.remoteId,
-    );
-    final hasDependencyBlock =
-        issue.queueStatus == SyncQueueStatus.blockedDependency ||
-        issue.lastErrorType == SyncErrorType.dependency.storageValue;
-    final isPurchase = issue.featureKey == SyncFeatureKeys.purchases;
-    final isSale = issue.featureKey == SyncFeatureKeys.sales;
-    final isFinancial = issue.featureKey == SyncFeatureKeys.financialEvents;
-    final isSupplier = issue.featureKey == SyncFeatureKeys.suppliers;
-    final isCategory = issue.featureKey == SyncFeatureKeys.categories;
-    final isProduct = issue.featureKey == SyncFeatureKeys.products;
-    final isCustomer = issue.featureKey == SyncFeatureKeys.customers;
-    final isFinancialSensitive = isPurchase || isSale || isFinancial;
-
-    SyncRepairability repairability = SyncRepairability.notRepairableYet;
-    var confidence = 0.40;
-    final availableActions = <SyncRepairActionType>[];
-    SyncRepairActionType? suggestedActionType;
-    var reason = issue.message;
-    var requiresConfirmation = false;
-    var isBatchSafe = false;
-
-    if (hasDependencyBlock) {
-      availableActions.add(SyncRepairActionType.retryDependencyChain);
-      suggestedActionType = SyncRepairActionType.retryDependencyChain;
-      reason =
-          'A fila indica dependencia bloqueada. O repair pode revalidar a cadeia e reenfileirar os pre-requisitos seguros.';
-      confidence = isFinancial
-          ? 0.62
-          : isPurchase
-          ? 0.72
-          : 0.90;
-      repairability = isFinancialSensitive
-          ? SyncRepairability.assistedSafe
-          : SyncRepairability.autoSafe;
-      requiresConfirmation = isFinancialSensitive;
-      isBatchSafe = !isFinancialSensitive;
-    }
-
-    switch (issue.reasonCode) {
-      case 'missing_link_uuid_match':
-        availableActions
-          ..clear()
-          ..add(SyncRepairActionType.relinkRemoteId);
-        suggestedActionType = SyncRepairActionType.relinkRemoteId;
-        reason =
-            'Existe forte evidencia de correspondencia remota segura para religar o remoteId local.';
-        confidence = isSale || isFinancial
-            ? 0.99
-            : isPurchase
-            ? 0.96
-            : 0.98;
-        repairability = isSale || isFinancial
-            ? SyncRepairability.assistedSafe
-            : isPurchase
-            ? SyncRepairability.assistedSafe
-            : SyncRepairability.autoSafe;
-        requiresConfirmation = isFinancialSensitive;
-        isBatchSafe = !isFinancialSensitive && !isPurchase;
-        break;
-      case 'linked_remote_uuid_mismatch':
-      case 'missing_remote':
-        availableActions
-          ..clear()
-          ..add(SyncRepairActionType.clearInvalidRemoteId)
-          ..add(SyncRepairActionType.reenqueueForSync);
-        suggestedActionType = SyncRepairActionType.clearInvalidRemoteId;
-        reason =
-            'O vinculo remoto local parece invalido. O repair pode limpar o remoteId quebrado e reclassificar para novo envio.';
-        confidence = isSale || isFinancial
-            ? 0.45
-            : isPurchase
-            ? 0.64
-            : isSupplier || isCategory
-            ? 0.90
-            : 0.78;
-        repairability = isSale || isFinancial
-            ? SyncRepairability.manualReviewOnly
-            : isPurchase
-            ? SyncRepairability.assistedSafe
-            : isSupplier || isCategory
-            ? SyncRepairability.autoSafe
-            : SyncRepairability.assistedSafe;
-        requiresConfirmation = isFinancialSensitive || isPurchase;
-        isBatchSafe = !isFinancialSensitive && !isPurchase;
-        break;
-      case 'missing_link_uuid_payload_diverged':
-        availableActions
-          ..clear()
-          ..add(SyncRepairActionType.reenqueueForSync);
-        suggestedActionType = SyncRepairActionType.reenqueueForSync;
-        reason =
-            'O registro remoto foi encontrado, mas o payload divergiu. O repair apenas prepara um novo envio seguro sem sobrescrever automaticamente o espelho.';
-        confidence = isFinancialSensitive ? 0.50 : 0.82;
-        repairability = isFinancialSensitive
-            ? SyncRepairability.manualReviewOnly
-            : SyncRepairability.assistedSafe;
-        requiresConfirmation = true;
-        isBatchSafe = false;
-        break;
-      case 'payload_mismatch':
-        availableActions
-          ..clear()
-          ..add(SyncRepairActionType.reenqueueForSync);
-        suggestedActionType = SyncRepairActionType.reenqueueForSync;
-        reason =
-            'Os payloads divergiram. O repair apenas reclassifica para novo envio quando isso nao traz risco operacional.';
-        confidence = isSale || isFinancial
-            ? 0.46
-            : isPurchase
-            ? 0.58
-            : isCategory || isSupplier
-            ? 0.86
-            : 0.72;
-        repairability = isSale || isFinancial
-            ? SyncRepairability.manualReviewOnly
-            : isPurchase
-            ? SyncRepairability.manualReviewOnly
-            : isCategory || isSupplier
-            ? SyncRepairability.assistedSafe
-            : SyncRepairability.assistedSafe;
-        requiresConfirmation = !isCategory;
-        isBatchSafe = isCategory;
-        break;
-      case 'conflict_open':
-        availableActions
-          ..clear()
-          ..add(SyncRepairActionType.markConflictReviewed);
-        suggestedActionType = SyncRepairActionType.markConflictReviewed;
-        reason =
-            'Existe um conflito aberto. Esta fase apenas registra a revisao manual sem tentar sobrescrever dados.';
-        confidence = 0.99;
-        repairability = SyncRepairability.manualReviewOnly;
-        requiresConfirmation = true;
-        isBatchSafe = false;
-        break;
-      case 'remote_only':
-      case 'orphan_remote':
-      case 'feature_not_supported':
-      case 'remote_fetch_failed':
-        availableActions.clear();
-        suggestedActionType = null;
-        reason = issue.message;
-        confidence = 0.20;
-        repairability = issue.reasonCode == 'remote_fetch_failed'
-            ? SyncRepairability.blocked
-            : SyncRepairability.notRepairableYet;
-        requiresConfirmation = false;
-        isBatchSafe = false;
-        break;
-      case 'local_only':
-      case 'local_pending':
-      case 'pending_with_remote_link':
-        if (remoteMatch != null) {
-          availableActions
-            ..clear()
-            ..add(SyncRepairActionType.relinkRemoteId);
-          suggestedActionType = SyncRepairActionType.relinkRemoteId;
-          reason =
-              'Foi encontrada uma correspondencia remota segura pela assinatura do payload. O repair pode religar o remoteId local.';
-          confidence = isPurchase
-              ? 0.95
-              : isSale || isFinancial
-              ? 0.55
-              : isSupplier || isCategory
-              ? 0.94
-              : 0.86;
-          repairability = isSale || isFinancial
-              ? SyncRepairability.manualReviewOnly
-              : isPurchase
-              ? SyncRepairability.assistedSafe
-              : isSupplier || isCategory
-              ? SyncRepairability.autoSafe
-              : SyncRepairability.assistedSafe;
-          requiresConfirmation = isFinancialSensitive || isPurchase;
-          isBatchSafe = !isFinancialSensitive && !isPurchase;
-          break;
-        }
-
-        if (issue.canMarkForResync) {
-          availableActions
-            ..clear()
-            ..add(SyncRepairActionType.reenqueueForSync);
-          suggestedActionType = SyncRepairActionType.reenqueueForSync;
-          reason =
-              'O item pode ser preparado novamente para a fila, preservando a fonte de verdade local.';
-          confidence = isSale || isFinancial
-              ? 0.66
-              : isPurchase
-              ? 0.78
-              : isSupplier || isCategory
-              ? 0.94
-              : isProduct || isCustomer
-              ? 0.86
-              : 0.72;
-          repairability = isSale || isFinancial
-              ? SyncRepairability.assistedSafe
-              : isPurchase
-              ? SyncRepairability.assistedSafe
-              : SyncRepairability.autoSafe;
-          requiresConfirmation = isFinancialSensitive || isPurchase;
-          isBatchSafe = !isFinancialSensitive && !isPurchase;
-        }
-        break;
-    }
-
-    if (availableActions.isEmpty &&
-        (issue.status == SyncReconciliationStatus.invalidLink ||
-            issue.status == SyncReconciliationStatus.missingRemote)) {
-      availableActions.add(SyncRepairActionType.revalidateRemotePresence);
-      suggestedActionType ??= SyncRepairActionType.revalidateRemotePresence;
-      repairability = SyncRepairability.notRepairableYet;
-      reason =
-          'O item exige revalidacao antes de qualquer repair estrutural mais forte.';
-      confidence = 0.35;
-      requiresConfirmation = false;
-      isBatchSafe = false;
-    }
-
-    return SyncRepairDecision(
-      target: target,
-      status: issue.status,
-      repairability: repairability,
-      reason: reason,
-      confidence: confidence,
-      availableActions: List<SyncRepairActionType>.unmodifiable(
-        availableActions,
-      ),
-      suggestedActionType: suggestedActionType,
-      isBatchSafe: isBatchSafe,
-      requiresConfirmation: requiresConfirmation,
-      queueStatus: issue.queueStatus,
-      metadataStatus: issue.metadataStatus,
-      lastError: issue.lastError,
-      lastErrorType: issue.lastErrorType,
-      localPayloadSignature: issue.localPayloadSignature,
-      remotePayloadSignature:
-          issue.remotePayloadSignature ?? remoteMatch?.remotePayloadSignature,
-    );
-  }
-
-  SyncReconciliationIssue? _findSignatureMatchedRemoteIssue(
-    SyncReconciliationIssue issue,
-    List<SyncReconciliationIssue> allIssues,
-  ) {
-    final localSignature = issue.localPayloadSignature;
-    if (localSignature == null || localSignature.isEmpty) {
-      return null;
-    }
-
-    final candidates = allIssues
-        .where(
-          (candidate) =>
-              candidate.featureKey == issue.featureKey &&
-              (candidate.status == SyncReconciliationStatus.remoteOnly ||
-                  candidate.status == SyncReconciliationStatus.orphanRemote) &&
-              candidate.remotePayloadSignature == localSignature,
-        )
-        .toList();
-    if (candidates.length != 1) {
-      return null;
-    }
-
-    return candidates.first;
+    return ReconciliationDecisionPolicy.buildDecision(issue, allIssues);
   }
 
   Future<bool> _applyRepairAction(
@@ -2680,27 +1830,18 @@ class LocalRemoteReconciliationRepository
     SyncRepairDecision decision,
     SyncRepairActionType actionType,
   ) async {
-    switch (actionType) {
-      case SyncRepairActionType.reenqueueForSync:
+    switch (ReconciliationRepairDispatch.resolve(actionType)) {
+      case RepairDispatchTarget.repairIssue:
         return _repairIssue(txn, issue.featureKey, issue);
-      case SyncRepairActionType.relinkRemoteId:
+      case RepairDispatchTarget.applyRemoteRelink:
         return _applyRemoteRelink(txn, issue, decision);
-      case SyncRepairActionType.clearInvalidRemoteId:
+      case RepairDispatchTarget.clearBrokenRemoteLink:
         return _clearBrokenRemoteLink(txn, issue);
-      case SyncRepairActionType.retryDependencyChain:
+      case RepairDispatchTarget.retryDependencyChain:
         return _retryDependencyChain(txn, issue);
-      case SyncRepairActionType.clearStaleBlock:
+      case RepairDispatchTarget.clearStaleBlock:
         return _clearStaleBlock(txn, issue);
-      case SyncRepairActionType.markConflictReviewed:
-      case SyncRepairActionType.markMissingRemote:
-      case SyncRepairActionType.markMissingLocal:
-      case SyncRepairActionType.refreshRemoteSnapshot:
-      case SyncRepairActionType.repairRemoteLink:
-      case SyncRepairActionType.repairLocalMetadata:
-      case SyncRepairActionType.rebuildDependencyState:
-      case SyncRepairActionType.reclassifySyncStatus:
-      case SyncRepairActionType.revalidateRemotePresence:
-      case SyncRepairActionType.relinkLocalUuid:
+      case RepairDispatchTarget.unsupported:
         return false;
     }
   }
@@ -2800,31 +1941,24 @@ class LocalRemoteReconciliationRepository
         ? SyncStatus.synced
         : SyncStatus.pendingUpdate;
     final syncedAt = nextStatus == SyncStatus.synced ? DateTime.now() : null;
+    final touchedAt = DateTime.now();
 
-    await _syncMetadataRepository.saveExplicit(
+    await ReconciliationRepairRelinkSupport.applyRemoteRelink(
       txn,
-      featureKey: metadataFeatureKey,
+      syncMetadataRepository: _syncMetadataRepository,
+      metadataFeatureKey: metadataFeatureKey,
+      issue: issue,
       localId: frame.localId,
       localUuid: frame.localUuid,
       remoteId: remoteId,
-      status: nextStatus,
-      origin: RecordOrigin.merged,
-      createdAt: frame.createdAt,
-      updatedAt: frame.updatedAt,
-      lastSyncedAt: syncedAt,
-      lastError: null,
-      lastErrorType: null,
-      lastErrorAt: null,
-    );
-
-    await _updateQueueLink(
-      txn,
-      issue: issue,
-      remoteId: remoteId,
-      status: nextStatus == SyncStatus.synced
+      nextStatus: nextStatus,
+      queueStatus: nextStatus == SyncStatus.synced
           ? SyncQueueStatus.synced
           : SyncQueueStatus.pendingUpdate,
-      touchedAt: DateTime.now(),
+      createdAt: frame.createdAt,
+      updatedAt: frame.updatedAt,
+      syncedAt: syncedAt,
+      touchedAt: touchedAt,
     );
 
     if (nextStatus != SyncStatus.synced) {
@@ -2848,30 +1982,15 @@ class LocalRemoteReconciliationRepository
     }
 
     final metadataFeatureKey = _metadataFeatureKeyForIssue(issue);
-    await _syncMetadataRepository.saveExplicit(
+    await ReconciliationRepairMetadataSupport.clearBrokenRemoteLink(
       txn,
-      featureKey: metadataFeatureKey,
+      syncMetadataRepository: _syncMetadataRepository,
+      metadataFeatureKey: metadataFeatureKey,
+      issue: issue,
       localId: frame.localId,
       localUuid: frame.localUuid,
-      remoteId: null,
-      status: SyncStatus.localOnly,
-      origin: RecordOrigin.local,
       createdAt: frame.createdAt,
       updatedAt: frame.updatedAt,
-      lastSyncedAt: null,
-      lastError: issue.message,
-      lastErrorType: SyncErrorType.dependency.storageValue,
-      lastErrorAt: DateTime.now(),
-    );
-
-    await _updateQueueLink(
-      txn,
-      issue: issue,
-      remoteId: null,
-      status: issue.queueStatus == SyncQueueStatus.conflict
-          ? SyncQueueStatus.conflict
-          : SyncQueueStatus.pendingUpload,
-      touchedAt: DateTime.now(),
     );
 
     return _repairIssue(txn, issue.featureKey, issue);
@@ -2886,116 +2005,172 @@ class LocalRemoteReconciliationRepository
       return false;
     }
 
-    switch (issue.featureKey) {
-      case SyncFeatureKeys.products:
-        final rows = await txn.query(
-          TableNames.produtos,
-          columns: const ['categoria_id'],
-          where: 'id = ?',
-          whereArgs: [localEntityId],
-          limit: 1,
+    switch (
+      ReconciliationRetryDependencyDispatch.resolve(
+        featureKey: issue.featureKey,
+        entityType: issue.entityType,
+      )
+    ) {
+      case RetryDependencyDispatchTarget.productDependencyChain:
+        return _retryProductDependencyChain(
+          txn,
+          localEntityId: localEntityId,
         );
-        if (rows.isEmpty) {
-          return false;
-        }
-        final categoryId = rows.first['categoria_id'] as int?;
-        if (categoryId != null) {
-          await _repairCategory(txn, categoryId);
-        }
-        return _repairProduct(txn, localEntityId);
-      case SyncFeatureKeys.purchases:
-        final purchaseRows = await txn.query(
-          TableNames.compras,
-          columns: const ['fornecedor_id'],
-          where: 'id = ?',
-          whereArgs: [localEntityId],
-          limit: 1,
+      case RetryDependencyDispatchTarget.purchaseDependencyChain:
+        return _retryPurchaseDependencyChain(
+          txn,
+          localEntityId: localEntityId,
         );
-        if (purchaseRows.isEmpty) {
-          return false;
-        }
-        final supplierId = purchaseRows.first['fornecedor_id'] as int?;
-        if (supplierId != null) {
-          await _repairSupplier(txn, supplierId);
-        }
-        final itemRows = await txn.query(
-          TableNames.itensCompra,
-          columns: const ['produto_id'],
-          where: 'compra_id = ?',
-          whereArgs: [localEntityId],
+      case RetryDependencyDispatchTarget.saleDependencyChain:
+        return _retrySaleDependencyChain(
+          txn,
+          localEntityId: localEntityId,
         );
-        for (final row in itemRows) {
-          final productId = row['produto_id'] as int?;
-          if (productId != null) {
-            await _repairProduct(txn, productId);
-          }
-        }
-        return _repairPurchase(txn, localEntityId);
-      case SyncFeatureKeys.sales:
-        final saleRows = await txn.query(
-          TableNames.vendas,
-          columns: const ['cliente_id'],
-          where: 'id = ?',
-          whereArgs: [localEntityId],
-          limit: 1,
+      case RetryDependencyDispatchTarget.canceledSaleFinancialEventChain:
+        return _retryCanceledSaleFinancialEventChain(
+          txn,
+          issue: issue,
+          localEntityId: localEntityId,
         );
-        if (saleRows.isEmpty) {
-          return false;
-        }
-        final clientId = saleRows.first['cliente_id'] as int?;
-        if (clientId != null) {
-          await _repairCustomer(txn, clientId);
-        }
-        final itemRows = await txn.query(
-          TableNames.itensVenda,
-          columns: const ['produto_id'],
-          where: 'venda_id = ?',
-          whereArgs: [localEntityId],
+      case RetryDependencyDispatchTarget.fiadoPaymentFinancialEventChain:
+        return _retryFiadoPaymentFinancialEventChain(
+          txn,
+          issue: issue,
+          localEntityId: localEntityId,
         );
-        for (final row in itemRows) {
-          final productId = row['produto_id'] as int?;
-          if (productId != null) {
-            await _repairProduct(txn, productId);
-          }
-        }
-        return _repairSale(txn, localEntityId);
-      case SyncFeatureKeys.financialEvents:
-        switch (issue.entityType) {
-          case 'sale_canceled_event':
-            await _repairSale(txn, localEntityId);
-            return _repairFinancialEvent(
-              txn,
-              entityType: issue.entityType,
-              localEntityId: localEntityId,
-            );
-          case 'fiado_payment_event':
-            final rows = await txn.rawQuery(
-              '''
-              SELECT fiado.venda_id
-              FROM ${TableNames.fiadoLancamentos} lanc
-              INNER JOIN ${TableNames.fiado} fiado ON fiado.id = lanc.fiado_id
-              WHERE lanc.id = ?
-              LIMIT 1
-            ''',
-              [localEntityId],
-            );
-            if (rows.isNotEmpty) {
-              final saleId = rows.first['venda_id'] as int?;
-              if (saleId != null) {
-                await _repairSale(txn, saleId);
-              }
-            }
-            return _repairFinancialEvent(
-              txn,
-              entityType: issue.entityType,
-              localEntityId: localEntityId,
-            );
-          default:
-            return false;
-        }
-      default:
+      case RetryDependencyDispatchTarget.directRepair:
         return _repairIssue(txn, issue.featureKey, issue);
+      case RetryDependencyDispatchTarget.unsupported:
+        return false;
     }
+  }
+
+  Future<bool> _retryProductDependencyChain(
+    DatabaseExecutor txn, {
+    required int localEntityId,
+  }) async {
+    final rows = await txn.query(
+      TableNames.produtos,
+      columns: const ['categoria_id'],
+      where: 'id = ?',
+      whereArgs: [localEntityId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return false;
+    }
+    final categoryId = rows.first['categoria_id'] as int?;
+    if (categoryId != null) {
+      await _repairCategory(txn, categoryId);
+    }
+    return _repairProduct(txn, localEntityId);
+  }
+
+  Future<bool> _retryPurchaseDependencyChain(
+    DatabaseExecutor txn, {
+    required int localEntityId,
+  }) async {
+    final purchaseRows = await txn.query(
+      TableNames.compras,
+      columns: const ['fornecedor_id'],
+      where: 'id = ?',
+      whereArgs: [localEntityId],
+      limit: 1,
+    );
+    if (purchaseRows.isEmpty) {
+      return false;
+    }
+    final supplierId = purchaseRows.first['fornecedor_id'] as int?;
+    if (supplierId != null) {
+      await _repairSupplier(txn, supplierId);
+    }
+    final itemRows = await txn.query(
+      TableNames.itensCompra,
+      columns: const ['produto_id'],
+      where: 'compra_id = ?',
+      whereArgs: [localEntityId],
+    );
+    for (final row in itemRows) {
+      final productId = row['produto_id'] as int?;
+      if (productId != null) {
+        await _repairProduct(txn, productId);
+      }
+    }
+    return _repairPurchase(txn, localEntityId);
+  }
+
+  Future<bool> _retrySaleDependencyChain(
+    DatabaseExecutor txn, {
+    required int localEntityId,
+  }) async {
+    final saleRows = await txn.query(
+      TableNames.vendas,
+      columns: const ['cliente_id'],
+      where: 'id = ?',
+      whereArgs: [localEntityId],
+      limit: 1,
+    );
+    if (saleRows.isEmpty) {
+      return false;
+    }
+    final clientId = saleRows.first['cliente_id'] as int?;
+    if (clientId != null) {
+      await _repairCustomer(txn, clientId);
+    }
+    final itemRows = await txn.query(
+      TableNames.itensVenda,
+      columns: const ['produto_id'],
+      where: 'venda_id = ?',
+      whereArgs: [localEntityId],
+    );
+    for (final row in itemRows) {
+      final productId = row['produto_id'] as int?;
+      if (productId != null) {
+        await _repairProduct(txn, productId);
+      }
+    }
+    return _repairSale(txn, localEntityId);
+  }
+
+  Future<bool> _retryCanceledSaleFinancialEventChain(
+    DatabaseExecutor txn, {
+    required SyncReconciliationIssue issue,
+    required int localEntityId,
+  }) async {
+    await _repairSale(txn, localEntityId);
+    return _repairFinancialEvent(
+      txn,
+      entityType: issue.entityType,
+      localEntityId: localEntityId,
+    );
+  }
+
+  Future<bool> _retryFiadoPaymentFinancialEventChain(
+    DatabaseExecutor txn, {
+    required SyncReconciliationIssue issue,
+    required int localEntityId,
+  }) async {
+    final rows = await txn.rawQuery(
+      '''
+      SELECT fiado.venda_id
+      FROM ${TableNames.fiadoLancamentos} lanc
+      INNER JOIN ${TableNames.fiado} fiado ON fiado.id = lanc.fiado_id
+      WHERE lanc.id = ?
+      LIMIT 1
+    ''',
+      [localEntityId],
+    );
+    if (rows.isNotEmpty) {
+      final saleId = rows.first['venda_id'] as int?;
+      if (saleId != null) {
+        await _repairSale(txn, saleId);
+      }
+    }
+    return _repairFinancialEvent(
+      txn,
+      entityType: issue.entityType,
+      localEntityId: localEntityId,
+    );
   }
 
   Future<bool> _clearStaleBlock(
@@ -3006,59 +2181,12 @@ class LocalRemoteReconciliationRepository
       return false;
     }
 
-    final now = DateTime.now();
-    final nextStatus = issue.remoteId == null || issue.remoteId!.isEmpty
-        ? SyncQueueStatus.pendingUpload
-        : SyncQueueStatus.pendingUpdate;
-    await txn.update(
-      TableNames.syncQueue,
-      <String, Object?>{
-        'status': nextStatus.storageValue,
-        'last_error': null,
-        'last_error_type': null,
-        'next_retry_at': null,
-        'locked_at': null,
-        'updated_at': now.toIso8601String(),
-        'conflict_reason': null,
-      },
-      where: 'feature_key = ? AND entity_type = ? AND local_entity_id = ?',
-      whereArgs: [issue.featureKey, issue.entityType, issue.localEntityId],
+    await ReconciliationRepairQueueSupport.clearStaleBlock(
+      txn,
+      issue: issue,
+      touchedAt: DateTime.now(),
     );
     return _retryDependencyChain(txn, issue);
-  }
-
-  Future<void> _updateQueueLink(
-    DatabaseExecutor txn, {
-    required SyncReconciliationIssue issue,
-    required String? remoteId,
-    required SyncQueueStatus status,
-    required DateTime touchedAt,
-  }) async {
-    if (issue.localEntityId == null) {
-      return;
-    }
-
-    await txn.update(
-      TableNames.syncQueue,
-      <String, Object?>{
-        'remote_id': remoteId,
-        'status': status.storageValue,
-        'next_retry_at': null,
-        'last_error': null,
-        'last_error_type': null,
-        'locked_at': null,
-        'updated_at': touchedAt.toIso8601String(),
-        'last_processed_at': status == SyncQueueStatus.synced
-            ? touchedAt.toIso8601String()
-            : null,
-        'remote_updated_at': status == SyncQueueStatus.synced
-            ? touchedAt.toIso8601String()
-            : null,
-        'conflict_reason': null,
-      },
-      where: 'feature_key = ? AND entity_type = ? AND local_entity_id = ?',
-      whereArgs: [issue.featureKey, issue.entityType, issue.localEntityId],
-    );
   }
 
   String _metadataFeatureKeyForIssue(SyncReconciliationIssue issue) {
@@ -3172,56 +2300,4 @@ class _RepairFrame {
   final String localUuid;
   final DateTime createdAt;
   final DateTime updatedAt;
-}
-
-class _LocalComparableRecord {
-  const _LocalComparableRecord({
-    required this.featureKey,
-    required this.entityType,
-    required this.localId,
-    required this.localUuid,
-    required this.remoteId,
-    required this.label,
-    required this.createdAt,
-    required this.updatedAt,
-    required this.metadataStatus,
-    required this.queueItem,
-    required this.lastError,
-    required this.lastErrorType,
-    required this.payload,
-    required this.allowRepair,
-  });
-
-  final String featureKey;
-  final String entityType;
-  final int localId;
-  final String localUuid;
-  final String? remoteId;
-  final String label;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final SyncStatus? metadataStatus;
-  final SyncQueueItem? queueItem;
-  final String? lastError;
-  final String? lastErrorType;
-  final Map<String, dynamic> payload;
-  final bool allowRepair;
-}
-
-class _RemoteComparableRecord {
-  const _RemoteComparableRecord({
-    required this.entityType,
-    required this.remoteId,
-    required this.localUuid,
-    required this.label,
-    required this.updatedAt,
-    required this.payload,
-  });
-
-  final String entityType;
-  final String remoteId;
-  final String? localUuid;
-  final String label;
-  final DateTime updatedAt;
-  final Map<String, dynamic> payload;
 }

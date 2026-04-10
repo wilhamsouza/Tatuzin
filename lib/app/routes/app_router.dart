@@ -21,6 +21,8 @@ import '../../modules/compras/presentation/pages/purchase_form_page.dart';
 import '../../modules/compras/presentation/pages/purchases_page.dart';
 import '../../modules/comprovantes/presentation/pages/receipt_preview_page.dart';
 import '../../modules/dashboard/presentation/pages/dashboard_page.dart';
+import '../../modules/pedidos/presentation/pages/order_detail_page.dart';
+import '../../modules/pedidos/presentation/pages/orders_page.dart';
 import '../../modules/fiado/presentation/pages/fiado_detail_page.dart';
 import '../../modules/fiado/presentation/pages/fiado_page.dart';
 import '../../modules/custos/presentation/pages/costs_page.dart';
@@ -147,6 +149,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutePaths.cart,
         name: AppRouteNames.cart,
         builder: (context, state) => const CartPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.orders,
+        name: AppRouteNames.orders,
+        builder: (context, state) => const OrdersPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.orderDetail,
+        name: AppRouteNames.orderDetail,
+        builder: (context, state) {
+          final orderId = int.parse(state.pathParameters['orderId']!);
+          return OrderDetailPage(orderId: orderId);
+        },
       ),
       GoRoute(
         path: AppRoutePaths.checkout,

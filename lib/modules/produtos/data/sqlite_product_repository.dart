@@ -84,6 +84,13 @@ class SqliteProductRepository implements ProductRepository {
         localUpdatedAt: now,
       );
 
+      await _persistLocalCatalogStructure(
+        txn: txn,
+        productId: id,
+        productUuid: uuid,
+        input: input,
+      );
+
       return id;
     });
   }
@@ -232,6 +239,13 @@ class SqliteProductRepository implements ProductRepository {
             ? SyncQueueOperation.create
             : SyncQueueOperation.update,
         localUpdatedAt: now,
+      );
+
+      await _persistLocalCatalogStructure(
+        txn: txn,
+        productId: id,
+        productUuid: existing['uuid'] as String,
+        input: input,
       );
     });
   }
@@ -542,9 +556,13 @@ class SqliteProductRepository implements ProductRepository {
         'p.nome LIKE ? COLLATE NOCASE '
         'OR COALESCE(p.model_name, \'\') LIKE ? COLLATE NOCASE '
         'OR COALESCE(p.variant_label, \'\') LIKE ? COLLATE NOCASE '
+        'OR COALESCE(pb.nome, \'\') LIKE ? COLLATE NOCASE '
+        'OR COALESCE(variant_attrs.serialized_attrs, \'\') LIKE ? COLLATE NOCASE '
         'OR COALESCE(p.codigo_barras, \'\') LIKE ? COLLATE NOCASE'
         ')',
       );
+      args.add('%$trimmedQuery%');
+      args.add('%$trimmedQuery%');
       args.add('%$trimmedQuery%');
       args.add('%$trimmedQuery%');
       args.add('%$trimmedQuery%');
@@ -553,7 +571,7 @@ class SqliteProductRepository implements ProductRepository {
 
     buffer.write(
       ' ORDER BY '
-      'COALESCE(NULLIF(p.model_name, \'\'), p.nome) COLLATE NOCASE ASC, '
+      'COALESCE(NULLIF(pb.nome, \'\'), NULLIF(p.model_name, \'\'), p.nome) COLLATE NOCASE ASC, '
       'COALESCE(NULLIF(p.variant_label, \'\'), p.nome) COLLATE NOCASE ASC, '
       'p.nome COLLATE NOCASE ASC, '
       'p.id ASC',
@@ -568,6 +586,10 @@ class SqliteProductRepository implements ProductRepository {
       SELECT
         p.*,
         c.nome AS categoria_nome,
+        pb.id AS produto_base_id,
+        pb.nome AS produto_base_nome,
+        COALESCE(variant_attrs.serialized_attrs, '') AS variant_attributes_serialized,
+        COALESCE(mod_groups.serialized_groups, '') AS modifier_groups_serialized,
         sync.remote_id AS sync_remote_id,
         sync.sync_status AS sync_status,
         sync.last_synced_at AS sync_last_synced_at
@@ -575,6 +597,39 @@ class SqliteProductRepository implements ProductRepository {
       LEFT JOIN ${TableNames.categorias} c
         ON c.id = p.categoria_id
         AND c.deletado_em IS NULL
+      LEFT JOIN ${TableNames.produtosBaseVariantes} pbv
+        ON pbv.produto_id = p.id
+      LEFT JOIN ${TableNames.produtosBase} pb
+        ON pb.id = pbv.produto_base_id
+      LEFT JOIN (
+        SELECT
+          a.produto_id,
+          GROUP_CONCAT(a.chave || '=' || a.valor, '||') AS serialized_attrs
+        FROM ${TableNames.produtoVarianteAtributos} a
+        GROUP BY a.produto_id
+      ) variant_attrs
+        ON variant_attrs.produto_id = p.id
+      LEFT JOIN (
+        SELECT
+          g.produto_base_id,
+          GROUP_CONCAT(
+            g.nome || '::' || g.obrigatorio || '::' || g.min_selecoes || '::' ||
+            COALESCE(g.max_selecoes, '') || '::' || COALESCE(group_option_counts.total_opcoes, 0),
+            '||'
+          ) AS serialized_groups
+        FROM ${TableNames.gruposModificadores} g
+        LEFT JOIN (
+          SELECT
+            o.grupo_modificador_id,
+            COUNT(*) AS total_opcoes
+          FROM ${TableNames.opcoesModificadores} o
+          GROUP BY o.grupo_modificador_id
+        ) group_option_counts
+          ON group_option_counts.grupo_modificador_id = g.id
+        WHERE g.ativo = 1
+        GROUP BY g.produto_base_id
+      ) mod_groups
+        ON mod_groups.produto_base_id = pb.id
       LEFT JOIN ${TableNames.syncRegistros} sync
         ON sync.feature_key = '$featureKey'
         AND sync.local_id = p.id
@@ -635,7 +690,248 @@ class SqliteProductRepository implements ProductRepository {
     return category?.id;
   }
 
+  Future<void> _persistLocalCatalogStructure({
+    required DatabaseExecutor txn,
+    required int productId,
+    required String productUuid,
+    required ProductInput input,
+  }) async {
+    final baseProductId = await _resolveOrCreateBaseProductId(
+      txn: txn,
+      productUuid: productUuid,
+      input: input,
+    );
+    if (baseProductId == null) {
+      return;
+    }
+
+    await _upsertBaseVariantLink(
+      txn: txn,
+      productId: productId,
+      productUuid: productUuid,
+      baseProductId: baseProductId,
+    );
+    await _replaceVariantAttributes(
+      txn: txn,
+      productId: productId,
+      productUuid: productUuid,
+      input: input,
+    );
+
+    if (input.modifierGroups != null) {
+      await _replaceModifierGroups(
+        txn: txn,
+        baseProductId: baseProductId,
+        modifierGroups: input.modifierGroups!,
+      );
+    }
+  }
+
+  Future<int?> _resolveOrCreateBaseProductId({
+    required DatabaseExecutor txn,
+    required String productUuid,
+    required ProductInput input,
+  }) async {
+    if (input.baseProductId != null) {
+      return input.baseProductId;
+    }
+
+    final modelName = _cleanNullable(input.modelName);
+    final explicitBaseName = _cleanNullable(modelName ?? input.name);
+    if (explicitBaseName == null) {
+      return null;
+    }
+
+    final existing = await txn.query(
+      TableNames.produtosBase,
+      columns: const ['id'],
+      where: 'nome = ? AND categoria_id IS ?',
+      whereArgs: [explicitBaseName, input.categoryId],
+      orderBy: 'id ASC',
+      limit: 1,
+    );
+    if (existing.isNotEmpty) {
+      return existing.first['id'] as int;
+    }
+
+    final now = DateTime.now().toIso8601String();
+    return txn.insert(TableNames.produtosBase, {
+      'uuid': 'base:$productUuid',
+      'nome': explicitBaseName,
+      'descricao': _cleanNullable(input.description),
+      'categoria_id': input.categoryId,
+      'ativo': input.isActive ? 1 : 0,
+      'criado_em': now,
+      'atualizado_em': now,
+    });
+  }
+
+  Future<void> _upsertBaseVariantLink({
+    required DatabaseExecutor txn,
+    required int productId,
+    required String productUuid,
+    required int baseProductId,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+    await txn.delete(
+      TableNames.produtosBaseVariantes,
+      where: 'produto_id = ?',
+      whereArgs: [productId],
+    );
+    await txn.insert(TableNames.produtosBaseVariantes, {
+      'uuid': 'link:$productUuid',
+      'produto_base_id': baseProductId,
+      'produto_id': productId,
+      'criado_em': now,
+      'atualizado_em': now,
+    });
+  }
+
+  Future<void> _replaceVariantAttributes({
+    required DatabaseExecutor txn,
+    required int productId,
+    required String productUuid,
+    required ProductInput input,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+    await txn.delete(
+      TableNames.produtoVarianteAtributos,
+      where: 'produto_id = ? AND chave <> ?',
+      whereArgs: [productId, 'legacy_variant_label'],
+    );
+
+    final attributes = _normalizeVariantAttributes(input);
+    for (final attribute in attributes) {
+      await txn.insert(
+        TableNames.produtoVarianteAtributos,
+        {
+          'uuid': 'attr:${attribute.key}:$productUuid',
+          'produto_id': productId,
+          'chave': attribute.key,
+          'valor': attribute.value,
+          'criado_em': now,
+          'atualizado_em': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  List<ProductVariantAttributeInput> _normalizeVariantAttributes(
+    ProductInput input,
+  ) {
+    final normalized = <ProductVariantAttributeInput>[];
+    final keys = <String>{};
+
+    void addAttribute(String key, String? value) {
+      final normalizedKey = key.trim().toLowerCase();
+      final normalizedValue = _cleanNullable(value);
+      if (normalizedKey.isEmpty || normalizedValue == null) {
+        return;
+      }
+      if (!keys.add(normalizedKey)) {
+        return;
+      }
+      normalized.add(
+        ProductVariantAttributeInput(
+          key: normalizedKey,
+          value: normalizedValue,
+        ),
+      );
+    }
+
+    for (final attribute in input.variantAttributes) {
+      addAttribute(attribute.key, attribute.value);
+    }
+
+    addAttribute('model', input.modelName);
+    addAttribute('variant', input.variantLabel);
+
+    return normalized;
+  }
+
+  Future<void> _replaceModifierGroups({
+    required DatabaseExecutor txn,
+    required int baseProductId,
+    required List<ProductModifierGroupInput> modifierGroups,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+
+    final existing = await txn.query(
+      TableNames.gruposModificadores,
+      columns: const ['id'],
+      where: 'produto_base_id = ?',
+      whereArgs: [baseProductId],
+    );
+
+    final existingGroupIds = existing
+        .map((row) => row['id'])
+        .whereType<int>()
+        .toList(growable: false);
+
+    if (existingGroupIds.isNotEmpty) {
+      final placeholders = List.filled(existingGroupIds.length, '?').join(',');
+      await txn.delete(
+        TableNames.opcoesModificadores,
+        where: 'grupo_modificador_id IN ($placeholders)',
+        whereArgs: existingGroupIds,
+      );
+      await txn.delete(
+        TableNames.gruposModificadores,
+        where: 'id IN ($placeholders)',
+        whereArgs: existingGroupIds,
+      );
+    }
+
+    for (final group in modifierGroups) {
+      final groupName = group.name.trim();
+      if (groupName.isEmpty) {
+        continue;
+      }
+
+      final groupId = await txn.insert(TableNames.gruposModificadores, {
+        'uuid': IdGenerator.next(),
+        'produto_base_id': baseProductId,
+        'nome': groupName,
+        'obrigatorio': group.isRequired ? 1 : 0,
+        'min_selecoes': group.minSelections,
+        'max_selecoes': group.maxSelections,
+        'ativo': 1,
+        'criado_em': now,
+        'atualizado_em': now,
+      });
+
+      var order = 0;
+      for (final option in group.options) {
+        final optionName = option.name.trim();
+        if (optionName.isEmpty) {
+          continue;
+        }
+        await txn.insert(TableNames.opcoesModificadores, {
+          'uuid': IdGenerator.next(),
+          'grupo_modificador_id': groupId,
+          'nome': optionName,
+          'tipo_ajuste': option.adjustmentType == 'remove' ? 'remove' : 'add',
+          'preco_delta_centavos': option.priceDeltaCents,
+          'linked_produto_id': null,
+          'ativo': 1,
+          'ordem': order,
+          'criado_em': now,
+          'atualizado_em': now,
+        });
+        order++;
+      }
+    }
+  }
+
   Product _mapProduct(Map<String, Object?> row) {
+    final variantAttributes = _parseVariantAttributes(
+      row['variant_attributes_serialized'] as String?,
+    );
+    final modifierGroups = _parseModifierGroups(
+      row['modifier_groups_serialized'] as String?,
+    );
+
     return Product(
       id: row['id'] as int,
       uuid: row['uuid'] as String,
@@ -649,6 +945,10 @@ class SqliteProductRepository implements ProductRepository {
           (row['catalog_type'] as String?) ?? ProductCatalogTypes.simple,
       modelName: row['model_name'] as String?,
       variantLabel: row['variant_label'] as String?,
+      baseProductId: row['produto_base_id'] as int?,
+      baseProductName: row['produto_base_nome'] as String?,
+      variantAttributes: variantAttributes,
+      modifierGroups: modifierGroups,
       unitMeasure: row['unidade_medida'] as String,
       costCents: row['custo_centavos'] as int,
       salePriceCents: row['preco_venda_centavos'] as int,
@@ -665,6 +965,72 @@ class SqliteProductRepository implements ProductRepository {
           ? null
           : DateTime.parse(row['sync_last_synced_at'] as String),
     );
+  }
+
+  List<ProductVariantAttribute> _parseVariantAttributes(String? serialized) {
+    if (serialized == null || serialized.trim().isEmpty) {
+      return const <ProductVariantAttribute>[];
+    }
+
+    final attributes = <ProductVariantAttribute>[];
+    final entries = serialized.split('||');
+    for (final entry in entries) {
+      final separator = entry.indexOf('=');
+      if (separator <= 0 || separator >= entry.length - 1) {
+        continue;
+      }
+      final key = entry.substring(0, separator).trim();
+      final value = entry.substring(separator + 1).trim();
+      if (key.isEmpty || value.isEmpty) {
+        continue;
+      }
+      attributes.add(ProductVariantAttribute(key: key, value: value));
+    }
+    return attributes;
+  }
+
+  List<ProductModifierGroup> _parseModifierGroups(String? serialized) {
+    if (serialized == null || serialized.trim().isEmpty) {
+      return const <ProductModifierGroup>[];
+    }
+
+    final groups = <ProductModifierGroup>[];
+    final entries = serialized.split('||');
+    for (final entry in entries) {
+      final parts = entry.split('::');
+      if (parts.length < 5) {
+        continue;
+      }
+
+      final groupName = parts[0].trim();
+      if (groupName.isEmpty) {
+        continue;
+      }
+
+      final isRequired = parts[1] == '1';
+      final minSelections = int.tryParse(parts[2]) ?? 0;
+      final maxSelections = int.tryParse(parts[3]);
+      final optionCount = int.tryParse(parts[4]) ?? 0;
+      final options = List<ProductModifierOption>.generate(
+        optionCount,
+        (_) => const ProductModifierOption(
+          name: 'Option',
+          adjustmentType: 'add',
+          priceDeltaCents: 0,
+        ),
+      );
+
+      groups.add(
+        ProductModifierGroup(
+          name: groupName,
+          isRequired: isRequired,
+          minSelections: minSelections,
+          maxSelections: maxSelections,
+          options: options,
+        ),
+      );
+    }
+    return groups;
   }
 
   String? _cleanNullable(String? value) {

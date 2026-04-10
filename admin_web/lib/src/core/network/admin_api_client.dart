@@ -37,11 +37,13 @@ class AdminApiClient {
   Future<dynamic> getJson(
     String path, {
     String? accessToken,
+    Map<String, dynamic>? queryParameters,
   }) async {
     return _send(
       'GET',
       path,
       accessToken: accessToken,
+      queryParameters: queryParameters,
     );
   }
 
@@ -76,9 +78,20 @@ class AdminApiClient {
     String path, {
     Map<String, dynamic>? body,
     String? accessToken,
+    Map<String, dynamic>? queryParameters,
     bool allowRefreshRetry = true,
   }) async {
-    final uri = Uri.parse('$_baseUrl${path.startsWith('/') ? path : '/$path'}');
+    final baseUri = Uri.parse('$_baseUrl${path.startsWith('/') ? path : '/$path'}');
+    final uri = (queryParameters == null || queryParameters.isEmpty)
+        ? baseUri
+        : baseUri.replace(
+            queryParameters: <String, String>{
+              ...baseUri.queryParameters,
+              ...queryParameters.map(
+                (key, value) => MapEntry(key, value.toString()),
+              ),
+            },
+          );
     final headers = <String, String>{
       'Accept': 'application/json',
     };
@@ -93,6 +106,7 @@ class AdminApiClient {
     adminDebugLog('http.request.started', {
       'method': method,
       'path': path,
+      'queryParameters': queryParameters,
       'hasAuthorization': headers.containsKey('Authorization'),
       'authorization': headers['Authorization'],
     });
@@ -143,6 +157,7 @@ class AdminApiClient {
           path,
           body: body,
           accessToken: refreshedAccessToken,
+          queryParameters: queryParameters,
           allowRefreshRetry: false,
         );
       }

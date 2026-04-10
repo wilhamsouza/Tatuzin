@@ -6,6 +6,7 @@ class CheckoutInput {
     required this.items,
     required this.saleType,
     required this.paymentMethod,
+    this.operationalOrderId,
     this.clientId,
     this.dueDate,
     this.notes,
@@ -16,6 +17,7 @@ class CheckoutInput {
   final List<CartItem> items;
   final SaleType saleType;
   final PaymentMethod paymentMethod;
+  final int? operationalOrderId;
   final int? clientId;
   final DateTime? dueDate;
   final String? notes;

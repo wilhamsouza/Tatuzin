@@ -14,8 +14,11 @@ import '../../../categorias/presentation/providers/category_providers.dart';
 import '../../data/datasources/products_remote_datasource.dart';
 import '../../data/products_repository_impl.dart';
 import '../../data/real/real_products_remote_datasource.dart';
+import '../../data/sqlite_local_catalog_repository.dart';
 import '../../data/sqlite_product_repository.dart';
+import '../../domain/entities/base_product.dart';
 import '../../domain/entities/product.dart';
+import '../../domain/repositories/local_catalog_repository.dart';
 import '../../domain/repositories/product_repository.dart';
 
 final localProductRepositoryProvider = Provider<SqliteProductRepository>((ref) {
@@ -34,6 +37,16 @@ final productsRemoteDatasourceProvider = Provider<ProductsRemoteDatasource>((
     environment: ref.watch(appEnvironmentProvider),
     operationalContext: ref.watch(appOperationalContextProvider),
   );
+});
+
+final localCatalogRepositoryProvider = Provider<LocalCatalogRepository>((ref) {
+  return SqliteLocalCatalogRepository(ref.read(appDatabaseProvider));
+});
+
+final baseProductOptionsProvider = FutureProvider<List<BaseProduct>>((
+  ref,
+) async {
+  return ref.read(localCatalogRepositoryProvider).listBaseProducts();
 });
 
 final productHybridRepositoryProvider = Provider<ProductsRepositoryImpl>((ref) {

@@ -5,6 +5,7 @@ import '../../fiado/domain/entities/fiado_detail.dart';
 import '../../fiado/domain/entities/fiado_payment_entry.dart';
 import '../../vendas/domain/entities/sale_detail.dart';
 import '../../vendas/domain/entities/sale_enums.dart';
+import '../../vendas/domain/entities/sale_item_detail.dart';
 import '../domain/entities/commercial_receipt.dart';
 import '../domain/entities/commercial_receipt_detail_line.dart';
 import '../domain/entities/commercial_receipt_item.dart';
@@ -61,7 +62,7 @@ abstract final class CommercialReceiptMapper {
       items: detail.items
           .map(
             (item) => CommercialReceiptItem(
-              description: item.productName,
+              description: _composeItemDescription(item),
               quantityLabel:
                   '${AppFormatters.quantityFromMil(item.quantityMil)} ${item.unitMeasure}',
               unitPriceCents: item.unitPriceCents,
@@ -181,5 +182,25 @@ abstract final class CommercialReceiptMapper {
       default:
         return 'Pendente';
     }
+  }
+
+  static String _composeItemDescription(SaleItemDetail item) {
+    final lines = <String>[item.productName];
+
+    if (item.modifiers.isNotEmpty) {
+      for (final modifier in item.modifiers) {
+        final group = modifier.groupNameSnapshot;
+        final option = modifier.optionNameSnapshot;
+        final adjustment = modifier.adjustmentTypeSnapshot;
+        lines.add('- ${group ?? 'Modificador'}: $option ($adjustment)');
+      }
+    }
+
+    final notes = item.itemNotes;
+    if (notes?.trim().isNotEmpty ?? false) {
+      lines.add('Obs.: ${notes!.trim()}');
+    }
+
+    return lines.join('\n');
   }
 }

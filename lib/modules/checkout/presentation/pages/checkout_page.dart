@@ -518,6 +518,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       paymentMethod: saleType == SaleType.fiado
           ? PaymentMethod.fiado
           : _paymentMethod,
+      operationalOrderId: null,
       clientId: _selectedClient?.id,
       dueDate: _dueDate,
       notes: _notesController.text,
@@ -706,6 +707,25 @@ class _CheckoutItemRow extends StatelessWidget {
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (item.modifiers.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                for (final modifier in item.modifiers)
+                  Text(
+                    '- ${modifier.groupName}: ${modifier.optionName} (${modifier.adjustmentType})',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+              if (item.notes?.trim().isNotEmpty ?? false) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Obs.: ${item.notes!}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ],
           ),
         ),

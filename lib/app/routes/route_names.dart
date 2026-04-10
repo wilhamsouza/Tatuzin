@@ -16,6 +16,8 @@ abstract final class AppRouteNames {
   static const purchaseDetail = 'purchase-detail';
   static const sales = 'sales';
   static const cart = 'cart';
+  static const orders = 'orders';
+  static const orderDetail = 'order-detail';
   static const checkout = 'checkout';
   static const costs = 'costs';
   static const fiado = 'fiado';
@@ -51,6 +53,8 @@ abstract final class AppRoutePaths {
   static const purchaseDetail = '/compras/:purchaseId';
   static const sales = '/vendas';
   static const cart = '/carrinho';
+  static const orders = '/pedidos';
+  static const orderDetail = '/pedidos/:orderId';
   static const checkout = '/checkout';
   static const costs = '/custos';
   static const fiado = '/fiado';
