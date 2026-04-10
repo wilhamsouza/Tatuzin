@@ -12,6 +12,7 @@ import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../../../app/theme/app_theme.dart';
+import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../domain/entities/cash_enums.dart';
 import '../../domain/entities/cash_manual_movement_input.dart';
 import '../../domain/entities/cash_movement.dart';
@@ -555,7 +556,7 @@ class _CurrentSessionSection extends StatelessWidget {
             _CashMetricCard(label: 'Entradas', valueCents: current.cashEntriesCents, caption: 'Vendas em dinheiro', icon: Icons.arrow_downward_rounded, accentColor: AppTheme.success, semanticLabel: 'Entradas em dinheiro ${AppFormatters.currencyFromCents(current.cashEntriesCents)}', onTap: () => onSelectFilter(CashMovementFilter.sales)),
             _CashMetricCard(label: 'Saidas', valueCents: current.withdrawalsCents, caption: 'Sangrias registradas', icon: Icons.arrow_upward_rounded, accentColor: AppTheme.warning, semanticLabel: 'Saidas ${AppFormatters.currencyFromCents(current.withdrawalsCents)}', onTap: () => onSelectFilter(CashMovementFilter.sangria)),
             _CashMetricCard(label: 'Saldo em caixa', valueCents: current.physicalBalanceCents, caption: 'Troco inicial + vendas em dinheiro + fiado em dinheiro + suprimentos - sangrias', icon: Icons.account_balance_wallet_rounded, accentColor: const Color(0xFF2563EB), semanticLabel: 'Saldo fisico em caixa ${AppFormatters.currencyFromCents(current.physicalBalanceCents)}', onTap: () => onSelectFilter(CashMovementFilter.all), infoMessage: 'Saldo em caixa representa apenas dinheiro fisico: troco inicial + vendas em dinheiro + fiado recebido em dinheiro + suprimentos - sangrias.'),
-            _CashMetricCard(label: 'Fiado recebido', valueCents: current.totalFiadoReceiptsCents, caption: 'Dinheiro ${AppFormatters.currencyFromCents(current.fiadoReceiptsCashCents)} • Pix ${AppFormatters.currencyFromCents(current.fiadoReceiptsPixCents)} • Cartao ${AppFormatters.currencyFromCents(current.fiadoReceiptsCardCents)}', icon: Icons.receipt_long_rounded, accentColor: AppTheme.secondary, semanticLabel: 'Fiado recebido ${AppFormatters.currencyFromCents(current.totalFiadoReceiptsCents)}', onTap: () => onSelectFilter(CashMovementFilter.fiado)),
+            _CashMetricCard(label: 'Fiado recebido', valueCents: current.totalFiadoReceiptsCents, caption: 'Dinheiro ${AppFormatters.currencyFromCents(current.fiadoReceiptsCashCents)} ï¿½ Pix ${AppFormatters.currencyFromCents(current.fiadoReceiptsPixCents)} ï¿½ Cartao ${AppFormatters.currencyFromCents(current.fiadoReceiptsCardCents)}', icon: Icons.receipt_long_rounded, accentColor: AppTheme.secondary, semanticLabel: 'Fiado recebido ${AppFormatters.currencyFromCents(current.totalFiadoReceiptsCents)}', onTap: () => onSelectFilter(CashMovementFilter.fiado)),
           ],
         ),
         const SizedBox(height: 16),
@@ -693,7 +694,7 @@ class _MovementTile extends StatelessWidget {
                 Text([
                   AppFormatters.shortDateTime(movement.createdAt),
                   if (movement.paymentMethod != null) movement.paymentMethod!.label,
-                ].join(' • '), style: Theme.of(context).textTheme.bodySmall),
+                ].join(' ï¿½ '), style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
           ),
@@ -739,7 +740,7 @@ class _SessionHistoryTile extends StatelessWidget {
                 Text([
                   'Abertura ${AppFormatters.shortDateTime(session.openedAt)}',
                   if (session.closedAt != null) 'Fechamento ${AppFormatters.shortDateTime(session.closedAt!)}',
-                ].join(' • '), style: Theme.of(context).textTheme.bodySmall),
+                ].join(' ï¿½ '), style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
           ),
