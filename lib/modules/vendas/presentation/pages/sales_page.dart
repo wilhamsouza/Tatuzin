@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -66,7 +68,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final horizontalPadding = constraints.maxWidth >= 900 ? 20.0 : 12.0;
-          final tileHeight = constraints.maxWidth >= 900 ? 186.0 : 178.0;
+          final tileHeight = constraints.maxWidth >= 900 ? 248.0 : 236.0;
           final maxTileWidth = constraints.maxWidth >= 1200
               ? 248.0
               : constraints.maxWidth >= 720
@@ -574,6 +576,8 @@ class _ProductTile extends ConsumerWidget {
     final details = [
       product.unitMeasure,
       stockLabel,
+      if (product.modifierGroupCount > 0)
+        '${product.modifierGroupCount} complementos',
       if (product.barcode?.isNotEmpty ?? false) 'C\u00f3d. ${product.barcode}',
     ];
 
@@ -588,6 +592,29 @@ class _ProductTile extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (product.hasPhoto) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: SizedBox(
+                    height: 72,
+                    width: double.infinity,
+                    child: Image.file(
+                      File(product.primaryPhotoPath!),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerLow,
+                        ),
+                        child: Icon(
+                          Icons.image_not_supported_outlined,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -672,7 +699,7 @@ class _ProductTile extends ConsumerWidget {
 
   Future<void> _addProduct(BuildContext context, WidgetRef ref) async {
     final added = await _addProductWithCompatibility(context, ref);
-    if (added == null) {
+    if (added == null || !context.mounted) {
       return;
     }
     ScaffoldMessenger.of(context)
@@ -797,10 +824,15 @@ class _CustomizeCartItemSheetState
                       final options = _optionsById.values
                           .where((option) => option.groupId == group.id)
                           .toList(growable: false);
+                      final isSingleSelection = group.maxSelections == 1;
                       return ExpansionTile(
                         title: Text(group.name),
                         subtitle: Text(
-                          group.isRequired ? 'Obrigatorio' : 'Opcional',
+                          [
+                            group.isRequired ? 'Obrigatório' : 'Opcional',
+                            'mín. ${group.minSelections}',
+                            'máx. ${group.maxSelections ?? 'livre'}',
+                          ].join(' • '),
                         ),
                         children: options
                             .map((option) {
@@ -809,21 +841,25 @@ class _CustomizeCartItemSheetState
                               );
                               return CheckboxListTile(
                                 value: selected,
+                                controlAffinity:
+                                    ListTileControlAffinity.leading,
+                                secondary: isSingleSelection
+                                    ? const Icon(Icons.radio_button_checked)
+                                    : const Icon(Icons.check_box_outlined),
                                 title: Text(option.name),
                                 subtitle: Text(
                                   option.priceDeltaCents == 0
-                                      ? option.adjustmentType
-                                      : '${option.adjustmentType} (${AppFormatters.currencyFromCents(option.priceDeltaCents)})',
+                                      ? (option.adjustmentType == 'remove'
+                                            ? 'Remoção'
+                                            : 'Sem custo adicional')
+                                      : '${option.adjustmentType == 'remove' ? 'Remoção' : 'Adição'} (${AppFormatters.currencyFromCents(option.priceDeltaCents)})',
                                 ),
-                                onChanged: (value) {
-                                  setState(() {
-                                    if (value == true) {
-                                      _selectedOptionIds.add(option.id);
-                                    } else {
-                                      _selectedOptionIds.remove(option.id);
-                                    }
-                                  });
-                                },
+                                onChanged: (value) => _toggleOption(
+                                  group: group,
+                                  options: options,
+                                  option: option,
+                                  nextValue: value == true,
+                                ),
                               );
                             })
                             .toList(growable: false),
@@ -844,12 +880,7 @@ class _CustomizeCartItemSheetState
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: () => Navigator.of(context).pop(
-                _CartCustomizationResult(
-                  modifiers: _buildModifiers(),
-                  notes: _cleanNullable(_notesController.text),
-                ),
-              ),
+              onPressed: _submitSelection,
               icon: const Icon(Icons.add_shopping_cart_rounded),
               label: const Text('Adicionar no carrinho'),
             ),
@@ -883,6 +914,81 @@ class _CustomizeCartItemSheetState
       return;
     }
     setState(() => _isLoading = false);
+  }
+
+  void _toggleOption({
+    required ModifierGroup group,
+    required List<ModifierOption> options,
+    required ModifierOption option,
+    required bool nextValue,
+  }) {
+    setState(() {
+      if (!nextValue) {
+        _selectedOptionIds.remove(option.id);
+        return;
+      }
+
+      if (group.maxSelections == 1) {
+        for (final item in options) {
+          _selectedOptionIds.remove(item.id);
+        }
+        _selectedOptionIds.add(option.id);
+        return;
+      }
+
+      final selectedCount = options
+          .where((item) => _selectedOptionIds.contains(item.id))
+          .length;
+      if (group.maxSelections != null &&
+          selectedCount >= group.maxSelections!) {
+        return;
+      }
+      _selectedOptionIds.add(option.id);
+    });
+  }
+
+  void _submitSelection() {
+    final validationError = _validateSelections();
+    if (validationError != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(validationError)));
+      return;
+    }
+
+    Navigator.of(context).pop(
+      _CartCustomizationResult(
+        modifiers: _buildModifiers(),
+        notes: _cleanNullable(_notesController.text),
+      ),
+    );
+  }
+
+  String? _validateSelections() {
+    for (final group in _groupsById.values) {
+      final selectedCount = _selectionCountForGroup(group.id);
+      if (group.isRequired && selectedCount == 0) {
+        return 'Selecione pelo menos uma opção em ${group.name}.';
+      }
+      if (selectedCount < group.minSelections) {
+        return 'Selecione no mínimo ${group.minSelections} opção(ões) em ${group.name}.';
+      }
+      if (group.maxSelections != null && selectedCount > group.maxSelections!) {
+        return 'Selecione no máximo ${group.maxSelections} opção(ões) em ${group.name}.';
+      }
+    }
+    return null;
+  }
+
+  int _selectionCountForGroup(int groupId) {
+    var count = 0;
+    for (final optionId in _selectedOptionIds) {
+      final option = _optionsById[optionId];
+      if (option?.groupId == groupId) {
+        count++;
+      }
+    }
+    return count;
   }
 
   List<CartItemModifier> _buildModifiers() {

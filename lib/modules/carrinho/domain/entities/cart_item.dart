@@ -33,6 +33,7 @@ class CartItem {
     required this.id,
     required this.productId,
     required this.productName,
+    required this.primaryPhotoPath,
     required this.baseProductId,
     required this.baseProductName,
     required this.quantityMil,
@@ -47,6 +48,7 @@ class CartItem {
   final String id;
   final int productId;
   final String productName;
+  final String? primaryPhotoPath;
   final int? baseProductId;
   final String? baseProductName;
   final int quantityMil;
@@ -68,6 +70,7 @@ class CartItem {
       id: resolvedId,
       productId: product.id,
       productName: product.displayName,
+      primaryPhotoPath: product.primaryPhotoPath,
       baseProductId: product.baseProductId,
       baseProductName: product.baseProductName,
       quantityMil: 1000,
@@ -107,6 +110,7 @@ class CartItem {
       id: id,
       productId: productId,
       productName: productName,
+      primaryPhotoPath: primaryPhotoPath,
       baseProductId: baseProductId,
       baseProductName: baseProductName,
       quantityMil: quantityMil ?? this.quantityMil,

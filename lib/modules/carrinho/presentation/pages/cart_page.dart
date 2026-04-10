@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -371,6 +373,29 @@ class _CartItemCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (item.primaryPhotoPath?.trim().isNotEmpty ?? false) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: SizedBox(
+                      width: 72,
+                      height: 72,
+                      child: Image.file(
+                        File(item.primaryPhotoPath!),
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerLow,
+                          ),
+                          child: Icon(
+                            Icons.image_not_supported_outlined,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

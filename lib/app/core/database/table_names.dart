@@ -28,6 +28,8 @@ abstract final class TableNames {
   static const produtosBase = 'produtos_base';
   static const produtosBaseVariantes = 'produtos_base_variantes';
   static const produtoVarianteAtributos = 'produto_variante_atributos';
+  static const produtoFotos = 'produto_fotos';
+  static const produtoModaGrade = 'produto_moda_grade';
   static const gruposModificadores = 'grupos_modificadores';
   static const opcoesModificadores = 'opcoes_modificadores';
   static const pedidosOperacionais = 'pedidos_operacionais';

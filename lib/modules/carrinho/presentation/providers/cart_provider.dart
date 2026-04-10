@@ -110,6 +110,7 @@ class CartController extends Notifier<CartState> {
       id: current.id,
       productId: current.productId,
       productName: current.productName,
+      primaryPhotoPath: current.primaryPhotoPath,
       baseProductId: current.baseProductId,
       baseProductName: current.baseProductName,
       quantityMil: current.quantityMil,
