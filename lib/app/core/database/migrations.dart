@@ -30,6 +30,7 @@ abstract final class AppMigrations {
     const MigrationStep(version: 14, up: _createVersion14Schema),
     const MigrationStep(version: 15, up: _createVersion15Schema),
     const MigrationStep(version: 16, up: _createVersion16Schema),
+    const MigrationStep(version: 17, up: _createVersion17Schema),
   ];
 
   static Future<void> runCreate(DatabaseExecutor db, int version) async {
@@ -2444,6 +2445,71 @@ abstract final class AppMigrations {
       WHERE nicho IS NULL
          OR TRIM(nicho) = ''
          OR nicho NOT IN ('alimentacao', 'moda')
+    ''');
+  }
+
+  static Future<void> _createVersion17Schema(DatabaseExecutor db) async {
+    final nowIso = DateTime.now().toIso8601String();
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.produtoFotos} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        produto_id INTEGER NOT NULL,
+        caminho_local TEXT NOT NULL,
+        e_principal INTEGER NOT NULL DEFAULT 0,
+        ordem INTEGER NOT NULL DEFAULT 0,
+        criado_em TEXT NOT NULL,
+        atualizado_em TEXT NOT NULL,
+        FOREIGN KEY (produto_id) REFERENCES ${TableNames.produtos}(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.produtoModaGrade} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        produto_id INTEGER NOT NULL,
+        tamanho TEXT NOT NULL,
+        cor TEXT NOT NULL,
+        estoque_mil INTEGER NOT NULL DEFAULT 0,
+        ordem INTEGER NOT NULL DEFAULT 0,
+        criado_em TEXT NOT NULL,
+        atualizado_em TEXT NOT NULL,
+        FOREIGN KEY (produto_id) REFERENCES ${TableNames.produtos}(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_produto_fotos_produto
+      ON ${TableNames.produtoFotos}(produto_id, ordem ASC, id ASC)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_produto_moda_grade_produto
+      ON ${TableNames.produtoModaGrade}(produto_id, ordem ASC, id ASC)
+    ''');
+
+    await db.execute('''
+      INSERT OR IGNORE INTO ${TableNames.produtoFotos} (
+        uuid,
+        produto_id,
+        caminho_local,
+        e_principal,
+        ordem,
+        criado_em,
+        atualizado_em
+      )
+      SELECT
+        'foto_principal:' || p.uuid,
+        p.id,
+        p.foto_path,
+        1,
+        0,
+        COALESCE(p.criado_em, '$nowIso'),
+        COALESCE(p.atualizado_em, '$nowIso')
+      FROM ${TableNames.produtos} p
+      WHERE TRIM(COALESCE(p.foto_path, '')) <> ''
     ''');
   }
 }

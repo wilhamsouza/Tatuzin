@@ -12,6 +12,7 @@ import '../../../../app/core/session/auth_token_storage.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
 import '../../../categorias/presentation/providers/category_providers.dart';
 import '../../data/datasources/products_remote_datasource.dart';
+import '../../data/product_media_storage.dart';
 import '../../data/products_repository_impl.dart';
 import '../../data/real/real_products_remote_datasource.dart';
 import '../../data/sqlite_local_catalog_repository.dart';
@@ -41,6 +42,10 @@ final productsRemoteDatasourceProvider = Provider<ProductsRemoteDatasource>((
 
 final localCatalogRepositoryProvider = Provider<LocalCatalogRepository>((ref) {
   return SqliteLocalCatalogRepository(ref.read(appDatabaseProvider));
+});
+
+final productMediaStorageProvider = Provider<ProductMediaStorage>((ref) {
+  return ProductMediaStorage();
 });
 
 final baseProductOptionsProvider = FutureProvider<List<BaseProduct>>((

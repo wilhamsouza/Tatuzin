@@ -47,7 +47,7 @@ class SqliteProductRepository implements ProductRepository {
         'nome': input.name.trim(),
         'descricao': _cleanNullable(input.description),
         'categoria_id': input.categoryId,
-        'foto_path': null,
+        'foto_path': _resolvePrimaryPhotoPath(input.photos),
         'codigo_barras': _cleanNullable(input.barcode),
         'tipo_produto': 'unidade',
         'nicho': _normalizeNiche(input.niche),
@@ -90,6 +90,16 @@ class SqliteProductRepository implements ProductRepository {
         productId: id,
         productUuid: uuid,
         input: input,
+      );
+      await _replaceProductPhotos(
+        txn: txn,
+        productId: id,
+        photos: input.photos,
+      );
+      await _replaceFashionGradeEntries(
+        txn: txn,
+        productId: id,
+        entries: input.fashionGradeEntries,
       );
 
       return id;
@@ -197,6 +207,7 @@ class SqliteProductRepository implements ProductRepository {
           'nome': input.name.trim(),
           'descricao': _cleanNullable(input.description),
           'categoria_id': input.categoryId,
+          'foto_path': _resolvePrimaryPhotoPath(input.photos),
           'codigo_barras': _cleanNullable(input.barcode),
           'nicho': _normalizeNiche(input.niche),
           'catalog_type': _normalizeCatalogType(input.catalogType),
@@ -249,6 +260,16 @@ class SqliteProductRepository implements ProductRepository {
         productUuid: existing['uuid'] as String,
         input: input,
       );
+      await _replaceProductPhotos(
+        txn: txn,
+        productId: id,
+        photos: input.photos,
+      );
+      await _replaceFashionGradeEntries(
+        txn: txn,
+        productId: id,
+        entries: input.fashionGradeEntries,
+      );
     });
   }
 
@@ -276,6 +297,30 @@ class SqliteProductRepository implements ProductRepository {
     }
 
     return _mapProduct(rows.first);
+  }
+
+  Future<List<ProductPhoto>> listProductPhotos(int productId) async {
+    final database = await _appDatabase.database;
+    final rows = await database.query(
+      TableNames.produtoFotos,
+      where: 'produto_id = ?',
+      whereArgs: [productId],
+      orderBy: 'ordem ASC, id ASC',
+    );
+    return rows.map(_mapProductPhoto).toList(growable: false);
+  }
+
+  Future<List<ProductFashionGradeEntry>> listFashionGradeEntries(
+    int productId,
+  ) async {
+    final database = await _appDatabase.database;
+    final rows = await database.query(
+      TableNames.produtoModaGrade,
+      where: 'produto_id = ?',
+      whereArgs: [productId],
+      orderBy: 'ordem ASC, id ASC',
+    );
+    return rows.map(_mapFashionGradeEntry).toList(growable: false);
   }
 
   Future<Product?> findByRemoteId(String remoteId) async {
@@ -945,6 +990,7 @@ class SqliteProductRepository implements ProductRepository {
       categoryId: row['categoria_id'] as int?,
       categoryName: row['categoria_nome'] as String?,
       barcode: row['codigo_barras'] as String?,
+      primaryPhotoPath: row['foto_path'] as String?,
       productType: row['tipo_produto'] as String,
       niche: _normalizeNiche(row['nicho'] as String?),
       catalogType:
@@ -1044,11 +1090,125 @@ class SqliteProductRepository implements ProductRepository {
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 
+  String? _resolvePrimaryPhotoPath(List<ProductPhotoInput> photos) {
+    if (photos.isEmpty) {
+      return null;
+    }
+
+    for (final photo in photos) {
+      final cleanedPath = _cleanNullable(photo.localPath);
+      if (photo.isPrimary && cleanedPath != null) {
+        return cleanedPath;
+      }
+    }
+
+    return _cleanNullable(photos.first.localPath);
+  }
+
   String _normalizeCatalogType(String? value) {
     return ProductCatalogTypes.normalize(value);
   }
 
   String _normalizeNiche(String? value) {
     return ProductNiches.normalize(value);
+  }
+
+  Future<void> _replaceProductPhotos({
+    required DatabaseExecutor txn,
+    required int productId,
+    required List<ProductPhotoInput> photos,
+  }) async {
+    await txn.delete(
+      TableNames.produtoFotos,
+      where: 'produto_id = ?',
+      whereArgs: [productId],
+    );
+
+    final normalized = <ProductPhotoInput>[];
+    for (var index = 0; index < photos.length; index++) {
+      final cleanedPath = _cleanNullable(photos[index].localPath);
+      if (cleanedPath == null) {
+        continue;
+      }
+      normalized.add(
+        ProductPhotoInput(
+          localPath: cleanedPath,
+          isPrimary: photos[index].isPrimary,
+          sortOrder: index,
+        ),
+      );
+    }
+
+    for (var index = 0; index < normalized.length; index++) {
+      final photo = normalized[index];
+      await txn.insert(TableNames.produtoFotos, {
+        'uuid': IdGenerator.next(),
+        'produto_id': productId,
+        'caminho_local': photo.localPath,
+        'e_principal': (photo.isPrimary || index == 0) ? 1 : 0,
+        'ordem': index,
+        'criado_em': DateTime.now().toIso8601String(),
+        'atualizado_em': DateTime.now().toIso8601String(),
+      });
+    }
+  }
+
+  Future<void> _replaceFashionGradeEntries({
+    required DatabaseExecutor txn,
+    required int productId,
+    required List<ProductFashionGradeEntryInput> entries,
+  }) async {
+    await txn.delete(
+      TableNames.produtoModaGrade,
+      where: 'produto_id = ?',
+      whereArgs: [productId],
+    );
+
+    for (var index = 0; index < entries.length; index++) {
+      final entry = entries[index];
+      final sizeLabel = _cleanNullable(entry.sizeLabel);
+      final colorLabel = _cleanNullable(entry.colorLabel);
+      if (sizeLabel == null || colorLabel == null) {
+        continue;
+      }
+      final now = DateTime.now().toIso8601String();
+      await txn.insert(TableNames.produtoModaGrade, {
+        'uuid': IdGenerator.next(),
+        'produto_id': productId,
+        'tamanho': sizeLabel,
+        'cor': colorLabel,
+        'estoque_mil': entry.stockMil,
+        'ordem': index,
+        'criado_em': now,
+        'atualizado_em': now,
+      });
+    }
+  }
+
+  ProductPhoto _mapProductPhoto(Map<String, Object?> row) {
+    return ProductPhoto(
+      id: row['id'] as int,
+      uuid: row['uuid'] as String,
+      productId: row['produto_id'] as int,
+      localPath: row['caminho_local'] as String,
+      isPrimary: (row['e_principal'] as int? ?? 0) == 1,
+      sortOrder: row['ordem'] as int? ?? 0,
+      createdAt: DateTime.parse(row['criado_em'] as String),
+      updatedAt: DateTime.parse(row['atualizado_em'] as String),
+    );
+  }
+
+  ProductFashionGradeEntry _mapFashionGradeEntry(Map<String, Object?> row) {
+    return ProductFashionGradeEntry(
+      id: row['id'] as int,
+      uuid: row['uuid'] as String,
+      productId: row['produto_id'] as int,
+      sizeLabel: row['tamanho'] as String,
+      colorLabel: row['cor'] as String,
+      stockMil: row['estoque_mil'] as int? ?? 0,
+      sortOrder: row['ordem'] as int? ?? 0,
+      createdAt: DateTime.parse(row['criado_em'] as String),
+      updatedAt: DateTime.parse(row['atualizado_em'] as String),
+    );
   }
 }

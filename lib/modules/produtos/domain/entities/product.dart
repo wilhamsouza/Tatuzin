@@ -31,6 +31,7 @@ class Product {
     required this.categoryId,
     required this.categoryName,
     required this.barcode,
+    required this.primaryPhotoPath,
     required this.productType,
     required this.niche,
     required this.catalogType,
@@ -60,6 +61,7 @@ class Product {
   final int? categoryId;
   final String? categoryName;
   final String? barcode;
+  final String? primaryPhotoPath;
   final String productType;
   final String niche;
   final String catalogType;
@@ -90,6 +92,9 @@ class Product {
 
   bool get isFashionNiche =>
       ProductNiches.normalize(niche) == ProductNiches.fashion;
+
+  bool get hasPhoto =>
+      primaryPhotoPath != null && primaryPhotoPath!.trim().isNotEmpty;
 
   int get modifierGroupCount => modifierGroups.length;
 
@@ -155,6 +160,8 @@ class ProductInput {
     this.description,
     this.categoryId,
     this.barcode,
+    this.photos = const <ProductPhotoInput>[],
+    this.fashionGradeEntries = const <ProductFashionGradeEntryInput>[],
     this.niche = ProductNiches.food,
     this.catalogType = ProductCatalogTypes.simple,
     this.modelName,
@@ -173,6 +180,8 @@ class ProductInput {
   final String? description;
   final int? categoryId;
   final String? barcode;
+  final List<ProductPhotoInput> photos;
+  final List<ProductFashionGradeEntryInput> fashionGradeEntries;
   final String niche;
   final String catalogType;
   final String? modelName;
@@ -255,4 +264,76 @@ class ProductModifierOptionInput {
   final String name;
   final String adjustmentType;
   final int priceDeltaCents;
+}
+
+class ProductPhoto {
+  const ProductPhoto({
+    required this.id,
+    required this.uuid,
+    required this.productId,
+    required this.localPath,
+    required this.isPrimary,
+    required this.sortOrder,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final int id;
+  final String uuid;
+  final int productId;
+  final String localPath;
+  final bool isPrimary;
+  final int sortOrder;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+}
+
+class ProductPhotoInput {
+  const ProductPhotoInput({
+    required this.localPath,
+    this.isPrimary = false,
+    this.sortOrder = 0,
+  });
+
+  final String localPath;
+  final bool isPrimary;
+  final int sortOrder;
+}
+
+class ProductFashionGradeEntry {
+  const ProductFashionGradeEntry({
+    required this.id,
+    required this.uuid,
+    required this.productId,
+    required this.sizeLabel,
+    required this.colorLabel,
+    required this.stockMil,
+    required this.sortOrder,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final int id;
+  final String uuid;
+  final int productId;
+  final String sizeLabel;
+  final String colorLabel;
+  final int stockMil;
+  final int sortOrder;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+}
+
+class ProductFashionGradeEntryInput {
+  const ProductFashionGradeEntryInput({
+    required this.sizeLabel,
+    required this.colorLabel,
+    required this.stockMil,
+    this.sortOrder = 0,
+  });
+
+  final String sizeLabel;
+  final String colorLabel;
+  final int stockMil;
+  final int sortOrder;
 }
