@@ -49,6 +49,8 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   late final TextEditingController _fashionSizeInputController;
   late final TextEditingController _fashionColorInputController;
   late bool _isActive;
+  bool _isFeatured = false;
+  bool _isPromotion = false;
   int? _selectedCategoryId;
   int? _selectedBaseProductId;
   late String _selectedUnitMeasure;
@@ -701,38 +703,85 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                   color: colorScheme.primaryContainer.withValues(alpha: 0.38),
                   borderRadius: BorderRadius.circular(18),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.inventory_2_outlined,
-                      color: colorScheme.primary,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.inventory_2_outlined,
+                          color: colorScheme.primary,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Status do produto',
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _isActive
+                                    ? 'Produto ativo para venda'
+                                    : 'Produto inativo temporariamente',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Status do produto',
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _isActive
-                                ? 'Produto ativo para venda'
-                                : 'Produto inativo temporariamente',
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _StatusChip(
+                          label: 'Ativo',
+                          selected: _isActive,
+                          color: Colors.green,
+                          icon: Icons.check_circle_outline,
+                          onSelected: () => setState(() => _isActive = true),
+                        ),
+                        _StatusChip(
+                          label: 'Inativo',
+                          selected: !_isActive,
+                          color: Colors.grey,
+                          icon: Icons.pause_circle_outline,
+                          onSelected: () => setState(() => _isActive = false),
+                        ),
+                        _StatusChip(
+                          label: 'Destaque',
+                          selected: _isFeatured,
+                          color: Colors.orange,
+                          icon: Icons.auto_awesome_outlined,
+                          onSelected: () =>
+                              setState(() => _isFeatured = !_isFeatured),
+                        ),
+                        _StatusChip(
+                          label: 'Promoção',
+                          selected: _isPromotion,
+                          color: Colors.red,
+                          icon: Icons.local_offer_outlined,
+                          onSelected: () =>
+                              setState(() => _isPromotion = !_isPromotion),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Ativo e Inativo são salvos normalmente. Destaque e Promoção ficam apenas visuais nesta etapa.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        height: 1.35,
                       ),
-                    ),
-                    Switch.adaptive(
-                      value: _isActive,
-                      onChanged: (value) => setState(() => _isActive = value),
                     ),
                   ],
                 ),
@@ -2783,6 +2832,47 @@ class _MatrixHeaderCell extends StatelessWidget {
           fontWeight: FontWeight.w700,
         ),
       ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.icon,
+    required this.onSelected,
+  });
+
+  final String label;
+  final bool selected;
+  final Color color;
+  final IconData icon;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return FilterChip(
+      selected: selected,
+      onSelected: (_) => onSelected(),
+      avatar: Icon(icon, size: 18, color: selected ? Colors.white : color),
+      label: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: selected ? Colors.white : null,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      backgroundColor: color.withValues(alpha: 0.10),
+      selectedColor: color,
+      checkmarkColor: Colors.white,
+      side: BorderSide(color: selected ? color : color.withValues(alpha: 0.35)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
     );
   }
 }
