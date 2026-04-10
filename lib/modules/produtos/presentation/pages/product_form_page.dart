@@ -46,6 +46,8 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   late final TextEditingController _fashionBrandController;
   late final TextEditingController _fashionTagsController;
   late final TextEditingController _fashionSizeHintController;
+  late final TextEditingController _fashionSizeInputController;
+  late final TextEditingController _fashionColorInputController;
   late bool _isActive;
   int? _selectedCategoryId;
   int? _selectedBaseProductId;
@@ -59,6 +61,10 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   List<_EditableModifierGroup> _foodModifierGroups = <_EditableModifierGroup>[];
   List<_EditableFashionGradeEntry> _fashionGradeEntries =
       <_EditableFashionGradeEntry>[];
+  List<String> _fashionSizes = <String>[];
+  List<String> _fashionColors = <String>[];
+  final Map<String, TextEditingController> _fashionGradeCellControllers =
+      <String, TextEditingController>{};
 
   bool get _isEditing => widget.initialProduct != null;
   bool get _isVariantCatalog =>
@@ -138,6 +144,8 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     _fashionSizeHintController = TextEditingController(
       text: _findVariantAttributeValue(product, 'fashion_size_grid_hint') ?? '',
     );
+    _fashionSizeInputController = TextEditingController();
+    _fashionColorInputController = TextEditingController();
     _isActive = product?.isActive ?? true;
     _selectedCategoryId = product?.categoryId;
     _selectedBaseProductId = product?.baseProductId;
@@ -151,6 +159,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
             ),
           ]
         : <_EditableProductPhoto>[];
+    _hydrateFashionGridState();
 
     _loadAdvancedData();
   }
@@ -175,6 +184,11 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     _fashionBrandController.dispose();
     _fashionTagsController.dispose();
     _fashionSizeHintController.dispose();
+    _fashionSizeInputController.dispose();
+    _fashionColorInputController.dispose();
+    for (final controller in _fashionGradeCellControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -249,6 +263,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
               ),
             )
             .toList(growable: false);
+        _hydrateFashionGridState();
       });
     } finally {
       if (mounted) {
@@ -900,76 +915,50 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
           ],
         ),
         const SizedBox(height: 16),
-        TextFormField(
-          controller: _fashionSizeHintController,
-          decoration: const InputDecoration(
-            labelText: 'Preparação para grade',
-            hintText: 'Ex.: grade PP ao GG, coleção cápsula',
-            helperText:
-                'Campo preparatório para futura expansão da grade/variação.',
-          ),
-          textCapitalization: TextCapitalization.sentences,
-        ),
         const SizedBox(height: 20),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final action = FilledButton.tonalIcon(
-              onPressed: () => _openFashionGradeEntryEditor(),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Nova combinação'),
-            );
-
-            if (constraints.maxWidth < 420) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Base de grade',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  action,
-                ],
-              );
-            }
-
-            return Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Base de grade',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Flexible(child: action),
-              ],
-            );
-          },
+        Text(
+          'Grade de moda',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: 6),
         Text(
-          'Essa grade é uma preparação estrutural local. Ela ainda não substitui automaticamente o estoque principal do produto nem ativa venda matricial completa.',
+          'Cadastre tamanhos e cores para gerar a matriz de combinações com estoque por célula.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: colorScheme.onSurfaceVariant,
             height: 1.35,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
+        _FashionDimensionEditor(
+          title: 'Tamanhos',
+          controller: _fashionSizeInputController,
+          buttonLabel: 'Adicionar tamanho',
+          chips: _fashionSizes,
+          onSubmitted: (_) => _addFashionSize(),
+          onAdd: _addFashionSize,
+          onRemoveChip: _removeFashionSize,
+        ),
+        const SizedBox(height: 16),
+        _FashionDimensionEditor(
+          title: 'Cores',
+          controller: _fashionColorInputController,
+          buttonLabel: 'Adicionar cor',
+          chips: _fashionColors,
+          onSubmitted: (_) => _addFashionColor(),
+          onAdd: _addFashionColor,
+          onRemoveChip: _removeFashionColor,
+        ),
+        const SizedBox(height: 16),
         if (_isLoadingAdvancedData)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: CircularProgressIndicator(),
           )
-        else if (_fashionGradeEntries.isEmpty)
+        else if (_fashionSizes.isEmpty || _fashionColors.isEmpty)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(14),
@@ -978,23 +967,53 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
               color: colorScheme.surfaceContainerLow,
             ),
             child: const Text(
-              'Adicione combinações de tamanho e cor com estoque por combinação para preparar a futura grade de moda.',
+              'Adicione pelo menos um tamanho e uma cor para montar a grade completa.',
             ),
           )
         else
-          Column(
-            children: List.generate(_fashionGradeEntries.length, (index) {
-              final entry = _fashionGradeEntries[index];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _FashionGradeEntryCard(
-                  entry: entry,
-                  onEdit: () => _openFashionGradeEntryEditor(index: index),
-                  onDelete: () => _removeFashionGradeEntry(index),
-                ),
-              );
-            }),
+          _FashionGradeMatrix(
+            sizes: _fashionSizes,
+            colors: _fashionColors,
+            controllerForCell: _controllerForFashionCell,
+            onCellChanged: () => setState(() {}),
           ),
+        const SizedBox(height: 16),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: colorScheme.surfaceContainerLow,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Total da grade',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      AppFormatters.quantityFromMil(_fashionGridTotalMil),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
         if (!_isVariantCatalog) ...[
           const SizedBox(height: 16),
           Container(
@@ -1496,99 +1515,179 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     });
   }
 
-  Future<void> _openFashionGradeEntryEditor({int? index}) async {
-    final current = index == null ? null : _fashionGradeEntries[index];
-    final sizeController = TextEditingController(
-      text: current?.sizeLabel ?? '',
-    );
-    final colorController = TextEditingController(
-      text: current?.colorLabel ?? '',
-    );
-    final stockController = TextEditingController(
-      text: current?.stockText ?? '',
-    );
+  void _hydrateFashionGridState() {
+    final parsedHint = _parseFashionGridHint(_fashionSizeHintController.text);
+    final sizes = <String>[...parsedHint.sizes];
+    final colors = <String>[...parsedHint.colors];
 
-    final result = await showDialog<_EditableFashionGradeEntry>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text(index == null ? 'Nova combinação' : 'Editar combinação'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: sizeController,
-                  decoration: const InputDecoration(labelText: 'Tamanho'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: colorController,
-                  decoration: const InputDecoration(labelText: 'Cor'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: stockController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Estoque da combinação',
-                  ),
-                ),
-              ],
-            ),
+    for (final entry in _fashionGradeEntries) {
+      final size = entry.sizeLabel.trim();
+      final color = entry.colorLabel.trim();
+      if (size.isNotEmpty && !sizes.contains(size)) {
+        sizes.add(size);
+      }
+      if (color.isNotEmpty && !colors.contains(color)) {
+        colors.add(color);
+      }
+    }
+
+    _fashionSizes = sizes;
+    _fashionColors = colors;
+    _syncFashionGradeCellControllers();
+  }
+
+  void _syncFashionGradeCellControllers() {
+    final activeKeys = <String>{};
+    for (final size in _fashionSizes) {
+      for (final color in _fashionColors) {
+        final key = _fashionCellKey(size, color);
+        activeKeys.add(key);
+        _fashionGradeCellControllers.putIfAbsent(
+          key,
+          () => TextEditingController(
+            text: _stockTextForFashionCell(size, color),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final size = sizeController.text.trim();
-                final color = colorController.text.trim();
-                if (size.isEmpty || color.isEmpty) {
-                  return;
-                }
-                Navigator.of(dialogContext).pop(
-                  _EditableFashionGradeEntry(
-                    sizeLabel: size,
-                    colorLabel: color,
-                    stockText: stockController.text.trim(),
-                  ),
-                );
-              },
-              child: const Text('Salvar'),
-            ),
-          ],
         );
-      },
+      }
+    }
+
+    final keysToRemove = _fashionGradeCellControllers.keys
+        .where((key) => !activeKeys.contains(key))
+        .toList(growable: false);
+    for (final key in keysToRemove) {
+      _fashionGradeCellControllers.remove(key)?.dispose();
+    }
+  }
+
+  _ParsedFashionGridHint _parseFashionGridHint(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) {
+      return const _ParsedFashionGridHint();
+    }
+
+    final sections = text.split(';');
+    final sizes = <String>[];
+    final colors = <String>[];
+    for (final section in sections) {
+      final separator = section.indexOf('=');
+      if (separator <= 0) {
+        continue;
+      }
+      final key = section.substring(0, separator).trim().toLowerCase();
+      final values = section
+          .substring(separator + 1)
+          .split('|')
+          .map((value) => value.trim())
+          .where((value) => value.isNotEmpty)
+          .toList(growable: false);
+      if (key == 'sizes') {
+        sizes.addAll(values);
+      } else if (key == 'colors') {
+        colors.addAll(values);
+      }
+    }
+
+    return _ParsedFashionGridHint(sizes: sizes, colors: colors);
+  }
+
+  String? _buildFashionGridHintValue() {
+    if (_fashionSizes.isEmpty && _fashionColors.isEmpty) {
+      return null;
+    }
+
+    final parts = <String>[];
+    if (_fashionSizes.isNotEmpty) {
+      parts.add('sizes=${_fashionSizes.join('|')}');
+    }
+    if (_fashionColors.isNotEmpty) {
+      parts.add('colors=${_fashionColors.join('|')}');
+    }
+    return parts.join(';');
+  }
+
+  String _fashionCellKey(String size, String color) => '$size|||$color';
+
+  String _stockTextForFashionCell(String size, String color) {
+    for (final entry in _fashionGradeEntries) {
+      if (entry.sizeLabel.trim() == size && entry.colorLabel.trim() == color) {
+        return entry.stockText.trim();
+      }
+    }
+    return '';
+  }
+
+  TextEditingController _controllerForFashionCell(String size, String color) {
+    final key = _fashionCellKey(size, color);
+    return _fashionGradeCellControllers.putIfAbsent(
+      key,
+      () => TextEditingController(text: _stockTextForFashionCell(size, color)),
     );
+  }
 
-    sizeController.dispose();
-    colorController.dispose();
-    stockController.dispose();
-
-    if (result == null) {
+  void _addFashionSize() {
+    final size = _fashionSizeInputController.text.trim();
+    if (size.isEmpty || _fashionSizes.contains(size)) {
       return;
     }
 
     setState(() {
-      final updated = [..._fashionGradeEntries];
-      if (index == null) {
-        updated.add(result);
-      } else {
-        updated[index] = result;
-      }
-      _fashionGradeEntries = updated;
+      _fashionSizes = [..._fashionSizes, size];
+      _fashionSizeInputController.clear();
+      _syncFashionGradeCellControllers();
+      _fashionSizeHintController.text = _buildFashionGridHintValue() ?? '';
     });
   }
 
-  void _removeFashionGradeEntry(int index) {
+  void _addFashionColor() {
+    final color = _fashionColorInputController.text.trim();
+    if (color.isEmpty || _fashionColors.contains(color)) {
+      return;
+    }
+
     setState(() {
-      _fashionGradeEntries = [..._fashionGradeEntries]..removeAt(index);
+      _fashionColors = [..._fashionColors, color];
+      _fashionColorInputController.clear();
+      _syncFashionGradeCellControllers();
+      _fashionSizeHintController.text = _buildFashionGridHintValue() ?? '';
     });
+  }
+
+  void _removeFashionSize(String size) {
+    setState(() {
+      _fashionSizes = _fashionSizes
+          .where((current) => current != size)
+          .toList(growable: false);
+      _fashionGradeEntries = _fashionGradeEntries
+          .where((entry) => entry.sizeLabel.trim() != size)
+          .toList(growable: false);
+      _syncFashionGradeCellControllers();
+      _fashionSizeHintController.text = _buildFashionGridHintValue() ?? '';
+    });
+  }
+
+  void _removeFashionColor(String color) {
+    setState(() {
+      _fashionColors = _fashionColors
+          .where((current) => current != color)
+          .toList(growable: false);
+      _fashionGradeEntries = _fashionGradeEntries
+          .where((entry) => entry.colorLabel.trim() != color)
+          .toList(growable: false);
+      _syncFashionGradeCellControllers();
+      _fashionSizeHintController.text = _buildFashionGridHintValue() ?? '';
+    });
+  }
+
+  int get _fashionGridTotalMil {
+    var totalMil = 0;
+    for (final size in _fashionSizes) {
+      for (final color in _fashionColors) {
+        totalMil += QuantityParser.parseToMil(
+          _controllerForFashionCell(size, color).text,
+        );
+      }
+    }
+    return totalMil;
   }
 
   Future<void> _save() async {
@@ -1753,7 +1852,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         'fashion_tags',
         _normalizeCommaSeparatedValues(_fashionTagsController.text),
       );
-      addAttribute('fashion_size_grid_hint', _fashionSizeHintController.text);
+      addAttribute('fashion_size_grid_hint', _buildFashionGridHintValue());
     }
 
     return attributes;
@@ -1776,21 +1875,25 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     }
 
     final entries = <ProductFashionGradeEntryInput>[];
-    for (var index = 0; index < _fashionGradeEntries.length; index++) {
-      final entry = _fashionGradeEntries[index];
-      final sizeLabel = entry.sizeLabel.trim();
-      final colorLabel = entry.colorLabel.trim();
-      if (sizeLabel.isEmpty || colorLabel.isEmpty) {
-        continue;
+    var sortOrder = 0;
+    for (final sizeLabel in _fashionSizes) {
+      for (final colorLabel in _fashionColors) {
+        final normalizedSize = sizeLabel.trim();
+        final normalizedColor = colorLabel.trim();
+        if (normalizedSize.isEmpty || normalizedColor.isEmpty) {
+          continue;
+        }
+        entries.add(
+          ProductFashionGradeEntryInput(
+            sizeLabel: normalizedSize,
+            colorLabel: normalizedColor,
+            stockMil: QuantityParser.parseToMil(
+              _controllerForFashionCell(normalizedSize, normalizedColor).text,
+            ),
+            sortOrder: sortOrder++,
+          ),
+        );
       }
-      entries.add(
-        ProductFashionGradeEntryInput(
-          sizeLabel: sizeLabel,
-          colorLabel: colorLabel,
-          stockMil: QuantityParser.parseToMil(entry.stockText),
-          sortOrder: index,
-        ),
-      );
     }
     return entries;
   }
@@ -2465,52 +2568,233 @@ class _EditableModifierGroupCard extends StatelessWidget {
   }
 }
 
-class _FashionGradeEntryCard extends StatelessWidget {
-  const _FashionGradeEntryCard({
-    required this.entry,
-    required this.onEdit,
-    required this.onDelete,
+class _FashionDimensionEditor extends StatelessWidget {
+  const _FashionDimensionEditor({
+    required this.title,
+    required this.controller,
+    required this.buttonLabel,
+    required this.chips,
+    required this.onSubmitted,
+    required this.onAdd,
+    required this.onRemoveChip,
   });
 
-  final _EditableFashionGradeEntry entry;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
+  final String title;
+  final TextEditingController controller;
+  final String buttonLabel;
+  final List<String> chips;
+  final ValueChanged<String> onSubmitted;
+  final VoidCallback onAdd;
+  final ValueChanged<String> onRemoveChip;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Card(
-      elevation: 0,
-      color: colorScheme.surfaceContainerLow,
-      child: ListTile(
-        title: Text(
-          '${entry.sizeLabel} • ${entry.colorLabel}',
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
-        subtitle: Text(
-          'Estoque da combinação: ${entry.stockText.trim().isEmpty ? '0' : entry.stockText}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: Wrap(
-          spacing: 4,
+        const SizedBox(height: 10),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            IconButton(
-              onPressed: onEdit,
-              icon: const Icon(Icons.edit_outlined),
+            Expanded(
+              child: TextFormField(
+                controller: controller,
+                onFieldSubmitted: onSubmitted,
+                decoration: InputDecoration(
+                  labelText: title == 'Tamanhos' ? 'Tamanho' : 'Cor',
+                  hintText: title == 'Tamanhos' ? 'Ex.: P, M, G' : 'Ex.: Preto',
+                ),
+              ),
             ),
-            IconButton(
-              onPressed: onDelete,
-              icon: const Icon(Icons.delete_outline_rounded),
+            const SizedBox(width: 12),
+            FilledButton.tonalIcon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add_rounded),
+              label: Text(
+                buttonLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
+        ),
+        const SizedBox(height: 10),
+        if (chips.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Text(
+              'Nenhum item adicionado em $title.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          )
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: chips
+                .map(
+                  (chip) => InputChip(
+                    label: Text(
+                      chip,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onDeleted: () => onRemoveChip(chip),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+      ],
+    );
+  }
+}
+
+class _FashionGradeMatrix extends StatelessWidget {
+  const _FashionGradeMatrix({
+    required this.sizes,
+    required this.colors,
+    required this.controllerForCell,
+    required this.onCellChanged,
+  });
+
+  final List<String> sizes;
+  final List<String> colors;
+  final TextEditingController Function(String size, String color)
+  controllerForCell;
+  final VoidCallback onCellChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    const firstColumnWidth = 120.0;
+    const cellWidth = 110.0;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border.all(color: colorScheme.outlineVariant),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Table(
+            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+            columnWidths: {
+              0: const FixedColumnWidth(firstColumnWidth),
+              for (var index = 0; index < colors.length; index++)
+                index + 1: const FixedColumnWidth(cellWidth),
+            },
+            children: [
+              TableRow(
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerLow,
+                ),
+                children: [
+                  const _MatrixHeaderCell(
+                    label: 'Tamanho',
+                    alignment: Alignment.centerLeft,
+                  ),
+                  for (final color in colors)
+                    _MatrixHeaderCell(
+                      label: color,
+                      alignment: Alignment.center,
+                    ),
+                ],
+              ),
+              for (final size in sizes)
+                TableRow(
+                  children: [
+                    _MatrixHeaderCell(
+                      label: size,
+                      alignment: Alignment.centerLeft,
+                      emphasize: true,
+                    ),
+                    for (final color in colors)
+                      Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: TextFormField(
+                          controller: controllerForCell(size, color),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          textAlign: TextAlign.center,
+                          onChanged: (_) => onCellChanged(),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            hintText: '0',
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _MatrixHeaderCell extends StatelessWidget {
+  const _MatrixHeaderCell({
+    required this.label,
+    required this.alignment,
+    this.emphasize = false,
+  });
+
+  final String label;
+  final Alignment alignment;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      alignment: alignment,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      color: emphasize ? colorScheme.surfaceContainerLowest : null,
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _ParsedFashionGridHint {
+  const _ParsedFashionGridHint({
+    this.sizes = const <String>[],
+    this.colors = const <String>[],
+  });
+
+  final List<String> sizes;
+  final List<String> colors;
 }
 
 class _EditableProductPhoto {
