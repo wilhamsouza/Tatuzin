@@ -1017,149 +1017,138 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return ListView(
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-      children: [
-        _SectionCard(
-          title: 'Fotos do produto',
-          subtitle:
-              'As fotos ficam salvas localmente no app, com reabertura confiável e sem interferir no sync atual.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final galleryButton = FilledButton.tonalIcon(
-                    onPressed: _photos.length >= _maxPhotos || _isPickingPhoto
-                        ? null
-                        : () => _pickPhoto(ImageSource.gallery),
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text('Galeria'),
-                  );
-                  final cameraButton = FilledButton.tonalIcon(
-                    onPressed: _photos.length >= _maxPhotos || _isPickingPhoto
-                        ? null
-                        : () => _pickPhoto(ImageSource.camera),
-                    icon: const Icon(Icons.photo_camera_outlined),
-                    label: const Text('Câmera'),
-                  );
-
-                  if (constraints.maxWidth < 460) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${_photos.length}/$_maxPhotos fotos',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [galleryButton, cameraButton],
-                        ),
-                      ],
-                    );
-                  }
-
-                  return Row(
+      child: Column(
+        children: [
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+              side: BorderSide(color: colorScheme.outlineVariant),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        child: Text(
-                          '${_photos.length}/$_maxPhotos fotos',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Fotos do produto',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '${_photos.length} / $_maxPhotos fotos',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Flexible(child: galleryButton),
-                      const SizedBox(width: 8),
-                      Flexible(child: cameraButton),
+                      const SizedBox(width: 12),
+                      FilledButton.tonalIcon(
+                        onPressed:
+                            _photos.length >= _maxPhotos || _isPickingPhoto
+                            ? null
+                            : _promptPhotoSource,
+                        icon: const Icon(Icons.add_photo_alternate_outlined),
+                        label: const Text('Adicionar'),
+                      ),
                     ],
-                  );
-                },
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'A primeira foto preenchida será usada como principal nas listagens do app.',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: 6,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 0.88,
+                        ),
+                    itemBuilder: (context, index) {
+                      final hasPhoto = index < _photos.length;
+                      final photo = hasPhoto ? _photos[index] : null;
+                      return _ProductPhotoTile(
+                        photo: photo,
+                        isPrimary: hasPhoto && index == 0,
+                        isPickingPhoto: _isPickingPhoto,
+                        onTap: hasPhoto || _photos.length >= _maxPhotos
+                            ? null
+                            : _promptPhotoSource,
+                        onRemove: hasPhoto ? () => _removePhoto(index) : null,
+                      );
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _photos.isEmpty ? 1 : _photos.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.08,
-                ),
-                itemBuilder: (context, index) {
-                  if (_photos.isEmpty) {
-                    return Container(
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: colorScheme.outlineVariant),
-                      ),
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.add_a_photo_rounded,
-                            size: 28,
-                            color: colorScheme.primary,
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            'Adicione a primeira foto',
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Use galeria ou câmera para montar a vitrine do produto.',
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-                  final photo = _photos[index];
-                  return _ProductPhotoTile(
-                    photo: photo,
-                    canMoveLeft: index > 0,
-                    canMoveRight: index < _photos.length - 1,
-                    onMoveLeft: () => _movePhoto(index, index - 1),
-                    onMoveRight: () => _movePhoto(index, index + 1),
-                    onMakePrimary: () => _setPrimaryPhoto(index),
-                    onRemove: () => _removePhoto(index),
-                  );
-                },
+  Future<void> _promptPhotoSource() async {
+    if (_photos.length >= _maxPhotos || _isPickingPhoto) {
+      return;
+    }
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Galeria'),
+                onTap: () =>
+                    Navigator.of(sheetContext).pop(ImageSource.gallery),
               ),
-              const SizedBox(height: 12),
-              Text(
-                'A foto principal também é refletida nas listagens locais. As imagens ficam salvas offline no diretório do app, sem depender do backend atual.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                  height: 1.4,
-                ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Câmera'),
+                onTap: () => Navigator.of(sheetContext).pop(ImageSource.camera),
               ),
             ],
           ),
-        ),
-      ],
+        );
+      },
     );
+
+    if (source == null) {
+      return;
+    }
+
+    await _pickPhoto(source);
   }
 
   String get _variantPreviewLabel {
@@ -1252,30 +1241,6 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         setState(() => _isPickingPhoto = false);
       }
     }
-  }
-
-  void _setPrimaryPhoto(int index) {
-    setState(() {
-      _photos = List<_EditableProductPhoto>.generate(_photos.length, (current) {
-        final photo = _photos[current];
-        return photo.copyWith(isPrimary: current == index);
-      });
-    });
-  }
-
-  void _movePhoto(int from, int to) {
-    if (to < 0 || to >= _photos.length) {
-      return;
-    }
-    setState(() {
-      final updated = [..._photos];
-      final photo = updated.removeAt(from);
-      updated.insert(to, photo);
-      _photos = List<_EditableProductPhoto>.generate(updated.length, (index) {
-        final current = updated[index];
-        return current.copyWith(isPrimary: current.isPrimary);
-      });
-    });
   }
 
   Future<void> _removePhoto(int index) async {
@@ -2256,119 +2221,127 @@ class _CatalogTypeOption extends StatelessWidget {
 class _ProductPhotoTile extends StatelessWidget {
   const _ProductPhotoTile({
     required this.photo,
-    required this.canMoveLeft,
-    required this.canMoveRight,
-    required this.onMoveLeft,
-    required this.onMoveRight,
-    required this.onMakePrimary,
+    required this.isPrimary,
+    required this.isPickingPhoto,
+    required this.onTap,
     required this.onRemove,
   });
 
-  final _EditableProductPhoto photo;
-  final bool canMoveLeft;
-  final bool canMoveRight;
-  final VoidCallback onMoveLeft;
-  final VoidCallback onMoveRight;
-  final VoidCallback onMakePrimary;
-  final VoidCallback onRemove;
+  final _EditableProductPhoto? photo;
+  final bool isPrimary;
+  final bool isPickingPhoto;
+  final VoidCallback? onTap;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final hasPhoto = photo != null;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: hasPhoto
+                ? colorScheme.surfaceContainerLow
+                : colorScheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isPrimary
+                  ? colorScheme.primary
+                  : colorScheme.outlineVariant,
+              width: isPrimary ? 1.4 : 1,
+            ),
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (hasPhoto)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(19),
+                  child: Image.file(
+                    File(photo!.localPath),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        _PhotoPlaceholder(isBusy: isPickingPhoto),
+                  ),
+                )
+              else
+                _PhotoPlaceholder(isBusy: isPickingPhoto),
+              if (isPrimary)
+                Positioned(
+                  left: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'Principal',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              if (hasPhoto)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: IconButton.filledTonal(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onRemove,
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PhotoPlaceholder extends StatelessWidget {
+  const _PhotoPlaceholder({required this.isBusy});
+
+  final bool isBusy;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: photo.isPrimary
-              ? colorScheme.primary
-              : colorScheme.outlineVariant,
-          width: photo.isPrimary ? 1.4 : 1,
-        ),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
+    return Padding(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Image.file(
-            File(photo.localPath),
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => ColoredBox(
-              color: colorScheme.surfaceContainerLow,
-              child: Icon(
-                Icons.broken_image_outlined,
-                color: colorScheme.primary,
-              ),
-            ),
+          Icon(
+            isBusy ? Icons.hourglass_top_rounded : Icons.add_a_photo_outlined,
+            size: 24,
+            color: colorScheme.primary,
           ),
-          Positioned(
-            left: 10,
-            right: 10,
-            bottom: 10,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.62),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      photo.isPrimary ? 'Foto principal' : 'Foto secundária',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          color: Colors.white,
-                          onPressed: canMoveLeft ? onMoveLeft : null,
-                          icon: const Icon(Icons.arrow_back_rounded),
-                        ),
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          color: Colors.white,
-                          onPressed: canMoveRight ? onMoveRight : null,
-                          icon: const Icon(Icons.arrow_forward_rounded),
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton(
-                              onPressed: onMakePrimary,
-                              child: Text(
-                                photo.isPrimary
-                                    ? 'Principal'
-                                    : 'Tornar principal',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          color: Colors.white,
-                          onPressed: onRemove,
-                          icon: const Icon(Icons.delete_outline_rounded),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+          const SizedBox(height: 8),
+          Text(
+            isBusy ? 'Carregando...' : 'Adicionar foto',
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
