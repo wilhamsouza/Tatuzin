@@ -17,7 +17,14 @@ abstract interface class CashRepository {
     String? notes,
   });
 
-  Future<CashSession> closeSession({String? notes});
+  Future<CashSession> confirmAutoOpenedSession({
+    required int initialFloatCents,
+  });
+
+  Future<CashSession> closeSession({
+    required int countedBalanceCents,
+    String? notes,
+  });
 
   Future<void> registerManualMovement(CashManualMovementInput input);
 }

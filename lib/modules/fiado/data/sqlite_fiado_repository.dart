@@ -130,7 +130,15 @@ class SqliteFiadoRepository implements FiadoRepository {
       await CashSessionMathSupport.applySessionDeltas(
         txn,
         sessionId: sessionId,
-        fiadoReceiptsDeltaCents: input.amountCents,
+        fiadoReceiptsCashDeltaCents: input.paymentMethod == PaymentMethod.cash
+            ? input.amountCents
+            : 0,
+        fiadoReceiptsPixDeltaCents: input.paymentMethod == PaymentMethod.pix
+            ? input.amountCents
+            : 0,
+        fiadoReceiptsCardDeltaCents: input.paymentMethod == PaymentMethod.card
+            ? input.amountCents
+            : 0,
       );
       final cashMovement = await CashDatabaseSupport.insertMovement(
         txn,

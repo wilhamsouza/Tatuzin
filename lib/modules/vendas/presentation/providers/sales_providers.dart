@@ -108,6 +108,7 @@ class CheckoutController extends AsyncNotifier<void> {
       final sale = input.saleType.isCredit
           ? await ref.read(finalizeCreditSaleUseCaseProvider).call(input)
           : await ref.read(finalizeCashSaleUseCaseProvider).call(input);
+      ref.read(appDataRefreshProvider.notifier).state++;
       state = const AsyncData(null);
       return sale;
     } catch (error, stackTrace) {
@@ -127,6 +128,7 @@ class CancelSaleController extends AsyncNotifier<void> {
       await ref
           .read(cancelSaleUseCaseProvider)
           .call(saleId: saleId, reason: reason);
+      ref.read(appDataRefreshProvider.notifier).state++;
       state = const AsyncData(null);
     } catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);

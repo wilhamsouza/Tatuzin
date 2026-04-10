@@ -57,15 +57,23 @@ abstract final class CashDatabaseSupport {
       'aberta_em': openedAtIso,
       'fechada_em': null,
       'troco_inicial_centavos': 0,
+      'aguardando_confirmacao_troco_inicial': 1,
+      'total_entradas_dinheiro_centavos': 0,
       'total_suprimentos_centavos': 0,
       'total_sangrias_centavos': 0,
       'total_vendas_centavos': 0,
       'total_recebimentos_fiado_centavos': 0,
+      'total_recebimentos_fiado_dinheiro_centavos': 0,
+      'total_recebimentos_fiado_pix_centavos': 0,
+      'total_recebimentos_fiado_cartao_centavos': 0,
+      'saldo_esperado_centavos': 0,
+      'saldo_contado_centavos': null,
+      'diferenca_centavos': null,
       'saldo_final_centavos': 0,
       'status': CashSessionStatus.open.dbValue,
       'observacao':
           notes ??
-          'Sessao aberta automaticamente para registrar movimento financeiro.',
+          'Sessão aberta automaticamente para registrar movimento financeiro.',
     });
   }
 
@@ -110,8 +118,10 @@ abstract final class CashSessionMathSupport {
   static Future<void> applySessionDeltas(
     DatabaseExecutor db, {
     required int sessionId,
-    int salesDeltaCents = 0,
-    int fiadoReceiptsDeltaCents = 0,
+    int cashEntriesDeltaCents = 0,
+    int fiadoReceiptsCashDeltaCents = 0,
+    int fiadoReceiptsPixDeltaCents = 0,
+    int fiadoReceiptsCardDeltaCents = 0,
     int suppliesDeltaCents = 0,
     int withdrawalsDeltaCents = 0,
   }) async {
@@ -119,10 +129,14 @@ abstract final class CashSessionMathSupport {
       TableNames.caixaSessoes,
       columns: [
         'troco_inicial_centavos',
+        'total_entradas_dinheiro_centavos',
         'total_suprimentos_centavos',
         'total_sangrias_centavos',
         'total_vendas_centavos',
         'total_recebimentos_fiado_centavos',
+        'total_recebimentos_fiado_dinheiro_centavos',
+        'total_recebimentos_fiado_pix_centavos',
+        'total_recebimentos_fiado_cartao_centavos',
       ],
       where: 'id = ?',
       whereArgs: [sessionId],
@@ -135,28 +149,62 @@ abstract final class CashSessionMathSupport {
 
     final row = sessionRows.first;
     final initialFloat = row['troco_inicial_centavos'] as int? ?? 0;
+    final cashEntries =
+        (row['total_entradas_dinheiro_centavos'] as int? ?? 0) +
+        cashEntriesDeltaCents;
     final supplies =
         (row['total_suprimentos_centavos'] as int? ?? 0) + suppliesDeltaCents;
     final withdrawals =
         (row['total_sangrias_centavos'] as int? ?? 0) + withdrawalsDeltaCents;
-    final sales = (row['total_vendas_centavos'] as int? ?? 0) + salesDeltaCents;
-    final fiadoReceipts =
+    final legacySales =
+        (row['total_vendas_centavos'] as int? ?? 0) + cashEntriesDeltaCents;
+    final legacyFiadoReceipts =
         (row['total_recebimentos_fiado_centavos'] as int? ?? 0) +
-        fiadoReceiptsDeltaCents;
-    final finalBalance =
-        initialFloat + supplies + sales + fiadoReceipts - withdrawals;
+        fiadoReceiptsCashDeltaCents +
+        fiadoReceiptsPixDeltaCents +
+        fiadoReceiptsCardDeltaCents;
+    final fiadoCash =
+        (row['total_recebimentos_fiado_dinheiro_centavos'] as int? ?? 0) +
+        fiadoReceiptsCashDeltaCents;
+    final fiadoPix =
+        (row['total_recebimentos_fiado_pix_centavos'] as int? ?? 0) +
+        fiadoReceiptsPixDeltaCents;
+    final fiadoCard =
+        (row['total_recebimentos_fiado_cartao_centavos'] as int? ?? 0) +
+        fiadoReceiptsCardDeltaCents;
+    final expectedBalance =
+        initialFloat + cashEntries + fiadoCash + supplies - withdrawals;
 
     await db.update(
       TableNames.caixaSessoes,
       {
+        'total_entradas_dinheiro_centavos': cashEntries,
         'total_suprimentos_centavos': supplies,
         'total_sangrias_centavos': withdrawals,
-        'total_vendas_centavos': sales,
-        'total_recebimentos_fiado_centavos': fiadoReceipts,
-        'saldo_final_centavos': finalBalance,
+        'total_vendas_centavos': legacySales,
+        'total_recebimentos_fiado_centavos': legacyFiadoReceipts,
+        'total_recebimentos_fiado_dinheiro_centavos': fiadoCash,
+        'total_recebimentos_fiado_pix_centavos': fiadoPix,
+        'total_recebimentos_fiado_cartao_centavos': fiadoCard,
+        'saldo_esperado_centavos': expectedBalance,
+        'saldo_final_centavos': expectedBalance,
       },
       where: 'id = ?',
       whereArgs: [sessionId],
     );
+  }
+
+  static int calculateExpectedBalance({
+    required int initialFloatCents,
+    required int cashEntriesCents,
+    required int fiadoReceiptsCashCents,
+    required int suppliesCents,
+    required int withdrawalsCents,
+  }) {
+    return initialFloatCents +
+        cashEntriesCents +
+        fiadoReceiptsCashCents +
+        suppliesCents -
+        withdrawalsCents;
   }
 }

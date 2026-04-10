@@ -24,7 +24,9 @@ class SaleCashEffectsSupport {
     await CashSessionMathSupport.applySessionDeltas(
       txn,
       sessionId: sessionId,
-      salesDeltaCents: amountCents,
+      cashEntriesDeltaCents: paymentMethod == PaymentMethod.cash
+          ? amountCents
+          : 0,
     );
     return CashDatabaseSupport.insertMovement(
       txn,
@@ -59,7 +61,9 @@ class SaleCashEffectsSupport {
     await CashSessionMathSupport.applySessionDeltas(
       txn,
       sessionId: sessionId,
-      salesDeltaCents: -amountCents,
+      cashEntriesDeltaCents: paymentMethod == PaymentMethod.cash
+          ? -amountCents
+          : 0,
     );
     return CashDatabaseSupport.insertMovement(
       txn,
@@ -87,12 +91,12 @@ class SaleCashEffectsSupport {
       txn,
       timestamp: timestamp,
       userId: userId,
-      notes: 'Sessao aberta automaticamente para registrar estorno de fiado.',
+      notes: 'Sessão aberta automaticamente para registrar estorno de fiado.',
     );
     await CashSessionMathSupport.applySessionDeltas(
       txn,
       sessionId: sessionId,
-      fiadoReceiptsDeltaCents: -amountCents,
+      fiadoReceiptsCashDeltaCents: -amountCents,
     );
     return CashDatabaseSupport.insertMovement(
       txn,

@@ -93,6 +93,7 @@ class FiadoPaymentController extends AsyncNotifier<void> {
       final detail = await ref
           .read(registerFiadoPaymentUseCaseProvider)
           .call(input);
+      ref.read(appDataRefreshProvider.notifier).state++;
       state = const AsyncData(null);
       return detail;
     } catch (error, stackTrace) {
