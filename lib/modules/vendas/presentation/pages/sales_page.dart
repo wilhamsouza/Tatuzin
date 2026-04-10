@@ -871,7 +871,7 @@ class _CustomizeCartItemSheetState
           TextField(
             controller: _notesController,
             decoration: const InputDecoration(
-              labelText: 'Observacao do item (opcional)',
+              labelText: 'Observação do item (opcional)',
             ),
             minLines: 1,
             maxLines: 2,
@@ -882,7 +882,7 @@ class _CustomizeCartItemSheetState
             child: FilledButton.icon(
               onPressed: _submitSelection,
               icon: const Icon(Icons.add_shopping_cart_rounded),
-              label: const Text('Adicionar no carrinho'),
+              label: const Text('Adicionar ao carrinho'),
             ),
           ),
         ],

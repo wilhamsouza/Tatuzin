@@ -58,10 +58,75 @@ class ProductsPage extends ConsumerWidget {
             child: productsAsync.when(
               data: (products) {
                 if (products.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('Nenhum produto cadastrado ainda.'),
+                      padding: const EdgeInsets.all(24),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 380),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(28),
+                            border: Border.all(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant,
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 72,
+                                  height: 72,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.primary
+                                        .withValues(alpha: 0.10),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Icon(
+                                    Icons.inventory_2_outlined,
+                                    size: 34,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(height: 18),
+                                Text(
+                                  'Nenhum produto cadastrado',
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Crie o primeiro item para começar a montar seu catálogo com mais clareza.',
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                        height: 1.4,
+                                      ),
+                                ),
+                                const SizedBox(height: 18),
+                                FilledButton.icon(
+                                  onPressed: () => context.pushNamed(
+                                    AppRouteNames.productForm,
+                                  ),
+                                  icon: const Icon(Icons.add_rounded),
+                                  label: const Text('Cadastrar produto'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   );
                 }
@@ -155,7 +220,7 @@ class _ProductTile extends ConsumerWidget {
       if (product.categoryName?.trim().isNotEmpty ?? false)
         product.categoryName!,
       if (product.barcode?.trim().isNotEmpty ?? false)
-        'Cod. ${product.barcode}',
+        'Código ${product.barcode}',
     ];
 
     return Card(
@@ -180,7 +245,7 @@ class _ProductTile extends ConsumerWidget {
                       if (subtitleParts.isNotEmpty) ...[
                         const SizedBox(height: 6),
                         Text(
-                          subtitleParts.join(' - '),
+                          subtitleParts.join(' • '),
                           style: theme.textTheme.bodySmall,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -296,7 +361,7 @@ class _ProductTile extends ConsumerWidget {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Produto "${product.displayName}" excluido.')),
+        SnackBar(content: Text('Produto "${product.displayName}" excluído.')),
       );
     } catch (error) {
       if (!context.mounted) {

@@ -279,10 +279,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
     errorBuilder: (context, state) {
       return AppAsyncValueView.error(
-        title: 'Rota indisponivel',
+        title: 'Rota indisponível',
         message:
             state.error?.toString() ??
-            'Nao foi possivel encontrar a tela solicitada.',
+            'Não foi possível encontrar a tela solicitada.',
       );
     },
   );
