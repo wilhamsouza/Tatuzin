@@ -473,7 +473,7 @@ class _SaleHistoryTile extends StatelessWidget {
                     tone: AppStatusTone.info,
                   ),
                   AppStatusBadge(
-                    label: sale.paymentMethod.label,
+                    label: sale.paymentDisplayLabel,
                     tone: AppStatusTone.neutral,
                   ),
                   if (sale.fiadoStatus != null)

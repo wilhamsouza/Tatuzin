@@ -9,6 +9,7 @@ class Client {
     required this.address,
     required this.notes,
     required this.debtorBalanceCents,
+    required this.creditBalanceCents,
     required this.isActive,
     required this.createdAt,
     required this.updatedAt,
@@ -25,6 +26,7 @@ class Client {
   final String? address;
   final String? notes;
   final int debtorBalanceCents;
+  final int creditBalanceCents;
   final bool isActive;
   final DateTime createdAt;
   final DateTime updatedAt;

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/utils/money_parser.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
@@ -32,16 +33,23 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
   Client? _selectedClient;
   DateTime? _dueDate;
   late final TextEditingController _notesController;
+  late final TextEditingController _creditAmountController;
+  late final TextEditingController _amountReceivedController;
+  bool _leaveChangeAsCredit = false;
 
   @override
   void initState() {
     super.initState();
     _notesController = TextEditingController();
+    _creditAmountController = TextEditingController();
+    _amountReceivedController = TextEditingController();
   }
 
   @override
   void dispose() {
     _notesController.dispose();
+    _creditAmountController.dispose();
+    _amountReceivedController.dispose();
     super.dispose();
   }
 
@@ -53,9 +61,38 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     const sectionPadding = EdgeInsets.fromLTRB(14, 14, 14, 14);
+    final availableCreditCents = _selectedClient?.creditBalanceCents ?? 0;
+    final appliedCreditCents =
+        _saleType == SaleType.cash && _selectedClient != null
+        ? _clampCreditUsage(
+            MoneyParser.parseToCents(_creditAmountController.text),
+            cart.totalCents,
+            availableCreditCents,
+          )
+        : 0;
+    final immediateDueCents = (cart.totalCents - appliedCreditCents) < 0
+        ? 0
+        : cart.totalCents - appliedCreditCents;
+    final tenderedCents = MoneyParser.parseToCents(
+      _amountReceivedController.text,
+    );
+    final changeLeftAsCreditCents =
+        _saleType == SaleType.cash &&
+            _paymentMethod == PaymentMethod.cash &&
+            _selectedClient != null &&
+            _leaveChangeAsCredit &&
+            tenderedCents > immediateDueCents
+        ? tenderedCents - immediateDueCents
+        : 0;
     final effectivePaymentMethod = _saleType == SaleType.fiado
         ? PaymentMethod.fiado
         : _paymentMethod;
+    final paymentLabel =
+        _saleType == SaleType.cash &&
+            appliedCreditCents > 0 &&
+            immediateDueCents == 0
+        ? 'Haver'
+        : effectivePaymentMethod.label;
 
     return Scaffold(
       appBar: AppBar(
@@ -117,7 +154,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                '${cart.totalItems} item(ns) • ${effectivePaymentMethod.label}',
+                                '${cart.totalItems} item(ns) • $paymentLabel',
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: colorScheme.onSurfaceVariant,
                                 ),
@@ -157,6 +194,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                                     if (_paymentMethod == PaymentMethod.fiado) {
                                       _paymentMethod = PaymentMethod.cash;
                                     }
+                                    _dueDate = null;
                                   });
                                 },
                         ),
@@ -174,6 +212,9 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                                   setState(() {
                                     _saleType = SaleType.fiado;
                                     _paymentMethod = PaymentMethod.fiado;
+                                    _creditAmountController.clear();
+                                    _amountReceivedController.clear();
+                                    _leaveChangeAsCredit = false;
                                   });
                                 },
                         ),
@@ -189,40 +230,69 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                       : 'No fiado, o pagamento fica registrado como fiado.',
                   padding: sectionPadding,
                   child: _saleType == SaleType.cash
-                      ? GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: 3,
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                crossAxisSpacing: 10,
-                                mainAxisSpacing: 10,
-                                childAspectRatio: 1.7,
-                              ),
-                          itemBuilder: (context, index) {
-                            final method = [
-                              PaymentMethod.cash,
-                              PaymentMethod.pix,
-                              PaymentMethod.card,
-                            ][index];
+                      ? immediateDueCents == 0 && appliedCreditCents > 0
+                            ? Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(18),
+                                  color: colorScheme.primaryContainer
+                                      .withValues(alpha: 0.56),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.account_balance_wallet_outlined,
+                                      color: colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        'Venda coberta integralmente por haver.',
+                                        style: theme.textTheme.titleSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: 3,
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 2,
+                                      crossAxisSpacing: 10,
+                                      mainAxisSpacing: 10,
+                                      childAspectRatio: 1.7,
+                                    ),
+                                itemBuilder: (context, index) {
+                                  final method = [
+                                    PaymentMethod.cash,
+                                    PaymentMethod.pix,
+                                    PaymentMethod.card,
+                                  ][index];
 
-                            return _ChoiceCard(
-                              label: method.label,
-                              subtitle: 'Disponível agora',
-                              icon: method == PaymentMethod.cash
-                                  ? Icons.payments_outlined
-                                  : method == PaymentMethod.pix
-                                  ? Icons.pix
-                                  : Icons.credit_card_rounded,
-                              selected: _paymentMethod == method,
-                              onTap: isSubmitting
-                                  ? null
-                                  : () =>
-                                        setState(() => _paymentMethod = method),
-                            );
-                          },
-                        )
+                                  return _ChoiceCard(
+                                    label: method.label,
+                                    subtitle: 'Disponível agora',
+                                    icon: method == PaymentMethod.cash
+                                        ? Icons.payments_outlined
+                                        : method == PaymentMethod.pix
+                                        ? Icons.pix
+                                        : Icons.credit_card_rounded,
+                                    selected: _paymentMethod == method,
+                                    onTap: isSubmitting
+                                        ? null
+                                        : () => setState(
+                                            () => _paymentMethod = method,
+                                          ),
+                                  );
+                                },
+                              )
                       : Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(14),
@@ -271,11 +341,11 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                           if (client == null) {
                             return;
                           }
-                          setState(() => _selectedClient = client);
+                          _setSelectedClient(client);
                         },
                         onClearClient: _selectedClient == null || isSubmitting
                             ? null
-                            : () => setState(() => _selectedClient = null),
+                            : () => _setSelectedClient(null),
                       ),
                       if (_saleType == SaleType.fiado) ...[
                         const SizedBox(height: 12),
@@ -297,6 +367,135 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                     ],
                   ),
                 ),
+                if (_saleType == SaleType.cash && _selectedClient != null) ...[
+                  const SizedBox(height: 12),
+                  AppSectionCard(
+                    title: 'Haver disponível',
+                    subtitle:
+                        'Abata saldo do cliente antes de receber o restante da venda.',
+                    padding: sectionPadding,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _CheckoutSummaryMetric(
+                                label: 'Saldo atual',
+                                value: AppFormatters.currencyFromCents(
+                                  availableCreditCents,
+                                ),
+                                icon: Icons.account_balance_wallet_outlined,
+                                emphasize: availableCreditCents > 0,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _CheckoutSummaryMetric(
+                                label: 'Aplicado agora',
+                                value: AppFormatters.currencyFromCents(
+                                  appliedCreditCents,
+                                ),
+                                icon: Icons.remove_circle_outline,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _creditAmountController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'Valor de haver para usar',
+                            hintText: '0,00',
+                            suffixIcon: TextButton(
+                              onPressed: availableCreditCents <= 0
+                                  ? null
+                                  : () {
+                                      final cents = _clampCreditUsage(
+                                        availableCreditCents,
+                                        cart.totalCents,
+                                        availableCreditCents,
+                                      );
+                                      _creditAmountController.text =
+                                          AppFormatters.currencyInputFromCents(
+                                            cents,
+                                          );
+                                      setState(() {});
+                                    },
+                              child: const Text('Usar tudo'),
+                            ),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerLowest,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: colorScheme.outlineVariant,
+                            ),
+                          ),
+                          child: Text(
+                            immediateDueCents == 0
+                                ? 'O haver cobre toda a venda.'
+                                : 'Restante para receber agora: ${AppFormatters.currencyFromCents(immediateDueCents)}',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                if (_saleType == SaleType.cash &&
+                    _paymentMethod == PaymentMethod.cash) ...[
+                  const SizedBox(height: 12),
+                  AppSectionCard(
+                    title: 'Recebimento em dinheiro',
+                    subtitle:
+                        'Informe quanto entrou agora. Se houver excesso, voce pode devolver ou deixar como haver.',
+                    padding: sectionPadding,
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: _amountReceivedController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'Valor recebido agora',
+                            hintText: AppFormatters.currencyInputFromCents(
+                              immediateDueCents,
+                            ),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                        if (_selectedClient != null) ...[
+                          const SizedBox(height: 10),
+                          SwitchListTile.adaptive(
+                            contentPadding: EdgeInsets.zero,
+                            value: _leaveChangeAsCredit,
+                            onChanged: (value) =>
+                                setState(() => _leaveChangeAsCredit = value),
+                            title: const Text('Deixar troco como haver'),
+                            subtitle: Text(
+                              changeLeftAsCreditCents > 0
+                                  ? 'Novo haver gerado: ${AppFormatters.currencyFromCents(changeLeftAsCreditCents)}'
+                                  : 'Ative se o cliente quiser manter o troco como saldo.',
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 AppSectionCard(
                   title: 'Conferência rápida',
@@ -327,6 +526,33 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                           ),
                         ],
                       ),
+                      if (appliedCreditCents > 0) ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _CheckoutSummaryMetric(
+                                label: 'Haver aplicado',
+                                value: AppFormatters.currencyFromCents(
+                                  appliedCreditCents,
+                                ),
+                                icon: Icons.account_balance_wallet_outlined,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _CheckoutSummaryMetric(
+                                label: 'Receber agora',
+                                value: AppFormatters.currencyFromCents(
+                                  immediateDueCents,
+                                ),
+                                icon: Icons.payments_outlined,
+                                emphasize: immediateDueCents > 0,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       SizedBox(
                         width: double.infinity,
@@ -423,7 +649,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                           : Icons.receipt_long_rounded,
                     ),
                     AppStatusBadge(
-                      label: effectivePaymentMethod.label,
+                      label: paymentLabel,
                       tone: AppStatusTone.neutral,
                       icon: Icons.check_circle_outline,
                     ),
@@ -478,7 +704,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                                         ? _dueDate == null
                                               ? 'Fiado • vencimento pendente'
                                               : 'Fiado • vence em ${AppFormatters.shortDate(_dueDate!)}'
-                                        : effectivePaymentMethod.label,
+                                        : paymentLabel,
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       color: colorScheme.onSurfaceVariant,
                                     ),
@@ -533,6 +759,29 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     final messenger = ScaffoldMessenger.of(context);
     final cartState = ref.read(cartProvider);
     final saleType = _saleType;
+    final availableCreditCents = _selectedClient?.creditBalanceCents ?? 0;
+    final creditToUseCents =
+        saleType == SaleType.cash && _selectedClient != null
+        ? _clampCreditUsage(
+            MoneyParser.parseToCents(_creditAmountController.text),
+            cartState.totalCents,
+            availableCreditCents,
+          )
+        : 0;
+    final immediateDueCents = (cartState.totalCents - creditToUseCents) < 0
+        ? 0
+        : cartState.totalCents - creditToUseCents;
+    final tenderedCents = MoneyParser.parseToCents(
+      _amountReceivedController.text,
+    );
+    final changeLeftAsCreditCents =
+        saleType == SaleType.cash &&
+            _paymentMethod == PaymentMethod.cash &&
+            _selectedClient != null &&
+            _leaveChangeAsCredit &&
+            tenderedCents > immediateDueCents
+        ? tenderedCents - immediateDueCents
+        : 0;
 
     if (saleType == SaleType.fiado && _selectedClient == null) {
       messenger.showSnackBar(
@@ -550,6 +799,21 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       return;
     }
 
+    if (saleType == SaleType.cash &&
+        _paymentMethod == PaymentMethod.cash &&
+        immediateDueCents > 0 &&
+        tenderedCents > 0 &&
+        tenderedCents < immediateDueCents) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'O valor recebido em dinheiro nao cobre o restante da venda.',
+          ),
+        ),
+      );
+      return;
+    }
+
     final input = CheckoutInput(
       items: cartState.items,
       saleType: saleType,
@@ -560,6 +824,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       clientId: _selectedClient?.id,
       dueDate: _dueDate,
       notes: _notesController.text,
+      customerCreditUsedCents: creditToUseCents,
+      changeLeftAsCreditCents: changeLeftAsCreditCents,
     );
 
     try {
@@ -571,6 +837,10 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       ref.invalidate(productListProvider);
       ref.invalidate(salesCatalogProvider);
       ref.invalidate(clientListProvider);
+      if (_selectedClient != null) {
+        ref.invalidate(customerCreditBalanceProvider(_selectedClient!.id));
+        ref.invalidate(customerCreditTransactionsProvider(_selectedClient!.id));
+      }
       ref.invalidate(fiadoListProvider);
       ref.invalidate(currentCashSessionProvider);
       ref.invalidate(currentCashMovementsProvider);
@@ -592,6 +862,27 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
         return;
       }
     }
+  }
+
+  void _setSelectedClient(Client? client) {
+    setState(() {
+      _selectedClient = client;
+      if (client == null) {
+        _creditAmountController.clear();
+        _amountReceivedController.clear();
+        _leaveChangeAsCredit = false;
+      }
+    });
+  }
+
+  int _clampCreditUsage(int requested, int saleTotalCents, int availableCents) {
+    if (requested <= 0 || saleTotalCents <= 0 || availableCents <= 0) {
+      return 0;
+    }
+    final cappedBySale = requested > saleTotalCents
+        ? saleTotalCents
+        : requested;
+    return cappedBySale > availableCents ? availableCents : cappedBySale;
   }
 
   Future<void> _pickDueDate(BuildContext context) async {
@@ -946,6 +1237,7 @@ class _ClientSelector extends StatelessWidget {
                   AppFormatters.currencyFromCents(
                     selectedClient!.debtorBalanceCents,
                   ),
+                  'Haver ${AppFormatters.currencyFromCents(selectedClient!.creditBalanceCents)}',
                 ].join(' - '),
         ),
         leading: AppStatusBadge(

@@ -10,6 +10,8 @@ import '../../../app/core/sync/sync_error_type.dart';
 import '../../../app/core/sync/sync_feature_keys.dart';
 import '../../../app/core/sync/sync_queue_operation.dart';
 import '../../../app/core/utils/id_generator.dart';
+import '../../clientes/data/customer_credit_database_support.dart';
+import '../../clientes/domain/entities/customer_credit_transaction.dart';
 import '../domain/entities/checkout_input.dart';
 import '../domain/entities/completed_sale.dart';
 import '../domain/entities/sale_enums.dart';
@@ -112,7 +114,46 @@ class SqliteSaleRepository implements SaleRepository {
 
       for (final itemRow in soldItems) {
         final productId = itemRow['produto_id'] as int;
+        final variantId = itemRow['produto_variante_id'] as int?;
         final quantityMil = itemRow['quantidade_mil'] as int;
+        if (variantId != null) {
+          final variantRows = await txn.query(
+            TableNames.produtoVariantes,
+            columns: ['estoque_mil'],
+            where: 'id = ?',
+            whereArgs: [variantId],
+            limit: 1,
+          );
+          if (variantRows.isNotEmpty) {
+            final currentVariantStockMil =
+                variantRows.first['estoque_mil'] as int? ?? 0;
+            await txn.update(
+              TableNames.produtoVariantes,
+              {
+                'estoque_mil': currentVariantStockMil + quantityMil,
+                'atualizado_em': nowIso,
+              },
+              where: 'id = ?',
+              whereArgs: [variantId],
+            );
+
+            await txn.rawUpdate(
+              '''
+              UPDATE ${TableNames.produtos}
+              SET estoque_mil = COALESCE((
+                SELECT SUM(CASE WHEN ativo = 1 THEN estoque_mil ELSE 0 END)
+                FROM ${TableNames.produtoVariantes}
+                WHERE produto_id = ?
+              ), 0),
+              atualizado_em = ?
+              WHERE id = ?
+              ''',
+              [productId, nowIso, productId],
+            );
+          }
+          continue;
+        }
+
         final productRows = await txn.query(
           TableNames.produtos,
           columns: ['estoque_mil'],
@@ -120,7 +161,6 @@ class SqliteSaleRepository implements SaleRepository {
           whereArgs: [productId],
           limit: 1,
         );
-
         if (productRows.isEmpty) {
           continue;
         }
@@ -142,29 +182,54 @@ class SqliteSaleRepository implements SaleRepository {
         saleRow['forma_pagamento'] as String,
       );
       final finalCents = saleRow['valor_final_centavos'] as int;
+      final creditUsedCents = saleRow['haver_utilizado_centavos'] as int? ?? 0;
+      final creditGeneratedCents =
+          saleRow['haver_gerado_centavos'] as int? ?? 0;
+      final immediateReceivedCents =
+          saleRow['valor_recebido_imediato_centavos'] as int? ?? finalCents;
       final receiptNumber = saleRow['numero_cupom'] as String;
+      final clientId = saleRow['cliente_id'] as int?;
 
       if (saleType == SaleType.cash) {
-        final cashMovement =
-            await SaleCashEffectsSupport.registerSaleCancellation(
-          txn,
-          timestamp: now,
-          userId: _operationalContext.currentLocalUserId,
-          saleId: saleId,
-          amountCents: finalCents,
-          receiptNumber: receiptNumber,
-          reason: reason,
-          paymentMethod: paymentMethod,
-        );
-        await _registerCashMovementForSync(
-          txn,
-          movementId: cashMovement.id,
-          movementUuid: cashMovement.uuid,
-          createdAt: now,
-        );
+        if (immediateReceivedCents > 0) {
+          final cashMovement =
+              await SaleCashEffectsSupport.registerSaleCancellation(
+                txn,
+                timestamp: now,
+                userId: _operationalContext.currentLocalUserId,
+                saleId: saleId,
+                amountCents: immediateReceivedCents,
+                receiptNumber: receiptNumber,
+                reason: reason,
+                paymentMethod: paymentMethod,
+              );
+          await _registerCashMovementForSync(
+            txn,
+            movementId: cashMovement.id,
+            movementUuid: cashMovement.uuid,
+            createdAt: now,
+          );
+        }
+        if (clientId != null && creditUsedCents > 0) {
+          await _reverseOrCompensateCreditUsage(
+            txn,
+            saleId: saleId,
+            customerId: clientId,
+            fallbackAmountCents: creditUsedCents,
+            description:
+                'Estorno do haver usado na venda $receiptNumber cancelada.',
+          );
+        }
+        if (clientId != null && creditGeneratedCents > 0) {
+          await _reverseCreditGeneration(
+            txn,
+            saleId: saleId,
+            description:
+                'Reversao do haver gerado na venda $receiptNumber cancelada.',
+          );
+        }
       } else {
         final fiadoId = saleRow['fiado_id'] as int?;
-        final clientId = saleRow['cliente_id'] as int?;
         final fiadoOriginalCents =
             saleRow['fiado_valor_original_centavos'] as int? ?? 0;
         final fiadoOpenCents =
@@ -175,14 +240,14 @@ class SqliteSaleRepository implements SaleRepository {
         if (totalPaidCents > 0) {
           final cashMovement =
               await SaleCashEffectsSupport.registerFiadoReceiptRefund(
-            txn,
-            timestamp: now,
-            userId: _operationalContext.currentLocalUserId,
-            fiadoId: fiadoId,
-            amountCents: totalPaidCents,
-            receiptNumber: receiptNumber,
-            reason: reason,
-          );
+                txn,
+                timestamp: now,
+                userId: _operationalContext.currentLocalUserId,
+                fiadoId: fiadoId,
+                amountCents: totalPaidCents,
+                receiptNumber: receiptNumber,
+                reason: reason,
+              );
           cashMovementId = cashMovement.id;
           await _registerCashMovementForSync(
             txn,
@@ -283,6 +348,9 @@ class SqliteSaleRepository implements SaleRepository {
     final nowIso = now.toIso8601String();
     final totalCents = input.itemsTotalCents;
     final finalCents = input.finalTotalCents;
+    final creditUsedCents = input.customerCreditUsedCents;
+    final creditGeneratedCents = input.changeLeftAsCreditCents;
+    final immediateReceivedCents = input.immediateReceivedCents;
     final saleUuid = IdGenerator.next();
 
     SaleValidationSupport.validateCompletionInput(
@@ -301,10 +369,8 @@ class SqliteSaleRepository implements SaleRepository {
       );
     }
 
-    final productSnapshots = await SaleItemPersistenceSupport.loadProductSnapshots(
-      txn,
-      input.items,
-    );
+    final productSnapshots =
+        await SaleItemPersistenceSupport.loadProductSnapshots(txn, input.items);
     final receiptNumber = now.microsecondsSinceEpoch.toString();
 
     final saleId = await txn.insert(TableNames.vendas, {
@@ -317,6 +383,9 @@ class SqliteSaleRepository implements SaleRepository {
       'acrescimo_centavos': input.surchargeCents,
       'valor_total_centavos': totalCents,
       'valor_final_centavos': finalCents,
+      'haver_utilizado_centavos': creditUsedCents,
+      'haver_gerado_centavos': creditGeneratedCents,
+      'valor_recebido_imediato_centavos': immediateReceivedCents,
       'numero_cupom': receiptNumber,
       'data_venda': nowIso,
       'usuario_id': _operationalContext.currentLocalUserId,
@@ -335,21 +404,46 @@ class SqliteSaleRepository implements SaleRepository {
 
     int? fiadoId;
     if (saleType == SaleType.cash) {
-      final cashMovement = await SaleCashEffectsSupport.registerCashSaleReceipt(
-        txn,
-        timestamp: now,
-        userId: _operationalContext.currentLocalUserId,
-        saleId: saleId,
-        amountCents: finalCents,
-        receiptNumber: receiptNumber,
-        paymentMethod: input.paymentMethod,
-      );
-      await _registerCashMovementForSync(
-        txn,
-        movementId: cashMovement.id,
-        movementUuid: cashMovement.uuid,
-        createdAt: now,
-      );
+      if (creditUsedCents > 0) {
+        await CustomerCreditDatabaseSupport.applyCreditToSale(
+          txn,
+          customerId: input.clientId!,
+          saleId: saleId,
+          amountCents: creditUsedCents,
+          description: 'Haver usado na venda $receiptNumber.',
+        );
+      }
+
+      if (immediateReceivedCents > 0) {
+        final cashMovement =
+            await SaleCashEffectsSupport.registerCashSaleReceipt(
+              txn,
+              timestamp: now,
+              userId: _operationalContext.currentLocalUserId,
+              saleId: saleId,
+              amountCents: immediateReceivedCents,
+              receiptNumber: receiptNumber,
+              paymentMethod: input.paymentMethod,
+            );
+        await _registerCashMovementForSync(
+          txn,
+          movementId: cashMovement.id,
+          movementUuid: cashMovement.uuid,
+          createdAt: now,
+        );
+      }
+
+      if (creditGeneratedCents > 0) {
+        await CustomerCreditDatabaseSupport.createCreditFromOverpayment(
+          txn,
+          customerId: input.clientId!,
+          amountCents: creditGeneratedCents,
+          saleId: saleId,
+          description:
+              'Troco da venda $receiptNumber mantido como haver do cliente.',
+          type: CustomerCreditTransactionType.changeLeftAsCredit,
+        );
+      }
     } else {
       final fiadoUuid = IdGenerator.next();
       fiadoId = await txn.insert(TableNames.fiado, {
@@ -600,6 +694,63 @@ class SqliteSaleRepository implements SaleRepository {
       },
       where: 'id = ?',
       whereArgs: [clientId],
+    );
+  }
+
+  Future<void> _reverseOrCompensateCreditUsage(
+    DatabaseExecutor txn, {
+    required int saleId,
+    required int customerId,
+    required int fallbackAmountCents,
+    required String description,
+  }) async {
+    final rows = await txn.query(
+      TableNames.customerCreditTransactions,
+      columns: ['id'],
+      where: 'sale_id = ? AND type = ?',
+      whereArgs: [saleId, CustomerCreditTransactionType.creditUsedInSale],
+      orderBy: 'id DESC',
+      limit: 1,
+    );
+    if (rows.isNotEmpty) {
+      await CustomerCreditDatabaseSupport.reverseCreditTransaction(
+        txn,
+        transactionId: rows.first['id'] as int,
+        description: description,
+      );
+      return;
+    }
+
+    await CustomerCreditDatabaseSupport.createCreditFromSaleCancel(
+      txn,
+      customerId: customerId,
+      saleId: saleId,
+      amountCents: fallbackAmountCents,
+      description: description,
+    );
+  }
+
+  Future<void> _reverseCreditGeneration(
+    DatabaseExecutor txn, {
+    required int saleId,
+    required String description,
+  }) async {
+    final rows = await txn.query(
+      TableNames.customerCreditTransactions,
+      columns: ['id'],
+      where: 'sale_id = ? AND type = ?',
+      whereArgs: [saleId, CustomerCreditTransactionType.changeLeftAsCredit],
+      orderBy: 'id DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return;
+    }
+
+    await CustomerCreditDatabaseSupport.reverseCreditTransaction(
+      txn,
+      transactionId: rows.first['id'] as int,
+      description: description,
     );
   }
 }

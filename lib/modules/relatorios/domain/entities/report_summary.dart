@@ -1,3 +1,4 @@
+import 'report_customer_credit_summary.dart';
 import 'report_payment_summary.dart';
 import 'report_period.dart';
 import 'report_sold_product_summary.dart';
@@ -20,6 +21,10 @@ class ReportSummary {
     required this.totalPurchasePendingCents,
     required this.cashSalesReceivedCents,
     required this.fiadoReceiptsCents,
+    required this.totalCreditGeneratedCents,
+    required this.totalCreditUsedCents,
+    required this.totalOutstandingCreditCents,
+    required this.topCreditCustomers,
     required this.paymentSummaries,
     required this.soldProducts,
   });
@@ -40,6 +45,10 @@ class ReportSummary {
   final int totalPurchasePendingCents;
   final int cashSalesReceivedCents;
   final int fiadoReceiptsCents;
+  final int totalCreditGeneratedCents;
+  final int totalCreditUsedCents;
+  final int totalOutstandingCreditCents;
+  final List<ReportCustomerCreditSummary> topCreditCustomers;
   final List<ReportPaymentSummary> paymentSummaries;
   final List<ReportSoldProductSummary> soldProducts;
 }

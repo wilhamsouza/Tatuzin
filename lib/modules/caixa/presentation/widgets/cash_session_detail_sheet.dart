@@ -588,7 +588,7 @@ class _SaleSummaryTile extends StatelessWidget {
                       : AppStatusTone.info,
                 ),
                 AppStatusBadge(
-                  label: sale.paymentMethod.label,
+                  label: sale.paymentDisplayLabel,
                   tone: AppStatusTone.neutral,
                 ),
                 AppStatusBadge(

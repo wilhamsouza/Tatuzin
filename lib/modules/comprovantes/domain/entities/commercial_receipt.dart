@@ -1,7 +1,12 @@
 import 'commercial_receipt_detail_line.dart';
 import 'commercial_receipt_item.dart';
 
-enum CommercialReceiptType { cashSale, creditSale, fiadoPayment }
+enum CommercialReceiptType {
+  cashSale,
+  creditSale,
+  fiadoPayment,
+  customerCredit,
+}
 
 extension CommercialReceiptTypeX on CommercialReceiptType {
   String get label {
@@ -12,6 +17,8 @@ extension CommercialReceiptTypeX on CommercialReceiptType {
         return 'Venda fiado';
       case CommercialReceiptType.fiadoPayment:
         return 'Recebimento de fiado';
+      case CommercialReceiptType.customerCredit:
+        return 'Lancamento de haver';
     }
   }
 
@@ -23,6 +30,8 @@ extension CommercialReceiptTypeX on CommercialReceiptType {
         return 'Comprovante de venda fiado';
       case CommercialReceiptType.fiadoPayment:
         return 'Comprovante de recebimento';
+      case CommercialReceiptType.customerCredit:
+        return 'Comprovante de haver';
     }
   }
 
@@ -34,6 +43,8 @@ extension CommercialReceiptTypeX on CommercialReceiptType {
         return 'comprovante_venda_fiado';
       case CommercialReceiptType.fiadoPayment:
         return 'comprovante_recebimento_fiado';
+      case CommercialReceiptType.customerCredit:
+        return 'comprovante_haver_cliente';
     }
   }
 }

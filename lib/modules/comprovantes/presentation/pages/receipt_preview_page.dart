@@ -24,6 +24,14 @@ class ReceiptPreviewPage extends ConsumerWidget {
          paymentEntryId: entryId,
        );
 
+  ReceiptPreviewPage.customerCredit({
+    super.key,
+    required int transactionId,
+    this.showSuccessBanner = false,
+  }) : request = CommercialReceiptRequest.customerCredit(
+         transactionId: transactionId,
+       );
+
   final CommercialReceiptRequest request;
   final bool showSuccessBanner;
 

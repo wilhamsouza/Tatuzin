@@ -73,7 +73,8 @@ class SaleCashEffectsSupport {
       timestamp: timestamp,
       referenceType: 'venda',
       referenceId: saleId,
-      description: 'Cancelamento da venda $receiptNumber. Motivo: ${reason.trim()}',
+      description:
+          'Cancelamento da venda $receiptNumber. Motivo: ${reason.trim()}',
       paymentMethod: paymentMethod,
     );
   }

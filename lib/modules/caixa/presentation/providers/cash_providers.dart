@@ -67,22 +67,27 @@ final currentCashMovementsProvider = FutureProvider<List<CashMovement>>((
   return ref.watch(cashRepositoryProvider).listCurrentSessionMovements();
 });
 
-final cashSessionHistoryProvider = FutureProvider<List<CashSession>>((ref) async {
+final cashSessionHistoryProvider = FutureProvider<List<CashSession>>((
+  ref,
+) async {
   ref.watch(appDataRefreshProvider);
   return ref.watch(cashRepositoryProvider).listSessions();
 });
 
-final cashSessionDetailProvider =
-    FutureProvider.family<CashSessionDetail, int>((ref, sessionId) async {
-      ref.watch(appDataRefreshProvider);
-      return ref.watch(cashRepositoryProvider).fetchSessionDetail(sessionId);
-    });
+final cashSessionDetailProvider = FutureProvider.family<CashSessionDetail, int>(
+  (ref, sessionId) async {
+    ref.watch(appDataRefreshProvider);
+    return ref.watch(cashRepositoryProvider).fetchSessionDetail(sessionId);
+  },
+);
 
 final openCashSessionUseCaseProvider = Provider<OpenCashSessionUseCase>((ref) {
   return OpenCashSessionUseCase(ref.read(cashRepositoryProvider));
 });
 
-final closeCashSessionUseCaseProvider = Provider<CloseCashSessionUseCase>((ref) {
+final closeCashSessionUseCaseProvider = Provider<CloseCashSessionUseCase>((
+  ref,
+) {
   return CloseCashSessionUseCase(ref.read(cashRepositoryProvider));
 });
 
@@ -145,7 +150,9 @@ final visibleCashMovementsProvider = Provider<List<CashMovement>>((ref) {
   return filtered.take(visibleCount).toList(growable: false);
 });
 
-final cashMovementCountsProvider = Provider<Map<CashMovementFilter, int>>((ref) {
+final cashMovementCountsProvider = Provider<Map<CashMovementFilter, int>>((
+  ref,
+) {
   final movements = ref.watch(currentCashMovementsProvider).value ?? const [];
 
   int countWhere(bool Function(CashMovement movement) test) {
@@ -166,10 +173,12 @@ final cashMovementCountsProvider = Provider<Map<CashMovementFilter, int>>((ref) 
           (movement.type == CashMovementType.cancellation &&
               movement.referenceType == 'fiado'),
     ),
-    CashMovementFilter.sangria:
-        countWhere((movement) => movement.type == CashMovementType.sangria),
-    CashMovementFilter.supply:
-        countWhere((movement) => movement.type == CashMovementType.supply),
+    CashMovementFilter.sangria: countWhere(
+      (movement) => movement.type == CashMovementType.sangria,
+    ),
+    CashMovementFilter.supply: countWhere(
+      (movement) => movement.type == CashMovementType.supply,
+    ),
   };
 });
 

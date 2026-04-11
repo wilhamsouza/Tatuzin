@@ -137,6 +137,7 @@ class _ClientTile extends ConsumerWidget {
       if (!client.isActive) 'Inativo',
     ];
     final hasDebt = client.debtorBalanceCents > 0;
+    final hasCredit = client.creditBalanceCents > 0;
     final initials = client.name
         .trim()
         .split(RegExp(r'\s+'))
@@ -146,122 +147,206 @@ class _ClientTile extends ConsumerWidget {
         .join();
 
     return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => _openEditor(context, ref),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: hasDebt
-                      ? colorScheme.secondaryContainer.withValues(alpha: 0.82)
-                      : colorScheme.primaryContainer.withValues(alpha: 0.72),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  initials.isEmpty ? 'C' : initials,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: hasDebt
-                        ? colorScheme.onSecondaryContainer
-                        : colorScheme.primary,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      client.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      parts.join(' • '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisSize: MainAxisSize.min,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+        child: Column(
+          children: [
+            InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => _openEditor(context, ref),
+              child: Row(
                 children: [
-                  Text(
-                    hasDebt ? 'Saldo devedor' : 'Sem pendência',
-                    style: theme.textTheme.labelSmall?.copyWith(
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
                       color: hasDebt
-                          ? colorScheme.error
-                          : colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w700,
+                          ? colorScheme.secondaryContainer.withValues(
+                              alpha: 0.82,
+                            )
+                          : colorScheme.primaryContainer.withValues(
+                              alpha: 0.72,
+                            ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      initials.isEmpty ? 'C' : initials,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: hasDebt
+                            ? colorScheme.onSecondaryContainer
+                            : colorScheme.primary,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    AppFormatters.currencyFromCents(client.debtorBalanceCents),
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: hasDebt
-                          ? colorScheme.error
-                          : colorScheme.onSurface,
-                      fontWeight: FontWeight.w800,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          client.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          parts.join(' • '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        hasDebt
+                            ? 'Com pendência'
+                            : hasCredit
+                            ? 'Com haver'
+                            : 'Em dia',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: hasDebt
+                              ? colorScheme.error
+                              : hasCredit
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        hasDebt
+                            ? AppFormatters.currencyFromCents(
+                                client.debtorBalanceCents,
+                              )
+                            : hasCredit
+                            ? AppFormatters.currencyFromCents(
+                                client.creditBalanceCents,
+                              )
+                            : 'R\$ 0,00',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: hasDebt
+                              ? colorScheme.error
+                              : hasCredit
+                              ? colorScheme.primary
+                              : colorScheme.onSurface,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  PopupMenuButton<_ClientAction>(
+                    tooltip: 'Ações do cliente',
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: _ClientAction.edit,
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('Editar'),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: _ClientAction.delete,
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.delete_outline),
+                          title: Text('Excluir'),
+                        ),
+                      ),
+                    ],
+                    onSelected: (value) async {
+                      switch (value) {
+                        case _ClientAction.edit:
+                          await _openEditor(context, ref);
+                          break;
+                        case _ClientAction.delete:
+                          await _delete(context, ref);
+                          break;
+                      }
+                    },
+                    icon: Icon(
+                      Icons.more_vert_rounded,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
               ),
-              PopupMenuButton<_ClientAction>(
-                tooltip: 'Ações do cliente',
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
-                    value: _ClientAction.edit,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.edit_outlined),
-                      title: Text('Editar'),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _MiniClientMetric(
+                    label: 'Saldo devedor',
+                    value: AppFormatters.currencyFromCents(
+                      client.debtorBalanceCents,
                     ),
+                    emphasize: hasDebt,
+                    toneColor: hasDebt ? colorScheme.error : null,
                   ),
-                  PopupMenuItem(
-                    value: _ClientAction.delete,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.delete_outline),
-                      title: Text('Excluir'),
-                    ),
-                  ),
-                ],
-                onSelected: (value) async {
-                  switch (value) {
-                    case _ClientAction.edit:
-                      await _openEditor(context, ref);
-                      break;
-                    case _ClientAction.delete:
-                      await _delete(context, ref);
-                      break;
-                  }
-                },
-                icon: Icon(
-                  Icons.more_vert_rounded,
-                  color: colorScheme.onSurfaceVariant,
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _MiniClientMetric(
+                    label: 'Haver disponível',
+                    value: AppFormatters.currencyFromCents(
+                      client.creditBalanceCents,
+                    ),
+                    emphasize: hasCredit,
+                    toneColor: hasCredit ? colorScheme.primary : null,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => context.pushNamed(
+                    AppRouteNames.clientCreditStatement,
+                    pathParameters: {'clientId': '${client.id}'},
+                    extra: client,
+                  ),
+                  icon: const Icon(Icons.receipt_long_outlined),
+                  label: const Text('Ver extrato'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: () => context.pushNamed(
+                    AppRouteNames.clientCreditStatement,
+                    pathParameters: {'clientId': '${client.id}'},
+                    extra: client,
+                  ),
+                  icon: const Icon(Icons.add_circle_outline),
+                  label: const Text('Lançar crédito'),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: () => context.pushNamed(
+                    AppRouteNames.clientCreditStatement,
+                    pathParameters: {'clientId': '${client.id}'},
+                    extra: client,
+                  ),
+                  icon: const Icon(Icons.remove_circle_outline),
+                  label: const Text('Lançar débito'),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -320,3 +405,51 @@ class _ClientTile extends ConsumerWidget {
 }
 
 enum _ClientAction { edit, delete }
+
+class _MiniClientMetric extends StatelessWidget {
+  const _MiniClientMetric({
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+    this.toneColor,
+  });
+
+  final String label;
+  final String value;
+  final bool emphasize;
+  final Color? toneColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: emphasize ? toneColor : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

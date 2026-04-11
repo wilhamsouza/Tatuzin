@@ -8,6 +8,7 @@ abstract final class AppRouteNames {
   static const productForm = 'product-form';
   static const clients = 'clients';
   static const clientForm = 'client-form';
+  static const clientCreditStatement = 'client-credit-statement';
   static const suppliers = 'suppliers';
   static const supplierForm = 'supplier-form';
   static const supplierDetail = 'supplier-detail';
@@ -28,6 +29,7 @@ abstract final class AppRouteNames {
   static const saleDetail = 'sale-detail';
   static const saleReceipt = 'sale-receipt';
   static const fiadoPaymentReceipt = 'fiado-payment-receipt';
+  static const customerCreditReceipt = 'customer-credit-receipt';
   static const reports = 'reports';
   static const backup = 'backup';
   static const system = 'system';
@@ -45,6 +47,7 @@ abstract final class AppRoutePaths {
   static const productForm = '/produtos/form';
   static const clients = '/clientes';
   static const clientForm = '/clientes/form';
+  static const clientCreditStatement = '/clientes/:clientId/haver';
   static const suppliers = '/fornecedores';
   static const supplierForm = '/fornecedores/form';
   static const supplierDetail = '/fornecedores/:supplierId';
@@ -66,6 +69,7 @@ abstract final class AppRoutePaths {
   static const saleReceipt = '/comprovantes/vendas/:saleId';
   static const fiadoPaymentReceipt =
       '/comprovantes/fiado/:fiadoId/pagamentos/:entryId';
+  static const customerCreditReceipt = '/comprovantes/haver/:transactionId';
   static const reports = '/relatorios';
   static const backup = '/backup';
   static const system = '/sistema';

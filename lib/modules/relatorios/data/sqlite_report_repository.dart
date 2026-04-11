@@ -1,3 +1,5 @@
+import '../../clientes/domain/entities/customer_credit_transaction.dart';
+import '../domain/entities/report_customer_credit_summary.dart';
 import '../../../app/core/database/app_database.dart';
 import '../../../app/core/database/table_names.dart';
 import '../../../app/core/utils/payment_method_note_codec.dart';
@@ -164,6 +166,60 @@ class SqliteReportRepository implements ReportRepository {
       [startIso, endIso],
     );
 
+    final creditRows = await database.rawQuery(
+      '''
+      SELECT
+        COALESCE(
+          SUM(
+            CASE
+              WHEN type IN (
+                '${CustomerCreditTransactionType.manualCredit}',
+                '${CustomerCreditTransactionType.overpaymentCredit}',
+                '${CustomerCreditTransactionType.saleReturnCredit}',
+                '${CustomerCreditTransactionType.saleCancelCredit}',
+                '${CustomerCreditTransactionType.changeLeftAsCredit}'
+              ) AND amount > 0 THEN amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS total_gerado,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN type = '${CustomerCreditTransactionType.creditUsedInSale}'
+              THEN ABS(amount)
+              ELSE 0
+            END
+          ),
+          0
+        ) AS total_utilizado
+      FROM ${TableNames.customerCreditTransactions}
+      WHERE created_at >= ?
+        AND created_at < ?
+        AND is_reversed = 0
+    ''',
+      [startIso, endIso],
+    );
+
+    final outstandingCreditRows = await database.rawQuery('''
+      SELECT COALESCE(SUM(credit_balance), 0) AS total_credito
+      FROM ${TableNames.clientes}
+      WHERE deletado_em IS NULL
+    ''');
+
+    final topCreditCustomerRows = await database.rawQuery('''
+      SELECT
+        id,
+        nome,
+        credit_balance
+      FROM ${TableNames.clientes}
+      WHERE deletado_em IS NULL
+        AND credit_balance > 0
+      ORDER BY credit_balance DESC, nome COLLATE NOCASE ASC
+      LIMIT 5
+    ''');
+
     final paymentRows = await database.rawQuery(
       '''
       SELECT
@@ -266,6 +322,16 @@ class SqliteReportRepository implements ReportRepository {
         )
         .toList();
 
+    final topCreditCustomers = topCreditCustomerRows
+        .map(
+          (row) => ReportCustomerCreditSummary(
+            customerId: row['id'] as int,
+            customerName: row['nome'] as String? ?? 'Cliente',
+            balanceCents: _toInt(row['credit_balance']),
+          ),
+        )
+        .toList(growable: false);
+
     final costOfGoodsSoldCents = soldProducts.fold<int>(
       0,
       (total, product) => total + product.totalCostCents,
@@ -292,6 +358,12 @@ class SqliteReportRepository implements ReportRepository {
       totalPurchasePendingCents: _toInt(purchaseRows.first['total_pendente']),
       cashSalesReceivedCents: _toInt(receivedRows.first['vendas_recebidas']),
       fiadoReceiptsCents: _toInt(receivedRows.first['fiado_recebido']),
+      totalCreditGeneratedCents: _toInt(creditRows.first['total_gerado']),
+      totalCreditUsedCents: _toInt(creditRows.first['total_utilizado']),
+      totalOutstandingCreditCents: _toInt(
+        outstandingCreditRows.first['total_credito'],
+      ),
+      topCreditCustomers: topCreditCustomers,
       paymentSummaries: paymentSummaries,
       soldProducts: soldProducts,
     );

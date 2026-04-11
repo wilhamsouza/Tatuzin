@@ -210,6 +210,8 @@ class CommercialReceiptView extends StatelessWidget {
         return AppStatusTone.warning;
       case CommercialReceiptType.fiadoPayment:
         return AppStatusTone.info;
+      case CommercialReceiptType.customerCredit:
+        return AppStatusTone.neutral;
     }
   }
 }

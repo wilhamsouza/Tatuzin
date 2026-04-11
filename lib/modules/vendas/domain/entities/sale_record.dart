@@ -13,6 +13,9 @@ class SaleRecord {
     required this.finalCents,
     required this.discountCents,
     required this.surchargeCents,
+    required this.creditUsedCents,
+    required this.creditGeneratedCents,
+    required this.immediateReceivedCents,
     required this.soldAt,
     required this.clientId,
     required this.clientName,
@@ -35,6 +38,9 @@ class SaleRecord {
   final int finalCents;
   final int discountCents;
   final int surchargeCents;
+  final int creditUsedCents;
+  final int creditGeneratedCents;
+  final int immediateReceivedCents;
   final DateTime soldAt;
   final int? clientId;
   final String? clientName;
@@ -44,4 +50,10 @@ class SaleRecord {
   final String? fiadoStatus;
   final int? fiadoOpenCents;
   final DateTime? fiadoDueDate;
+
+  bool get wasSettledFullyWithCredit =>
+      creditUsedCents > 0 && immediateReceivedCents == 0;
+
+  String get paymentDisplayLabel =>
+      wasSettledFullyWithCredit ? 'Haver' : paymentMethod.label;
 }

@@ -1,4 +1,7 @@
 import '../../../app/core/errors/app_exceptions.dart';
+import '../../clientes/domain/entities/client.dart';
+import '../../clientes/domain/repositories/client_repository.dart';
+import '../../clientes/domain/repositories/customer_credit_repository.dart';
 import '../../fiado/domain/repositories/fiado_repository.dart';
 import '../../historico_vendas/domain/repositories/sale_history_repository.dart';
 import '../domain/entities/commercial_receipt.dart';
@@ -10,11 +13,17 @@ class SqliteCommercialReceiptRepository implements CommercialReceiptRepository {
   SqliteCommercialReceiptRepository({
     required SaleHistoryRepository saleHistoryRepository,
     required FiadoRepository fiadoRepository,
+    required ClientRepository clientRepository,
+    required CustomerCreditRepository customerCreditRepository,
   }) : _saleHistoryRepository = saleHistoryRepository,
-       _fiadoRepository = fiadoRepository;
+       _fiadoRepository = fiadoRepository,
+       _clientRepository = clientRepository,
+       _customerCreditRepository = customerCreditRepository;
 
   final SaleHistoryRepository _saleHistoryRepository;
   final FiadoRepository _fiadoRepository;
+  final ClientRepository _clientRepository;
+  final CustomerCreditRepository _customerCreditRepository;
 
   @override
   Future<CommercialReceipt> build(CommercialReceiptRequest request) async {
@@ -46,6 +55,25 @@ class SqliteCommercialReceiptRepository implements CommercialReceiptRepository {
         return CommercialReceiptMapper.fromFiadoPayment(
           detail: detail,
           entry: entry,
+        );
+      case CommercialReceiptRequestType.customerCredit:
+        final transactionId = request.transactionId;
+        if (transactionId == null) {
+          throw const ValidationException(
+            'Lancamento de haver nao foi identificado corretamente.',
+          );
+        }
+        final transaction = await _customerCreditRepository.getTransactionById(
+          transactionId,
+        );
+        final clients = await _clientRepository.search();
+        final Client? client =
+            clients.where((item) => item.id == transaction.customerId).isEmpty
+            ? null
+            : clients.firstWhere((item) => item.id == transaction.customerId);
+        return CommercialReceiptMapper.fromCustomerCredit(
+          transaction: transaction,
+          client: client,
         );
     }
   }

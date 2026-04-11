@@ -144,6 +144,12 @@ class SqliteSaleHistoryRepository implements SaleHistoryRepository {
       finalCents: row['valor_final_centavos'] as int,
       discountCents: row['desconto_centavos'] as int? ?? 0,
       surchargeCents: row['acrescimo_centavos'] as int? ?? 0,
+      creditUsedCents: row['haver_utilizado_centavos'] as int? ?? 0,
+      creditGeneratedCents: row['haver_gerado_centavos'] as int? ?? 0,
+      immediateReceivedCents:
+          row['valor_recebido_imediato_centavos'] as int? ??
+          row['valor_final_centavos'] as int? ??
+          0,
       soldAt: DateTime.parse(row['data_venda'] as String),
       clientId: row['cliente_id'] as int?,
       clientName: row['cliente_nome'] as String?,
