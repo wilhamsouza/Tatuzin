@@ -45,24 +45,11 @@ class AppMainDrawer extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                text: AppConstants.appName,
-                                style: theme.textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: -0.4,
-                                ),
-                              ),
-                              TextSpan(
-                                text: '  ERP/PDV',
-                                style: theme.textTheme.labelMedium?.copyWith(
-                                  color: colorScheme.primary,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ],
+                        Text(
+                          AppConstants.appName,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.4,
                           ),
                         ),
                         const SizedBox(height: 4),

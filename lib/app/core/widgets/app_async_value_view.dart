@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../constants/app_constants.dart';
 import 'app_page_header.dart';
 import 'app_state_card.dart';
 import 'tatuzin_brand.dart';
@@ -52,7 +51,7 @@ class AppAsyncValueView extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const TatuzinBrandLockup(caption: AppConstants.brandLine),
+                const TatuzinBrandLockup(),
                 const SizedBox(height: 16),
                 AppPageHeader(
                   title: title,
