@@ -23,34 +23,49 @@ class AppSectionTitle extends StatelessWidget {
         ? Colors.white.withValues(alpha: 0.78)
         : colorScheme.onSurfaceVariant;
 
-    return Row(
+    final header = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: titleColor,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              if (subtitle?.isNotEmpty ?? false) ...[
-                const SizedBox(height: 4),
-                Text(
-                  subtitle!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: subtitleColor,
-                  ),
-                ),
-              ],
-            ],
+        Text(
+          title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: titleColor,
+            fontWeight: FontWeight.w700,
           ),
         ),
-        if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+        if (subtitle?.isNotEmpty ?? false) ...[
+          const SizedBox(height: 4),
+          Text(
+            subtitle!,
+            style: theme.textTheme.bodySmall?.copyWith(color: subtitleColor),
+          ),
+        ],
       ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (trailing != null && constraints.maxWidth < 520) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              header,
+              const SizedBox(height: 12),
+              Align(alignment: Alignment.centerLeft, child: trailing!),
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: header),
+            if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+          ],
+        );
+      },
     );
   }
 }
