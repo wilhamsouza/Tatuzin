@@ -67,20 +67,20 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final horizontalPadding = constraints.maxWidth >= 900 ? 20.0 : 12.0;
-          final tileHeight = constraints.maxWidth >= 900 ? 248.0 : 236.0;
+          final horizontalPadding = constraints.maxWidth >= 900 ? 18.0 : 12.0;
+          final tileHeight = constraints.maxWidth >= 900 ? 206.0 : 188.0;
           final maxTileWidth = constraints.maxWidth >= 1200
-              ? 248.0
+              ? 216.0
               : constraints.maxWidth >= 720
-              ? 220.0
-              : 196.0;
+              ? 196.0
+              : 172.0;
 
           return Column(
             children: [
               Padding(
                 padding: EdgeInsets.fromLTRB(
                   horizontalPadding,
-                  8,
+                  6,
                   horizontalPadding,
                   0,
                 ),
@@ -144,7 +144,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                           horizontalPadding,
                           8,
                           horizontalPadding,
-                          cart.isEmpty ? 20 : 108,
+                          cart.isEmpty ? 20 : 96,
                         ),
                         gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                           maxCrossAxisExtent: maxTileWidth,
@@ -180,19 +180,19 @@ class _SalesPageState extends ConsumerState<SalesPage> {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
+                    horizontal: 12,
+                    vertical: 10,
                   ),
                   child: _BottomCartBar(
                     cartItems: cart.totalItems,
@@ -281,7 +281,6 @@ class _CompactSalesHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final canClear = controller.text.trim().isNotEmpty;
-    final colorScheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
 
     return Column(
@@ -294,18 +293,26 @@ class _CompactSalesHeader extends StatelessWidget {
               tone: AppStatusTone.info,
               icon: Icons.point_of_sale_rounded,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Venda r\u00e1pida',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
+                'Operação de venda',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
+            if (cartItems > 0)
+              Text(
+                cartItems == 1 ? '1 item' : '$cartItems itens',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
@@ -313,7 +320,7 @@ class _CompactSalesHeader extends StatelessWidget {
                 controller: controller,
                 textInputAction: TextInputAction.search,
                 prefixIcon: const Icon(Icons.search, size: 20),
-                hintText: 'Buscar produto, modelo, variação ou código',
+                hintText: 'Buscar produto ou código',
                 suffixIcon: canClear
                     ? IconButton(
                         tooltip: 'Limpar busca',
@@ -329,8 +336,8 @@ class _CompactSalesHeader extends StatelessWidget {
             Tooltip(
               message: 'Ler c\u00f3digo de barras',
               child: SizedBox(
-                width: 48,
-                height: 48,
+                width: 44,
+                height: 44,
                 child: FilledButton.tonal(
                   onPressed: onScan,
                   style: FilledButton.styleFrom(
@@ -340,43 +347,37 @@ class _CompactSalesHeader extends StatelessWidget {
                     ),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  child: Icon(
-                    Icons.qr_code_scanner_rounded,
-                    size: 22,
-                    color: colorScheme.primary,
-                  ),
+                  child: const Icon(Icons.qr_code_scanner_rounded, size: 20),
                 ),
               ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        Row(
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            _HeaderActionIconButton(
-              tooltip: 'Hist\u00f3rico',
+            _HeaderQuickAction(
+              label: 'Histórico',
               icon: Icons.history_rounded,
               onTap: onOpenHistory,
             ),
-            const SizedBox(width: 6),
-            _HeaderActionIconButton(
-              tooltip: 'Pedidos',
+            _HeaderQuickAction(
+              label: 'Pedidos',
               icon: Icons.receipt_long_rounded,
               onTap: onOpenOrders,
             ),
-            const SizedBox(width: 6),
-            _HeaderActionIconButton(
-              tooltip: cartIsEmpty ? 'Carrinho' : 'Carrinho ($cartItems)',
+            _HeaderQuickAction(
+              label: cartIsEmpty ? 'Carrinho' : 'Carrinho ($cartItems)',
               icon: Icons.shopping_cart_checkout_rounded,
               onTap: onOpenCart,
-              badgeCount: cartItems,
             ),
-            const SizedBox(width: 6),
-            _HeaderActionIconButton(
-              tooltip: 'Checkout',
-              icon: Icons.point_of_sale_rounded,
+            _HeaderQuickAction(
+              label: 'Finalizar',
+              icon: Icons.check_circle_outline_rounded,
               onTap: onOpenCheckout,
-              isEnabled: onOpenCheckout != null,
+              isPrimary: true,
             ),
           ],
         ),
@@ -385,58 +386,50 @@ class _CompactSalesHeader extends StatelessWidget {
   }
 }
 
-class _HeaderActionIconButton extends StatelessWidget {
-  const _HeaderActionIconButton({
-    required this.tooltip,
+class _HeaderQuickAction extends StatelessWidget {
+  const _HeaderQuickAction({
+    required this.label,
     required this.icon,
     required this.onTap,
-    this.badgeCount = 0,
-    this.isEnabled = true,
+    this.isPrimary = false,
   });
 
-  final String tooltip;
+  final String label;
   final IconData icon;
   final VoidCallback? onTap;
-  final int badgeCount;
-  final bool isEnabled;
+  final bool isPrimary;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final enabled = isEnabled && onTap != null;
+    final labelWidget = Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
 
-    return Tooltip(
-      message: tooltip,
-      child: SizedBox(
-        width: 42,
-        height: 42,
-        child: OutlinedButton(
-          onPressed: enabled ? onTap : null,
-          style: OutlinedButton.styleFrom(
-            padding: EdgeInsets.zero,
-            side: BorderSide(
-              color: colorScheme.outlineVariant.withValues(
-                alpha: enabled ? 1 : 0.6,
+    return SizedBox(
+      height: 38,
+      child: isPrimary
+          ? FilledButton.icon(
+              onPressed: onTap,
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
+              icon: Icon(icon, size: 18),
+              label: labelWidget,
+            )
+          : OutlinedButton.icon(
+              onPressed: onTap,
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                side: BorderSide(color: colorScheme.outlineVariant),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              icon: Icon(icon, size: 18),
+              label: labelWidget,
             ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          child: Badge(
-            isLabelVisible: badgeCount > 0,
-            label: Text('$badgeCount'),
-            child: Icon(
-              icon,
-              size: 18,
-              color: enabled
-                  ? colorScheme.primary
-                  : colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -524,7 +517,7 @@ class _BottomActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final child = SizedBox(
       width: double.infinity,
-      height: 42,
+      height: 40,
       child: Center(
         child: FittedBox(
           fit: BoxFit.scaleDown,
@@ -544,7 +537,7 @@ class _BottomActionButton extends StatelessWidget {
             onPressed: onPressed,
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              minimumSize: const Size(0, 42),
+              minimumSize: const Size(0, 40),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: child,
@@ -553,7 +546,7 @@ class _BottomActionButton extends StatelessWidget {
             onPressed: onPressed,
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              minimumSize: const Size(0, 42),
+              minimumSize: const Size(0, 40),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: child,
@@ -573,12 +566,10 @@ class _ProductTile extends ConsumerWidget {
     final outOfStock = product.stockMil < 1000;
     final stockLabel =
         'Estoque ${AppFormatters.quantityFromMil(product.stockMil)}';
-    final details = [
-      product.unitMeasure,
-      stockLabel,
+    final secondaryDetails = [
       if (product.modifierGroupCount > 0)
-        '${product.modifierGroupCount} complementos',
-      if (product.barcode?.isNotEmpty ?? false) 'C\u00f3d. ${product.barcode}',
+        '${product.modifierGroupCount} complemento${product.modifierGroupCount == 1 ? '' : 's'}',
+      if (product.barcode?.isNotEmpty ?? false) 'Cód. ${product.barcode}',
     ];
 
     return Card(
@@ -588,15 +579,15 @@ class _ProductTile extends ConsumerWidget {
       child: InkWell(
         onTap: outOfStock ? null : () => _addProduct(context, ref),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (product.hasPhoto) ...[
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
                   child: SizedBox(
-                    height: 72,
+                    height: 56,
                     width: double.infinity,
                     child: Image.file(
                       File(product.primaryPhotoPath!),
@@ -613,7 +604,7 @@ class _ProductTile extends ConsumerWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
               ],
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -625,14 +616,14 @@ class _ProductTile extends ConsumerWidget {
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
-                        height: 1.15,
+                        height: 1.18,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   SizedBox(
-                    width: 34,
-                    height: 34,
+                    width: 32,
+                    height: 32,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         color: outOfStock
@@ -660,34 +651,73 @@ class _ProductTile extends ConsumerWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 AppFormatters.currencyFromCents(product.salePriceCents),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w800,
+                  letterSpacing: -0.2,
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Text(
-                details.join(' • '),
-                maxLines: 2,
+                '${product.unitMeasure} • $stockLabel',
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
                   fontSize: 11.5,
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (secondaryDetails.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  secondaryDetails.join(' • '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
               const Spacer(),
-              Text(
-                outOfStock ? 'Sem estoque' : 'Toque para adicionar',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                  color: outOfStock ? colorScheme.error : colorScheme.primary,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                  color: outOfStock
+                      ? colorScheme.errorContainer.withValues(alpha: 0.55)
+                      : colorScheme.primaryContainer.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      outOfStock
+                          ? Icons.block_rounded
+                          : Icons.add_shopping_cart_rounded,
+                      size: 14,
+                      color: outOfStock
+                          ? colorScheme.error
+                          : colorScheme.primary,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        outOfStock ? 'Sem estoque' : 'Adicionar',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: outOfStock
+                              ? colorScheme.error
+                              : colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

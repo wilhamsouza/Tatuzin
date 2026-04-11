@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
+import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../domain/entities/cash_enums.dart';
@@ -11,10 +12,7 @@ import '../../domain/entities/cash_session_detail.dart';
 import '../providers/cash_providers.dart';
 
 class CashSessionDetailSheet extends ConsumerWidget {
-  const CashSessionDetailSheet({
-    super.key,
-    required this.session,
-  });
+  const CashSessionDetailSheet({super.key, required this.session});
 
   final CashSession session;
 
@@ -44,11 +42,25 @@ class CashSessionDetailSheet extends ConsumerWidget {
             Expanded(
               child: detailAsync.when(
                 data: (detail) => _CashSessionDetailBody(detail: detail),
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) => Center(
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: AppStateCard(
+                    title: 'Carregando sessão',
+                    message: 'Montando os detalhes do caixa.',
+                    tone: AppStateTone.loading,
+                    compact: true,
+                  ),
+                ),
+                error: (error, _) => const Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text('Falha ao carregar a sessão: $error'),
+                    padding: EdgeInsets.all(24),
+                    child: AppStateCard(
+                      title: 'Falha ao carregar a sessão',
+                      message:
+                          'Feche e abra novamente para consultar os detalhes.',
+                      tone: AppStateTone.error,
+                      compact: true,
+                    ),
                   ),
                 ),
               ),
@@ -84,9 +96,7 @@ class _CashSessionDetailBody extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    session.isOpen
-                        ? 'Sessão em andamento'
-                        : 'Sessão encerrada',
+                    session.isOpen ? 'Sessão em andamento' : 'Sessão encerrada',
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
@@ -174,7 +184,8 @@ class _CashSessionDetailBody extends StatelessWidget {
         const SizedBox(height: 16),
         AppSectionCard(
           title: 'Resumo financeiro',
-          subtitle: 'Totais operacionais consolidados sem alterar a lógica atual.',
+          subtitle:
+              'Totais operacionais consolidados sem alterar a lógica atual.',
           child: Wrap(
             spacing: 12,
             runSpacing: 12,
@@ -203,11 +214,15 @@ class _CashSessionDetailBody extends StatelessWidget {
               ),
               _SummaryMetric(
                 label: 'Entradas totais',
-                value: AppFormatters.currencyFromCents(detail.totalEntriesCents),
+                value: AppFormatters.currencyFromCents(
+                  detail.totalEntriesCents,
+                ),
               ),
               _SummaryMetric(
                 label: 'Saídas totais',
-                value: AppFormatters.currencyFromCents(detail.totalOutflowsCents),
+                value: AppFormatters.currencyFromCents(
+                  detail.totalOutflowsCents,
+                ),
               ),
               _SummaryMetric(
                 label: 'Entradas manuais',
@@ -231,7 +246,9 @@ class _CashSessionDetailBody extends StatelessWidget {
                 label: 'Valor contado',
                 value: detail.countedAmountCents == null
                     ? 'Não registrado'
-                    : AppFormatters.currencyFromCents(detail.countedAmountCents!),
+                    : AppFormatters.currencyFromCents(
+                        detail.countedAmountCents!,
+                      ),
               ),
               _SummaryMetric(
                 label: 'Diferença',
@@ -247,10 +264,19 @@ class _CashSessionDetailBody extends StatelessWidget {
           title: 'Movimentações',
           subtitle: 'Entradas, saídas e referências registradas nesta sessão.',
           child: detail.movements.isEmpty
-              ? const Text('Nenhuma movimentação vinculada a esta sessão.')
+              ? const AppStateCard(
+                  title: 'Nenhuma movimentação registrada',
+                  message:
+                      'Esta sessão não recebeu entradas ou saídas manuais.',
+                  compact: true,
+                )
               : Column(
                   children: [
-                    for (var index = 0; index < detail.movements.length; index++)
+                    for (
+                      var index = 0;
+                      index < detail.movements.length;
+                      index++
+                    )
                       Padding(
                         padding: EdgeInsets.only(
                           bottom: index == detail.movements.length - 1 ? 0 : 12,
@@ -268,7 +294,11 @@ class _CashSessionDetailBody extends StatelessWidget {
           subtitle:
               'Vendas registradas dentro da janela desta sessão, com resumo suficiente para auditoria operacional.',
           child: detail.sales.isEmpty
-              ? const Text('Nenhuma venda registrada nesta sessão.')
+              ? const AppStateCard(
+                  title: 'Nenhuma venda nesta sessão',
+                  message: 'Não houve vendas registradas na janela consultada.',
+                  compact: true,
+                )
               : Column(
                   children: [
                     for (var index = 0; index < detail.sales.length; index++)
@@ -317,10 +347,7 @@ class _InfoLine extends StatelessWidget {
 }
 
 class _SummaryMetric extends StatelessWidget {
-  const _SummaryMetric({
-    required this.label,
-    required this.value,
-  });
+  const _SummaryMetric({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -369,7 +396,11 @@ class _ZeroingStatusCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final (title, description, toneColor) = switch (detail.session.finalBalanceCents) {
+    final (
+      title,
+      description,
+      toneColor,
+    ) = switch (detail.session.finalBalanceCents) {
       > 0 => (
         'Caixa acima de zero',
         'Falta retirar ${AppFormatters.currencyFromCents(detail.amountToZeroCents)} para o caixa ficar zerado.',
@@ -420,7 +451,9 @@ class _MovementDetailTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final movement = detail.movement;
     final isNegative = movement.amountCents < 0;
-    final amountTone = isNegative ? AppStatusTone.warning : AppStatusTone.success;
+    final amountTone = isNegative
+        ? AppStatusTone.warning
+        : AppStatusTone.success;
 
     return Card(
       child: Padding(
@@ -588,9 +621,9 @@ class _SaleSummaryTile extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 'Resumo dos itens',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
               for (final item in summary.itemPreview)

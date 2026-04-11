@@ -10,7 +10,7 @@ class AppSectionCard extends StatelessWidget {
     this.subtitle,
     this.trailing,
     required this.child,
-    this.padding = const EdgeInsets.all(20),
+    this.padding = const EdgeInsets.all(16),
   });
 
   final String title;
@@ -27,7 +27,7 @@ class AppSectionCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AppSectionTitle(title: title, subtitle: subtitle, trailing: trailing),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
           child,
         ],
       ),

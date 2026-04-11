@@ -2,26 +2,23 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#FFFFFF" />
+            <solid android:color="#FFFDFC" />
         </shape>
     </item>
 
     <item android:gravity="center">
         <shape android:shape="rectangle">
             <size
-                android:width="132dp"
-                android:height="132dp" />
-            <corners android:radius="34dp" />
-            <gradient
-                android:angle="315"
-                android:startColor="#6C4CF1"
-                android:endColor="#8B5CF6" />
+                android:width="216dp"
+                android:height="216dp" />
+            <corners android:radius="54dp" />
+            <solid android:color="#F6EFE8" />
         </shape>
     </item>
 
     <item
-        android:width="88dp"
-        android:height="88dp"
-        android:drawable="@drawable/ic_launcher_foreground"
+        android:width="220dp"
+        android:height="132dp"
+        android:drawable="@drawable/tatuzin_splash_brand"
         android:gravity="center" />
 </layer-list>

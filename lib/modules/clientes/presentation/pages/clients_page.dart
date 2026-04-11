@@ -4,10 +4,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/widgets/app_feedback.dart';
 import '../../../../app/core/widgets/app_input.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
-import '../../../../app/core/widgets/app_status_badge.dart';
+import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../domain/entities/client.dart';
 import '../providers/client_providers.dart';
@@ -35,20 +36,20 @@ class ClientsPage extends ConsumerWidget {
       body: Column(
         children: [
           const Padding(
-            padding: EdgeInsets.fromLTRB(20, 12, 20, 12),
+            padding: EdgeInsets.fromLTRB(16, 10, 16, 10),
             child: AppPageHeader(
-              title: 'Clientes',
+              title: 'Consulta de clientes',
               subtitle:
-                  'Acompanhe relacionamento, dados de contato e saldo devedor com leitura mais clara.',
-              badgeLabel: 'Cadastro',
+                  'Busque rápido, confira pendências e entre em edição sem ruído.',
+              badgeLabel: 'Operação',
               badgeIcon: Icons.people_alt_rounded,
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
             child: AppInput(
               prefixIcon: const Icon(Icons.search),
-              hintText: 'Buscar por nome',
+              hintText: 'Buscar cliente por nome ou telefone',
               onChanged: (value) {
                 ref.read(clientSearchQueryProvider.notifier).state = value;
               },
@@ -58,10 +59,21 @@ class ClientsPage extends ConsumerWidget {
             child: clientsAsync.when(
               data: (clients) {
                 if (clients.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('Nenhum cliente cadastrado ainda.'),
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 92),
+                    child: AppStateCard(
+                      title: 'Nenhum cliente cadastrado',
+                      message:
+                          'Cadastre o primeiro cliente para consultar pendências e histórico.',
+                      actionLabel: 'Novo cliente',
+                      onAction: () async {
+                        final created = await context.pushNamed(
+                          AppRouteNames.clientForm,
+                        );
+                        if (created == true) {
+                          ref.invalidate(clientListProvider);
+                        }
+                      },
                     ),
                   );
                 }
@@ -72,20 +84,35 @@ class ClientsPage extends ConsumerWidget {
                     await ref.read(clientListProvider.future);
                   },
                   child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 92),
                     itemCount: clients.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       return _ClientTile(client: clients[index]);
                     },
                   ),
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => const Padding(
+                padding: EdgeInsets.all(16),
+                child: AppStateCard(
+                  title: 'Carregando clientes',
+                  message: 'Preparando a lista para consulta.',
+                  tone: AppStateTone.loading,
+                  compact: true,
+                ),
+              ),
               error: (error, _) => Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text('Falha ao carregar clientes: $error'),
+                  child: AppStateCard(
+                    title: 'Falha ao carregar clientes',
+                    message: 'Verifique a conexão local e tente novamente.',
+                    tone: AppStateTone.error,
+                    compact: true,
+                    actionLabel: 'Tentar novamente',
+                    onAction: () => ref.invalidate(clientListProvider),
+                  ),
                 ),
               ),
             ),
@@ -103,89 +130,151 @@ class _ClientTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final parts = <String>[
-      if (client.phone?.trim().isNotEmpty ?? false) client.phone!,
-      client.isActive ? 'Ativo' : 'Inativo',
+      client.phone?.trim().isNotEmpty == true ? client.phone! : 'Sem telefone',
+      if (!client.isActive) 'Inativo',
     ];
+    final hasDebt = client.debtorBalanceCents > 0;
+    final initials = client.name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .take(2)
+        .map((part) => part.substring(0, 1).toUpperCase())
+        .join();
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        client.name,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      if (parts.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Text(parts.join(' • ')),
-                      ],
-                    ],
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => _openEditor(context, ref),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: hasDebt
+                      ? colorScheme.secondaryContainer.withValues(alpha: 0.82)
+                      : colorScheme.primaryContainer.withValues(alpha: 0.72),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  initials.isEmpty ? 'C' : initials,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: hasDebt
+                        ? colorScheme.onSecondaryContainer
+                        : colorScheme.primary,
                   ),
                 ),
-                Wrap(
-                  spacing: 4,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    IconButton(
-                      tooltip: 'Editar',
-                      onPressed: () async {
-                        final updated = await context.pushNamed(
-                          AppRouteNames.clientForm,
-                          extra: client,
-                        );
-                        if (updated == true) {
-                          ref.invalidate(clientListProvider);
-                        }
-                      },
-                      icon: const Icon(Icons.edit_outlined),
+                    Text(
+                      client.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                    IconButton(
-                      tooltip: 'Excluir',
-                      onPressed: () => _delete(context, ref),
-                      icon: const Icon(Icons.delete_outline),
+                    const SizedBox(height: 3),
+                    Text(
+                      parts.join(' • '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _ClientMetric(
-                  label: 'Saldo devedor',
-                  value: AppFormatters.currencyFromCents(
-                    client.debtorBalanceCents,
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    hasDebt ? 'Saldo devedor' : 'Sem pendência',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: hasDebt
+                          ? colorScheme.error
+                          : colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
+                  const SizedBox(height: 2),
+                  Text(
+                    AppFormatters.currencyFromCents(client.debtorBalanceCents),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: hasDebt
+                          ? colorScheme.error
+                          : colorScheme.onSurface,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              PopupMenuButton<_ClientAction>(
+                tooltip: 'Ações do cliente',
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: _ClientAction.edit,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.edit_outlined),
+                      title: Text('Editar'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: _ClientAction.delete,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.delete_outline),
+                      title: Text('Excluir'),
+                    ),
+                  ),
+                ],
+                onSelected: (value) async {
+                  switch (value) {
+                    case _ClientAction.edit:
+                      await _openEditor(context, ref);
+                      break;
+                    case _ClientAction.delete:
+                      await _delete(context, ref);
+                      break;
+                  }
+                },
+                icon: Icon(
+                  Icons.more_vert_rounded,
+                  color: colorScheme.onSurfaceVariant,
                 ),
-                _ClientMetric(
-                  label: 'Telefone',
-                  value: client.phone?.trim().isNotEmpty == true
-                      ? client.phone!
-                      : 'N\u00e3o informado',
-                ),
-                AppStatusBadge(
-                  label: client.isActive ? 'Ativo' : 'Inativo',
-                  tone: client.isActive
-                      ? AppStatusTone.success
-                      : AppStatusTone.neutral,
-                ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Future<void> _openEditor(BuildContext context, WidgetRef ref) async {
+    final updated = await context.pushNamed(
+      AppRouteNames.clientForm,
+      extra: client,
+    );
+    if (updated == true) {
+      ref.invalidate(clientListProvider);
+    }
   }
 
   Future<void> _delete(BuildContext context, WidgetRef ref) async {
@@ -220,51 +309,14 @@ class _ClientTile extends ConsumerWidget {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Cliente "${client.name}" exclu\u00eddo.')),
-      );
+      AppFeedback.success(context, 'Cliente "${client.name}" excluído.');
     } catch (error) {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('N\u00e3o foi poss\u00edvel excluir o cliente: $error'),
-        ),
-      );
+      AppFeedback.error(context, 'Não foi possível excluir o cliente: $error');
     }
   }
 }
 
-class _ClientMetric extends StatelessWidget {
-  const _ClientMetric({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(value, style: Theme.of(context).textTheme.titleSmall),
-        ],
-      ),
-    );
-  }
-}
+enum _ClientAction { edit, delete }

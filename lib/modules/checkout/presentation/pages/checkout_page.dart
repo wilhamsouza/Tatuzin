@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../app/core/constants/app_constants.dart';
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
@@ -53,79 +52,94 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     final isSubmitting = checkoutState.isLoading;
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    const sectionPadding = EdgeInsets.fromLTRB(16, 16, 16, 16);
+    const sectionPadding = EdgeInsets.fromLTRB(14, 14, 14, 14);
     final effectivePaymentMethod = _saleType == SaleType.fiado
         ? PaymentMethod.fiado
         : _paymentMethod;
 
     return Scaffold(
-      appBar: AppBar(title: const Text(AppConstants.appName)),
+      appBar: AppBar(
+        title: const Text('Finalizar venda'),
+        actions: [
+          IconButton(
+            tooltip: 'Voltar ao PDV',
+            onPressed: () => context.goNamed(AppRouteNames.sales),
+            icon: const Icon(Icons.storefront_outlined),
+          ),
+          IconButton(
+            tooltip: 'Abrir dashboard',
+            onPressed: () => context.goNamed(AppRouteNames.dashboard),
+            icon: const Icon(Icons.home_outlined),
+          ),
+        ],
+      ),
       body: cart.isEmpty
           ? _CheckoutEmptyState(
               onPressed: () => context.goNamed(AppRouteNames.sales),
             )
           : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 188),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 172),
               children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
+                DecoratedBox(
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(24),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF6C4CF1), Color(0xFF8B5CF6)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    color: colorScheme.surfaceContainerLowest,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: colorScheme.outlineVariant),
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 46,
-                        height: 46,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.16),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Icon(
-                          Icons.point_of_sale_rounded,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Revise a venda e conclua sem perder tempo.',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                              ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: colorScheme.primaryContainer.withValues(
+                              alpha: 0.72,
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Os dados abaixo seguem o fluxo atual do caixa e do fiado.',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: Colors.white.withValues(alpha: 0.86),
-                              ),
-                            ),
-                          ],
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(
+                            Icons.point_of_sale_rounded,
+                            color: colorScheme.primary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      AppStatusBadge(
-                        label: '${cart.totalItems} item(ns)',
-                        tone: AppStatusTone.neutral,
-                        icon: Icons.shopping_bag_outlined,
-                      ),
-                    ],
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Conferência final',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${cart.totalItems} item(ns) • ${effectivePaymentMethod.label}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          AppFormatters.currencyFromCents(cart.totalCents),
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
                 AppSectionCard(
                   title: 'Tipo da venda',
-                  subtitle: 'Defina como a operação será registrada.',
+                  subtitle: 'Escolha o tipo de fechamento da venda.',
                   padding: sectionPadding,
                   child: Row(
                     children: [
@@ -171,8 +185,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                 AppSectionCard(
                   title: 'Forma de pagamento',
                   subtitle: _saleType == SaleType.cash
-                      ? 'Escolha a forma de recebimento em um toque.'
-                      : 'No fiado, a forma final permanece registrada como fiado.',
+                      ? 'Selecione como o cliente vai pagar agora.'
+                      : 'No fiado, o pagamento fica registrado como fiado.',
                   padding: sectionPadding,
                   child: _saleType == SaleType.cash
                       ? GridView.builder(
@@ -184,7 +198,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                                 crossAxisCount: 2,
                                 crossAxisSpacing: 10,
                                 mainAxisSpacing: 10,
-                                childAspectRatio: 1.45,
+                                childAspectRatio: 1.7,
                               ),
                           itemBuilder: (context, index) {
                             final method = [
@@ -239,10 +253,12 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                 ),
                 const SizedBox(height: 12),
                 AppSectionCard(
-                  title: 'Cliente e vencimento',
+                  title: _saleType == SaleType.fiado
+                      ? 'Cliente e vencimento'
+                      : 'Cliente da venda',
                   subtitle: _saleType == SaleType.fiado
-                      ? 'Cliente e vencimento continuam obrigatórios para gerar a nota.'
-                      : 'Cliente opcional para vincular a venda ao histórico.',
+                      ? 'Preencha estes dados para registrar o fiado.'
+                      : 'Opcional. Use se quiser vincular a venda ao histórico do cliente.',
                   padding: sectionPadding,
                   child: Column(
                     children: [
@@ -283,23 +299,80 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                 ),
                 const SizedBox(height: 12),
                 AppSectionCard(
-                  title: 'Resumo final',
-                  subtitle: 'Confira os produtos antes de concluir.',
+                  title: 'Conferência rápida',
+                  subtitle:
+                      'Mantenha o foco no pagamento e abra os itens só se precisar revisar.',
                   padding: sectionPadding,
                   child: Column(
                     children: [
-                      for (
-                        var index = 0;
-                        index < cart.items.length;
-                        index++
-                      ) ...[
-                        _CheckoutItemRow(item: cart.items[index]),
-                        if (index < cart.items.length - 1)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 10),
-                            child: Divider(height: 1),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _CheckoutSummaryMetric(
+                              label: 'Itens',
+                              value: '${cart.totalItems}',
+                              icon: Icons.shopping_bag_outlined,
+                            ),
                           ),
-                      ],
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _CheckoutSummaryMetric(
+                              label: 'Total',
+                              value: AppFormatters.currencyFromCents(
+                                cart.totalCents,
+                              ),
+                              icon: Icons.payments_outlined,
+                              emphasize: true,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () => context.goNamed(AppRouteNames.cart),
+                          icon: const Icon(Icons.shopping_cart_outlined),
+                          label: const Text('Voltar ao carrinho'),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Theme(
+                        data: theme.copyWith(dividerColor: Colors.transparent),
+                        child: ExpansionTile(
+                          tilePadding: EdgeInsets.zero,
+                          childrenPadding: EdgeInsets.zero,
+                          title: Text(
+                            'Ver itens da venda',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          subtitle: Text(
+                            cart.items.first.productName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          children: [
+                            const SizedBox(height: 6),
+                            for (
+                              var index = 0;
+                              index < cart.items.length;
+                              index++
+                            ) ...[
+                              _CheckoutItemRow(item: cart.items[index]),
+                              if (index < cart.items.length - 1)
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 8),
+                                  child: Divider(height: 1),
+                                ),
+                            ],
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -371,97 +444,60 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: colorScheme.surface,
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: colorScheme.outlineVariant),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 18,
-                        offset: const Offset(0, 10),
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 14,
+                        offset: const Offset(0, 8),
                       ),
                     ],
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(18),
-                            color: colorScheme.surfaceContainerLowest,
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      'Total',
-                                      style: theme.textTheme.titleSmall
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '${cart.totalItems} item(ns) - ${_saleType.label}',
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: colorScheme.onSurfaceVariant,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      _saleType == SaleType.fiado
-                                          ? _dueDate == null
-                                                ? 'Vencimento pendente'
-                                                : 'Vencimento: ${AppFormatters.shortDate(_dueDate!)}'
-                                          : effectivePaymentMethod.label,
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: colorScheme.onSurfaceVariant,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
-                                    'Valor final',
-                                    style: theme.textTheme.labelMedium
-                                        ?.copyWith(
-                                          color: colorScheme.onSurfaceVariant,
-                                        ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    AppFormatters.currencyFromCents(
-                                      cart.totalCents,
+                                    'Total',
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
                                     ),
-                                    textAlign: TextAlign.right,
-                                    style: theme.textTheme.headlineSmall
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: -0.3,
-                                        ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _saleType == SaleType.fiado
+                                        ? _dueDate == null
+                                              ? 'Fiado • vencimento pendente'
+                                              : 'Fiado • vence em ${AppFormatters.shortDate(_dueDate!)}'
+                                        : effectivePaymentMethod.label,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
                                   ),
                                 ],
                               ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              AppFormatters.currencyFromCents(cart.totalCents),
+                              textAlign: TextAlign.right,
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
@@ -546,7 +582,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
         return;
       }
 
-      context.pushNamed(
+      context.goNamed(
         AppRouteNames.saleReceipt,
         pathParameters: {'saleId': '${sale.saleId}'},
         extra: true,
@@ -677,10 +713,10 @@ class _CheckoutItemRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 40,
-          height: 40,
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
             color: colorScheme.primaryContainer.withValues(alpha: 0.48),
           ),
           child: Icon(
@@ -698,7 +734,7 @@ class _CheckoutItemRow extends StatelessWidget {
             children: [
               Text(
                 item.productName,
-                style: theme.textTheme.titleMedium?.copyWith(
+                style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -734,11 +770,69 @@ class _CheckoutItemRow extends StatelessWidget {
         const SizedBox(width: 12),
         Text(
           AppFormatters.currencyFromCents(item.subtotalCents),
-          style: theme.textTheme.titleMedium?.copyWith(
+          style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w800,
           ),
         ),
       ],
+    );
+  }
+}
+
+class _CheckoutSummaryMetric extends StatelessWidget {
+  const _CheckoutSummaryMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.emphasize = false,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: emphasize
+            ? colorScheme.primaryContainer.withValues(alpha: 0.58)
+            : colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: emphasize ? colorScheme.primary : colorScheme.onSurface,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: emphasize ? colorScheme.primary : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -836,7 +930,7 @@ class _ClientSelector extends StatelessWidget {
     return Card(
       color: Theme.of(context).colorScheme.surfaceContainerLowest,
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
         title: Text(
           selectedClient?.name ??
               (isRequired
@@ -902,10 +996,10 @@ class _ChoiceCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         child: Ink(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: selected
                   ? colorScheme.primary
@@ -916,7 +1010,7 @@ class _ChoiceCard extends StatelessWidget {
                 ? colorScheme.primaryContainer.withValues(alpha: 0.52)
                 : colorScheme.surface,
           ),
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,

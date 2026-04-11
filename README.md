@@ -4,6 +4,13 @@ Monorepo do Tatuzin, um ERP/PDV com app operacional local-first, backend de plat
 
 Este README descreve a arquitetura real atual do projeto. Ele nao descreve um estado idealizado e nao assume capacidades que ainda nao existem no codigo.
 
+## Branding e publicacao
+
+Guias praticos da identidade do Tatuzin:
+
+- [Brand guidelines](c:/Simples/docs/tatuzin-brand-guidelines.md)
+- [Brand verification checklist](c:/Simples/docs/tatuzin-brand-verification-checklist.md)
+
 ## Mapa real do monorepo
 
 ```text

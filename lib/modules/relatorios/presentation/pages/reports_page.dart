@@ -6,6 +6,7 @@ import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_metric_card.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
+import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/theme/app_theme.dart';
 import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../domain/entities/report_payment_summary.dart';
@@ -35,20 +36,20 @@ class ReportsPage extends ConsumerWidget {
           await ref.read(reportSummaryProvider.future);
         },
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
           children: [
             const AppPageHeader(
-              title: 'Relat\u00f3rios',
+              title: 'Painel de relatórios',
               subtitle:
-                  'Acompanhe vendas, recebimentos, compras e pend\u00eancias com base nos dados locais reais.',
-              badgeLabel: 'Vis\u00e3o gerencial',
+                  'Recebimentos, lucro e pendências em leitura executiva rápida.',
+              badgeLabel: 'Decisão do dia',
               badgeIcon: Icons.insights_rounded,
-              emphasized: true,
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             AppSectionCard(
-              title: 'Per\u00edodo',
-              subtitle: 'Selecione o recorte para atualizar os indicadores.',
+              title: 'Período',
+              subtitle: 'Troque o recorte para atualizar o painel.',
+              padding: const EdgeInsets.all(14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -58,7 +59,7 @@ class ReportsPage extends ConsumerWidget {
                     children: [
                       for (final period in ReportPeriod.values)
                         ChoiceChip(
-                          label: Text(period.label),
+                          label: Text(_periodLabel(period)),
                           selected: selectedPeriod == period,
                           onSelected: (_) {
                             ref.read(reportPeriodProvider.notifier).state =
@@ -67,29 +68,49 @@ class ReportsPage extends ConsumerWidget {
                         ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Base consultada: ${_formatRange(selectedRange, selectedPeriod)}',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Base consultada: ${_formatRange(selectedRange, selectedPeriod)}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             summaryAsync.when(
               data: (summary) => _ReportSummaryContent(summary: summary),
               loading: () => const Padding(
-                padding: EdgeInsets.symmetric(vertical: 32),
-                child: Center(child: CircularProgressIndicator()),
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: AppStateCard(
+                  title: 'Atualizando relatórios',
+                  message: 'Consolidando o resumo do período.',
+                  tone: AppStateTone.loading,
+                  compact: true,
+                ),
               ),
               error: (error, _) => AppSectionCard(
-                title: 'Falha ao carregar relat\u00f3rios',
+                title: 'Falha ao carregar relatórios',
                 subtitle: error.toString(),
-                child: FilledButton.tonal(
-                  onPressed: () => ref.invalidate(reportSummaryProvider),
-                  child: const Text('Tentar novamente'),
+                child: AppStateCard(
+                  title: 'Não foi possível atualizar o painel',
+                  message:
+                      'Tente novamente para consultar os números do período.',
+                  tone: AppStateTone.error,
+                  compact: true,
+                  actionLabel: 'Tentar novamente',
+                  onAction: () => ref.invalidate(reportSummaryProvider),
                 ),
               ),
             ),
@@ -108,7 +129,20 @@ class ReportsPage extends ConsumerWidget {
       return AppFormatters.shortDate(range.start);
     }
 
-    return '${AppFormatters.shortDate(range.start)} at\u00e9 ${AppFormatters.shortDate(lastIncludedDay)}';
+    return '${AppFormatters.shortDate(range.start)} até ${AppFormatters.shortDate(lastIncludedDay)}';
+  }
+
+  static String _periodLabel(ReportPeriod period) {
+    switch (period) {
+      case ReportPeriod.daily:
+        return 'Diário';
+      case ReportPeriod.weekly:
+        return 'Semanal';
+      case ReportPeriod.monthly:
+        return 'Mensal';
+      case ReportPeriod.yearly:
+        return 'Anual';
+    }
   }
 }
 
@@ -120,17 +154,18 @@ class _ReportSummaryContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 0.92,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: 1.18,
           children: [
             AppMetricCard(
-              label: 'Vendas no per\u00edodo',
+              label: 'Vendas no período',
               value: AppFormatters.currencyFromCents(summary.totalSalesCents),
               caption: '${summary.salesCount} venda(s) ativas',
               icon: Icons.point_of_sale_rounded,
@@ -141,7 +176,7 @@ class _ReportSummaryContent extends StatelessWidget {
               value: AppFormatters.currencyFromCents(
                 summary.totalReceivedCents,
               ),
-              caption: 'J\u00e1 considera estornos de cancelamento',
+              caption: 'Entradas líquidas',
               icon: Icons.account_balance_wallet_rounded,
               accentColor: AppTheme.secondary,
             ),
@@ -150,7 +185,7 @@ class _ReportSummaryContent extends StatelessWidget {
               value: AppFormatters.currencyFromCents(
                 summary.realizedProfitCents,
               ),
-              caption: 'Lucro bruto reconhecido no per\u00edodo',
+              caption: 'Lucro bruto no período',
               icon: Icons.trending_up_rounded,
               accentColor: AppTheme.success,
             ),
@@ -163,57 +198,14 @@ class _ReportSummaryContent extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 18),
-        FinancialSummaryWidget(summary: summary),
-        const SizedBox(height: 18),
+        const SizedBox(height: 14),
         AppSectionCard(
-          title: 'Resumo operacional',
-          subtitle: 'Volume, pend\u00eancias e cancelamentos do ERP.',
-          child: Column(
-            children: [
-              _SummaryLine(
-                label: 'Quantidade de vendas',
-                value: '${summary.salesCount} venda(s)',
-              ),
-              const Divider(height: 24),
-              _SummaryLine(
-                label: 'Notas pendentes',
-                value:
-                    '${summary.pendingFiadoCount} nota(s) - ${AppFormatters.currencyFromCents(summary.pendingFiadoCents)}',
-              ),
-              const Divider(height: 24),
-              _SummaryLine(
-                label: 'Cancelamentos no per\u00edodo',
-                value:
-                    '${summary.cancelledSalesCount} venda(s) - ${AppFormatters.currencyFromCents(summary.cancelledSalesCents)}',
-              ),
-              const Divider(height: 24),
-              _SummaryLine(
-                label: 'Compras registradas',
-                value: AppFormatters.currencyFromCents(
-                  summary.totalPurchasedCents,
-                ),
-              ),
-              const Divider(height: 24),
-              _SummaryLine(
-                label: 'Compras pendentes',
-                value: AppFormatters.currencyFromCents(
-                  summary.totalPurchasePendingCents,
-                ),
-              ),
-              const Divider(height: 24),
-              ProductSalesSummaryWidget(soldProducts: summary.soldProducts),
-            ],
-          ),
-        ),
-        const SizedBox(height: 18),
-        AppSectionCard(
-          title: 'Formas de pagamento',
-          subtitle:
-              'Entradas recebidas no per\u00edodo por forma de pagamento.',
+          title: 'Recebimentos por forma',
+          subtitle: 'O que entrou no caixa no período.',
+          padding: const EdgeInsets.all(14),
           child: summary.paymentSummaries.isEmpty
               ? const Text(
-                  'Nenhum recebimento com forma de pagamento registrada neste per\u00edodo.',
+                  'Nenhum recebimento com forma de pagamento registrada neste período.',
                 )
               : Column(
                   children: [
@@ -226,46 +218,114 @@ class _ReportSummaryContent extends StatelessWidget {
                         summary: summary.paymentSummaries[index],
                       ),
                       if (index < summary.paymentSummaries.length - 1)
-                        const Divider(height: 24),
+                        const Divider(height: 18),
                     ],
                   ],
                 ),
         ),
+        const SizedBox(height: 14),
+        AppSectionCard(
+          title: 'Visão operacional',
+          subtitle: 'Indicadores de volume e pendência.',
+          padding: const EdgeInsets.all(14),
+          child: GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            childAspectRatio: 1.5,
+            children: [
+              _OperationalTile(
+                label: 'Vendas ativas',
+                value: '${summary.salesCount}',
+                caption: 'Operações concluídas',
+              ),
+              _OperationalTile(
+                label: 'Cancelamentos',
+                value: '${summary.cancelledSalesCount}',
+                caption: AppFormatters.currencyFromCents(
+                  summary.cancelledSalesCents,
+                ),
+              ),
+              _OperationalTile(
+                label: 'Notas pendentes',
+                value: '${summary.pendingFiadoCount}',
+                caption: AppFormatters.currencyFromCents(
+                  summary.pendingFiadoCents,
+                ),
+                emphasize: true,
+              ),
+              _OperationalTile(
+                label: 'Compras pendentes',
+                value: AppFormatters.currencyFromCents(
+                  summary.totalPurchasePendingCents,
+                ),
+                caption: 'Acompanhar pagamento',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        FinancialSummaryWidget(summary: summary),
+        const SizedBox(height: 14),
+        ProductSalesSummaryWidget(soldProducts: summary.soldProducts),
       ],
     );
   }
 }
 
-class _SummaryLine extends StatelessWidget {
-  const _SummaryLine({required this.label, required this.value});
+class _OperationalTile extends StatelessWidget {
+  const _OperationalTile({
+    required this.label,
+    required this.value,
+    required this.caption,
+    this.emphasize = false,
+  });
 
   final String label;
   final String value;
+  final String caption;
+  final bool emphasize;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
 
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: emphasize
+            ? colorScheme.primaryContainer.withValues(alpha: 0.52)
+            : colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
             label,
-            style: theme.textTheme.bodyMedium?.copyWith(
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
               color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
             ),
           ),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          value,
-          textAlign: TextAlign.right,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: emphasize ? colorScheme.primary : null,
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 2),
+          Text(caption, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      ),
     );
   }
 }
@@ -282,27 +342,31 @@ class _PaymentSummaryTile extends StatelessWidget {
 
     return Row(
       children: [
-        CircleAvatar(
-          radius: 20,
-          backgroundColor: colorScheme.primaryContainer,
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: colorScheme.primaryContainer.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: Icon(
             summary.paymentMethod == PaymentMethod.cash
                 ? Icons.payments_outlined
                 : summary.paymentMethod == PaymentMethod.pix
                 ? Icons.pix
                 : Icons.credit_card_rounded,
-            size: 20,
-            color: colorScheme.onPrimaryContainer,
+            size: 18,
+            color: colorScheme.primary,
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 summary.paymentMethod.label,
-                style: theme.textTheme.titleMedium?.copyWith(
+                style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -319,7 +383,7 @@ class _PaymentSummaryTile extends StatelessWidget {
         const SizedBox(width: 12),
         Text(
           AppFormatters.currencyFromCents(summary.receivedCents),
-          style: theme.textTheme.titleMedium?.copyWith(
+          style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w800,
           ),
         ),

@@ -27,33 +27,23 @@ class AppPageHeader extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return AppCard(
-      padding: const EdgeInsets.all(20),
-      borderRadius: 24,
-      color: emphasized ? null : colorScheme.surface,
-      gradient: emphasized
-          ? LinearGradient(
-              colors: [colorScheme.primary, colorScheme.secondary],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            )
-          : null,
+      padding: const EdgeInsets.all(12),
+      borderRadius: 16,
+      color: emphasized
+          ? colorScheme.primaryContainer.withValues(alpha: 0.62)
+          : colorScheme.surface,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (badgeLabel?.isNotEmpty ?? false) ...[
             AppStatusBadge(
               label: badgeLabel!,
-              tone: emphasized ? AppStatusTone.neutral : AppStatusTone.info,
+              tone: emphasized ? AppStatusTone.warning : AppStatusTone.info,
               icon: badgeIcon,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 6),
           ],
-          AppSectionTitle(
-            title: title,
-            subtitle: subtitle,
-            trailing: trailing,
-            onDarkBackground: emphasized,
-          ),
+          AppSectionTitle(title: title, subtitle: subtitle, trailing: trailing),
         ],
       ),
     );

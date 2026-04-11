@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../constants/app_constants.dart';
 import 'app_page_header.dart';
+import 'app_state_card.dart';
+import 'tatuzin_brand.dart';
 
 class AppAsyncValueView extends StatelessWidget {
   const AppAsyncValueView({
@@ -41,9 +43,6 @@ class AppAsyncValueView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     return Scaffold(
       body: Center(
         child: ConstrainedBox(
@@ -53,52 +52,29 @@ class AppAsyncValueView extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const AppPageHeader(
-                  title: AppConstants.appName,
-                  subtitle: AppConstants.appSlogan,
-                  badgeLabel: 'Tatuzin local-first',
-                  badgeIcon: Icons.auto_awesome_rounded,
+                const TatuzinBrandLockup(caption: AppConstants.brandLine),
+                const SizedBox(height: 16),
+                AppPageHeader(
+                  title: title,
+                  subtitle: message,
+                  badgeLabel: isLoading ? 'Carregando' : 'Atenção',
+                  badgeIcon: isLoading
+                      ? Icons.hourglass_bottom_rounded
+                      : Icons.info_outline_rounded,
                   emphasized: true,
                 ),
-                const SizedBox(height: 16),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (isLoading)
-                          const SizedBox(
-                            height: 44,
-                            width: 44,
-                            child: CircularProgressIndicator(strokeWidth: 3),
-                          )
-                        else
-                          Icon(icon, size: 44, color: colorScheme.primary),
-                        const SizedBox(height: 20),
-                        Text(
-                          title,
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          message,
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        if (actionLabel != null && onAction != null) ...[
-                          const SizedBox(height: 20),
-                          FilledButton(
-                            onPressed: onAction,
-                            child: Text(actionLabel!),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
+                const SizedBox(height: 12),
+                AppStateCard(
+                  title: isLoading
+                      ? 'Preparando o Tatuzin'
+                      : 'Precisamos de atenção',
+                  message: isLoading
+                      ? 'Organizando o ambiente para você continuar trabalhando.'
+                      : message,
+                  icon: icon,
+                  tone: isLoading ? AppStateTone.loading : AppStateTone.error,
+                  actionLabel: actionLabel,
+                  onAction: onAction,
                 ),
               ],
             ),

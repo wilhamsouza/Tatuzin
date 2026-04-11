@@ -16,6 +16,7 @@ class AppStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final colorScheme = Theme.of(context).colorScheme;
     final colors = _colors(colorScheme);
 
@@ -23,19 +24,23 @@ class AppStatusBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.$1,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colors.$1.withValues(alpha: 0.72)),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 16, color: colors.$2),
-              const SizedBox(width: 6),
+              Icon(icon, size: 14, color: colors.$2),
+              const SizedBox(width: 5),
             ],
             Text(
               label,
-              style: TextStyle(color: colors.$2, fontWeight: FontWeight.w700),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: colors.$2,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         ),

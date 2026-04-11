@@ -12,57 +12,48 @@ class FinancialSummaryWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppSectionCard(
-      title: 'Resumo financeiro',
-      subtitle: 'Entradas e impacto comercial do periodo selecionado.',
+      title: 'Detalhamento financeiro',
+      subtitle: 'Quebra de recebimentos, compras e custo do período.',
+      padding: const EdgeInsets.all(14),
       child: Column(
         children: [
           _FinanceLine(
-            label: 'Recebimentos de vendas a vista',
+            label: 'Vendas à vista recebidas',
             value: AppFormatters.currencyFromCents(
               summary.cashSalesReceivedCents,
             ),
           ),
-          const Divider(height: 24),
+          const Divider(height: 18),
           _FinanceLine(
-            label: 'Recebimentos de fiado',
+            label: 'Fiado recebido',
             value: AppFormatters.currencyFromCents(summary.fiadoReceiptsCents),
           ),
-          const Divider(height: 24),
+          const Divider(height: 18),
           _FinanceLine(
             label: 'Compras registradas',
             value: AppFormatters.currencyFromCents(summary.totalPurchasedCents),
           ),
-          const Divider(height: 24),
+          const Divider(height: 18),
           _FinanceLine(
             label: 'Pagamentos de compras',
             value: AppFormatters.currencyFromCents(
               summary.totalPurchasePaymentsCents,
             ),
           ),
-          const Divider(height: 24),
-          _FinanceLine(
-            label: 'Compras pendentes',
-            value: AppFormatters.currencyFromCents(
-              summary.totalPurchasePendingCents,
-            ),
-          ),
-          const Divider(height: 24),
-          _FinanceLine(
-            label: 'Total recebido liquido',
-            value: AppFormatters.currencyFromCents(summary.totalReceivedCents),
-            emphasize: true,
-          ),
-          const Divider(height: 24),
+          const Divider(height: 18),
           _FinanceLine(
             label: 'Custo dos produtos vendidos',
             value: AppFormatters.currencyFromCents(
               summary.costOfGoodsSoldCents,
             ),
           ),
-          const Divider(height: 24),
+          const Divider(height: 18),
           _FinanceLine(
-            label: 'Lucro bruto realizado',
-            value: AppFormatters.currencyFromCents(summary.realizedProfitCents),
+            label: 'Compras pendentes',
+            value: AppFormatters.currencyFromCents(
+              summary.totalPurchasePendingCents,
+            ),
+            emphasize: true,
           ),
         ],
       ),
@@ -91,7 +82,7 @@ class _FinanceLine extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: theme.textTheme.bodyMedium?.copyWith(
+            style: theme.textTheme.bodySmall?.copyWith(
               color: colorScheme.onSurfaceVariant,
             ),
           ),
@@ -101,10 +92,11 @@ class _FinanceLine extends StatelessWidget {
           value,
           textAlign: TextAlign.right,
           style: emphasize
-              ? theme.textTheme.titleLarge?.copyWith(
+              ? theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w800,
+                  color: colorScheme.primary,
                 )
-              : theme.textTheme.titleMedium?.copyWith(
+              : theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
         ),
