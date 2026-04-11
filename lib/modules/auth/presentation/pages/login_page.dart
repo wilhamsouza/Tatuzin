@@ -70,10 +70,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
                 children: [
-                  const TatuzinBrandLockup(
-                    caption:
-                        'ERP/PDV de bolso para vender, cobrar e fechar caixa com clareza.',
-                  ),
+                  const TatuzinBrandLockup(),
                   const SizedBox(height: 18),
                   AppCard(
                     padding: const EdgeInsets.all(22),
