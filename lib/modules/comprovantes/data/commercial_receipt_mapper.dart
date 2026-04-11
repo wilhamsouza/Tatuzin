@@ -62,7 +62,8 @@ abstract final class CommercialReceiptMapper {
       items: detail.items
           .map(
             (item) => CommercialReceiptItem(
-              description: _composeItemDescription(item),
+              title: _composeItemTitle(item),
+              supportingLines: _buildItemSupportingLines(item),
               quantityLabel:
                   '${AppFormatters.quantityFromMil(item.quantityMil)} ${item.unitMeasure}',
               unitPriceCents: item.unitPriceCents,
@@ -184,15 +185,42 @@ abstract final class CommercialReceiptMapper {
     }
   }
 
-  static String _composeItemDescription(SaleItemDetail item) {
-    final lines = <String>[item.productName];
+  static String _composeItemTitle(SaleItemDetail item) {
+    final labels = <String>[
+      if ((item.variantSizeSnapshot ?? '').trim().isNotEmpty)
+        item.variantSizeSnapshot!.trim(),
+      if ((item.variantColorSnapshot ?? '').trim().isNotEmpty)
+        item.variantColorSnapshot!.trim(),
+    ];
 
+    final variantSuffix = labels.isEmpty ? null : '[${labels.join('/')}]';
+    if (variantSuffix == null) {
+      return item.productName.trim();
+    }
+
+    final productName = item.productName.trim();
+    final normalizedBaseName = _stripTrailingVariantSummary(
+      productName,
+      labels,
+    );
+    final baseName = normalizedBaseName.trim().isEmpty
+        ? productName
+        : normalizedBaseName.trim();
+    return '$baseName $variantSuffix';
+  }
+
+  static List<String> _buildItemSupportingLines(SaleItemDetail item) {
+    final lines = <String>[];
     if (item.modifiers.isNotEmpty) {
       for (final modifier in item.modifiers) {
-        final group = modifier.groupNameSnapshot;
         final option = modifier.optionNameSnapshot;
-        final adjustment = modifier.adjustmentTypeSnapshot;
-        lines.add('- ${group ?? 'Modificador'}: $option ($adjustment)');
+        final prefix = modifier.adjustmentTypeSnapshot == 'remove'
+            ? '- '
+            : '+ ';
+        final quantityPrefix = modifier.quantity > 1
+            ? '${modifier.quantity}x '
+            : '';
+        lines.add('$prefix$quantityPrefix$option');
       }
     }
 
@@ -200,7 +228,27 @@ abstract final class CommercialReceiptMapper {
     if (notes?.trim().isNotEmpty ?? false) {
       lines.add('Obs.: ${notes!.trim()}');
     }
+    return lines;
+  }
 
-    return lines.join('\n');
+  static String _stripTrailingVariantSummary(
+    String productName,
+    List<String> labels,
+  ) {
+    final candidates = <String>[
+      ' - ${labels.join(' / ')}',
+      ' - ${labels.join('/')}',
+      ' – ${labels.join(' / ')}',
+      ' – ${labels.join('/')}',
+    ];
+
+    final lowerName = productName.toLowerCase();
+    for (final candidate in candidates) {
+      if (lowerName.endsWith(candidate.toLowerCase())) {
+        return productName.substring(0, productName.length - candidate.length);
+      }
+    }
+
+    return productName;
   }
 }

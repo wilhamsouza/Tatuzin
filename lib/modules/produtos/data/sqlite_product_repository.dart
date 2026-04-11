@@ -41,6 +41,11 @@ class SqliteProductRepository implements ProductRepository {
     final now = DateTime.now();
     final uuid = IdGenerator.next();
 
+    final resolvedStockMil = _resolveProductStockMil(
+      input.stockMil,
+      input.variants,
+    );
+
     return database.transaction((txn) async {
       final id = await txn.insert(TableNames.produtos, {
         'uuid': uuid,
@@ -49,7 +54,7 @@ class SqliteProductRepository implements ProductRepository {
         'categoria_id': input.categoryId,
         'foto_path': _resolvePrimaryPhotoPath(input.photos),
         'codigo_barras': _cleanNullable(input.barcode),
-        'tipo_produto': 'unidade',
+        'tipo_produto': input.productType,
         'nicho': _normalizeNiche(input.niche),
         'catalog_type': _normalizeCatalogType(input.catalogType),
         'model_name': _cleanNullable(input.modelName),
@@ -59,7 +64,7 @@ class SqliteProductRepository implements ProductRepository {
             : input.unitMeasure.trim(),
         'custo_centavos': input.costCents,
         'preco_venda_centavos': input.salePriceCents,
-        'estoque_mil': input.stockMil,
+        'estoque_mil': resolvedStockMil,
         'ativo': input.isActive ? 1 : 0,
         'criado_em': now.toIso8601String(),
         'atualizado_em': now.toIso8601String(),
@@ -96,12 +101,11 @@ class SqliteProductRepository implements ProductRepository {
         productId: id,
         photos: input.photos,
       );
-      await _replaceFashionGradeEntries(
+      await _replaceProductVariants(
         txn: txn,
         productId: id,
-        entries: input.fashionGradeEntries,
+        variants: input.variants,
       );
-
       return id;
     });
   }
@@ -187,6 +191,7 @@ class SqliteProductRepository implements ProductRepository {
       query: query,
       onlyAvailable: true,
       includeDeleted: false,
+      flattenSellableVariants: true,
     );
   }
 
@@ -194,6 +199,10 @@ class SqliteProductRepository implements ProductRepository {
   Future<void> update(int id, ProductInput input) async {
     final database = await _appDatabase.database;
     final now = DateTime.now();
+    final resolvedStockMil = _resolveProductStockMil(
+      input.stockMil,
+      input.variants,
+    );
 
     await database.transaction((txn) async {
       final existing = await _findRowById(txn, id);
@@ -218,7 +227,7 @@ class SqliteProductRepository implements ProductRepository {
               : input.unitMeasure.trim(),
           'custo_centavos': input.costCents,
           'preco_venda_centavos': input.salePriceCents,
-          'estoque_mil': input.stockMil,
+          'estoque_mil': resolvedStockMil,
           'ativo': input.isActive ? 1 : 0,
           'atualizado_em': now.toIso8601String(),
         },
@@ -265,10 +274,10 @@ class SqliteProductRepository implements ProductRepository {
         productId: id,
         photos: input.photos,
       );
-      await _replaceFashionGradeEntries(
+      await _replaceProductVariants(
         txn: txn,
         productId: id,
-        entries: input.fashionGradeEntries,
+        variants: input.variants,
       );
     });
   }
@@ -296,7 +305,7 @@ class SqliteProductRepository implements ProductRepository {
       return null;
     }
 
-    return _mapProduct(rows.first);
+    return _mapProduct(database, rows.first);
   }
 
   Future<List<ProductPhoto>> listProductPhotos(int productId) async {
@@ -310,17 +319,9 @@ class SqliteProductRepository implements ProductRepository {
     return rows.map(_mapProductPhoto).toList(growable: false);
   }
 
-  Future<List<ProductFashionGradeEntry>> listFashionGradeEntries(
-    int productId,
-  ) async {
+  Future<List<ProductVariant>> listProductVariants(int productId) async {
     final database = await _appDatabase.database;
-    final rows = await database.query(
-      TableNames.produtoModaGrade,
-      where: 'produto_id = ?',
-      whereArgs: [productId],
-      orderBy: 'ordem ASC, id ASC',
-    );
-    return rows.map(_mapFashionGradeEntry).toList(growable: false);
+    return _loadProductVariants(database, productId);
   }
 
   Future<Product?> findByRemoteId(String remoteId) async {
@@ -338,7 +339,7 @@ class SqliteProductRepository implements ProductRepository {
       return null;
     }
 
-    return _mapProduct(rows.first);
+    return _mapProduct(database, rows.first);
   }
 
   Future<void> upsertFromRemote(RemoteProductRecord remote) async {
@@ -418,7 +419,7 @@ class SqliteProductRepository implements ProductRepository {
             'unidade_medida': remote.unitMeasure,
             'custo_centavos': remote.costCents,
             'preco_venda_centavos': remote.salePriceCents,
-            'estoque_mil': remote.stockMil,
+            'estoque_mil': _resolveRemoteStockMil(remote),
             'ativo': remote.isActive ? 1 : 0,
             'atualizado_em': remote.updatedAt.toIso8601String(),
             'deletado_em': remote.deletedAt?.toIso8601String(),
@@ -444,7 +445,7 @@ class SqliteProductRepository implements ProductRepository {
           'unidade_medida': remote.unitMeasure,
           'custo_centavos': remote.costCents,
           'preco_venda_centavos': remote.salePriceCents,
-          'estoque_mil': remote.stockMil,
+          'estoque_mil': _resolveRemoteStockMil(remote),
           'ativo': remote.isActive ? 1 : 0,
           'criado_em': remote.createdAt.toIso8601String(),
           'atualizado_em': remote.updatedAt.toIso8601String(),
@@ -452,6 +453,18 @@ class SqliteProductRepository implements ProductRepository {
         });
       }
 
+      final remoteInput = _buildRemoteInput(remote, mappedCategoryId);
+      await _persistLocalCatalogStructure(
+        txn: txn,
+        productId: localId,
+        productUuid: localUuid,
+        input: remoteInput,
+      );
+      await _replaceProductVariants(
+        txn: txn,
+        productId: localId,
+        variants: remoteInput.variants,
+      );
       await _syncMetadataRepository.markSynced(
         txn,
         featureKey: featureKey,
@@ -502,7 +515,7 @@ class SqliteProductRepository implements ProductRepository {
           'unidade_medida': remote.unitMeasure,
           'custo_centavos': remote.costCents,
           'preco_venda_centavos': remote.salePriceCents,
-          'estoque_mil': remote.stockMil,
+          'estoque_mil': _resolveRemoteStockMil(remote),
           'ativo': remote.isActive ? 1 : 0,
           'atualizado_em': remote.updatedAt.toIso8601String(),
           'deletado_em': remote.deletedAt?.toIso8601String(),
@@ -511,6 +524,18 @@ class SqliteProductRepository implements ProductRepository {
         whereArgs: [product.id],
       );
 
+      final remoteInput = _buildRemoteInput(remote, mappedCategoryId);
+      await _persistLocalCatalogStructure(
+        txn: txn,
+        productId: product.id,
+        productUuid: product.uuid,
+        input: remoteInput,
+      );
+      await _replaceProductVariants(
+        txn: txn,
+        productId: product.id,
+        variants: remoteInput.variants,
+      );
       await _syncMetadataRepository.markSynced(
         txn,
         featureKey: featureKey,
@@ -590,6 +615,7 @@ class SqliteProductRepository implements ProductRepository {
     required String query,
     required bool onlyAvailable,
     required bool includeDeleted,
+    bool flattenSellableVariants = false,
   }) async {
     final database = await _appDatabase.database;
     final trimmedQuery = query.trim();
@@ -608,9 +634,11 @@ class SqliteProductRepository implements ProductRepository {
         'OR COALESCE(p.variant_label, \'\') LIKE ? COLLATE NOCASE '
         'OR COALESCE(pb.nome, \'\') LIKE ? COLLATE NOCASE '
         'OR COALESCE(variant_attrs.serialized_attrs, \'\') LIKE ? COLLATE NOCASE '
+        'OR COALESCE(variant_index.serialized_variants, \'\') LIKE ? COLLATE NOCASE '
         'OR COALESCE(p.codigo_barras, \'\') LIKE ? COLLATE NOCASE'
         ')',
       );
+      args.add('%$trimmedQuery%');
       args.add('%$trimmedQuery%');
       args.add('%$trimmedQuery%');
       args.add('%$trimmedQuery%');
@@ -628,7 +656,16 @@ class SqliteProductRepository implements ProductRepository {
     );
 
     final rows = await database.rawQuery(buffer.toString(), args);
-    return rows.map(_mapProduct).toList();
+    final products = <Product>[];
+    for (final row in rows) {
+      products.add(await _mapProduct(database, row));
+    }
+
+    if (!flattenSellableVariants) {
+      return products;
+    }
+
+    return _flattenSellableProducts(products);
   }
 
   String _selectQuery({required bool includeDeleted}) {
@@ -639,6 +676,7 @@ class SqliteProductRepository implements ProductRepository {
         pb.id AS produto_base_id,
         pb.nome AS produto_base_nome,
         COALESCE(variant_attrs.serialized_attrs, '') AS variant_attributes_serialized,
+        COALESCE(variant_index.serialized_variants, '') AS variant_index_serialized,
         COALESCE(mod_groups.serialized_groups, '') AS modifier_groups_serialized,
         sync.remote_id AS sync_remote_id,
         sync.sync_status AS sync_status,
@@ -659,6 +697,18 @@ class SqliteProductRepository implements ProductRepository {
         GROUP BY a.produto_id
       ) variant_attrs
         ON variant_attrs.produto_id = p.id
+      LEFT JOIN (
+        SELECT
+          v.produto_id,
+          GROUP_CONCAT(
+            COALESCE(v.sku, '') || ' ' || COALESCE(v.tamanho, '') || ' ' || COALESCE(v.cor, ''),
+            '||'
+          ) AS serialized_variants
+        FROM ${TableNames.produtoVariantes} v
+        WHERE v.ativo = 1
+        GROUP BY v.produto_id
+      ) variant_index
+        ON variant_index.produto_id = p.id
       LEFT JOIN (
         SELECT
           g.produto_base_id,
@@ -738,6 +788,87 @@ class SqliteProductRepository implements ProductRepository {
       remote.remoteCategoryId!,
     );
     return category?.id;
+  }
+
+  int _resolveProductStockMil(
+    int fallbackStockMil,
+    List<ProductVariantInput> variants,
+  ) {
+    if (variants.isEmpty) {
+      return fallbackStockMil;
+    }
+
+    return variants.fold<int>(
+      0,
+      (total, variant) => total + (variant.isActive ? variant.stockMil : 0),
+    );
+  }
+
+  int _resolveRemoteStockMil(RemoteProductRecord remote) {
+    if (remote.variants.isEmpty) {
+      return remote.stockMil;
+    }
+
+    return remote.variants.fold<int>(
+      0,
+      (total, variant) => total + (variant.isActive ? variant.stockMil : 0),
+    );
+  }
+
+  ProductInput _buildRemoteInput(RemoteProductRecord remote, int? categoryId) {
+    final variantInputs = remote.variants
+        .map(
+          (variant) => ProductVariantInput(
+            sku: variant.sku,
+            colorLabel: variant.colorLabel,
+            sizeLabel: variant.sizeLabel,
+            priceAdditionalCents: variant.priceAdditionalCents,
+            stockMil: variant.stockMil,
+            sortOrder: variant.sortOrder,
+            isActive: variant.isActive,
+          ),
+        )
+        .toList(growable: false);
+
+    final modifierGroups = remote.modifierGroups
+        .map(
+          (group) => ProductModifierGroupInput(
+            name: group.name,
+            isRequired: group.isRequired,
+            minSelections: group.minSelections,
+            maxSelections: group.maxSelections,
+            options: group.options
+                .map(
+                  (option) => ProductModifierOptionInput(
+                    name: option.name,
+                    adjustmentType: option.adjustmentType,
+                    priceDeltaCents: option.priceDeltaCents,
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        )
+        .toList(growable: false);
+
+    return ProductInput(
+      name: remote.name,
+      description: remote.description,
+      categoryId: categoryId,
+      barcode: remote.barcode,
+      photos: const <ProductPhotoInput>[],
+      variants: variantInputs,
+      niche: remote.niche,
+      catalogType: remote.catalogType,
+      modelName: remote.modelName,
+      variantLabel: remote.variantLabel,
+      variantAttributes: const <ProductVariantAttributeInput>[],
+      modifierGroups: modifierGroups,
+      unitMeasure: remote.unitMeasure,
+      costCents: remote.costCents,
+      salePriceCents: remote.salePriceCents,
+      stockMil: _resolveRemoteStockMil(remote),
+      isActive: remote.isActive,
+    );
   }
 
   Future<void> _persistLocalCatalogStructure({
@@ -846,8 +977,8 @@ class SqliteProductRepository implements ProductRepository {
     final now = DateTime.now().toIso8601String();
     await txn.delete(
       TableNames.produtoVarianteAtributos,
-      where: 'produto_id = ? AND chave <> ?',
-      whereArgs: [productId, 'legacy_variant_label'],
+      where: 'produto_id = ?',
+      whereArgs: [productId],
     );
 
     final attributes = _normalizeVariantAttributes(input);
@@ -974,13 +1105,18 @@ class SqliteProductRepository implements ProductRepository {
     }
   }
 
-  Product _mapProduct(Map<String, Object?> row) {
+  Future<Product> _mapProduct(
+    DatabaseExecutor db,
+    Map<String, Object?> row,
+  ) async {
     final variantAttributes = _parseVariantAttributes(
       row['variant_attributes_serialized'] as String?,
     );
-    final modifierGroups = _parseModifierGroups(
-      row['modifier_groups_serialized'] as String?,
+    final modifierGroups = await _loadProductModifierGroups(
+      db,
+      row['produto_base_id'] as int?,
     );
+    final variants = await _loadProductVariants(db, row['id'] as int);
 
     return Product(
       id: row['id'] as int,
@@ -1000,6 +1136,7 @@ class SqliteProductRepository implements ProductRepository {
       baseProductId: row['produto_base_id'] as int?,
       baseProductName: row['produto_base_nome'] as String?,
       variantAttributes: variantAttributes,
+      variants: variants,
       modifierGroups: modifierGroups,
       unitMeasure: row['unidade_medida'] as String,
       costCents: row['custo_centavos'] as int,
@@ -1017,6 +1154,143 @@ class SqliteProductRepository implements ProductRepository {
           ? null
           : DateTime.parse(row['sync_last_synced_at'] as String),
     );
+  }
+
+  Future<List<ProductVariant>> _loadProductVariants(
+    DatabaseExecutor db,
+    int productId,
+  ) async {
+    final rows = await db.query(
+      TableNames.produtoVariantes,
+      where: 'produto_id = ?',
+      whereArgs: [productId],
+      orderBy: 'ordem ASC, id ASC',
+    );
+
+    return rows.map(_mapProductVariant).toList(growable: false);
+  }
+
+  ProductVariant _mapProductVariant(Map<String, Object?> row) {
+    return ProductVariant(
+      id: row['id'] as int,
+      uuid: row['uuid'] as String,
+      productId: row['produto_id'] as int,
+      sku: row['sku'] as String? ?? '',
+      colorLabel: row['cor'] as String? ?? '',
+      sizeLabel: row['tamanho'] as String? ?? '',
+      priceAdditionalCents: row['preco_adicional_centavos'] as int? ?? 0,
+      stockMil: row['estoque_mil'] as int? ?? 0,
+      sortOrder: row['ordem'] as int? ?? 0,
+      isActive: (row['ativo'] as int? ?? 1) == 1,
+      createdAt: DateTime.parse(row['criado_em'] as String),
+      updatedAt: DateTime.parse(row['atualizado_em'] as String),
+    );
+  }
+
+  Future<List<ProductModifierGroup>> _loadProductModifierGroups(
+    DatabaseExecutor db,
+    int? baseProductId,
+  ) async {
+    if (baseProductId == null) {
+      return const <ProductModifierGroup>[];
+    }
+
+    final groupRows = await db.query(
+      TableNames.gruposModificadores,
+      where: 'produto_base_id = ? AND ativo = 1',
+      whereArgs: [baseProductId],
+      orderBy: 'id ASC',
+    );
+
+    final groups = <ProductModifierGroup>[];
+    for (final groupRow in groupRows) {
+      final groupId = groupRow['id'] as int;
+      final optionRows = await db.query(
+        TableNames.opcoesModificadores,
+        where: 'grupo_modificador_id = ? AND ativo = 1',
+        whereArgs: [groupId],
+        orderBy: 'ordem ASC, id ASC',
+      );
+      groups.add(
+        ProductModifierGroup(
+          name: groupRow['nome'] as String? ?? '',
+          isRequired: (groupRow['obrigatorio'] as int? ?? 0) == 1,
+          minSelections: groupRow['min_selecoes'] as int? ?? 0,
+          maxSelections: groupRow['max_selecoes'] as int?,
+          options: optionRows
+              .map(
+                (optionRow) => ProductModifierOption(
+                  name: optionRow['nome'] as String? ?? '',
+                  adjustmentType: optionRow['tipo_ajuste'] as String? ?? 'add',
+                  priceDeltaCents:
+                      optionRow['preco_delta_centavos'] as int? ?? 0,
+                ),
+              )
+              .toList(growable: false),
+        ),
+      );
+    }
+
+    return groups;
+  }
+
+  List<Product> _flattenSellableProducts(List<Product> products) {
+    final sellable = <Product>[];
+    for (final product in products) {
+      final activeVariants = product.variants
+          .where((variant) => variant.isActive && variant.stockMil > 0)
+          .toList(growable: false);
+      if (activeVariants.isEmpty) {
+        if (product.stockMil > 0) {
+          sellable.add(product);
+        }
+        continue;
+      }
+
+      for (final variant in activeVariants) {
+        sellable.add(
+          Product(
+            id: product.id,
+            uuid: product.uuid,
+            name: product.name,
+            description: product.description,
+            categoryId: product.categoryId,
+            categoryName: product.categoryName,
+            barcode: product.barcode,
+            primaryPhotoPath: product.primaryPhotoPath,
+            productType: product.productType,
+            niche: product.niche,
+            catalogType: product.catalogType,
+            modelName: product.modelName,
+            variantLabel: product.variantLabel,
+            baseProductId: product.baseProductId,
+            baseProductName: product.baseProductName,
+            variantAttributes: product.variantAttributes,
+            variants: product.variants,
+            modifierGroups: product.modifierGroups,
+            sellableVariantId: variant.id,
+            sellableVariantSku: variant.sku,
+            sellableVariantColorLabel: variant.colorLabel,
+            sellableVariantSizeLabel: variant.sizeLabel,
+            sellableVariantPriceAdditionalCents: variant.priceAdditionalCents,
+            unitMeasure: product.unitMeasure,
+            costCents: product.costCents,
+            salePriceCents:
+                product.salePriceCents + variant.priceAdditionalCents,
+            stockMil: variant.stockMil,
+            isActive: product.isActive,
+            createdAt: product.createdAt,
+            updatedAt: product.updatedAt,
+            deletedAt: product.deletedAt,
+            remoteId: product.remoteId,
+            syncStatus: product.syncStatus,
+            lastSyncedAt: product.lastSyncedAt,
+          ),
+        );
+      }
+    }
+
+    return sellable;
   }
 
   List<ProductVariantAttribute> _parseVariantAttributes(String? serialized) {
@@ -1039,50 +1313,6 @@ class SqliteProductRepository implements ProductRepository {
       attributes.add(ProductVariantAttribute(key: key, value: value));
     }
     return attributes;
-  }
-
-  List<ProductModifierGroup> _parseModifierGroups(String? serialized) {
-    if (serialized == null || serialized.trim().isEmpty) {
-      return const <ProductModifierGroup>[];
-    }
-
-    final groups = <ProductModifierGroup>[];
-    final entries = serialized.split('||');
-    for (final entry in entries) {
-      final parts = entry.split('::');
-      if (parts.length < 5) {
-        continue;
-      }
-
-      final groupName = parts[0].trim();
-      if (groupName.isEmpty) {
-        continue;
-      }
-
-      final isRequired = parts[1] == '1';
-      final minSelections = int.tryParse(parts[2]) ?? 0;
-      final maxSelections = int.tryParse(parts[3]);
-      final optionCount = int.tryParse(parts[4]) ?? 0;
-      final options = List<ProductModifierOption>.generate(
-        optionCount,
-        (_) => const ProductModifierOption(
-          name: 'Option',
-          adjustmentType: 'add',
-          priceDeltaCents: 0,
-        ),
-      );
-
-      groups.add(
-        ProductModifierGroup(
-          name: groupName,
-          isRequired: isRequired,
-          minSelections: minSelections,
-          maxSelections: maxSelections,
-          options: options,
-        ),
-      );
-    }
-    return groups;
   }
 
   String? _cleanNullable(String? value) {
@@ -1153,32 +1383,36 @@ class SqliteProductRepository implements ProductRepository {
     }
   }
 
-  Future<void> _replaceFashionGradeEntries({
+  Future<void> _replaceProductVariants({
     required DatabaseExecutor txn,
     required int productId,
-    required List<ProductFashionGradeEntryInput> entries,
+    required List<ProductVariantInput> variants,
   }) async {
     await txn.delete(
-      TableNames.produtoModaGrade,
+      TableNames.produtoVariantes,
       where: 'produto_id = ?',
       whereArgs: [productId],
     );
 
-    for (var index = 0; index < entries.length; index++) {
-      final entry = entries[index];
-      final sizeLabel = _cleanNullable(entry.sizeLabel);
-      final colorLabel = _cleanNullable(entry.colorLabel);
-      if (sizeLabel == null || colorLabel == null) {
+    for (var index = 0; index < variants.length; index++) {
+      final variant = variants[index];
+      final sizeLabel = _cleanNullable(variant.sizeLabel);
+      final colorLabel = _cleanNullable(variant.colorLabel);
+      final sku = _cleanNullable(variant.sku);
+      if (sizeLabel == null || colorLabel == null || sku == null) {
         continue;
       }
       final now = DateTime.now().toIso8601String();
-      await txn.insert(TableNames.produtoModaGrade, {
+      await txn.insert(TableNames.produtoVariantes, {
         'uuid': IdGenerator.next(),
         'produto_id': productId,
-        'tamanho': sizeLabel,
+        'sku': sku.toUpperCase(),
         'cor': colorLabel,
-        'estoque_mil': entry.stockMil,
-        'ordem': index,
+        'tamanho': sizeLabel,
+        'preco_adicional_centavos': variant.priceAdditionalCents,
+        'estoque_mil': variant.stockMil,
+        'ordem': variant.sortOrder == 0 ? index : variant.sortOrder,
+        'ativo': variant.isActive ? 1 : 0,
         'criado_em': now,
         'atualizado_em': now,
       });
@@ -1192,20 +1426,6 @@ class SqliteProductRepository implements ProductRepository {
       productId: row['produto_id'] as int,
       localPath: row['caminho_local'] as String,
       isPrimary: (row['e_principal'] as int? ?? 0) == 1,
-      sortOrder: row['ordem'] as int? ?? 0,
-      createdAt: DateTime.parse(row['criado_em'] as String),
-      updatedAt: DateTime.parse(row['atualizado_em'] as String),
-    );
-  }
-
-  ProductFashionGradeEntry _mapFashionGradeEntry(Map<String, Object?> row) {
-    return ProductFashionGradeEntry(
-      id: row['id'] as int,
-      uuid: row['uuid'] as String,
-      productId: row['produto_id'] as int,
-      sizeLabel: row['tamanho'] as String,
-      colorLabel: row['cor'] as String,
-      stockMil: row['estoque_mil'] as int? ?? 0,
       sortOrder: row['ordem'] as int? ?? 0,
       createdAt: DateTime.parse(row['criado_em'] as String),
       updatedAt: DateTime.parse(row['atualizado_em'] as String),

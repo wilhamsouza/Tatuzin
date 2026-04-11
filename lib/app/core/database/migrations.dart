@@ -32,6 +32,8 @@ abstract final class AppMigrations {
     const MigrationStep(version: 16, up: _createVersion16Schema),
     const MigrationStep(version: 17, up: _createVersion17Schema),
     const MigrationStep(version: 18, up: _createVersion18Schema),
+    const MigrationStep(version: 19, up: _createVersion19Schema),
+    const MigrationStep(version: 20, up: _createVersion20Schema),
   ];
 
   static Future<void> runCreate(DatabaseExecutor db, int version) async {
@@ -872,6 +874,22 @@ abstract final class AppMigrations {
     await db.execute(
       'ALTER TABLE $tableName ADD COLUMN $columnName $columnDefinition',
     );
+  }
+
+  static Future<bool> _tableExists(
+    DatabaseExecutor db,
+    String tableName,
+  ) async {
+    final rows = await db.rawQuery(
+      '''
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table' AND name = ?
+      LIMIT 1
+      ''',
+      [tableName],
+    );
+    return rows.isNotEmpty;
   }
 
   static Future<void> _backfillQueueForFeature(
@@ -2467,28 +2485,8 @@ abstract final class AppMigrations {
     ''');
 
     await db.execute('''
-      CREATE TABLE IF NOT EXISTS ${TableNames.produtoModaGrade} (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        uuid TEXT NOT NULL UNIQUE,
-        produto_id INTEGER NOT NULL,
-        tamanho TEXT NOT NULL,
-        cor TEXT NOT NULL,
-        estoque_mil INTEGER NOT NULL DEFAULT 0,
-        ordem INTEGER NOT NULL DEFAULT 0,
-        criado_em TEXT NOT NULL,
-        atualizado_em TEXT NOT NULL,
-        FOREIGN KEY (produto_id) REFERENCES ${TableNames.produtos}(id) ON DELETE CASCADE
-      )
-    ''');
-
-    await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_produto_fotos_produto
       ON ${TableNames.produtoFotos}(produto_id, ordem ASC, id ASC)
-    ''');
-
-    await db.execute('''
-      CREATE INDEX IF NOT EXISTS idx_produto_moda_grade_produto
-      ON ${TableNames.produtoModaGrade}(produto_id, ordem ASC, id ASC)
     ''');
 
     await db.execute('''
@@ -2673,5 +2671,113 @@ abstract final class AppMigrations {
             )
           END
     ''');
+  }
+
+  static Future<void> _createVersion19Schema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.produtoVariantes} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        produto_id INTEGER NOT NULL,
+        sku TEXT NOT NULL,
+        cor TEXT NOT NULL,
+        tamanho TEXT NOT NULL,
+        preco_adicional_centavos INTEGER NOT NULL DEFAULT 0,
+        estoque_mil INTEGER NOT NULL DEFAULT 0,
+        ordem INTEGER NOT NULL DEFAULT 0,
+        ativo INTEGER NOT NULL DEFAULT 1,
+        criado_em TEXT NOT NULL,
+        atualizado_em TEXT NOT NULL,
+        FOREIGN KEY (produto_id) REFERENCES ${TableNames.produtos}(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_produto_variantes_produto
+      ON ${TableNames.produtoVariantes}(produto_id, ordem ASC, id ASC)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_produto_variantes_sku
+      ON ${TableNames.produtoVariantes}(sku)
+    ''');
+
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.itensVenda,
+      columnName: 'produto_variante_id',
+      columnDefinition: 'INTEGER',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.itensVenda,
+      columnName: 'sku_variante_snapshot',
+      columnDefinition: 'TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.itensVenda,
+      columnName: 'cor_variante_snapshot',
+      columnDefinition: 'TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.itensVenda,
+      columnName: 'tamanho_variante_snapshot',
+      columnDefinition: 'TEXT',
+    );
+  }
+
+  static Future<void> _createVersion20Schema(DatabaseExecutor db) async {
+    const legacyFashionGradeTableName = 'produto_moda_grade';
+    final legacyTableExists = await _tableExists(
+      db,
+      legacyFashionGradeTableName,
+    );
+    if (legacyTableExists) {
+      final nowIso = DateTime.now().toIso8601String();
+      await db.execute('''
+        INSERT OR IGNORE INTO ${TableNames.produtoVariantes} (
+          uuid,
+          produto_id,
+          sku,
+          cor,
+          tamanho,
+          preco_adicional_centavos,
+          estoque_mil,
+          ordem,
+          ativo,
+          criado_em,
+          atualizado_em
+        )
+        SELECT
+          'variant:' || grade.uuid,
+          grade.produto_id,
+          UPPER(
+            REPLACE(
+              REPLACE(
+                COALESCE(NULLIF(p.model_name, ''), NULLIF(p.nome, ''), 'produto'),
+                ' ',
+                '-'
+              ),
+              '/',
+              '-'
+            )
+          ) || '-' || UPPER(REPLACE(grade.tamanho, ' ', '-')) || '-' || UPPER(REPLACE(grade.cor, ' ', '-')),
+          grade.cor,
+          grade.tamanho,
+          0,
+          COALESCE(grade.estoque_mil, 0),
+          COALESCE(grade.ordem, 0),
+          1,
+          COALESCE(grade.criado_em, '$nowIso'),
+          COALESCE(grade.atualizado_em, '$nowIso')
+        FROM $legacyFashionGradeTableName grade
+        INNER JOIN ${TableNames.produtos} p
+          ON p.id = grade.produto_id
+      ''');
+    }
+
+    await db.execute('DROP TABLE IF EXISTS produto_moda_grade');
   }
 }

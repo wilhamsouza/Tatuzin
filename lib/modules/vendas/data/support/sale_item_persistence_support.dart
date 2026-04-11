@@ -9,11 +9,11 @@ import 'sale_validation_support.dart';
 class SaleItemPersistenceSupport {
   const SaleItemPersistenceSupport._();
 
-  static Future<Map<int, SaleProductSnapshot>> loadProductSnapshots(
+  static Future<Map<String, SaleProductSnapshot>> loadProductSnapshots(
     DatabaseExecutor txn,
     List<CartItem> items,
   ) async {
-    final snapshots = <int, SaleProductSnapshot>{};
+    final snapshots = <String, SaleProductSnapshot>{};
 
     for (final item in items) {
       final productRows = await txn.query(
@@ -39,15 +39,35 @@ class SaleItemPersistenceSupport {
       }
 
       final row = productRows.first;
-      final currentStockMil = row['estoque_mil'] as int? ?? 0;
+      var currentStockMil = row['estoque_mil'] as int? ?? 0;
+      if (item.productVariantId != null) {
+        final variantRows = await txn.query(
+          TableNames.produtoVariantes,
+          columns: ['estoque_mil', 'ativo'],
+          where: 'id = ? AND produto_id = ?',
+          whereArgs: [item.productVariantId, item.productId],
+          limit: 1,
+        );
+
+        if (variantRows.isEmpty ||
+            (variantRows.first['ativo'] as int? ?? 0) != 1) {
+          throw ValidationException(
+            'Variante indisponivel para venda: ${item.productName}',
+          );
+        }
+
+        currentStockMil = variantRows.first['estoque_mil'] as int? ?? 0;
+      }
+
       if (currentStockMil < item.quantityMil) {
         throw StockConflictException(
           'Estoque insuficiente para ${item.productName}. Disponivel: ${currentStockMil ~/ 1000}',
         );
       }
 
-      snapshots[item.productId] = SaleProductSnapshot(
+      snapshots[_snapshotKey(item)] = SaleProductSnapshot(
         productId: item.productId,
+        productVariantId: item.productVariantId,
         stockMil: currentStockMil,
         costCents: row['custo_centavos'] as int? ?? 0,
         unitMeasure: row['unidade_medida'] as String? ?? item.unitMeasure,
@@ -63,18 +83,41 @@ class SaleItemPersistenceSupport {
     required String soldAtIso,
     required int saleId,
     required List<CartItem> items,
-    required Map<int, SaleProductSnapshot> snapshots,
+    required Map<String, SaleProductSnapshot> snapshots,
   }) async {
     for (final item in items) {
-      final snapshot = snapshots[item.productId]!;
+      final snapshot = snapshots[_snapshotKey(item)]!;
       final newStockMil = snapshot.stockMil - item.quantityMil;
 
-      await txn.update(
-        TableNames.produtos,
-        {'estoque_mil': newStockMil, 'atualizado_em': soldAtIso},
-        where: 'id = ?',
-        whereArgs: [item.productId],
-      );
+      if (snapshot.productVariantId != null) {
+        await txn.update(
+          TableNames.produtoVariantes,
+          {'estoque_mil': newStockMil, 'atualizado_em': soldAtIso},
+          where: 'id = ?',
+          whereArgs: [snapshot.productVariantId],
+        );
+
+        await txn.rawUpdate(
+          '''
+          UPDATE ${TableNames.produtos}
+          SET estoque_mil = COALESCE((
+            SELECT SUM(CASE WHEN ativo = 1 THEN estoque_mil ELSE 0 END)
+            FROM ${TableNames.produtoVariantes}
+            WHERE produto_id = ?
+          ), 0),
+          atualizado_em = ?
+          WHERE id = ?
+          ''',
+          [item.productId, soldAtIso, item.productId],
+        );
+      } else {
+        await txn.update(
+          TableNames.produtos,
+          {'estoque_mil': newStockMil, 'atualizado_em': soldAtIso},
+          where: 'id = ?',
+          whereArgs: [item.productId],
+        );
+      }
 
       final quantityUnits = item.quantityMil ~/ 1000;
       final costTotalCents = snapshot.costCents * quantityUnits;
@@ -83,7 +126,17 @@ class SaleItemPersistenceSupport {
         'uuid': IdGenerator.next(),
         'venda_id': saleId,
         'produto_id': item.productId,
+        'produto_variante_id': item.productVariantId,
         'nome_produto_snapshot': item.productName,
+        'sku_variante_snapshot': SaleValidationSupport.cleanNullable(
+          item.variantSku,
+        ),
+        'cor_variante_snapshot': SaleValidationSupport.cleanNullable(
+          item.variantColorLabel,
+        ),
+        'tamanho_variante_snapshot': SaleValidationSupport.cleanNullable(
+          item.variantSizeLabel,
+        ),
         'quantidade_mil': item.quantityMil,
         'valor_unitario_centavos': item.unitPriceCents,
         'subtotal_centavos': item.subtotalCents,
@@ -133,11 +186,16 @@ class SaleItemPersistenceSupport {
       });
     }
   }
+
+  static String _snapshotKey(CartItem item) {
+    return '${item.productId}:${item.productVariantId ?? 0}';
+  }
 }
 
 class SaleProductSnapshot {
   const SaleProductSnapshot({
     required this.productId,
+    required this.productVariantId,
     required this.stockMil,
     required this.costCents,
     required this.unitMeasure,
@@ -145,6 +203,7 @@ class SaleProductSnapshot {
   });
 
   final int productId;
+  final int? productVariantId;
   final int stockMil;
   final int costCents;
   final String unitMeasure;

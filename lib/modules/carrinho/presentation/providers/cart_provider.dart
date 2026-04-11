@@ -16,7 +16,10 @@ class CartController extends Notifier<CartState> {
 
   bool addProduct(Product product) {
     final index = state.items.indexWhere(
-      (item) => item.productId == product.id && item.isSimpleLine,
+      (item) =>
+          item.productId == product.id &&
+          item.productVariantId == product.sellableVariantId &&
+          item.isSimpleLine,
     );
     if (index == -1) {
       if (product.stockMil < 1000) {
@@ -112,10 +115,14 @@ class CartController extends Notifier<CartState> {
     items[index] = CartItem(
       id: current.id,
       productId: current.productId,
+      productVariantId: current.productVariantId,
       productName: current.productName,
       primaryPhotoPath: current.primaryPhotoPath,
       baseProductId: current.baseProductId,
       baseProductName: current.baseProductName,
+      variantSku: current.variantSku,
+      variantColorLabel: current.variantColorLabel,
+      variantSizeLabel: current.variantSizeLabel,
       quantityMil: current.quantityMil,
       availableStockMil: current.availableStockMil,
       unitPriceCents: current.unitPriceCents,

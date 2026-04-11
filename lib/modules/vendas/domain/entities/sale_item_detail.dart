@@ -3,6 +3,9 @@ class SaleItemDetail {
     required this.id,
     required this.productId,
     required this.productName,
+    this.variantSkuSnapshot,
+    this.variantColorSnapshot,
+    this.variantSizeSnapshot,
     required this.quantityMil,
     required this.unitPriceCents,
     required this.subtotalCents,
@@ -17,6 +20,9 @@ class SaleItemDetail {
   final int id;
   final int productId;
   final String productName;
+  final String? variantSkuSnapshot;
+  final String? variantColorSnapshot;
+  final String? variantSizeSnapshot;
   final int quantityMil;
   final int unitPriceCents;
   final int subtotalCents;
