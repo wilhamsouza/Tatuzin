@@ -173,7 +173,8 @@ class SalesQuickAddController {
 
     Product? matchedProduct;
     for (final product in catalog) {
-      if (_normalizeBarcode(product.barcode) == normalizedBarcode) {
+      if (_normalizeBarcode(product.barcode) == normalizedBarcode ||
+          _normalizeBarcode(product.sellableVariantSku) == normalizedBarcode) {
         matchedProduct = product;
         break;
       }

@@ -205,8 +205,9 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       final localProductRepository = ref.read(localProductRepositoryProvider);
       final localCatalogRepository = ref.read(localCatalogRepositoryProvider);
       final photos = await localProductRepository.listProductPhotos(product.id);
-      final fashionGradeEntries = await localProductRepository
-          .listFashionGradeEntries(product.id);
+      final productVariants = await localProductRepository.listProductVariants(
+        product.id,
+      );
 
       final editablePhotos = photos.isNotEmpty
           ? photos
@@ -256,15 +257,25 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       setState(() {
         _photos = editablePhotos;
         _foodModifierGroups = editableGroups;
-        _fashionGradeEntries = fashionGradeEntries
-            .map(
-              (entry) => _EditableFashionGradeEntry(
-                sizeLabel: entry.sizeLabel,
-                colorLabel: entry.colorLabel,
-                stockText: AppFormatters.quantityFromMil(entry.stockMil),
-              ),
-            )
-            .toList(growable: false);
+        _fashionGradeEntries =
+            (productVariants.isNotEmpty
+                    ? productVariants.map(
+                        (variant) => _EditableFashionGradeEntry(
+                          sizeLabel: variant.sizeLabel,
+                          colorLabel: variant.colorLabel,
+                          stockText: AppFormatters.quantityFromMil(
+                            variant.stockMil,
+                          ),
+                          sku: variant.sku,
+                          priceAdditionalText:
+                              AppFormatters.currencyInputFromCents(
+                                variant.priceAdditionalCents,
+                              ),
+                          isActive: variant.isActive,
+                        ),
+                      )
+                    : <_EditableFashionGradeEntry>[])
+                .toList(growable: false);
         _hydrateFashionGridState();
       });
     } finally {
@@ -675,15 +686,21 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _stockController,
+                readOnly: _isFashionNiche && _buildVariantInputs().isNotEmpty,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
                 decoration: InputDecoration(
                   labelText: _isEditing ? 'Estoque atual' : 'Estoque inicial',
                   helperText:
-                      'Informe a quantidade conforme a unidade de medida',
+                      _isFashionNiche && _buildVariantInputs().isNotEmpty
+                      ? 'O estoque sera calculado automaticamente pela grade.'
+                      : 'Informe a quantidade conforme a unidade de medida',
                 ),
                 validator: (value) {
+                  if (_isFashionNiche && _buildVariantInputs().isNotEmpty) {
+                    return null;
+                  }
                   final raw = (value ?? '').trim();
                   if (!RegExp(r'\d').hasMatch(raw)) {
                     return 'Informe um estoque válido';
@@ -1023,8 +1040,8 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
           _FashionGradeMatrix(
             sizes: _fashionSizes,
             colors: _fashionColors,
-            controllerForCell: _controllerForFashionCell,
-            onCellChanged: () => setState(() {}),
+            resolveCell: _entryForFashionCell,
+            onTapCell: _openFashionCellEditor,
           ),
         const SizedBox(height: 16),
         Container(
@@ -1041,7 +1058,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Total da grade',
+                      'Resumo da grade',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.labelLarge?.copyWith(
@@ -1050,12 +1067,17 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      AppFormatters.quantityFromMil(_fashionGridTotalMil),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium?.copyWith(
+                      '${_buildVariantInputs().length} variantes ativas',
+                      style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Estoque total: ${AppFormatters.quantityFromMil(_fashionGridTotalMil)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium,
                     ),
                   ],
                 ),
@@ -1673,6 +1695,206 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     );
   }
 
+  _EditableFashionGradeEntry _entryForFashionCell(String size, String color) {
+    for (final entry in _fashionGradeEntries) {
+      if (entry.sizeLabel.trim() == size && entry.colorLabel.trim() == color) {
+        return entry;
+      }
+    }
+
+    return _EditableFashionGradeEntry(
+      sizeLabel: size,
+      colorLabel: color,
+      stockText: _controllerForFashionCell(size, color).text,
+      sku: _buildDefaultVariantSku(size, color),
+    );
+  }
+
+  Future<void> _openFashionCellEditor(String size, String color) async {
+    final current = _entryForFashionCell(size, color);
+    final skuController = TextEditingController(
+      text: current.sku ?? _buildDefaultVariantSku(size, color),
+    );
+    final stockController = TextEditingController(
+      text: _controllerForFashionCell(size, color).text,
+    );
+    final additionalPriceController = TextEditingController(
+      text: current.priceAdditionalText,
+    );
+    var isActive = current.isActive;
+
+    final result = await showModalBottomSheet<_EditableFashionGradeEntry>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) {
+        final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
+        return StatefulBuilder(
+          builder: (context, setLocalState) {
+            return Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, bottomInset + 16),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Editar variante',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '$size / $color',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: skuController,
+                      decoration: const InputDecoration(
+                        labelText: 'SKU',
+                        hintText: 'SKU da variante',
+                      ),
+                      textCapitalization: TextCapitalization.characters,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: stockController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Estoque',
+                        hintText: 'Quantidade disponivel',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: additionalPriceController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Preco adicional',
+                        prefixText: 'R\$ ',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SwitchListTile.adaptive(
+                      value: isActive,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Variante ativa'),
+                      subtitle: const Text(
+                        'Desative para manter a combinacao cadastrada sem vender.',
+                      ),
+                      onChanged: (value) {
+                        setLocalState(() => isActive = value);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('Cancelar'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () {
+                              Navigator.of(context).pop(
+                                _EditableFashionGradeEntry(
+                                  sizeLabel: size,
+                                  colorLabel: color,
+                                  stockText: stockController.text,
+                                  sku: skuController.text.trim(),
+                                  priceAdditionalText:
+                                      additionalPriceController.text,
+                                  isActive: isActive,
+                                ),
+                              );
+                            },
+                            child: const Text('Salvar'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    skuController.dispose();
+    stockController.dispose();
+    additionalPriceController.dispose();
+
+    if (result == null) {
+      return;
+    }
+
+    setState(() {
+      final key = _fashionCellKey(size, color);
+      final controller = _fashionGradeCellControllers.putIfAbsent(
+        key,
+        () => TextEditingController(),
+      );
+      controller.text = result.stockText;
+      _fashionGradeEntries = _upsertFashionGradeEntry(result);
+    });
+  }
+
+  List<_EditableFashionGradeEntry> _upsertFashionGradeEntry(
+    _EditableFashionGradeEntry entry,
+  ) {
+    final updated = <_EditableFashionGradeEntry>[];
+    var replaced = false;
+    for (final current in _fashionGradeEntries) {
+      final sameCell =
+          current.sizeLabel.trim() == entry.sizeLabel.trim() &&
+          current.colorLabel.trim() == entry.colorLabel.trim();
+      if (sameCell) {
+        updated.add(entry);
+        replaced = true;
+      } else {
+        updated.add(current);
+      }
+    }
+    if (!replaced) {
+      updated.add(entry);
+    }
+    return updated;
+  }
+
+  String _buildDefaultVariantSku(String size, String color) {
+    final base =
+        _cleanNullable(_modelNameController.text) ?? _nameController.text;
+    final normalizedBase = base
+        .trim()
+        .toUpperCase()
+        .replaceAll(RegExp(r'[^A-Z0-9]+'), '-')
+        .replaceAll(RegExp(r'-+'), '-')
+        .replaceAll(RegExp(r'^-|-$'), '');
+    final normalizedSize = size
+        .trim()
+        .toUpperCase()
+        .replaceAll(RegExp(r'[^A-Z0-9]+'), '-')
+        .replaceAll(RegExp(r'-+'), '-');
+    final normalizedColor = color
+        .trim()
+        .toUpperCase()
+        .replaceAll(RegExp(r'[^A-Z0-9]+'), '-')
+        .replaceAll(RegExp(r'-+'), '-');
+    final fallbackBase = normalizedBase.isEmpty ? 'PRODUTO' : normalizedBase;
+    return '$fallbackBase-$normalizedSize-$normalizedColor';
+  }
+
   void _addFashionSize() {
     final size = _fashionSizeInputController.text.trim();
     if (size.isEmpty || _fashionSizes.contains(size)) {
@@ -1759,6 +1981,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
           : (_isVariantCatalog
                 ? _parseModifierGroups(_modifierGroupsController.text)
                 : null);
+      final variants = _buildVariantInputs();
       final resolvedName = _isVariantCatalog
           ? _buildVariantDisplayName(modelName!, variantLabel!)
           : _nameController.text.trim();
@@ -1768,7 +1991,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         categoryId: _selectedCategoryId,
         barcode: _barcodeController.text,
         photos: _buildPhotoInputs(),
-        fashionGradeEntries: _buildFashionGradeInputs(),
+        variants: variants,
         niche: _selectedNiche,
         catalogType: _selectedCatalogType,
         modelName: _isVariantCatalog ? modelName : null,
@@ -1779,7 +2002,9 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         unitMeasure: _selectedUnitMeasure,
         costCents: MoneyParser.parseToCents(_costController.text),
         salePriceCents: MoneyParser.parseToCents(_priceController.text),
-        stockMil: QuantityParser.parseToMil(_stockController.text),
+        stockMil: variants.isNotEmpty
+            ? _fashionGridTotalMil
+            : QuantityParser.parseToMil(_stockController.text),
         isActive: _isActive,
       );
 
@@ -1819,7 +2044,6 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     final lines = product.variantAttributes
         .where(
           (attribute) =>
-              attribute.key != 'legacy_variant_label' &&
               attribute.key != 'model' &&
               attribute.key != 'variant' &&
               !_isReservedNicheAttribute(attribute.key),
@@ -1918,12 +2142,12 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     });
   }
 
-  List<ProductFashionGradeEntryInput> _buildFashionGradeInputs() {
+  List<ProductVariantInput> _buildVariantInputs() {
     if (!_isFashionNiche) {
-      return const <ProductFashionGradeEntryInput>[];
+      return const <ProductVariantInput>[];
     }
 
-    final entries = <ProductFashionGradeEntryInput>[];
+    final variants = <ProductVariantInput>[];
     var sortOrder = 0;
     for (final sizeLabel in _fashionSizes) {
       for (final colorLabel in _fashionColors) {
@@ -1932,19 +2156,32 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         if (normalizedSize.isEmpty || normalizedColor.isEmpty) {
           continue;
         }
-        entries.add(
-          ProductFashionGradeEntryInput(
-            sizeLabel: normalizedSize,
+
+        final entry = _entryForFashionCell(normalizedSize, normalizedColor);
+        final stockMil = QuantityParser.parseToMil(
+          _controllerForFashionCell(normalizedSize, normalizedColor).text,
+        );
+        final sku =
+            _cleanNullable(entry.sku) ??
+            _buildDefaultVariantSku(normalizedSize, normalizedColor);
+
+        variants.add(
+          ProductVariantInput(
+            sku: sku,
             colorLabel: normalizedColor,
-            stockMil: QuantityParser.parseToMil(
-              _controllerForFashionCell(normalizedSize, normalizedColor).text,
+            sizeLabel: normalizedSize,
+            priceAdditionalCents: MoneyParser.parseToCents(
+              entry.priceAdditionalText,
             ),
+            stockMil: stockMil,
             sortOrder: sortOrder++,
+            isActive: entry.isActive,
           ),
         );
       }
     }
-    return entries;
+
+    return variants;
   }
 
   List<ProductModifierGroupInput>? _buildFoodModifierGroupsInput() {
@@ -2720,15 +2957,15 @@ class _FashionGradeMatrix extends StatelessWidget {
   const _FashionGradeMatrix({
     required this.sizes,
     required this.colors,
-    required this.controllerForCell,
-    required this.onCellChanged,
+    required this.resolveCell,
+    required this.onTapCell,
   });
 
   final List<String> sizes;
   final List<String> colors;
-  final TextEditingController Function(String size, String color)
-  controllerForCell;
-  final VoidCallback onCellChanged;
+  final _EditableFashionGradeEntry Function(String size, String color)
+  resolveCell;
+  final Future<void> Function(String size, String color) onTapCell;
 
   @override
   Widget build(BuildContext context) {
@@ -2781,17 +3018,9 @@ class _FashionGradeMatrix extends StatelessWidget {
                     for (final color in colors)
                       Padding(
                         padding: const EdgeInsets.all(8),
-                        child: TextFormField(
-                          controller: controllerForCell(size, color),
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          textAlign: TextAlign.center,
-                          onChanged: (_) => onCellChanged(),
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            hintText: '0',
-                          ),
+                        child: _FashionGradeCell(
+                          entry: resolveCell(size, color),
+                          onTap: () => onTapCell(size, color),
                         ),
                       ),
                   ],
@@ -2830,6 +3059,84 @@ class _MatrixHeaderCell extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: theme.textTheme.labelLarge?.copyWith(
           fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _FashionGradeCell extends StatelessWidget {
+  const _FashionGradeCell({required this.entry, required this.onTap});
+
+  final _EditableFashionGradeEntry entry;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final stockLabel = entry.stockText.trim().isEmpty ? '0' : entry.stockText;
+    final additionalPriceCents = MoneyParser.parseToCents(
+      entry.priceAdditionalText,
+    );
+
+    return Material(
+      color: entry.isActive
+          ? colorScheme.surfaceContainerLowest
+          : colorScheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      stockLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    entry.isActive
+                        ? Icons.edit_note_rounded
+                        : Icons.visibility_off_rounded,
+                    size: 16,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                entry.sku ?? 'Definir SKU',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                additionalPriceCents > 0
+                    ? '+ ${AppFormatters.currencyFromCents(additionalPriceCents)}'
+                    : 'Sem acrescimo',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2953,9 +3260,15 @@ class _EditableFashionGradeEntry {
     required this.sizeLabel,
     required this.colorLabel,
     required this.stockText,
+    this.sku,
+    this.priceAdditionalText = '',
+    this.isActive = true,
   });
 
   final String sizeLabel;
   final String colorLabel;
   final String stockText;
+  final String? sku;
+  final String priceAdditionalText;
+  final bool isActive;
 }

@@ -98,7 +98,11 @@ class RemoteSaleRecord {
 class RemoteSaleItemRecord {
   const RemoteSaleItemRecord({
     required this.remoteProductId,
+    this.productVariantLocalId,
     required this.productNameSnapshot,
+    this.variantSkuSnapshot,
+    this.variantColorSnapshot,
+    this.variantSizeSnapshot,
     required this.quantityMil,
     required this.unitPriceCents,
     required this.totalPriceCents,
@@ -111,7 +115,11 @@ class RemoteSaleItemRecord {
   factory RemoteSaleItemRecord.fromJson(Map<String, dynamic> json) {
     return RemoteSaleItemRecord(
       remoteProductId: json['productId'] as String?,
+      productVariantLocalId: json['productVariantLocalId'] as int?,
       productNameSnapshot: json['productNameSnapshot'] as String,
+      variantSkuSnapshot: json['variantSkuSnapshot'] as String?,
+      variantColorSnapshot: json['variantColorSnapshot'] as String?,
+      variantSizeSnapshot: json['variantSizeSnapshot'] as String?,
       quantityMil: json['quantityMil'] as int? ?? 0,
       unitPriceCents: json['unitPriceCents'] as int? ?? 0,
       totalPriceCents: json['totalPriceCents'] as int? ?? 0,
@@ -125,7 +133,11 @@ class RemoteSaleItemRecord {
   factory RemoteSaleItemRecord.fromSyncItemPayload(SaleSyncItemPayload item) {
     return RemoteSaleItemRecord(
       remoteProductId: item.productRemoteId,
+      productVariantLocalId: item.productVariantLocalId,
       productNameSnapshot: item.productNameSnapshot,
+      variantSkuSnapshot: item.variantSkuSnapshot,
+      variantColorSnapshot: item.variantColorSnapshot,
+      variantSizeSnapshot: item.variantSizeSnapshot,
       quantityMil: item.quantityMil,
       unitPriceCents: item.unitPriceCents,
       totalPriceCents: item.totalPriceCents,
@@ -137,7 +149,11 @@ class RemoteSaleItemRecord {
   }
 
   final String? remoteProductId;
+  final int? productVariantLocalId;
   final String productNameSnapshot;
+  final String? variantSkuSnapshot;
+  final String? variantColorSnapshot;
+  final String? variantSizeSnapshot;
   final int quantityMil;
   final int unitPriceCents;
   final int totalPriceCents;
@@ -149,7 +165,11 @@ class RemoteSaleItemRecord {
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
       'productId': remoteProductId,
+      'productVariantLocalId': productVariantLocalId,
       'productNameSnapshot': productNameSnapshot,
+      'variantSkuSnapshot': variantSkuSnapshot,
+      'variantColorSnapshot': variantColorSnapshot,
+      'variantSizeSnapshot': variantSizeSnapshot,
       'quantityMil': quantityMil,
       'unitPriceCents': unitPriceCents,
       'totalPriceCents': totalPriceCents,

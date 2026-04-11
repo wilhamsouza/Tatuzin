@@ -195,6 +195,7 @@ model Product {
   description    String?
   barcode        String?
   productType    String   @default("unidade")
+  niche          String   @default("alimentacao")
   catalogType    String   @default("simple")
   modelName      String?
   variantLabel   String?
@@ -208,6 +209,9 @@ model Product {
   updatedAt      DateTime @updatedAt
   company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   category       Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  variants       ProductVariant[]
+  modifierGroups ProductModifierGroup[]
+  linkedModifierOptions ProductModifierOption[] @relation("ProductModifierLinkedProduct")
   saleItems      SaleItem[]
   purchaseItems  PurchaseItem[]
 
@@ -219,6 +223,59 @@ model Product {
   @@index([companyId, catalogType])
   @@index([companyId, modelName])
   @@index([companyId, variantLabel])
+}
+
+model ProductVariant {
+  id                   String   @id @default(uuid())
+  productId            String
+  sku                  String
+  colorLabel           String
+  sizeLabel            String
+  priceAdditionalCents Int      @default(0)
+  stockMil             Int      @default(0)
+  sortOrder            Int      @default(0)
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  product              Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+  @@index([sku])
+}
+
+model ProductModifierGroup {
+  id            String                  @id @default(uuid())
+  productId     String
+  name          String
+  isRequired    Boolean                 @default(false)
+  minSelections Int                     @default(0)
+  maxSelections Int?
+  sortOrder     Int                     @default(0)
+  isActive      Boolean                 @default(true)
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+  product       Product                 @relation(fields: [productId], references: [id], onDelete: Cascade)
+  options       ProductModifierOption[]
+
+  @@index([productId, sortOrder])
+}
+
+model ProductModifierOption {
+  id                String               @id @default(uuid())
+  modifierGroupId   String
+  name              String
+  adjustmentType    String               @default("add")
+  priceDeltaCents   Int                  @default(0)
+  linkedProductId   String?
+  sortOrder         Int                  @default(0)
+  isActive          Boolean              @default(true)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  modifierGroup     ProductModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+  linkedProduct     Product?             @relation("ProductModifierLinkedProduct", fields: [linkedProductId], references: [id], onDelete: SetNull)
+
+  @@index([modifierGroupId, sortOrder])
+  @@index([linkedProductId])
 }
 
 model Customer {

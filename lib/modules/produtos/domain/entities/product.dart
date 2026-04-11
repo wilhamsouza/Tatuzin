@@ -40,7 +40,13 @@ class Product {
     required this.baseProductId,
     required this.baseProductName,
     this.variantAttributes = const <ProductVariantAttribute>[],
+    this.variants = const <ProductVariant>[],
     this.modifierGroups = const <ProductModifierGroup>[],
+    this.sellableVariantId,
+    this.sellableVariantSku,
+    this.sellableVariantColorLabel,
+    this.sellableVariantSizeLabel,
+    this.sellableVariantPriceAdditionalCents,
     required this.unitMeasure,
     required this.costCents,
     required this.salePriceCents,
@@ -70,7 +76,13 @@ class Product {
   final int? baseProductId;
   final String? baseProductName;
   final List<ProductVariantAttribute> variantAttributes;
+  final List<ProductVariant> variants;
   final List<ProductModifierGroup> modifierGroups;
+  final int? sellableVariantId;
+  final String? sellableVariantSku;
+  final String? sellableVariantColorLabel;
+  final String? sellableVariantSizeLabel;
+  final int? sellableVariantPriceAdditionalCents;
   final String unitMeasure;
   final int costCents;
   final int salePriceCents;
@@ -93,6 +105,10 @@ class Product {
   bool get isFashionNiche =>
       ProductNiches.normalize(niche) == ProductNiches.fashion;
 
+  bool get hasVariants => variants.isNotEmpty;
+
+  bool get isSellableVariant => sellableVariantId != null;
+
   bool get hasPhoto =>
       primaryPhotoPath != null && primaryPhotoPath!.trim().isNotEmpty;
 
@@ -103,7 +119,36 @@ class Product {
     (total, group) => total + group.options.length,
   );
 
+  int get variantCount => variants.where((variant) => variant.isActive).length;
+
+  int get aggregatedVariantStockMil => variants.fold<int>(
+    0,
+    (total, variant) => total + (variant.isActive ? variant.stockMil : 0),
+  );
+
+  String? get variantSummary {
+    if (!isSellableVariant) {
+      return null;
+    }
+
+    final labels = <String>[
+      if ((sellableVariantSizeLabel ?? '').trim().isNotEmpty)
+        sellableVariantSizeLabel!.trim(),
+      if ((sellableVariantColorLabel ?? '').trim().isNotEmpty)
+        sellableVariantColorLabel!.trim(),
+    ];
+    if (labels.isEmpty) {
+      return null;
+    }
+    return labels.join(' / ');
+  }
+
   String get displayName {
+    final sellableSummary = variantSummary;
+    if (sellableSummary != null && sellableSummary.isNotEmpty) {
+      return '$name - $sellableSummary';
+    }
+
     final resolvedModel = modelName?.trim();
     final resolvedVariant = variantLabel?.trim();
     if (isVariantCatalog &&
@@ -136,7 +181,6 @@ class Product {
     final labels = variantAttributes
         .where(
           (attribute) =>
-              attribute.key != 'legacy_variant_label' &&
               attribute.key != 'model' &&
               attribute.key != 'variant' &&
               !_isReservedNicheAttribute(attribute.key),
@@ -161,7 +205,8 @@ class ProductInput {
     this.categoryId,
     this.barcode,
     this.photos = const <ProductPhotoInput>[],
-    this.fashionGradeEntries = const <ProductFashionGradeEntryInput>[],
+    this.variants = const <ProductVariantInput>[],
+    this.productType = 'unidade',
     this.niche = ProductNiches.food,
     this.catalogType = ProductCatalogTypes.simple,
     this.modelName,
@@ -181,7 +226,8 @@ class ProductInput {
   final int? categoryId;
   final String? barcode;
   final List<ProductPhotoInput> photos;
-  final List<ProductFashionGradeEntryInput> fashionGradeEntries;
+  final List<ProductVariantInput> variants;
+  final String productType;
   final String niche;
   final String catalogType;
   final String? modelName;
@@ -193,6 +239,56 @@ class ProductInput {
   final int costCents;
   final int salePriceCents;
   final int stockMil;
+  final bool isActive;
+}
+
+class ProductVariant {
+  const ProductVariant({
+    required this.id,
+    required this.uuid,
+    required this.productId,
+    required this.sku,
+    required this.colorLabel,
+    required this.sizeLabel,
+    required this.priceAdditionalCents,
+    required this.stockMil,
+    required this.sortOrder,
+    required this.isActive,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final int id;
+  final String uuid;
+  final int productId;
+  final String sku;
+  final String colorLabel;
+  final String sizeLabel;
+  final int priceAdditionalCents;
+  final int stockMil;
+  final int sortOrder;
+  final bool isActive;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+}
+
+class ProductVariantInput {
+  const ProductVariantInput({
+    required this.sku,
+    required this.colorLabel,
+    required this.sizeLabel,
+    this.priceAdditionalCents = 0,
+    this.stockMil = 0,
+    this.sortOrder = 0,
+    this.isActive = true,
+  });
+
+  final String sku;
+  final String colorLabel;
+  final String sizeLabel;
+  final int priceAdditionalCents;
+  final int stockMil;
+  final int sortOrder;
   final bool isActive;
 }
 
@@ -297,43 +393,5 @@ class ProductPhotoInput {
 
   final String localPath;
   final bool isPrimary;
-  final int sortOrder;
-}
-
-class ProductFashionGradeEntry {
-  const ProductFashionGradeEntry({
-    required this.id,
-    required this.uuid,
-    required this.productId,
-    required this.sizeLabel,
-    required this.colorLabel,
-    required this.stockMil,
-    required this.sortOrder,
-    required this.createdAt,
-    required this.updatedAt,
-  });
-
-  final int id;
-  final String uuid;
-  final int productId;
-  final String sizeLabel;
-  final String colorLabel;
-  final int stockMil;
-  final int sortOrder;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-}
-
-class ProductFashionGradeEntryInput {
-  const ProductFashionGradeEntryInput({
-    required this.sizeLabel,
-    required this.colorLabel,
-    required this.stockMil,
-    this.sortOrder = 0,
-  });
-
-  final String sizeLabel;
-  final String colorLabel;
-  final int stockMil;
   final int sortOrder;
 }

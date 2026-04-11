@@ -33,10 +33,14 @@ class CartItem {
   const CartItem({
     required this.id,
     required this.productId,
+    this.productVariantId,
     required this.productName,
     this.primaryPhotoPath,
     required this.baseProductId,
     required this.baseProductName,
+    this.variantSku,
+    this.variantColorLabel,
+    this.variantSizeLabel,
     required this.quantityMil,
     required this.availableStockMil,
     required this.unitPriceCents,
@@ -48,10 +52,14 @@ class CartItem {
 
   final String id;
   final int productId;
+  final int? productVariantId;
   final String productName;
   final String? primaryPhotoPath;
   final int? baseProductId;
   final String? baseProductName;
+  final String? variantSku;
+  final String? variantColorLabel;
+  final String? variantSizeLabel;
   final int quantityMil;
   final int availableStockMil;
   final int unitPriceCents;
@@ -70,10 +78,14 @@ class CartItem {
     return CartItem(
       id: resolvedId,
       productId: product.id,
+      productVariantId: product.sellableVariantId,
       productName: product.displayName,
       primaryPhotoPath: product.primaryPhotoPath,
       baseProductId: product.baseProductId,
       baseProductName: product.baseProductName,
+      variantSku: product.sellableVariantSku,
+      variantColorLabel: product.sellableVariantColorLabel,
+      variantSizeLabel: product.sellableVariantSizeLabel,
       quantityMil: 1000,
       availableStockMil: product.stockMil,
       unitPriceCents: product.salePriceCents,
@@ -98,7 +110,7 @@ class CartItem {
     final modifiersSignature = modifiers
         .map((item) => item.signature)
         .join('|');
-    return '$productId::$modifiersSignature::${notes ?? ''}';
+    return '$productId:${productVariantId ?? 0}:$modifiersSignature::${notes ?? ''}';
   }
 
   CartItem copyWith({
@@ -110,10 +122,14 @@ class CartItem {
     return CartItem(
       id: id,
       productId: productId,
+      productVariantId: productVariantId,
       productName: productName,
       primaryPhotoPath: primaryPhotoPath,
       baseProductId: baseProductId,
       baseProductName: baseProductName,
+      variantSku: variantSku,
+      variantColorLabel: variantColorLabel,
+      variantSizeLabel: variantSizeLabel,
       quantityMil: quantityMil ?? this.quantityMil,
       availableStockMil: availableStockMil ?? this.availableStockMil,
       unitPriceCents: unitPriceCents,

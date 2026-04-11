@@ -231,7 +231,21 @@ class _ReceiptItemTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(item.description, style: theme.textTheme.titleMedium),
+              Text(item.title, style: theme.textTheme.titleMedium),
+              if (item.supportingLines.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                for (final line in item.supportingLines) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(left: 10, bottom: 2),
+                    child: Text(
+                      line,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
               const SizedBox(height: 6),
               Text(
                 item.quantityLabel,

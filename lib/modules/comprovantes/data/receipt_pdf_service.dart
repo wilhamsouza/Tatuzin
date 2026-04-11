@@ -9,6 +9,7 @@ import '../../../app/core/errors/app_exceptions.dart';
 import '../../../app/core/formatters/app_formatters.dart';
 import '../domain/entities/commercial_receipt.dart';
 import '../domain/entities/commercial_receipt_detail_line.dart';
+import '../domain/entities/commercial_receipt_item.dart';
 
 class ReceiptPdfService {
   Future<File> saveToDocuments(CommercialReceipt receipt) {
@@ -248,7 +249,7 @@ class ReceiptPdfService {
               for (final item in receipt.items)
                 pw.TableRow(
                   children: [
-                    _tableCell(item.description),
+                    _itemDescriptionCell(item),
                     _tableCell(item.quantityLabel, alignRight: true),
                     _tableCell(
                       AppFormatters.currencyFromCents(item.unitPriceCents),
@@ -362,6 +363,35 @@ class ReceiptPdfService {
           fontSize: 9,
           fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
         ),
+      ),
+    );
+  }
+
+  pw.Widget _itemDescriptionCell(CommercialReceiptItem item) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            item.title,
+            style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+          ),
+          if (item.supportingLines.isNotEmpty) ...[
+            pw.SizedBox(height: 4),
+            for (final line in item.supportingLines)
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(left: 8, bottom: 2),
+                child: pw.Text(
+                  line,
+                  style: const pw.TextStyle(
+                    fontSize: 8,
+                    color: PdfColors.grey700,
+                  ),
+                ),
+              ),
+          ],
+        ],
       ),
     );
   }
