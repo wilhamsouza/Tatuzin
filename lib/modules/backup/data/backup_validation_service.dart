@@ -12,6 +12,7 @@ class BackupValidationService {
     TableNames.categorias,
     TableNames.produtos,
     TableNames.clientes,
+    TableNames.customerCreditTransactions,
     TableNames.vendas,
     TableNames.itensVenda,
     TableNames.fiado,

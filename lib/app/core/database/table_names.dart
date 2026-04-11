@@ -3,6 +3,7 @@ abstract final class TableNames {
   static const categorias = 'categorias';
   static const produtos = 'produtos';
   static const clientes = 'clientes';
+  static const customerCreditTransactions = 'customer_credit_transactions';
   static const fornecedores = 'fornecedores';
   static const vendas = 'vendas';
   static const itensVenda = 'itens_venda';

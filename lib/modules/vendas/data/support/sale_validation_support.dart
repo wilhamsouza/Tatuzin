@@ -18,9 +18,44 @@ class SaleValidationSupport {
       );
     }
 
+    if (input.customerCreditUsedCents < 0 ||
+        input.changeLeftAsCreditCents < 0) {
+      throw const ValidationException(
+        'Os valores de haver precisam ser positivos.',
+      );
+    }
+
+    if (input.customerCreditUsedCents > input.finalTotalCents) {
+      throw const ValidationException(
+        'O haver utilizado nao pode exceder o total da venda.',
+      );
+    }
+
+    if ((input.customerCreditUsedCents > 0 ||
+            input.changeLeftAsCreditCents > 0) &&
+        input.clientId == null) {
+      throw const ValidationException(
+        'Selecione um cliente para movimentar haver na venda.',
+      );
+    }
+
+    if (saleType == SaleType.fiado && input.customerCreditUsedCents > 0) {
+      throw const ValidationException(
+        'O uso de haver esta disponivel apenas para venda a vista nesta etapa.',
+      );
+    }
+
     if (saleType == SaleType.fiado && input.dueDate == null) {
       throw const ValidationException(
         'Informe o vencimento para registrar uma venda fiado.',
+      );
+    }
+
+    if (input.changeLeftAsCreditCents > 0 &&
+        (saleType != SaleType.cash ||
+            input.paymentMethod != PaymentMethod.cash)) {
+      throw const ValidationException(
+        'Somente vendas em dinheiro podem transformar troco em haver.',
       );
     }
   }

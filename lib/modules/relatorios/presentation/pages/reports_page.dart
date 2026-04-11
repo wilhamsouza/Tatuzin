@@ -198,6 +198,33 @@ class _ReportSummaryContent extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 10),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: 1.35,
+          children: [
+            AppMetricCard(
+              label: 'Haver gerado',
+              value: AppFormatters.currencyFromCents(
+                summary.totalCreditGeneratedCents,
+              ),
+              caption: 'Crédito emitido no período',
+              icon: Icons.add_card_rounded,
+            ),
+            AppMetricCard(
+              label: 'Haver utilizado',
+              value: AppFormatters.currencyFromCents(
+                summary.totalCreditUsedCents,
+              ),
+              caption: 'Abatido em vendas',
+              icon: Icons.account_balance_wallet_outlined,
+            ),
+          ],
+        ),
         const SizedBox(height: 14),
         AppSectionCard(
           title: 'Recebimentos por forma',
@@ -226,7 +253,7 @@ class _ReportSummaryContent extends StatelessWidget {
         const SizedBox(height: 14),
         AppSectionCard(
           title: 'Visão operacional',
-          subtitle: 'Indicadores de volume e pendência.',
+          subtitle: 'Indicadores de volume, pendência e passivo de haver.',
           padding: const EdgeInsets.all(14),
           child: GridView.count(
             crossAxisCount: 2,
@@ -263,13 +290,79 @@ class _ReportSummaryContent extends StatelessWidget {
                 ),
                 caption: 'Acompanhar pagamento',
               ),
+              _OperationalTile(
+                label: 'Passivo de haver',
+                value: AppFormatters.currencyFromCents(
+                  summary.totalOutstandingCreditCents,
+                ),
+                caption: 'Saldo aberto da loja',
+              ),
             ],
           ),
+        ),
+        const SizedBox(height: 14),
+        AppSectionCard(
+          title: 'Clientes com mais haver',
+          subtitle: 'Quem concentra mais saldo positivo na loja.',
+          padding: const EdgeInsets.all(14),
+          child: summary.topCreditCustomers.isEmpty
+              ? const Text('Nenhum cliente com haver em aberto neste momento.')
+              : Column(
+                  children: [
+                    for (
+                      var index = 0;
+                      index < summary.topCreditCustomers.length;
+                      index++
+                    ) ...[
+                      _TopCreditCustomerTile(
+                        name: summary.topCreditCustomers[index].customerName,
+                        balanceCents:
+                            summary.topCreditCustomers[index].balanceCents,
+                      ),
+                      if (index < summary.topCreditCustomers.length - 1)
+                        const Divider(height: 18),
+                    ],
+                  ],
+                ),
         ),
         const SizedBox(height: 14),
         FinancialSummaryWidget(summary: summary),
         const SizedBox(height: 14),
         ProductSalesSummaryWidget(soldProducts: summary.soldProducts),
+      ],
+    );
+  }
+}
+
+class _TopCreditCustomerTile extends StatelessWidget {
+  const _TopCreditCustomerTile({
+    required this.name,
+    required this.balanceCents,
+  });
+
+  final String name;
+  final int balanceCents;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            name,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          AppFormatters.currencyFromCents(balanceCents),
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
       ],
     );
   }

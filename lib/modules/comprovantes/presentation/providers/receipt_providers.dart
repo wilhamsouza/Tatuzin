@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../fiado/presentation/providers/fiado_providers.dart';
+import '../../../clientes/presentation/providers/client_providers.dart';
 import '../../../historico_vendas/presentation/providers/sale_history_providers.dart';
 import '../../data/receipt_pdf_service.dart';
 import '../../data/receipt_share_service.dart';
@@ -17,6 +18,8 @@ final commercialReceiptRepositoryProvider =
       return SqliteCommercialReceiptRepository(
         saleHistoryRepository: ref.read(saleHistoryRepositoryProvider),
         fiadoRepository: ref.read(fiadoRepositoryProvider),
+        clientRepository: ref.read(clientRepositoryProvider),
+        customerCreditRepository: ref.read(customerCreditRepositoryProvider),
       );
     });
 

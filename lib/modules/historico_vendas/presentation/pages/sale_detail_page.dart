@@ -179,6 +179,12 @@ class SaleDetailPage extends ConsumerWidget {
       ref.invalidate(productListProvider);
       ref.invalidate(salesCatalogProvider);
       ref.invalidate(clientListProvider);
+      if (detail.sale.clientId != null) {
+        ref.invalidate(customerCreditBalanceProvider(detail.sale.clientId!));
+        ref.invalidate(
+          customerCreditTransactionsProvider(detail.sale.clientId!),
+        );
+      }
       ref.invalidate(currentCashSessionProvider);
       ref.invalidate(currentCashMovementsProvider);
       ref.invalidate(cashSessionHistoryProvider);
@@ -227,7 +233,7 @@ class _SaleSummaryCard extends StatelessWidget {
               runSpacing: 8,
               children: [
                 Chip(label: Text(sale.saleType.label)),
-                Chip(label: Text(sale.paymentMethod.label)),
+                Chip(label: Text(sale.paymentDisplayLabel)),
                 Chip(label: Text(sale.status.label)),
                 if (sale.fiadoStatus != null)
                   Chip(label: Text('Fiado: ${sale.fiadoStatus}')),
@@ -237,6 +243,18 @@ class _SaleSummaryCard extends StatelessWidget {
             Text('Cliente: ${sale.clientName ?? 'Não informado'}'),
             Text('Data: ${AppFormatters.shortDateTime(sale.soldAt)}'),
             Text('Total: ${AppFormatters.currencyFromCents(sale.finalCents)}'),
+            if (sale.creditUsedCents > 0)
+              Text(
+                'Haver utilizado: ${AppFormatters.currencyFromCents(sale.creditUsedCents)}',
+              ),
+            if (sale.creditGeneratedCents > 0)
+              Text(
+                'Haver gerado: ${AppFormatters.currencyFromCents(sale.creditGeneratedCents)}',
+              ),
+            if (sale.immediateReceivedCents > 0)
+              Text(
+                'Recebido agora: ${AppFormatters.currencyFromCents(sale.immediateReceivedCents)}',
+              ),
             if (sale.saleType == SaleType.fiado && sale.fiadoDueDate != null)
               Text(
                 'Vencimento: ${AppFormatters.shortDate(sale.fiadoDueDate!)}',

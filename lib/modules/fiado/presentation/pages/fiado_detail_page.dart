@@ -191,6 +191,7 @@ class FiadoDetailPage extends ConsumerWidget {
     );
     final notesController = TextEditingController();
     var selectedPaymentMethod = PaymentMethod.cash;
+    var convertOverpaymentToCredit = false;
 
     final submitted = await showDialog<FiadoPaymentInput>(
       context: context,
@@ -238,6 +239,18 @@ class FiadoDetailPage extends ConsumerWidget {
                       },
                     ),
                     const SizedBox(height: 12),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      value: convertOverpaymentToCredit,
+                      onChanged: (value) {
+                        setState(() => convertOverpaymentToCredit = value);
+                      },
+                      title: const Text('Converter excedente em haver'),
+                      subtitle: const Text(
+                        'Se o pagamento passar do saldo aberto, o excedente vira crédito do cliente.',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: notesController,
                       decoration: const InputDecoration(
@@ -263,6 +276,7 @@ class FiadoDetailPage extends ConsumerWidget {
                         ),
                         paymentMethod: selectedPaymentMethod,
                         notes: notesController.text.trim(),
+                        convertOverpaymentToCredit: convertOverpaymentToCredit,
                       ),
                     );
                   },
@@ -289,6 +303,10 @@ class FiadoDetailPage extends ConsumerWidget {
       ref.invalidate(fiadoListProvider);
       ref.invalidate(fiadoDetailProvider(detail.account.id));
       ref.invalidate(clientListProvider);
+      ref.invalidate(customerCreditBalanceProvider(detail.account.clientId));
+      ref.invalidate(
+        customerCreditTransactionsProvider(detail.account.clientId),
+      );
       ref.invalidate(currentCashSessionProvider);
       ref.invalidate(currentCashMovementsProvider);
       ref.invalidate(cashSessionHistoryProvider);
@@ -303,15 +321,40 @@ class FiadoDetailPage extends ConsumerWidget {
       final latestPayment = updatedDetail.entries.firstWhere(
         (entry) => entry.entryType == 'pagamento',
       );
+      final paidCents = submitted.amountCents > detail.account.openCents
+          ? detail.account.openCents
+          : submitted.amountCents;
+      final generatedCreditCents = submitted.convertOverpaymentToCredit
+          ? submitted.amountCents - paidCents
+          : 0;
 
-      context.pushNamed(
-        AppRouteNames.fiadoPaymentReceipt,
-        pathParameters: {
-          'fiadoId': '${detail.account.id}',
-          'entryId': '${latestPayment.id}',
-        },
-        extra: true,
-      );
+      if (generatedCreditCents > 0) {
+        final transactions = await ref.read(
+          customerCreditTransactionsProvider(detail.account.clientId).future,
+        );
+        final latestCredit = transactions.firstWhere(
+          (transaction) =>
+              transaction.originPaymentId == latestPayment.id &&
+              transaction.type == 'overpayment_credit',
+        );
+        if (!context.mounted) {
+          return;
+        }
+        context.pushNamed(
+          AppRouteNames.customerCreditReceipt,
+          pathParameters: {'transactionId': '${latestCredit.id}'},
+          extra: true,
+        );
+      } else {
+        context.pushNamed(
+          AppRouteNames.fiadoPaymentReceipt,
+          pathParameters: {
+            'fiadoId': '${detail.account.id}',
+            'entryId': '${latestPayment.id}',
+          },
+          extra: true,
+        );
+      }
     } catch (_) {
       if (!context.mounted) {
         return;

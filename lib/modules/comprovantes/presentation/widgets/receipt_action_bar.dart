@@ -124,6 +124,7 @@ class ReceiptActionBar extends ConsumerWidget {
           AppRouteNames.saleReceipt,
           pathParameters: {'saleId': '${request.saleId}'},
         );
+        return;
       case CommercialReceiptRequestType.fiadoPayment:
         context.pushNamed(
           AppRouteNames.fiadoPaymentReceipt,
@@ -132,6 +133,13 @@ class ReceiptActionBar extends ConsumerWidget {
             'entryId': '${request.paymentEntryId}',
           },
         );
+        return;
+      case CommercialReceiptRequestType.customerCredit:
+        context.pushNamed(
+          AppRouteNames.customerCreditReceipt,
+          pathParameters: {'transactionId': '${request.transactionId}'},
+        );
+        return;
     }
   }
 }

@@ -181,8 +181,9 @@ class SqliteCashRepository implements CashRepository {
       }
 
       final sessionId = row['id'] as int;
-      final updatedNotes =
-          _removeAutomaticOpeningNote(row['observacao'] as String?);
+      final updatedNotes = _removeAutomaticOpeningNote(
+        row['observacao'] as String?,
+      );
       final expectedBalance = CashSessionMathSupport.calculateExpectedBalance(
         initialFloatCents: initialFloatCents,
         cashEntriesCents: row['total_entradas_dinheiro_centavos'] as int? ?? 0,
@@ -425,12 +426,10 @@ class SqliteCashRepository implements CashRepository {
   Future<List<Map<String, Object?>>> _loadSessionRows(
     DatabaseExecutor db,
   ) async {
-    return db.rawQuery(
-      '''
+    return db.rawQuery('''
       ${_sessionSelectSql()}
       ORDER BY sess.aberta_em DESC, sess.id DESC
-    ''',
-    );
+    ''');
   }
 
   Future<Map<String, Object?>> _loadSessionRow(
@@ -706,6 +705,12 @@ class SqliteCashRepository implements CashRepository {
       finalCents: row['valor_final_centavos'] as int,
       discountCents: row['desconto_centavos'] as int? ?? 0,
       surchargeCents: row['acrescimo_centavos'] as int? ?? 0,
+      creditUsedCents: row['haver_utilizado_centavos'] as int? ?? 0,
+      creditGeneratedCents: row['haver_gerado_centavos'] as int? ?? 0,
+      immediateReceivedCents:
+          row['valor_recebido_imediato_centavos'] as int? ??
+          row['valor_final_centavos'] as int? ??
+          0,
       soldAt: DateTime.parse(row['data_venda'] as String),
       clientId: row['cliente_id'] as int?,
       clientName: row['cliente_nome'] as String?,

@@ -13,6 +13,7 @@ import '../../modules/categorias/presentation/pages/category_form_page.dart';
 import '../../modules/checkout/presentation/pages/checkout_page.dart';
 import '../../modules/clientes/domain/entities/client.dart';
 import '../../modules/clientes/presentation/pages/client_form_page.dart';
+import '../../modules/clientes/presentation/pages/client_credit_statement_page.dart';
 import '../../modules/clientes/presentation/pages/clients_page.dart';
 import '../../modules/caixa/presentation/pages/cash_page.dart';
 import '../../modules/caixa/presentation/pages/cash_count_page.dart';
@@ -112,6 +113,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRouteNames.clientForm,
         builder: (context, state) =>
             ClientFormPage(initialClient: state.extra as Client?),
+      ),
+      GoRoute(
+        path: AppRoutePaths.clientCreditStatement,
+        name: AppRouteNames.clientCreditStatement,
+        builder: (context, state) {
+          final clientId = int.parse(state.pathParameters['clientId']!);
+          return ClientCreditStatementPage(
+            clientId: clientId,
+            initialClient: state.extra as Client?,
+          );
+        },
       ),
       GoRoute(
         path: AppRoutePaths.purchases,
@@ -229,6 +241,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           return ReceiptPreviewPage.fiadoPayment(
             fiadoId: fiadoId,
             entryId: entryId,
+            showSuccessBanner: state.extra == true,
+          );
+        },
+      ),
+      GoRoute(
+        path: AppRoutePaths.customerCreditReceipt,
+        name: AppRouteNames.customerCreditReceipt,
+        builder: (context, state) {
+          final transactionId = int.parse(
+            state.pathParameters['transactionId']!,
+          );
+          return ReceiptPreviewPage.customerCredit(
+            transactionId: transactionId,
             showSuccessBanner: state.extra == true,
           );
         },

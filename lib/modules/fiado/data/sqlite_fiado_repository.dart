@@ -12,6 +12,8 @@ import '../../../app/core/utils/id_generator.dart';
 import '../../../app/core/utils/payment_method_note_codec.dart';
 import '../../caixa/data/cash_database_support.dart';
 import '../../caixa/domain/entities/cash_enums.dart';
+import '../../clientes/data/customer_credit_database_support.dart';
+import '../../clientes/domain/entities/customer_credit_transaction.dart';
 import '../../vendas/domain/entities/sale_enums.dart';
 import '../domain/entities/fiado_account.dart';
 import '../domain/entities/fiado_detail.dart';
@@ -109,7 +111,8 @@ class SqliteFiadoRepository implements FiadoRepository {
         );
       }
 
-      if (input.amountCents > openCents) {
+      final overpaymentCents = input.amountCents - openCents;
+      if (overpaymentCents > 0 && !input.convertOverpaymentToCredit) {
         throw ValidationException(
           'O valor informado excede o saldo em aberto de ${fiadoRow['cliente_nome']}.',
         );
@@ -117,7 +120,10 @@ class SqliteFiadoRepository implements FiadoRepository {
 
       final now = DateTime.now();
       final nowIso = now.toIso8601String();
-      final remainingCents = openCents - input.amountCents;
+      final appliedPaymentCents = input.amountCents > openCents
+          ? openCents
+          : input.amountCents;
+      final remainingCents = openCents - appliedPaymentCents;
       final nextStatus = remainingCents == 0
           ? 'quitado'
           : (remainingCents == originalCents ? 'pendente' : 'parcial');
@@ -166,10 +172,12 @@ class SqliteFiadoRepository implements FiadoRepository {
         'fiado_id': input.fiadoId,
         'cliente_id': fiadoRow['cliente_id'] as int,
         'tipo_lancamento': 'pagamento',
-        'valor_centavos': input.amountCents,
+        'valor_centavos': appliedPaymentCents,
         'data_lancamento': nowIso,
         'observacao': PaymentMethodNoteCodec.withPaymentMethod(
-          input.notes ?? 'Pagamento registrado',
+          input.convertOverpaymentToCredit && overpaymentCents > 0
+              ? '${input.notes?.trim().isNotEmpty == true ? '${input.notes!.trim()} | ' : ''}Pagamento com excedente convertido em haver.'
+              : input.notes ?? 'Pagamento registrado',
           paymentMethod: input.paymentMethod,
         ),
         'caixa_movimento_id': cashMovement.id,
@@ -189,7 +197,7 @@ class SqliteFiadoRepository implements FiadoRepository {
 
       final clientCurrentDebt =
           fiadoRow['cliente_saldo_devedor_centavos'] as int? ?? 0;
-      final nextClientDebt = clientCurrentDebt - input.amountCents;
+      final nextClientDebt = clientCurrentDebt - appliedPaymentCents;
 
       await txn.update(
         TableNames.clientes,
@@ -207,6 +215,20 @@ class SqliteFiadoRepository implements FiadoRepository {
         paymentUuid: paymentUuid,
         createdAt: now,
       );
+
+      if (overpaymentCents > 0) {
+        await CustomerCreditDatabaseSupport.createCreditFromOverpayment(
+          txn,
+          customerId: fiadoRow['cliente_id'] as int,
+          amountCents: overpaymentCents,
+          fiadoId: input.fiadoId,
+          cashSessionId: sessionId,
+          originPaymentId: paymentEntryId,
+          description:
+              'Excedente do pagamento do fiado ${fiadoRow['numero_cupom']} convertido em haver.',
+          type: CustomerCreditTransactionType.overpaymentCredit,
+        );
+      }
     });
 
     return fetchDetail(input.fiadoId);

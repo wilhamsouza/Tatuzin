@@ -20,6 +20,10 @@ class RegisterFiadoPaymentUseCase {
       );
     }
 
+    if (input.amountCents <= 0) {
+      throw const ValidationException('Informe um valor de pagamento valido.');
+    }
+
     return _fiadoRepository.registerPayment(input);
   }
 }

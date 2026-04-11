@@ -34,6 +34,7 @@ abstract final class AppMigrations {
     const MigrationStep(version: 18, up: _createVersion18Schema),
     const MigrationStep(version: 19, up: _createVersion19Schema),
     const MigrationStep(version: 20, up: _createVersion20Schema),
+    const MigrationStep(version: 21, up: _createVersion21Schema),
   ];
 
   static Future<void> runCreate(DatabaseExecutor db, int version) async {
@@ -2779,5 +2780,87 @@ abstract final class AppMigrations {
     }
 
     await db.execute('DROP TABLE IF EXISTS produto_moda_grade');
+  }
+
+  static Future<void> _createVersion21Schema(DatabaseExecutor db) async {
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.clientes,
+      columnName: 'credit_balance',
+      columnDefinition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.vendas,
+      columnName: 'haver_utilizado_centavos',
+      columnDefinition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.vendas,
+      columnName: 'haver_gerado_centavos',
+      columnDefinition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.vendas,
+      columnName: 'valor_recebido_imediato_centavos',
+      columnDefinition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.customerCreditTransactions} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        description TEXT,
+        sale_id INTEGER,
+        fiado_id INTEGER,
+        cash_session_id INTEGER,
+        origin_payment_id INTEGER,
+        reversed_transaction_id INTEGER,
+        is_reversed INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT,
+        FOREIGN KEY (customer_id) REFERENCES ${TableNames.clientes}(id) ON DELETE CASCADE,
+        FOREIGN KEY (sale_id) REFERENCES ${TableNames.vendas}(id) ON DELETE SET NULL,
+        FOREIGN KEY (fiado_id) REFERENCES ${TableNames.fiado}(id) ON DELETE SET NULL,
+        FOREIGN KEY (cash_session_id) REFERENCES ${TableNames.caixaSessoes}(id) ON DELETE SET NULL,
+        FOREIGN KEY (origin_payment_id) REFERENCES ${TableNames.fiadoLancamentos}(id) ON DELETE SET NULL,
+        FOREIGN KEY (reversed_transaction_id) REFERENCES ${TableNames.customerCreditTransactions}(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_customer_credit_transactions_customer
+      ON ${TableNames.customerCreditTransactions}(customer_id, created_at DESC, id DESC)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_customer_credit_transactions_sale
+      ON ${TableNames.customerCreditTransactions}(sale_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_customer_credit_transactions_fiado
+      ON ${TableNames.customerCreditTransactions}(fiado_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_customer_credit_transactions_cash_session
+      ON ${TableNames.customerCreditTransactions}(cash_session_id)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_customer_credit_transactions_type
+      ON ${TableNames.customerCreditTransactions}(type)
+    ''');
+
+    await db.execute('''
+      UPDATE ${TableNames.vendas}
+      SET valor_recebido_imediato_centavos = CASE
+        WHEN tipo_venda = 'fiado' THEN 0
+        ELSE COALESCE(valor_final_centavos, 0)
+      END
+      WHERE COALESCE(valor_recebido_imediato_centavos, 0) = 0
+    ''');
   }
 }

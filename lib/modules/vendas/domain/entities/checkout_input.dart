@@ -12,6 +12,8 @@ class CheckoutInput {
     this.notes,
     this.discountCents = 0,
     this.surchargeCents = 0,
+    this.customerCreditUsedCents = 0,
+    this.changeLeftAsCreditCents = 0,
   });
 
   final List<CartItem> items;
@@ -23,9 +25,19 @@ class CheckoutInput {
   final String? notes;
   final int discountCents;
   final int surchargeCents;
+  final int customerCreditUsedCents;
+  final int changeLeftAsCreditCents;
 
   int get itemsTotalCents =>
       items.fold<int>(0, (sum, item) => sum + item.subtotalCents);
 
   int get finalTotalCents => itemsTotalCents - discountCents + surchargeCents;
+
+  int get immediateAmountDueCents {
+    final due = finalTotalCents - customerCreditUsedCents;
+    return due < 0 ? 0 : due;
+  }
+
+  int get immediateReceivedCents =>
+      immediateAmountDueCents + changeLeftAsCreditCents;
 }
