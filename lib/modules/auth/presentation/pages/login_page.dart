@@ -2,15 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../app/core/constants/app_constants.dart';
 import '../../../../app/core/session/auth_provider.dart';
 import '../../../../app/core/session/session_feedback.dart';
 import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/widgets/app_button.dart';
 import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_input.dart';
-import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
+import '../../../../app/core/widgets/tatuzin_brand.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../../../app/theme/app_theme.dart';
 
@@ -71,12 +70,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
                 children: [
-                  const AppPageHeader(
-                    title: AppConstants.appName,
-                    subtitle: AppConstants.appSlogan,
-                    badgeLabel: 'Conta e nuvem',
-                    badgeIcon: Icons.cloud_done_rounded,
-                    emphasized: true,
+                  const TatuzinBrandLockup(
+                    caption:
+                        'ERP/PDV de bolso para vender, cobrar e fechar caixa com clareza.',
                   ),
                   const SizedBox(height: 18),
                   AppCard(
@@ -95,8 +91,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           const SizedBox(height: 8),
                           Text(
                             canAttemptRemoteLogin
-                                ? 'Entre para conectar sua empresa na nuvem ou siga trabalhando no modo local.'
-                                : 'Voce pode seguir no modo local e conectar sua conta quando a nuvem estiver disponivel.',
+                                ? 'Entre para conectar sua empresa na nuvem ou siga operando normalmente no modo local.'
+                                : 'Você pode seguir no modo local e conectar a conta quando a nuvem estiver disponível.',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                             ),
@@ -119,7 +115,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               ),
                               AppStatusBadge(
                                 label: canAttemptRemoteLogin
-                                    ? 'Nuvem disponivel'
+                                    ? 'Nuvem disponível'
                                     : 'Uso local',
                                 tone: canAttemptRemoteLogin
                                     ? AppStatusTone.info
@@ -214,7 +210,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                   ? () => _handleRestoreSession(context)
                                   : null,
                               icon: const Icon(Icons.refresh_rounded),
-                              label: const Text('Restaurar sessao'),
+                              label: const Text('Restaurar sessão'),
                             ),
                           ),
                         ],
@@ -229,33 +225,34 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              width: 42,
-                              height: 42,
-                              decoration: BoxDecoration(
-                                color: AppTheme.primary.withValues(alpha: 0.10),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: const Icon(
-                                Icons.cloud_off_rounded,
-                                color: AppTheme.primary,
-                              ),
-                            ),
+                            const TatuzinMascotBadge(size: 52),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: Text(
-                                'Seu negocio continua com voce',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Seu negócio continua com você',
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.w800),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'O Tatuzin foi pensado para apoiar o pequeno negócio com operação simples e confiável.',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Mesmo sem entrar na nuvem, o Tatuzin continua pronto para vendas, caixa, compras e operacao offline-first.',
+                          'Mesmo sem entrar na nuvem, o app continua pronto para vendas, caixa, compras e operação offline-first.',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                           ),
@@ -323,7 +320,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           content: Text(
             friendlySessionFeedbackMessage(
               error,
-              fallback: 'Nao foi possivel concluir o acesso agora.',
+              fallback: 'Não foi possível concluir o acesso agora.',
             ),
           ),
         ),
@@ -358,7 +355,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           content: Text(
             friendlySessionFeedbackMessage(
               error,
-              fallback: 'Nao foi possivel restaurar sua sessao agora.',
+              fallback: 'Não foi possível restaurar sua sessão agora.',
             ),
           ),
         ),
@@ -374,7 +371,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   String _errorMessage(Object? error) {
     return friendlySessionFeedbackMessage(
       error,
-      fallback: 'Nao foi possivel concluir o acesso agora.',
+      fallback: 'Não foi possível concluir o acesso agora.',
     );
   }
 }

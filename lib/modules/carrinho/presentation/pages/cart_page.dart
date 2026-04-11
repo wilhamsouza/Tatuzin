@@ -10,6 +10,7 @@ import '../../../pedidos/domain/entities/operational_order.dart';
 import '../../../pedidos/domain/entities/operational_order_item.dart';
 import '../../../pedidos/domain/entities/operational_order_item_modifier.dart';
 import '../../../pedidos/presentation/providers/order_providers.dart';
+import '../../domain/entities/cart_enums.dart';
 import '../../domain/entities/cart_item.dart';
 import '../providers/cart_provider.dart';
 
@@ -23,16 +24,18 @@ class CartPage extends ConsumerStatefulWidget {
 class _CartPageState extends ConsumerState<CartPage> {
   late final TextEditingController _deliveryFieldController;
   late final TextEditingController _couponController;
-  _CartDeliveryType _deliveryType = _CartDeliveryType.pickup;
   String? _couponFeedback;
-  String? _appliedCouponCode;
-  int _discountCents = 0;
 
   @override
   void initState() {
     super.initState();
-    _deliveryFieldController = TextEditingController();
-    _couponController = TextEditingController();
+    final cart = ref.read(cartProvider);
+    _deliveryFieldController = TextEditingController(
+      text: cart.tipoEntrega == TipoEntrega.mesa
+          ? cart.numeroMesa ?? ''
+          : cart.cep ?? '',
+    );
+    _couponController = TextEditingController(text: cart.cupomCodigo ?? '');
   }
 
   @override
@@ -51,12 +54,10 @@ class _CartPageState extends ConsumerState<CartPage> {
     final totalItemsLabel = cart.totalItems == 1
         ? '1 item'
         : '${cart.totalItems} itens';
-    final subtotalCents = cart.totalCents;
-    final freightCents = _deliveryType == _CartDeliveryType.delivery ? 799 : 0;
-    final totalCents = (subtotalCents + freightCents - _discountCents).clamp(
-      0,
-      1 << 31,
-    );
+    _syncControllers(cart);
+    final subtotalCents = cart.subtotalCents;
+    final freightCents = cart.freteCents;
+    final totalCents = cart.finalTotalCents;
 
     return Scaffold(
       appBar: AppBar(
@@ -64,7 +65,7 @@ class _CartPageState extends ConsumerState<CartPage> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Carrinho'),
+            const Text('Carrinho da venda'),
             if (!cart.isEmpty)
               Text(
                 '$totalItemsLabel em $totalLines ${totalLines == 1 ? 'produto' : 'produtos'}',
@@ -75,6 +76,16 @@ class _CartPageState extends ConsumerState<CartPage> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Voltar ao dashboard',
+            onPressed: () => context.goNamed(AppRouteNames.dashboard),
+            icon: const Icon(Icons.home_outlined),
+          ),
+          IconButton(
+            tooltip: 'Continuar no PDV',
+            onPressed: () => context.goNamed(AppRouteNames.sales),
+            icon: const Icon(Icons.storefront_outlined),
+          ),
           if (!cart.isEmpty)
             PopupMenuButton<_CartMenuAction>(
               tooltip: 'Mais ações',
@@ -126,7 +137,7 @@ class _CartPageState extends ConsumerState<CartPage> {
 
   Widget _buildFilledBody(BuildContext context, CartState cart) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 220),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 190),
       children: [
         for (var index = 0; index < cart.items.length; index++) ...[
           _CartItemCard(
@@ -153,23 +164,51 @@ class _CartPageState extends ConsumerState<CartPage> {
           ),
           if (index < cart.items.length - 1) const SizedBox(height: 12),
         ],
-        const SizedBox(height: 16),
-        _DeliverySectionCard(
-          selectedType: _deliveryType,
-          controller: _deliveryFieldController,
-          onTypeChanged: (nextType) {
-            setState(() {
-              _deliveryType = nextType;
-              _deliveryFieldController.clear();
-            });
-          },
-        ),
-        const SizedBox(height: 12),
-        _CouponSectionCard(
-          controller: _couponController,
-          feedback: _couponFeedback,
-          appliedCouponCode: _appliedCouponCode,
-          onApply: () => _applyCoupon(cart.totalCents),
+        const SizedBox(height: 14),
+        Card(
+          elevation: 0,
+          color: Theme.of(context).colorScheme.surfaceContainerLowest,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+          ),
+          child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 2,
+              ),
+              childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              title: const Text('Opções da venda'),
+              subtitle: Text(
+                'Entrega, mesa ou cupom ficam aqui para não pesar a tela principal.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              children: [
+                _DeliverySectionCard(
+                  selectedType: cart.tipoEntrega,
+                  controller: _deliveryFieldController,
+                  onTypeChanged: _handleDeliveryTypeChanged,
+                  onFieldChanged: (value) =>
+                      _handleDeliveryFieldChanged(cart.tipoEntrega, value),
+                ),
+                const SizedBox(height: 10),
+                _CouponSectionCard(
+                  controller: _couponController,
+                  feedback: _couponFeedback,
+                  appliedCouponCode: cart.cupomCodigo,
+                  discountCents: cart.cupomDescontoCents,
+                  onApply: _applyCoupon,
+                  onRemove: cart.cupomCodigo == null ? null : _removeCoupon,
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -184,93 +223,113 @@ class _CartPageState extends ConsumerState<CartPage> {
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final cart = ref.read(cartProvider);
 
     return SafeArea(
-      minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      minimum: const EdgeInsets.fromLTRB(16, 8, 16, 14),
       child: Card(
         elevation: 0,
         color: colorScheme.surfaceContainerLow,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(18),
           side: BorderSide(color: colorScheme.outlineVariant),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Resumo da venda',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 16),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: _CartMetric(
-                      label: 'Itens',
-                      value: totalItemsLabel,
-                      icon: Icons.shopping_bag_outlined,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Total da venda',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          totalItemsLabel,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          cartDeliverySummaryLabel(cart.tipoEntrega),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: _CartMetric(
-                      label: 'Total final',
-                      value: AppFormatters.currencyFromCents(totalCents),
-                      icon: Icons.payments_outlined,
-                      emphasize: true,
+                  Text(
+                    AppFormatters.currencyFromCents(totalCents),
+                    textAlign: TextAlign.right,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
-              _SummaryLine(
-                label: 'Subtotal',
-                value: AppFormatters.currencyFromCents(subtotalCents),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _CompactSummaryChip(
+                    icon: Icons.receipt_long_outlined,
+                    label:
+                        'Subtotal ${AppFormatters.currencyFromCents(subtotalCents)}',
+                  ),
+                  _CompactSummaryChip(
+                    icon: cart.tipoEntrega == TipoEntrega.delivery
+                        ? Icons.local_shipping_outlined
+                        : cart.tipoEntrega == TipoEntrega.mesa
+                        ? Icons.table_restaurant_outlined
+                        : Icons.store_mall_directory_outlined,
+                    label: freightCents == 0
+                        ? '${cartDeliverySummaryLabel(cart.tipoEntrega)} grátis'
+                        : '${cartDeliverySummaryLabel(cart.tipoEntrega)} ${AppFormatters.currencyFromCents(freightCents)}',
+                  ),
+                  if (cart.cupomDescontoCents > 0)
+                    _CompactSummaryChip(
+                      icon: Icons.sell_outlined,
+                      label:
+                          'Desconto ${AppFormatters.currencyFromCents(cart.cupomDescontoCents)}',
+                      emphasize: true,
+                    ),
+                ],
               ),
-              const SizedBox(height: 8),
-              _SummaryLine(
-                label: _deliveryType.summaryLabel,
-                value: freightCents == 0
-                    ? 'Grátis'
-                    : AppFormatters.currencyFromCents(freightCents),
-              ),
-              if (_discountCents > 0) ...[
-                const SizedBox(height: 8),
-                _SummaryLine(
-                  label: 'Desconto',
-                  value: '- ${AppFormatters.currencyFromCents(_discountCents)}',
-                  emphasize: true,
-                ),
-              ],
               const SizedBox(height: 12),
-              Divider(color: colorScheme.outlineVariant),
-              const SizedBox(height: 12),
-              _SummaryLine(
-                label: 'Total a pagar',
-                value: AppFormatters.currencyFromCents(totalCents),
-                emphasize: true,
-                largeValue: true,
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () => context.pushNamed(AppRouteNames.checkout),
-                  icon: const Icon(Icons.arrow_forward_rounded),
-                  label: const Text('Finalizar pedido'),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _summarySupportText(),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => context.goNamed(AppRouteNames.sales),
+                      icon: const Icon(Icons.storefront_outlined),
+                      label: const Text('Continuar venda'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () =>
+                          context.pushNamed(AppRouteNames.checkout),
+                      icon: const Icon(Icons.arrow_forward_rounded),
+                      label: const Text('Finalizar venda'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -279,45 +338,73 @@ class _CartPageState extends ConsumerState<CartPage> {
     );
   }
 
-  Future<void> _applyCoupon(int subtotalCents) async {
-    final code = _couponController.text.trim().toUpperCase();
+  void _syncControllers(CartState cart) {
+    final contextualValue = cart.tipoEntrega == TipoEntrega.mesa
+        ? cart.numeroMesa ?? ''
+        : cart.cep ?? '';
+    if (_deliveryFieldController.text != contextualValue) {
+      _deliveryFieldController.value = TextEditingValue(
+        text: contextualValue,
+        selection: TextSelection.collapsed(offset: contextualValue.length),
+      );
+    }
+
+    final couponValue = cart.cupomCodigo ?? '';
+    if (_couponController.text != couponValue) {
+      _couponController.value = TextEditingValue(
+        text: couponValue,
+        selection: TextSelection.collapsed(offset: couponValue.length),
+      );
+    }
+  }
+
+  void _handleDeliveryTypeChanged(TipoEntrega nextType) {
+    ref.read(cartProvider.notifier).setTipoEntrega(nextType);
+    _deliveryFieldController.clear();
     setState(() {
-      if (code.isEmpty) {
-        _appliedCouponCode = null;
-        _discountCents = 0;
-        _couponFeedback = 'Digite um cupom para testar o desconto visual.';
-        return;
-      }
-
-      if (code == 'TATU5') {
-        _appliedCouponCode = code;
-        _discountCents = subtotalCents >= 500 ? 500 : subtotalCents;
-        _couponFeedback =
-            'Cupom aplicado localmente para visualização. O checkout segue sem integração automática.';
-        return;
-      }
-
-      _appliedCouponCode = null;
-      _discountCents = 0;
-      _couponFeedback =
-          'Cupom não reconhecido nesta etapa. O campo ainda é apenas visual.';
+      _couponFeedback = null;
     });
   }
 
-  String _summarySupportText() {
-    final contextualValue = _deliveryFieldController.text.trim();
-    return switch (_deliveryType) {
-      _CartDeliveryType.delivery when contextualValue.isNotEmpty =>
-        'Entrega configurada para o CEP $contextualValue. O pedido operacional continua disponível no menu do carrinho.',
-      _CartDeliveryType.delivery =>
-        'Selecione o CEP se quiser registrar a referência visual da entrega. O pedido operacional continua disponível no menu do carrinho.',
-      _CartDeliveryType.table when contextualValue.isNotEmpty =>
-        'Mesa $contextualValue informada para apoiar a operação. O pedido operacional continua disponível no menu do carrinho.',
-      _CartDeliveryType.table =>
-        'Informe a mesa para organizar o atendimento visualmente. O pedido operacional continua disponível no menu do carrinho.',
-      _CartDeliveryType.pickup =>
-        'Retirada selecionada. O pedido operacional continua disponível no menu do carrinho.',
-    };
+  void _handleDeliveryFieldChanged(TipoEntrega tipoEntrega, String value) {
+    final controller = ref.read(cartProvider.notifier);
+    if (tipoEntrega == TipoEntrega.delivery) {
+      controller.setCep(value);
+      return;
+    }
+    if (tipoEntrega == TipoEntrega.mesa) {
+      controller.setNumeroMesa(value);
+    }
+  }
+
+  void _applyCoupon() {
+    final code = _couponController.text.trim();
+    if (code.isEmpty) {
+      setState(() {
+        _couponFeedback = 'Digite um cupom para continuar.';
+      });
+      return;
+    }
+
+    try {
+      ref.read(cartProvider.notifier).aplicarCupom(code);
+      setState(() {
+        _couponFeedback =
+            'Cupom aplicado ao resumo do carrinho. O checkout segue no fluxo atual.';
+      });
+    } catch (_) {
+      setState(() {
+        _couponFeedback = 'Cupom inválido ou expirado.';
+      });
+    }
+  }
+
+  void _removeCoupon() {
+    ref.read(cartProvider.notifier).removerCupom();
+    _couponController.clear();
+    setState(() {
+      _couponFeedback = 'Cupom removido do resumo.';
+    });
   }
 
   Future<void> _editItemNotes(BuildContext context, CartItem item) async {
@@ -472,38 +559,48 @@ class _CartPageState extends ConsumerState<CartPage> {
 
 enum _CartMenuAction { operationalOrder, clear }
 
-enum _CartDeliveryType { delivery, pickup, table }
+String cartDeliverySummaryLabel(TipoEntrega tipoEntrega) {
+  switch (tipoEntrega) {
+    case TipoEntrega.delivery:
+      return 'Frete';
+    case TipoEntrega.retirada:
+      return 'Retirada';
+    case TipoEntrega.mesa:
+      return 'Atendimento em mesa';
+  }
+}
 
-extension on _CartDeliveryType {
-  String get label => switch (this) {
-    _CartDeliveryType.delivery => 'Delivery / envio',
-    _CartDeliveryType.pickup => 'Retirada',
-    _CartDeliveryType.table => 'Mesa',
-  };
+String? cartDeliveryFieldLabel(TipoEntrega tipoEntrega) {
+  switch (tipoEntrega) {
+    case TipoEntrega.delivery:
+      return 'CEP';
+    case TipoEntrega.mesa:
+      return 'Número da mesa';
+    case TipoEntrega.retirada:
+      return null;
+  }
+}
 
-  String get summaryLabel => switch (this) {
-    _CartDeliveryType.delivery => 'Frete',
-    _CartDeliveryType.pickup => 'Retirada',
-    _CartDeliveryType.table => 'Atendimento em mesa',
-  };
+String? cartDeliveryHintText(TipoEntrega tipoEntrega) {
+  switch (tipoEntrega) {
+    case TipoEntrega.delivery:
+      return 'Ex.: 01310-100';
+    case TipoEntrega.mesa:
+      return 'Ex.: 12';
+    case TipoEntrega.retirada:
+      return null;
+  }
+}
 
-  String? get fieldLabel => switch (this) {
-    _CartDeliveryType.delivery => 'CEP',
-    _CartDeliveryType.table => 'Número da mesa',
-    _CartDeliveryType.pickup => null,
-  };
-
-  String? get hintText => switch (this) {
-    _CartDeliveryType.delivery => 'Ex.: 01310-100',
-    _CartDeliveryType.table => 'Ex.: 12',
-    _CartDeliveryType.pickup => null,
-  };
-
-  IconData get icon => switch (this) {
-    _CartDeliveryType.delivery => Icons.local_shipping_outlined,
-    _CartDeliveryType.pickup => Icons.store_mall_directory_outlined,
-    _CartDeliveryType.table => Icons.table_restaurant_outlined,
-  };
+IconData cartDeliveryIcon(TipoEntrega tipoEntrega) {
+  switch (tipoEntrega) {
+    case TipoEntrega.delivery:
+      return Icons.local_shipping_outlined;
+    case TipoEntrega.retirada:
+      return Icons.store_mall_directory_outlined;
+    case TipoEntrega.mesa:
+      return Icons.table_restaurant_outlined;
+  }
 }
 
 class _CartItemCard extends StatelessWidget {
@@ -528,16 +625,22 @@ class _CartItemCard extends StatelessWidget {
     final hasDetails =
         item.modifiers.isNotEmpty || (item.notes?.trim().isNotEmpty ?? false);
     final baseName = item.baseProductName?.trim();
+    final detailLine = [
+      AppFormatters.currencyFromCents(item.unitPriceCents),
+      if (item.modifierUnitDeltaCents != 0)
+        'Ajustes ${AppFormatters.currencyFromCents(item.modifierUnitDeltaCents)}',
+      if (baseName != null && baseName.isNotEmpty) baseName,
+    ].join(' • ');
 
     return Card(
       elevation: 0,
       color: colorScheme.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(18),
         side: BorderSide(color: colorScheme.outlineVariant),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -557,28 +660,15 @@ class _CartItemCard extends StatelessWidget {
                           height: 1.2,
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _InfoPill(
-                            icon: Icons.sell_outlined,
-                            label:
-                                'Unitário ${AppFormatters.currencyFromCents(item.unitPriceCents)}',
-                          ),
-                          if (item.modifierUnitDeltaCents != 0)
-                            _InfoPill(
-                              icon: Icons.tune_rounded,
-                              label:
-                                  'Ajustes ${AppFormatters.currencyFromCents(item.modifierUnitDeltaCents)}',
-                            ),
-                          if (baseName != null && baseName.isNotEmpty)
-                            _InfoPill(
-                              icon: Icons.layers_outlined,
-                              label: baseName,
-                            ),
-                        ],
+                      const SizedBox(height: 4),
+                      Text(
+                        detailLine,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          height: 1.3,
+                        ),
                       ),
                     ],
                   ),
@@ -590,7 +680,7 @@ class _CartItemCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             if (hasDetails) ...[
               Theme(
                 data: theme.copyWith(dividerColor: Colors.transparent),
@@ -600,7 +690,7 @@ class _CartItemCard extends StatelessWidget {
                   dense: true,
                   visualDensity: VisualDensity.compact,
                   title: Text(
-                    'Detalhes do item',
+                    'Complementos e observação',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -614,7 +704,7 @@ class _CartItemCard extends StatelessWidget {
                     ),
                   ),
                   children: [
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     if (item.modifiers.isNotEmpty)
                       Column(
                         children: item.modifiers
@@ -629,12 +719,12 @@ class _CartItemCard extends StatelessWidget {
                     Container(
                       width: double.infinity,
                       margin: const EdgeInsets.only(top: 4),
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: colorScheme.surfaceContainerHighest.withValues(
                           alpha: 0.45,
                         ),
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -656,6 +746,13 @@ class _CartItemCard extends StatelessWidget {
                               const Spacer(),
                               TextButton(
                                 onPressed: onEditNotes,
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                ),
                                 child: Text(
                                   item.notes?.trim().isNotEmpty ?? false
                                       ? 'Editar'
@@ -679,17 +776,24 @@ class _CartItemCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
             ] else ...[
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
                   onPressed: onEditNotes,
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                  ),
                   icon: const Icon(Icons.edit_note_rounded),
                   label: const Text('Adicionar observação'),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
             ],
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -713,7 +817,7 @@ class _CartItemCard extends StatelessWidget {
                     Text(
                       AppFormatters.currencyFromCents(item.subtotalCents),
                       textAlign: TextAlign.end,
-                      style: theme.textTheme.titleLarge?.copyWith(
+                      style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                         height: 1.0,
                       ),
@@ -740,10 +844,10 @@ class _CartThumbnail extends StatelessWidget {
     final hasPath = path?.trim().isNotEmpty ?? false;
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(14),
       child: SizedBox(
-        width: 72,
-        height: 72,
+        width: 56,
+        height: 56,
         child: hasPath
             ? Image.file(
                 File(path!),
@@ -769,72 +873,67 @@ class _DeliverySectionCard extends StatelessWidget {
     required this.selectedType,
     required this.controller,
     required this.onTypeChanged,
+    required this.onFieldChanged,
   });
 
-  final _CartDeliveryType selectedType;
+  final TipoEntrega selectedType;
   final TextEditingController controller;
-  final ValueChanged<_CartDeliveryType> onTypeChanged;
+  final ValueChanged<TipoEntrega> onTypeChanged;
+  final ValueChanged<String> onFieldChanged;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Card(
-      elevation: 0,
-      color: colorScheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-        side: BorderSide(color: colorScheme.outlineVariant),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Tipo de entrega',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Tipo de entrega',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
-            const SizedBox(height: 6),
-            Text(
-              'Escolha como este pedido será organizado antes do checkout.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: TipoEntrega.values
+                .map(
+                  (type) => ChoiceChip(
+                    selected: selectedType == type,
+                    avatar: Icon(cartDeliveryIcon(type), size: 18),
+                    label: Text(type.label),
+                    onSelected: (_) => onTypeChanged(type),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+          if (cartDeliveryFieldLabel(selectedType) != null) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              keyboardType: selectedType == TipoEntrega.mesa
+                  ? TextInputType.number
+                  : TextInputType.streetAddress,
+              decoration: InputDecoration(
+                labelText: cartDeliveryFieldLabel(selectedType),
+                hintText: cartDeliveryHintText(selectedType),
+                isDense: true,
               ),
+              onChanged: onFieldChanged,
             ),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _CartDeliveryType.values
-                  .map(
-                    (type) => ChoiceChip(
-                      selected: selectedType == type,
-                      avatar: Icon(type.icon, size: 18),
-                      label: Text(type.label),
-                      onSelected: (_) => onTypeChanged(type),
-                    ),
-                  )
-                  .toList(growable: false),
-            ),
-            if (selectedType.fieldLabel != null) ...[
-              const SizedBox(height: 14),
-              TextField(
-                controller: controller,
-                keyboardType: selectedType == _CartDeliveryType.table
-                    ? TextInputType.number
-                    : TextInputType.streetAddress,
-                decoration: InputDecoration(
-                  labelText: selectedType.fieldLabel,
-                  hintText: selectedType.hintText,
-                ),
-              ),
-            ],
           ],
-        ),
+        ],
       ),
     );
   }
@@ -845,91 +944,96 @@ class _CouponSectionCard extends StatelessWidget {
     required this.controller,
     required this.feedback,
     required this.appliedCouponCode,
+    required this.discountCents,
     required this.onApply,
+    required this.onRemove,
   });
 
   final TextEditingController controller;
   final String? feedback;
   final String? appliedCouponCode;
+  final int discountCents;
   final VoidCallback onApply;
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Card(
-      elevation: 0,
-      color: colorScheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-        side: BorderSide(color: colorScheme.outlineVariant),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Cupom',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Cupom',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                if (appliedCouponCode != null)
-                  Chip(
-                    label: Text(
-                      appliedCouponCode!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+              ),
+              if (appliedCouponCode != null)
+                Chip(
+                  label: Text(
+                    '$appliedCouponCode (- ${AppFormatters.currencyFromCents(discountCents)})',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'Código do cupom',
+                    hintText: 'Ex.: TATU5',
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton.tonal(
+                onPressed: onApply,
+                child: const Text('Aplicar'),
+              ),
+              if (onRemove != null) ...[
+                const SizedBox(width: 6),
+                IconButton(
+                  tooltip: 'Remover cupom',
+                  onPressed: onRemove,
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.close_rounded),
+                ),
               ],
-            ),
-            const SizedBox(height: 6),
+            ],
+          ),
+          if (feedback != null) ...[
+            const SizedBox(height: 8),
             Text(
-              'Use um código para simular desconto visual sem mudar o fluxo atual de venda.',
+              feedback!,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
+                height: 1.35,
               ),
             ),
-            const SizedBox(height: 14),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: controller,
-                    textCapitalization: TextCapitalization.characters,
-                    decoration: const InputDecoration(
-                      labelText: 'Código do cupom',
-                      hintText: 'Ex.: TATU5',
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                FilledButton.tonal(
-                  onPressed: onApply,
-                  child: const Text('Aplicar'),
-                ),
-              ],
-            ),
-            if (feedback != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                feedback!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                  height: 1.35,
-                ),
-              ),
-            ],
           ],
-        ),
+        ],
       ),
     );
   }
@@ -954,11 +1058,11 @@ class _QuantityControl extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -968,7 +1072,7 @@ class _QuantityControl extends StatelessWidget {
               icon: const Icon(Icons.remove_rounded),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -979,7 +1083,7 @@ class _QuantityControl extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    quantity == 1 ? 'unidade' : 'unidades',
+                    quantity == 1 ? 'un.' : 'un.',
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
@@ -1074,11 +1178,16 @@ class _ModifierTile extends StatelessWidget {
   }
 }
 
-class _InfoPill extends StatelessWidget {
-  const _InfoPill({required this.icon, required this.label});
+class _CompactSummaryChip extends StatelessWidget {
+  const _CompactSummaryChip({
+    required this.icon,
+    required this.label,
+    this.emphasize = false,
+  });
 
   final IconData icon;
   final String label;
+  final bool emphasize;
 
   @override
   Widget build(BuildContext context) {
@@ -1088,127 +1197,32 @@ class _InfoPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        color: emphasize
+            ? colorScheme.primaryContainer.withValues(alpha: 0.6)
+            : colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: colorScheme.primary),
+          Icon(
+            icon,
+            size: 16,
+            color: emphasize
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(width: 6),
           Text(
             label,
             style: theme.textTheme.labelMedium?.copyWith(
               fontWeight: FontWeight.w600,
+              color: emphasize ? colorScheme.primary : null,
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _CartMetric extends StatelessWidget {
-  const _CartMetric({
-    required this.label,
-    required this.value,
-    required this.icon,
-    this.emphasize = false,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final bool emphasize;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: emphasize ? colorScheme.primaryContainer : colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            size: 18,
-            color: emphasize
-                ? colorScheme.onPrimaryContainer
-                : colorScheme.primary,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: emphasize
-                  ? colorScheme.onPrimaryContainer.withValues(alpha: 0.78)
-                  : colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: emphasize ? colorScheme.onPrimaryContainer : null,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SummaryLine extends StatelessWidget {
-  const _SummaryLine({
-    required this.label,
-    required this.value,
-    this.emphasize = false,
-    this.largeValue = false,
-  });
-
-  final String label;
-  final String value;
-  final bool emphasize;
-  final bool largeValue;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: emphasize ? colorScheme.primary : colorScheme.onSurface,
-              fontWeight: emphasize ? FontWeight.w700 : FontWeight.w500,
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          value,
-          textAlign: TextAlign.right,
-          style:
-              (largeValue
-                      ? theme.textTheme.titleLarge
-                      : theme.textTheme.titleSmall)
-                  ?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: emphasize ? colorScheme.primary : null,
-                  ),
-        ),
-      ],
     );
   }
 }

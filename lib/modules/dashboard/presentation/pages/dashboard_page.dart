@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../app/core/constants/app_constants.dart';
 import '../../../../app/core/formatters/app_formatters.dart';
-import '../../../../app/core/widgets/app_button.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_metric_card.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
+import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../../../app/theme/app_theme.dart';
 import '../../../historico_vendas/presentation/providers/sale_history_providers.dart';
@@ -20,6 +19,8 @@ class DashboardPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final metricsAsync = ref.watch(dashboardMetricsProvider);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Dashboard')),
@@ -30,126 +31,137 @@ class DashboardPage extends ConsumerWidget {
           await ref.read(dashboardMetricsProvider.future);
         },
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
           children: [
             AppPageHeader(
-              title: 'Dashboard operacional',
-              subtitle:
-                  'Acompanhe o dia com indicadores essenciais e poucos atalhos realmente operacionais.',
-              badgeLabel: AppConstants.appName,
-              badgeIcon: Icons.auto_awesome_rounded,
-              emphasized: true,
+              title: 'Painel do dia',
+              subtitle: 'Venda, caixa e fiado em uma leitura rápida.',
+              badgeLabel: 'Operação diária',
+              badgeIcon: Icons.space_dashboard_rounded,
               trailing: SizedBox(
-                width: 154,
-                child: AppButton.primary(
-                  label: 'Nova venda',
-                  icon: Icons.point_of_sale_rounded,
+                width: 142,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.point_of_sale_rounded),
                   onPressed: () => context.pushNamed(AppRouteNames.sales),
-                  compact: true,
+                  label: const Text('Nova venda'),
                 ),
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             metricsAsync.when(
               data: (metrics) {
-                return GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 0.92,
-                  children: [
-                    AppMetricCard(
-                      label: 'Vendido hoje',
-                      value: AppFormatters.currencyFromCents(
-                        metrics.soldTodayCents,
+                return AppSectionCard(
+                  title: 'Indicadores principais',
+                  subtitle: 'O que precisa de atenção agora.',
+                  padding: const EdgeInsets.all(16),
+                  child: GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                    childAspectRatio: 1.14,
+                    children: [
+                      AppMetricCard(
+                        label: 'Vendido hoje',
+                        value: AppFormatters.currencyFromCents(
+                          metrics.soldTodayCents,
+                        ),
+                        caption: 'Vendas ativas do dia',
+                        icon: Icons.point_of_sale_rounded,
+                        onTap: () => _openTodaySales(context, ref),
                       ),
-                      caption: 'Total das vendas ativas do dia',
-                      icon: Icons.point_of_sale_rounded,
-                      accentColor: AppTheme.primary,
-                      onTap: () => _openTodaySales(context, ref),
-                    ),
-                    AppMetricCard(
-                      label: 'Caixa atual',
-                      value: AppFormatters.currencyFromCents(
-                        metrics.currentCashCents,
+                      AppMetricCard(
+                        label: 'Caixa atual',
+                        value: AppFormatters.currencyFromCents(
+                          metrics.currentCashCents,
+                        ),
+                        caption: 'Sessão em aberto',
+                        icon: Icons.account_balance_wallet_rounded,
+                        accentColor: colorScheme.secondary,
+                        onTap: () => context.pushNamed(AppRouteNames.cash),
                       ),
-                      caption: 'Saldo parcial da sess\u00e3o em aberto',
-                      icon: Icons.account_balance_wallet_rounded,
-                      accentColor: AppTheme.secondary,
-                      onTap: () => context.pushNamed(AppRouteNames.cash),
-                    ),
-                    AppMetricCard(
-                      label: 'Notas pendentes',
-                      value: AppFormatters.currencyFromCents(
-                        metrics.pendingFiadoCents,
+                      AppMetricCard(
+                        label: 'Fiado pendente',
+                        value: AppFormatters.currencyFromCents(
+                          metrics.pendingFiadoCents,
+                        ),
+                        caption:
+                            '${metrics.pendingFiadoCount} nota(s) em aberto',
+                        icon: Icons.receipt_long_rounded,
+                        accentColor: AppTheme.warning,
+                        onTap: () => context.pushNamed(AppRouteNames.fiado),
                       ),
-                      caption: '${metrics.pendingFiadoCount} nota(s) em aberto',
-                      icon: Icons.receipt_long_rounded,
-                      accentColor: AppTheme.warning,
-                      onTap: () => context.pushNamed(AppRouteNames.fiado),
-                    ),
-                    AppMetricCard(
-                      label: 'Lucro realizado',
-                      value: AppFormatters.currencyFromCents(
-                        metrics.realizedProfitTodayCents,
+                      AppMetricCard(
+                        label: 'Lucro do dia',
+                        value: AppFormatters.currencyFromCents(
+                          metrics.realizedProfitTodayCents,
+                        ),
+                        caption: 'Bruto realizado',
+                        icon: Icons.trending_up_rounded,
+                        accentColor: colorScheme.tertiary,
+                        onTap: () => context.pushNamed(AppRouteNames.reports),
                       ),
-                      caption: 'Lucro bruto reconhecido no dia',
-                      icon: Icons.trending_up_rounded,
-                      accentColor: AppTheme.success,
-                      onTap: () => context.pushNamed(AppRouteNames.reports),
-                    ),
-                  ],
+                    ],
+                  ),
                 );
               },
               loading: () => const Padding(
-                padding: EdgeInsets.symmetric(vertical: 32),
-                child: Center(child: CircularProgressIndicator()),
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: AppStateCard(
+                  title: 'Atualizando indicadores',
+                  message: 'Buscando os números mais recentes do dia.',
+                  tone: AppStateTone.loading,
+                  compact: true,
+                ),
               ),
               error: (error, _) => AppSectionCard(
                 title: 'Falha ao carregar indicadores',
                 subtitle: error.toString(),
-                child: FilledButton.tonal(
-                  onPressed: () => ref.invalidate(dashboardMetricsProvider),
-                  child: const Text('Tentar novamente'),
+                child: AppStateCard(
+                  title: 'Não foi possível atualizar o painel',
+                  message: 'Puxe para baixo ou tente novamente em instantes.',
+                  tone: AppStateTone.error,
+                  compact: true,
+                  actionLabel: 'Tentar novamente',
+                  onAction: () => ref.invalidate(dashboardMetricsProvider),
                 ),
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             AppSectionCard(
-              title: 'Atalhos r\u00e1pidos',
-              subtitle:
-                  'As a\u00e7\u00f5es do dia ficam aqui. Os demais m\u00f3dulos agora est\u00e3o no menu lateral.',
+              title: 'Ações rápidas',
+              subtitle: 'Atalhos do dia com menos ruído visual.',
+              padding: const EdgeInsets.all(16),
               child: GridView.count(
                 crossAxisCount: 2,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 1.14,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                childAspectRatio: 1.72,
                 children: [
                   _QuickAction(
                     title: 'Nova venda',
-                    subtitle: 'Ir para o PDV',
+                    subtitle: 'Abrir PDV',
                     icon: Icons.point_of_sale_rounded,
                     onTap: () => context.pushNamed(AppRouteNames.sales),
                   ),
                   _QuickAction(
                     title: 'Caixa',
-                    subtitle: 'Sess\u00e3o atual',
+                    subtitle: 'Sessão atual',
                     icon: Icons.account_balance_wallet_rounded,
                     onTap: () => context.pushNamed(AppRouteNames.cash),
                   ),
                   _QuickAction(
                     title: 'Receber nota',
-                    subtitle: 'Fiado e cobran\u00e7a',
+                    subtitle: 'Fiado',
                     icon: Icons.receipt_long_rounded,
                     onTap: () => context.pushNamed(AppRouteNames.fiado),
                   ),
                   _QuickAction(
                     title: 'Nova compra',
-                    subtitle: 'Registrar entrada',
+                    subtitle: 'Entrada',
                     icon: Icons.shopping_bag_outlined,
                     onTap: () => context.pushNamed(AppRouteNames.purchaseForm),
                   ),
@@ -196,25 +208,42 @@ class _QuickAction extends StatelessWidget {
     return Card(
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.all(14),
+          child: Row(
             children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: colorScheme.primaryContainer,
-                child: Icon(icon, color: colorScheme.onPrimaryContainer),
-              ),
-              const Spacer(),
-              Text(title, style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.75),
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                child: Icon(icon, size: 20, color: colorScheme.primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: colorScheme.onSurfaceVariant,
               ),
             ],
           ),

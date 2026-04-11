@@ -4,11 +4,11 @@ class AppCard extends StatelessWidget {
   const AppCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(20),
+    this.padding = const EdgeInsets.all(16),
     this.onTap,
     this.gradient,
     this.color,
-    this.borderRadius = 20,
+    this.borderRadius = 16,
   });
 
   final Widget child;

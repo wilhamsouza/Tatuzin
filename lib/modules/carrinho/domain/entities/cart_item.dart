@@ -1,4 +1,5 @@
 import '../../../produtos/domain/entities/product.dart';
+import 'cart_enums.dart';
 
 class CartItemModifier {
   const CartItemModifier({
@@ -136,13 +137,58 @@ class CartItem {
 }
 
 class CartState {
-  const CartState({required this.items});
+  const CartState({
+    required this.items,
+    this.tipoEntrega = TipoEntrega.retirada,
+    this.numeroMesa,
+    this.cep,
+    this.freteCents = 0,
+    this.cupomCodigo,
+    this.cupomDescontoCents = 0,
+  });
 
   final List<CartItem> items;
+  final TipoEntrega tipoEntrega;
+  final String? numeroMesa;
+  final String? cep;
+  final int freteCents;
+  final String? cupomCodigo;
+  final int cupomDescontoCents;
 
   bool get isEmpty => items.isEmpty;
   int get totalItems =>
       items.fold(0, (total, item) => total + item.quantityUnits);
-  int get totalCents =>
+  int get subtotalCents =>
       items.fold(0, (total, item) => total + item.subtotalCents);
+  int get totalCents => subtotalCents;
+  int get finalTotalCents {
+    final adjustedTotal = subtotalCents + freteCents - cupomDescontoCents;
+    return adjustedTotal < 0 ? 0 : adjustedTotal;
+  }
+
+  CartState copyWith({
+    List<CartItem>? items,
+    TipoEntrega? tipoEntrega,
+    Object? numeroMesa = _cartStateUnset,
+    Object? cep = _cartStateUnset,
+    int? freteCents,
+    Object? cupomCodigo = _cartStateUnset,
+    int? cupomDescontoCents,
+  }) {
+    return CartState(
+      items: items ?? this.items,
+      tipoEntrega: tipoEntrega ?? this.tipoEntrega,
+      numeroMesa: identical(numeroMesa, _cartStateUnset)
+          ? this.numeroMesa
+          : numeroMesa as String?,
+      cep: identical(cep, _cartStateUnset) ? this.cep : cep as String?,
+      freteCents: freteCents ?? this.freteCents,
+      cupomCodigo: identical(cupomCodigo, _cartStateUnset)
+          ? this.cupomCodigo
+          : cupomCodigo as String?,
+      cupomDescontoCents: cupomDescontoCents ?? this.cupomDescontoCents,
+    );
+  }
 }
+
+const Object _cartStateUnset = Object();

@@ -50,10 +50,10 @@ class AppButton extends StatelessWidget {
             onPressed: onPressed,
             style: compact
                 ? FilledButton.styleFrom(
-                    minimumSize: const Size(0, 44),
+                    minimumSize: const Size(0, 42),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
+                      horizontal: 14,
+                      vertical: 10,
                     ),
                   )
                 : null,
@@ -63,10 +63,10 @@ class AppButton extends StatelessWidget {
             onPressed: onPressed,
             style: compact
                 ? OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 44),
+                    minimumSize: const Size(0, 42),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
+                      horizontal: 14,
+                      vertical: 10,
                     ),
                   )
                 : null,

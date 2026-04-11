@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../domain/entities/cart_enums.dart';
 import '../../domain/entities/cart_item.dart';
 import '../../../produtos/domain/entities/product.dart';
 
@@ -21,7 +22,9 @@ class CartController extends Notifier<CartState> {
       if (product.stockMil < 1000) {
         return false;
       }
-      state = CartState(items: [...state.items, CartItem.fromProduct(product)]);
+      state = state.copyWith(
+        items: [...state.items, CartItem.fromProduct(product)],
+      );
       return true;
     }
 
@@ -54,7 +57,7 @@ class CartController extends Notifier<CartState> {
       return increaseQuantity(state.items[index].id);
     }
 
-    state = CartState(items: [...state.items, newItem]);
+    state = state.copyWith(items: [...state.items, newItem]);
     return true;
   }
 
@@ -71,7 +74,7 @@ class CartController extends Notifier<CartState> {
     }
 
     items[index] = current.copyWith(quantityMil: current.quantityMil + 1000);
-    state = CartState(items: items);
+    state = state.copyWith(items: items);
     return true;
   }
 
@@ -89,11 +92,11 @@ class CartController extends Notifier<CartState> {
       items[index] = current.copyWith(quantityMil: current.quantityMil - 1000);
     }
 
-    state = CartState(items: items);
+    state = state.copyWith(items: items);
   }
 
   void removeItem(String itemId) {
-    state = CartState(
+    state = state.copyWith(
       items: state.items.where((item) => item.id != itemId).toList(),
     );
   }
@@ -121,7 +124,45 @@ class CartController extends Notifier<CartState> {
       modifiers: current.modifiers,
       notes: _cleanNullable(notes),
     );
-    state = CartState(items: items);
+    state = state.copyWith(items: items);
+  }
+
+  void setTipoEntrega(TipoEntrega tipo) {
+    state = state.copyWith(
+      tipoEntrega: tipo,
+      numeroMesa: tipo == TipoEntrega.mesa ? state.numeroMesa : null,
+      cep: tipo == TipoEntrega.delivery ? state.cep : null,
+      freteCents: tipo == TipoEntrega.delivery ? state.freteCents : 0,
+    );
+  }
+
+  void setNumeroMesa(String numero) {
+    state = state.copyWith(numeroMesa: _cleanNullable(numero));
+  }
+
+  Future<void> setCep(String cep) async {
+    final cleanedCep = _cleanDigits(cep);
+    state = state.copyWith(
+      cep: _cleanNullable(cleanedCep),
+      freteCents: cleanedCep.length == 8 ? 500 : 0,
+    );
+  }
+
+  void aplicarCupom(String codigo) {
+    final normalizedCode = _cleanNullable(codigo)?.toUpperCase();
+    if (normalizedCode == 'DESCONTO10') {
+      state = state.copyWith(
+        cupomCodigo: normalizedCode,
+        cupomDescontoCents: 1000,
+      );
+      return;
+    }
+
+    throw Exception('Cupom inválido ou expirado.');
+  }
+
+  void removerCupom() {
+    state = state.copyWith(cupomCodigo: null, cupomDescontoCents: 0);
   }
 
   void clear() {
@@ -131,5 +172,9 @@ class CartController extends Notifier<CartState> {
   String? _cleanNullable(String? value) {
     final trimmed = value?.trim();
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
+  String _cleanDigits(String value) {
+    return value.replaceAll(RegExp(r'[^0-9]'), '');
   }
 }

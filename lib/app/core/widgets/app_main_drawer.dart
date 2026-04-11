@@ -6,6 +6,7 @@ import '../../../modules/account/presentation/providers/account_cloud_providers.
 import '../../routes/route_names.dart';
 import '../constants/app_constants.dart';
 import '../session/auth_provider.dart';
+import 'tatuzin_brand.dart';
 
 class AppMainDrawer extends ConsumerWidget {
   const AppMainDrawer({super.key});
@@ -28,71 +29,69 @@ class AppMainDrawer extends ConsumerWidget {
           children: [
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [colorScheme.primary, colorScheme.secondary],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+                color: colorScheme.surfaceContainerLow,
+                border: Border(
+                  bottom: BorderSide(color: colorScheme.outlineVariant),
                 ),
               ),
-              child: Column(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Center(
-                      child: Text(
-                        'T',
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
+                  const TatuzinMascotBadge(size: 46),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: AppConstants.appName,
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -0.4,
+                                ),
+                              ),
+                              TextSpan(
+                                text: '  ERP/PDV',
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    AppConstants.appName,
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    AppConstants.appSlogan,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    authStatus.companyLabel,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    authStatus.userLabel,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.92),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '$accountModeLabel - $cloudLabel',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      fontWeight: FontWeight.w600,
+                        const SizedBox(height: 4),
+                        Text(
+                          authStatus.companyLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          authStatus.userLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '$accountModeLabel • $cloudLabel',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -103,7 +102,7 @@ class AppMainDrawer extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                 children: [
                   _DrawerGroup(
-                    label: 'Visao geral',
+                    label: 'Visão geral',
                     children: [
                       _DrawerItem(
                         label: 'Dashboard',
@@ -119,7 +118,7 @@ class AppMainDrawer extends ConsumerWidget {
                     ],
                   ),
                   _DrawerGroup(
-                    label: 'Operacao',
+                    label: 'Operação',
                     children: [
                       _DrawerItem(
                         label: 'Vendas',
@@ -144,7 +143,7 @@ class AppMainDrawer extends ConsumerWidget {
                         ),
                       ),
                       _DrawerItem(
-                        label: 'Notas / Fiado',
+                        label: 'Fiado',
                         icon: Icons.receipt_long_rounded,
                         isSelected: currentPath == AppRoutePaths.fiado,
                         onTap: () => _navigateTo(
@@ -222,7 +221,7 @@ class AppMainDrawer extends ConsumerWidget {
                     ],
                   ),
                   _DrawerGroup(
-                    label: 'Gestao',
+                    label: 'Gestão',
                     children: [
                       _DrawerItem(
                         label: 'Custos',
@@ -236,7 +235,7 @@ class AppMainDrawer extends ConsumerWidget {
                         ),
                       ),
                       _DrawerItem(
-                        label: 'Relatorios',
+                        label: 'Relatórios',
                         icon: Icons.assessment_rounded,
                         isSelected: currentPath == AppRoutePaths.reports,
                         onTap: () => _navigateTo(
@@ -263,7 +262,7 @@ class AppMainDrawer extends ConsumerWidget {
                         ),
                       ),
                       _DrawerItem(
-                        label: 'Backup e restore',
+                        label: 'Backup e restauração',
                         icon: Icons.backup_rounded,
                         isSelected: currentPath == AppRoutePaths.backup,
                         onTap: () => _navigateTo(
@@ -289,8 +288,9 @@ class AppMainDrawer extends ConsumerWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(18),
+                    color: colorScheme.surfaceContainerLowest,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: colorScheme.outlineVariant),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -318,7 +318,7 @@ class AppMainDrawer extends ConsumerWidget {
                       if (authStatus.isRemoteAuthenticated) ...[
                         const SizedBox(height: 2),
                         Text(
-                          'Licenca: ${authStatus.licensePlanLabel} - ${authStatus.licenseStatusLabel}',
+                          'Licença: ${authStatus.licensePlanLabel} • ${authStatus.licenseStatusLabel}',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                           ),
@@ -388,7 +388,7 @@ class AppMainDrawer extends ConsumerWidget {
       }
       messenger.showSnackBar(
         const SnackBar(
-          content: Text('Voce saiu da conta. O app continua no modo local.'),
+          content: Text('Você saiu da conta. O app continua no modo local.'),
         ),
       );
       router.goNamed(AppRouteNames.accountCloud);
@@ -417,7 +417,7 @@ class AppMainDrawer extends ConsumerWidget {
               const ListTile(
                 title: Text('Ferramentas internas'),
                 subtitle: Text(
-                  'Acesso reservado para suporte, homologacao e evolucao do produto. O admin web continua sendo a superficie administrativa principal.',
+                  'Acesso reservado para suporte, homologação e evolução do produto. O admin web continua sendo a superfície administrativa principal.',
                 ),
               ),
               if (access.canOpenTechnicalSystem)
@@ -425,7 +425,7 @@ class AppMainDrawer extends ConsumerWidget {
                   leading: const Icon(Icons.build_circle_outlined),
                   title: const Text('Ferramentas internas'),
                   subtitle: const Text(
-                    'Diagnosticos, suporte tecnico e acompanhamento interno.',
+                    'Diagnósticos, suporte técnico e acompanhamento interno.',
                   ),
                   onTap: () => Navigator.of(
                     sheetContext,
@@ -436,7 +436,7 @@ class AppMainDrawer extends ConsumerWidget {
                   leading: const Icon(Icons.admin_panel_settings_outlined),
                   title: const Text('Admin interno de apoio'),
                   subtitle: const Text(
-                    'Consulta interna e provisoria dentro do app. Use o admin web como superficie administrativa principal.',
+                    'Consulta interna e provisória dentro do app. Use o admin web como superfície administrativa principal.',
                   ),
                   onTap: () =>
                       Navigator.of(sheetContext).pop(AppRouteNames.admin),

@@ -28,46 +28,52 @@ class AppMetricCard extends StatelessWidget {
 
     return AppCard(
       onTap: onTap,
-      borderRadius: 22,
-      padding: const EdgeInsets.all(18),
-      gradient: LinearGradient(
-        colors: [
-          effectiveAccent.withValues(alpha: 0.18),
-          effectiveAccent.withValues(alpha: 0.04),
-        ],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
+      borderRadius: 16,
+      padding: const EdgeInsets.all(11),
+      color: effectiveAccent.withValues(alpha: 0.08),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.72),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Icon(icon, color: effectiveAccent),
-            ),
+          Row(
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.84),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Icon(icon, size: 15, color: effectiveAccent),
+                ),
+              ),
+              const Spacer(),
+              if (onTap != null)
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+            ],
           ),
-          const Spacer(),
+          const SizedBox(height: 8),
           Text(
             label,
-            style: theme.textTheme.bodyMedium?.copyWith(
+            style: theme.textTheme.labelMedium?.copyWith(
               color: colorScheme.onSurfaceVariant,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 2),
           Text(
             value,
-            maxLines: 2,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.headlineSmall,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
           ),
           if (caption?.isNotEmpty ?? false) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 2),
             Text(
               caption!,
               maxLines: 2,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../app/core/widgets/app_feedback.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../domain/entities/commercial_receipt_request.dart';
 import '../providers/receipt_providers.dart';
@@ -49,10 +50,9 @@ class ReceiptActionBar extends ConsumerWidget {
                     if (!context.mounted) {
                       return;
                     }
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Comprovante compartilhado com sucesso.'),
-                      ),
+                    AppFeedback.success(
+                      context,
+                      'Comprovante compartilhado com sucesso.',
                     );
                   },
                 ),
@@ -73,9 +73,7 @@ class ReceiptActionBar extends ConsumerWidget {
                     if (!context.mounted) {
                       return;
                     }
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('PDF salvo em $savedPath')),
-                    );
+                    AppFeedback.success(context, 'PDF salvo em $savedPath');
                   },
                 ),
           icon: const Icon(Icons.picture_as_pdf_outlined),
@@ -92,13 +90,10 @@ class ReceiptActionBar extends ConsumerWidget {
     required Future<void> Function() action,
   }) async {
     if (!enabled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            blockedMessage ??
-                'O comprovante comercial não está disponível para esta operação.',
-          ),
-        ),
+      AppFeedback.info(
+        context,
+        blockedMessage ??
+            'O comprovante comercial não está disponível para esta operação.',
       );
       return;
     }
@@ -109,21 +104,16 @@ class ReceiptActionBar extends ConsumerWidget {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
+      AppFeedback.error(context, error.toString());
     }
   }
 
   void _openPreview(BuildContext context) {
     if (!enabled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            blockedMessage ??
-                'O comprovante comercial não está disponível para esta operação.',
-          ),
-        ),
+      AppFeedback.info(
+        context,
+        blockedMessage ??
+            'O comprovante comercial não está disponível para esta operação.',
       );
       return;
     }
