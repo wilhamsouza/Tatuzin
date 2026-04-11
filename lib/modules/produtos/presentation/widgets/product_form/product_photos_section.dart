@@ -29,51 +29,95 @@ class ProductPhotosSection extends StatelessWidget {
     return AppSectionCard(
       title: 'Fotos',
       subtitle: 'A primeira imagem vira a capa principal do produto.',
-      trailing: FilledButton.tonalIcon(
-        onPressed: photos.length >= maxPhotos || isPickingPhoto
-            ? null
-            : onAddPhoto,
-        icon: const Icon(Icons.add_photo_alternate_outlined),
-        label: const Text('Adicionar'),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '${photos.length} / $maxPhotos fotos',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, constraints) {
-              final crossAxisCount = constraints.maxWidth < 360 ? 2 : 3;
-              return GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: maxPhotos,
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossAxisCount,
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  childAspectRatio: 0.9,
-                ),
-                itemBuilder: (context, index) {
-                  final hasPhoto = index < photos.length;
-                  final photo = hasPhoto ? photos[index] : null;
-                  return _ProductPhotoTile(
-                    photo: photo,
-                    isPrimary: hasPhoto && index == 0,
-                    isPickingPhoto: isPickingPhoto,
-                    onTap: hasPhoto || photos.length >= maxPhotos
-                        ? null
-                        : onAddPhoto,
-                    onRemove: hasPhoto ? () => onRemovePhoto(index) : null,
-                  );
-                },
+              final summary = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${photos.length} / $maxPhotos fotos',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'A capa principal sai da primeira foto preenchida.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              );
+
+              final button = FilledButton.tonalIcon(
+                onPressed: photos.length >= maxPhotos || isPickingPhoto
+                    ? null
+                    : onAddPhoto,
+                icon: const Icon(Icons.add_photo_alternate_outlined),
+                label: const Text('Adicionar'),
+              );
+
+              if (constraints.maxWidth < 520) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    summary,
+                    const SizedBox(height: 12),
+                    SizedBox(width: double.infinity, child: button),
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: summary),
+                  const SizedBox(width: 12),
+                  button,
+                ],
               );
             },
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final tileWidth = constraints.maxWidth < 360 ? 120.0 : 138.0;
+                final crossAxisCount = (constraints.maxWidth / tileWidth)
+                    .floor()
+                    .clamp(2, 3);
+
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: maxPhotos,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: 0.9,
+                  ),
+                  itemBuilder: (context, index) {
+                    final hasPhoto = index < photos.length;
+                    final photo = hasPhoto ? photos[index] : null;
+                    return _ProductPhotoTile(
+                      photo: photo,
+                      isPrimary: hasPhoto && index == 0,
+                      isPickingPhoto: isPickingPhoto,
+                      onTap: hasPhoto || photos.length >= maxPhotos
+                          ? null
+                          : onAddPhoto,
+                      onRemove: hasPhoto ? () => onRemovePhoto(index) : null,
+                    );
+                  },
+                );
+              },
+            ),
           ),
         ],
       ),

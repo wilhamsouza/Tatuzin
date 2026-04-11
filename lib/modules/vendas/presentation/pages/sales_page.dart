@@ -154,7 +154,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                         ),
                         itemCount: products.length,
                         itemBuilder: (context, index) {
-                          return _ProductTile(product: products[index]);
+                          return _ProductTile(entry: products[index]);
                         },
                       ),
                     );
@@ -555,18 +555,21 @@ class _BottomActionButton extends StatelessWidget {
 }
 
 class _ProductTile extends ConsumerWidget {
-  const _ProductTile({required this.product});
+  const _ProductTile({required this.entry});
 
-  final Product product;
+  final SalesCatalogEntry entry;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final outOfStock = product.stockMil < 1000;
+    final product = entry.product;
+    final outOfStock = entry.totalStockMil < 1000;
     final stockLabel =
-        'Estoque ${AppFormatters.quantityFromMil(product.stockMil)}';
+        'Estoque ${AppFormatters.quantityFromMil(entry.totalStockMil)}';
     final secondaryDetails = [
+      if (entry.hasVariants)
+        '${entry.availableVariants.length} variante${entry.availableVariants.length == 1 ? '' : 's'}',
       if (product.modifierGroupCount > 0)
         '${product.modifierGroupCount} complemento${product.modifierGroupCount == 1 ? '' : 's'}',
       if (product.barcode?.isNotEmpty ?? false) 'Cód. ${product.barcode}',
@@ -611,7 +614,7 @@ class _ProductTile extends ConsumerWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      product.displayName,
+                      entry.displayName,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.titleSmall?.copyWith(
@@ -634,7 +637,9 @@ class _ProductTile extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: IconButton(
-                        tooltip: 'Adicionar ao carrinho',
+                        tooltip: entry.hasVariants
+                            ? 'Escolher variante'
+                            : 'Adicionar ao carrinho',
                         onPressed: outOfStock
                             ? null
                             : () => _addProduct(context, ref),
@@ -643,6 +648,8 @@ class _ProductTile extends ConsumerWidget {
                         icon: Icon(
                           outOfStock
                               ? Icons.block_rounded
+                              : entry.hasVariants
+                              ? Icons.tune_rounded
                               : Icons.add_shopping_cart_rounded,
                           size: 18,
                         ),
@@ -653,7 +660,9 @@ class _ProductTile extends ConsumerWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                AppFormatters.currencyFromCents(product.salePriceCents),
+                entry.hasPriceRange
+                    ? 'A partir de ${AppFormatters.currencyFromCents(entry.startingPriceCents)}'
+                    : AppFormatters.currencyFromCents(entry.startingPriceCents),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.titleMedium?.copyWith(
@@ -697,6 +706,8 @@ class _ProductTile extends ConsumerWidget {
                     Icon(
                       outOfStock
                           ? Icons.block_rounded
+                          : entry.hasVariants
+                          ? Icons.tune_rounded
                           : Icons.add_shopping_cart_rounded,
                       size: 14,
                       color: outOfStock
@@ -706,7 +717,11 @@ class _ProductTile extends ConsumerWidget {
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
-                        outOfStock ? 'Sem estoque' : 'Adicionar',
+                        outOfStock
+                            ? 'Sem estoque'
+                            : entry.hasVariants
+                            ? 'Escolher variante'
+                            : 'Adicionar',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.labelMedium?.copyWith(
@@ -728,7 +743,16 @@ class _ProductTile extends ConsumerWidget {
   }
 
   Future<void> _addProduct(BuildContext context, WidgetRef ref) async {
-    final added = await _addProductWithCompatibility(context, ref);
+    final selectedProduct = await _resolveSelectedProduct(context);
+    if (selectedProduct == null || !context.mounted) {
+      return;
+    }
+
+    final added = await _addProductWithCompatibility(
+      context,
+      ref,
+      selectedProduct,
+    );
     if (added == null || !context.mounted) {
       return;
     }
@@ -738,16 +762,35 @@ class _ProductTile extends ConsumerWidget {
         SnackBar(
           content: Text(
             added
-                ? '${product.displayName} adicionado ao carrinho.'
-                : 'N\u00e3o foi poss\u00edvel adicionar mais unidades por falta de estoque.',
+                ? '${selectedProduct.displayName} adicionado ao carrinho.'
+                : 'Não foi possível adicionar mais unidades por falta de estoque.',
           ),
         ),
       );
   }
 
+  Future<Product?> _resolveSelectedProduct(BuildContext context) async {
+    if (!entry.hasVariants) {
+      return entry.product;
+    }
+
+    final selectedVariant = await showModalBottomSheet<ProductVariant>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _VariantSelectionSheet(entry: entry),
+    );
+    if (selectedVariant == null) {
+      return null;
+    }
+
+    return entry.buildSellableVariantProduct(selectedVariant);
+  }
+
   Future<bool?> _addProductWithCompatibility(
     BuildContext context,
     WidgetRef ref,
+    Product product,
   ) async {
     final hasOperationalModifiers =
         product.baseProductId != null && product.modifierGroupCount > 0;
@@ -772,6 +815,269 @@ class _ProductTile extends ConsumerWidget {
           modifiers: customization.modifiers,
           notes: customization.notes,
         );
+  }
+}
+
+class _VariantSelectionSheet extends StatefulWidget {
+  const _VariantSelectionSheet({required this.entry});
+
+  final SalesCatalogEntry entry;
+
+  @override
+  State<_VariantSelectionSheet> createState() => _VariantSelectionSheetState();
+}
+
+class _VariantSelectionSheetState extends State<_VariantSelectionSheet> {
+  String? _selectedSize;
+  String? _selectedColor;
+
+  List<String> get _sizes => widget.entry.availableVariants
+      .map((variant) => variant.sizeLabel.trim())
+      .where((label) => label.isNotEmpty)
+      .toSet()
+      .toList(growable: false);
+
+  List<String> get _colorsForSelectedSize {
+    final selectedSize = _selectedSize;
+    if (selectedSize == null) {
+      return const <String>[];
+    }
+
+    return widget.entry.availableVariants
+        .where((variant) => variant.sizeLabel.trim() == selectedSize)
+        .map((variant) => variant.colorLabel.trim())
+        .where((label) => label.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+  }
+
+  ProductVariant? get _selectedVariant {
+    final selectedSize = _selectedSize;
+    final selectedColor = _selectedColor;
+    if (selectedSize == null || selectedColor == null) {
+      return null;
+    }
+
+    for (final variant in widget.entry.availableVariants) {
+      if (variant.sizeLabel.trim() == selectedSize &&
+          variant.colorLabel.trim() == selectedColor) {
+        return variant;
+      }
+    }
+    return null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (_sizes.length == 1) {
+      _selectedSize = _sizes.first;
+    }
+    if (_colorsForSelectedSize.length == 1) {
+      _selectedColor = _colorsForSelectedSize.first;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final product = widget.entry.product;
+    final selectedVariant = _selectedVariant;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 12,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.entry.displayName,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${widget.entry.availableVariants.length} variantes disponíveis',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.entry.hasPriceRange
+                      ? 'A partir de ${AppFormatters.currencyFromCents(widget.entry.startingPriceCents)}'
+                      : AppFormatters.currencyFromCents(
+                          widget.entry.startingPriceCents,
+                        ),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  product.description?.trim().isNotEmpty ?? false
+                      ? product.description!.trim()
+                      : 'Escolha tamanho e cor para adicionar a variante correta.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Tamanho',
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _sizes
+                .map(
+                  (size) => ChoiceChip(
+                    label: Text(size),
+                    selected: _selectedSize == size,
+                    onSelected: (_) {
+                      setState(() {
+                        _selectedSize = size;
+                        if (!_colorsForSelectedSize.contains(_selectedColor)) {
+                          _selectedColor = null;
+                        }
+                        if (_colorsForSelectedSize.length == 1) {
+                          _selectedColor = _colorsForSelectedSize.first;
+                        }
+                      });
+                    },
+                  ),
+                )
+                .toList(growable: false),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Cor',
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (_selectedSize == null)
+            Text(
+              'Escolha um tamanho para ver as cores disponíveis.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _colorsForSelectedSize
+                  .map(
+                    (color) => ChoiceChip(
+                      label: Text(color),
+                      selected: _selectedColor == color,
+                      onSelected: (_) {
+                        setState(() => _selectedColor = color);
+                      },
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: colorScheme.outlineVariant),
+            ),
+            child: selectedVariant == null
+                ? Text(
+                    'Selecione uma combinação válida para continuar.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${selectedVariant.sizeLabel} • ${selectedVariant.colorLabel}',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        AppFormatters.currencyFromCents(
+                          product.salePriceCents +
+                              selectedVariant.priceAdditionalCents,
+                        ),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'SKU ${selectedVariant.sku} • Estoque ${AppFormatters.quantityFromMil(selectedVariant.stockMil)}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: selectedVariant == null
+                  ? null
+                  : () => Navigator.of(context).pop(selectedVariant),
+              icon: const Icon(Icons.add_shopping_cart_rounded),
+              label: const Text('Adicionar variante'),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

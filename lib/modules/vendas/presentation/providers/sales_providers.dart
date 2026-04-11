@@ -27,10 +27,137 @@ import '../../domain/usecases/finalize_credit_sale_use_case.dart';
 
 final salesSearchQueryProvider = StateProvider<String>((ref) => '');
 
-final salesCatalogProvider = FutureProvider<List<Product>>((ref) async {
+class SalesCatalogEntry {
+  const SalesCatalogEntry({
+    required this.product,
+    required this.availableVariants,
+  });
+
+  final Product product;
+  final List<ProductVariant> availableVariants;
+
+  bool get hasVariants => availableVariants.isNotEmpty;
+
+  String get displayName {
+    final modelName = product.modelName?.trim();
+    if ((modelName ?? '').isNotEmpty) {
+      return modelName!;
+    }
+    return product.name;
+  }
+
+  int get startingPriceCents {
+    if (!hasVariants) {
+      return product.salePriceCents;
+    }
+
+    var lowest =
+        product.salePriceCents + availableVariants.first.priceAdditionalCents;
+    for (final variant in availableVariants.skip(1)) {
+      final price = product.salePriceCents + variant.priceAdditionalCents;
+      if (price < lowest) {
+        lowest = price;
+      }
+    }
+    return lowest;
+  }
+
+  bool get hasPriceRange {
+    if (!hasVariants) {
+      return false;
+    }
+
+    final firstPrice =
+        product.salePriceCents + availableVariants.first.priceAdditionalCents;
+    for (final variant in availableVariants.skip(1)) {
+      if (product.salePriceCents + variant.priceAdditionalCents != firstPrice) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  int get totalStockMil {
+    if (!hasVariants) {
+      return product.stockMil;
+    }
+
+    return availableVariants.fold<int>(
+      0,
+      (total, variant) => total + variant.stockMil,
+    );
+  }
+
+  Product buildSellableVariantProduct(ProductVariant variant) {
+    return Product(
+      id: product.id,
+      uuid: product.uuid,
+      name: product.name,
+      description: product.description,
+      categoryId: product.categoryId,
+      categoryName: product.categoryName,
+      barcode: product.barcode,
+      primaryPhotoPath: product.primaryPhotoPath,
+      productType: product.productType,
+      niche: product.niche,
+      catalogType: product.catalogType,
+      modelName: product.modelName,
+      variantLabel: product.variantLabel,
+      baseProductId: product.baseProductId,
+      baseProductName: product.baseProductName,
+      variantAttributes: product.variantAttributes,
+      variants: product.variants,
+      modifierGroups: product.modifierGroups,
+      sellableVariantId: variant.id,
+      sellableVariantSku: variant.sku,
+      sellableVariantColorLabel: variant.colorLabel,
+      sellableVariantSizeLabel: variant.sizeLabel,
+      sellableVariantPriceAdditionalCents: variant.priceAdditionalCents,
+      unitMeasure: product.unitMeasure,
+      costCents: product.costCents,
+      salePriceCents: product.salePriceCents + variant.priceAdditionalCents,
+      stockMil: variant.stockMil,
+      isActive: product.isActive,
+      createdAt: product.createdAt,
+      updatedAt: product.updatedAt,
+      deletedAt: product.deletedAt,
+      remoteId: product.remoteId,
+      syncStatus: product.syncStatus,
+      lastSyncedAt: product.lastSyncedAt,
+    );
+  }
+}
+
+final salesCatalogProvider = FutureProvider<List<SalesCatalogEntry>>((
+  ref,
+) async {
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(salesSearchQueryProvider);
-  return ref.watch(productRepositoryProvider).searchAvailable(query: query);
+  final products = await ref
+      .watch(productRepositoryProvider)
+      .search(query: query);
+
+  return products
+      .where((product) {
+        if (!product.isActive) {
+          return false;
+        }
+        if (product.hasVariants) {
+          return product.variants.any(
+            (variant) => variant.isActive && variant.stockMil > 0,
+          );
+        }
+        return product.stockMil > 0;
+      })
+      .map(
+        (product) => SalesCatalogEntry(
+          product: product,
+          availableVariants: product.variants
+              .where((variant) => variant.isActive && variant.stockMil > 0)
+              .toList(growable: false),
+        ),
+      )
+      .toList(growable: false);
 });
 
 final salesQuickAddProvider = Provider<SalesQuickAddController>((ref) {
