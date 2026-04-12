@@ -2,79 +2,208 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/widgets/app_section_card.dart';
+import '../../domain/entities/order_ticket_document.dart';
 import '../mappers/order_ticket_mapper.dart';
-import '../providers/order_providers.dart';
+import '../providers/order_print_providers.dart';
+import '../widgets/kitchen_printer_config_dialog.dart';
 
-class OrderTicketPreviewPage extends ConsumerWidget {
+class OrderTicketPreviewPage extends ConsumerStatefulWidget {
   const OrderTicketPreviewPage({super.key, required this.orderId});
 
   final int orderId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final detailAsync = ref.watch(operationalOrderDetailProvider(orderId));
+  ConsumerState<OrderTicketPreviewPage> createState() =>
+      _OrderTicketPreviewPageState();
+}
+
+class _OrderTicketPreviewPageState
+    extends ConsumerState<OrderTicketPreviewPage> {
+  OrderTicketProfile _profile = OrderTicketProfile.kitchen;
+
+  @override
+  Widget build(BuildContext context) {
+    final ticketAsync = ref.watch(
+      orderTicketDocumentProvider((orderId: widget.orderId, profile: _profile)),
+    );
+    final printState = ref.watch(orderKitchenPrintControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Ticket operacional')),
-      body: detailAsync.when(
-        data: (detail) {
-          if (detail == null) {
-            return const Center(child: Text('Pedido nao encontrado.'));
-          }
-
-          final ticket = OrderTicketMapper.fromDetail(detail);
+      appBar: AppBar(
+        title: const Text('Preview operacional'),
+        actions: [
+          IconButton(
+            tooltip: 'Configurar impressora',
+            onPressed: _openPrinterConfig,
+            icon: const Icon(Icons.print_outlined),
+          ),
+        ],
+      ),
+      body: ticketAsync.when(
+        data: (ticket) {
+          final viewModel = OrderTicketMapper.fromDocument(ticket);
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
             children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Cozinha'),
+                    selected: _profile == OrderTicketProfile.kitchen,
+                    onSelected: (_) {
+                      setState(() => _profile = OrderTicketProfile.kitchen);
+                    },
+                  ),
+                  ChoiceChip(
+                    label: const Text('Interno'),
+                    selected: _profile == OrderTicketProfile.internal,
+                    onSelected: (_) {
+                      setState(() => _profile = OrderTicketProfile.internal);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
               AppSectionCard(
-                title: 'Preview local',
+                title: viewModel.title,
                 subtitle:
-                    'Este ticket operacional e interno e nao substitui comprovante comercial.',
+                    'Preview interno para operacao. O comprovante comercial permanece separado no fluxo de vendas.',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Pedido ${ticket.orderNumber}',
-                      style: Theme.of(context).textTheme.titleLarge,
+                      'Pedido ${viewModel.orderNumber}',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const SizedBox(height: 4),
-                    Text('Status: ${ticket.statusLabel}'),
-                    Text('Atualizado: ${ticket.updatedAtLabel}'),
-                    if (ticket.headerNotes?.trim().isNotEmpty ?? false)
-                      Text('Obs.: ${ticket.headerNotes!}'),
+                    Text(
+                      '${viewModel.profileLabel} • ${viewModel.statusLabel}',
+                    ),
+                    if (viewModel.businessName?.trim().isNotEmpty ?? false) ...[
+                      const SizedBox(height: 4),
+                      Text(viewModel.businessName!),
+                    ],
+                    if (viewModel.headerNotes?.trim().isNotEmpty ?? false) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text('Obs.: ${viewModel.headerNotes!}'),
+                      ),
+                    ],
                   ],
                 ),
               ),
               const SizedBox(height: 12),
-              for (final line in ticket.lines) ...[
+              AppSectionCard(
+                title: 'Cabecalho do ticket',
+                child: Column(
+                  children: viewModel.infoLines
+                      .map(
+                        (line) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Row(
+                            children: [
+                              Expanded(child: Text(line.label)),
+                              const SizedBox(width: 12),
+                              Text(
+                                line.value,
+                                textAlign: TextAlign.right,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
+              ),
+              const SizedBox(height: 12),
+              for (final line in viewModel.lines) ...[
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(14),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          line.title,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${line.quantityLabel} x ${line.unitPriceLabel} = ${line.totalPriceLabel}',
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '${line.quantityLabel}x',
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    line.title,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.w800),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(line.summaryLabel),
+                                ],
+                              ),
+                            ),
+                            if (line.totalLabel != null)
+                              Text(
+                                line.totalLabel!,
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w800),
+                              ),
+                          ],
                         ),
                         if (line.modifierLines.isNotEmpty) ...[
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 10),
                           ...line.modifierLines.map(
-                            (modifier) => Text(
-                              modifier,
-                              style: Theme.of(context).textTheme.bodySmall,
+                            (modifier) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(modifier),
                             ),
                           ),
                         ],
                         if (line.notes?.trim().isNotEmpty ?? false) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            'Obs.: ${line.notes!}',
-                            style: Theme.of(context).textTheme.bodySmall,
+                          const SizedBox(height: 10),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .errorContainer
+                                  .withValues(alpha: 0.55),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text('Obs.: ${line.notes!}'),
                           ),
                         ],
                       ],
@@ -83,20 +212,39 @@ class OrderTicketPreviewPage extends ConsumerWidget {
                 ),
                 const SizedBox(height: 8),
               ],
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
-                    children: [
-                      const Expanded(child: Text('Total operacional')),
-                      Text(
-                        ticket.totalLabel,
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                    ],
+              if (viewModel.showFinancialSummary)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        const Expanded(child: Text('Total operacional')),
+                        Text(
+                          viewModel.totalLabel,
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              if (viewModel.footerLines.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                AppSectionCard(
+                  title: 'Rodape',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: viewModel.footerLines
+                        .map(
+                          (line) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(line),
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+                ),
+              ],
             ],
           );
         },
@@ -104,6 +252,73 @@ class OrderTicketPreviewPage extends ConsumerWidget {
         error: (error, _) =>
             Center(child: Text('Falha ao montar ticket: $error')),
       ),
+      bottomNavigationBar: _profile == OrderTicketProfile.kitchen
+          ? SafeArea(
+              minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: FilledButton.icon(
+                onPressed: printState.isLoading ? null : _printKitchen,
+                icon: printState.isLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.print_rounded),
+                label: Text(
+                  printState.isLoading
+                      ? 'Imprimindo cozinha...'
+                      : 'Imprimir cozinha',
+                ),
+              ),
+            )
+          : null,
     );
+  }
+
+  Future<void> _printKitchen() async {
+    try {
+      await ref
+          .read(orderKitchenPrintControllerProvider.notifier)
+          .printOrder(widget.orderId);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('Ticket da cozinha enviado.')),
+        );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('Falha ao imprimir cozinha: $error')),
+        );
+    }
+  }
+
+  Future<void> _openPrinterConfig() async {
+    final config = await ref.read(kitchenPrinterConfigProvider.future);
+    if (!mounted) {
+      return;
+    }
+
+    final updated = await showDialog<bool>(
+      context: context,
+      builder: (_) => KitchenPrinterConfigDialog(initialConfig: config),
+    );
+
+    if (updated == true && mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Configuracao da impressora atualizada.'),
+          ),
+        );
+    }
   }
 }

@@ -7,38 +7,11 @@ import '../../../produtos/domain/entities/product.dart';
 import '../../../produtos/presentation/providers/product_providers.dart';
 import '../../data/sqlite_operational_order_repository.dart';
 import '../../domain/entities/operational_order.dart';
+import '../../domain/entities/operational_order_detail.dart';
 import '../../domain/entities/operational_order_item.dart';
 import '../../domain/entities/operational_order_item_modifier.dart';
+import '../../domain/entities/operational_order_summary.dart';
 import '../../domain/repositories/operational_order_repository.dart';
-
-class OperationalOrderItemDetail {
-  const OperationalOrderItemDetail({
-    required this.item,
-    required this.modifiers,
-  });
-
-  final OperationalOrderItem item;
-  final List<OperationalOrderItemModifier> modifiers;
-
-  int get modifierDeltaCents => modifiers.fold<int>(
-    0,
-    (sum, modifier) => sum + (modifier.priceDeltaCents * modifier.quantity),
-  );
-
-  int get totalCents =>
-      item.subtotalCents + (modifierDeltaCents * (item.quantityMil ~/ 1000));
-}
-
-class OperationalOrderDetail {
-  const OperationalOrderDetail({required this.order, required this.items});
-
-  final OperationalOrder order;
-  final List<OperationalOrderItemDetail> items;
-
-  int get itemsCount => items.length;
-  int get totalCents =>
-      items.fold<int>(0, (sum, item) => sum + item.totalCents);
-}
 
 final operationalOrderRepositoryProvider = Provider<OperationalOrderRepository>(
   (ref) {
@@ -48,12 +21,18 @@ final operationalOrderRepositoryProvider = Provider<OperationalOrderRepository>(
 
 final operationalOrderSearchQueryProvider = StateProvider<String>((ref) => '');
 
-final operationalOrdersProvider = FutureProvider<List<OperationalOrder>>((
-  ref,
-) async {
-  final query = ref.watch(operationalOrderSearchQueryProvider);
-  return ref.read(operationalOrderRepositoryProvider).list(query: query);
-});
+final operationalOrderStatusFilterProvider =
+    StateProvider<OperationalOrderStatus?>((ref) => null);
+
+final operationalOrdersProvider = FutureProvider<List<OperationalOrderSummary>>(
+  (ref) async {
+    final query = ref.watch(operationalOrderSearchQueryProvider);
+    final status = ref.watch(operationalOrderStatusFilterProvider);
+    return ref
+        .read(operationalOrderRepositoryProvider)
+        .listSummaries(query: query, status: status);
+  },
+);
 
 final operationalOrderDetailProvider =
     FutureProvider.family<OperationalOrderDetail?, int>((ref, orderId) async {
@@ -63,16 +42,31 @@ final operationalOrderDetailProvider =
         return null;
       }
 
-      final items = await repository.listItems(orderId);
+      final itemsFuture = repository.listItems(orderId);
+      final linkedSaleFuture = repository.findLinkedSaleId(orderId);
+      final items = await itemsFuture;
+      final linkedSaleId = await linkedSaleFuture;
+
+      final modifiersFutures = items.map(
+        (item) => repository.listItemModifiers(item.id),
+      );
+      final modifiersList = await Future.wait(modifiersFutures);
+
       final details = <OperationalOrderItemDetail>[];
-      for (final item in items) {
-        final modifiers = await repository.listItemModifiers(item.id);
+      for (var index = 0; index < items.length; index++) {
         details.add(
-          OperationalOrderItemDetail(item: item, modifiers: modifiers),
+          OperationalOrderItemDetail(
+            item: items[index],
+            modifiers: modifiersList[index],
+          ),
         );
       }
 
-      return OperationalOrderDetail(order: order, items: details);
+      return OperationalOrderDetail(
+        order: order,
+        items: details,
+        linkedSaleId: linkedSaleId,
+      );
     });
 
 final orderCatalogProvider = FutureProvider.family<List<Product>, String>((
@@ -92,16 +86,24 @@ final addOperationalOrderItemControllerProvider =
       AddOperationalOrderItemController.new,
     );
 
+final operationalOrderStatusControllerProvider =
+    AsyncNotifierProvider<OperationalOrderStatusController, void>(
+      OperationalOrderStatusController.new,
+    );
+
 class CreateOperationalOrderController extends AsyncNotifier<void> {
   @override
   FutureOr<void> build() {}
 
-  Future<int> create({String? notes}) async {
+  Future<int> create({
+    String? notes,
+    OperationalOrderStatus status = OperationalOrderStatus.draft,
+  }) async {
     state = const AsyncLoading();
     try {
       final id = await ref
           .read(operationalOrderRepositoryProvider)
-          .create(OperationalOrderInput(notes: notes));
+          .create(OperationalOrderInput(notes: notes, status: status));
       ref.invalidate(operationalOrdersProvider);
       state = const AsyncData(null);
       return id;
@@ -148,6 +150,29 @@ class AddOperationalOrderItemController extends AsyncNotifier<void> {
             .addItemModifier(itemId, modifier);
       }
 
+      ref.invalidate(operationalOrdersProvider);
+      ref.invalidate(operationalOrderDetailProvider(orderId));
+      state = const AsyncData(null);
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+}
+
+class OperationalOrderStatusController extends AsyncNotifier<void> {
+  @override
+  FutureOr<void> build() {}
+
+  Future<void> updateStatus({
+    required int orderId,
+    required OperationalOrderStatus status,
+  }) async {
+    state = const AsyncLoading();
+    try {
+      await ref
+          .read(operationalOrderRepositoryProvider)
+          .updateStatus(orderId, status);
       ref.invalidate(operationalOrdersProvider);
       ref.invalidate(operationalOrderDetailProvider(orderId));
       state = const AsyncData(null);

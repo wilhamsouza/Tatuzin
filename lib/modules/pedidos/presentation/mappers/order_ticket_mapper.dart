@@ -1,93 +1,127 @@
 import '../../../../app/core/formatters/app_formatters.dart';
-import '../../domain/entities/operational_order.dart';
-import '../providers/order_providers.dart';
+import '../../domain/entities/order_ticket_document.dart';
+import '../support/order_ui_support.dart';
 
-class OrderTicketLine {
-  const OrderTicketLine({
+class OrderTicketInfoLine {
+  const OrderTicketInfoLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+}
+
+class OrderTicketLineViewModel {
+  const OrderTicketLineViewModel({
     required this.title,
     required this.quantityLabel,
-    required this.unitPriceLabel,
-    required this.totalPriceLabel,
+    required this.summaryLabel,
     required this.modifierLines,
     required this.notes,
+    required this.totalLabel,
   });
 
   final String title;
   final String quantityLabel;
-  final String unitPriceLabel;
-  final String totalPriceLabel;
+  final String summaryLabel;
   final List<String> modifierLines;
   final String? notes;
+  final String? totalLabel;
 }
 
 class OrderTicketViewModel {
   const OrderTicketViewModel({
+    required this.title,
+    required this.profileLabel,
+    required this.businessName,
     required this.orderNumber,
     required this.statusLabel,
-    required this.updatedAtLabel,
     required this.headerNotes,
-    required this.totalLabel,
+    required this.infoLines,
     required this.lines,
+    required this.footerLines,
+    required this.totalLabel,
+    required this.showFinancialSummary,
   });
 
+  final String title;
+  final String profileLabel;
+  final String? businessName;
   final String orderNumber;
   final String statusLabel;
-  final String updatedAtLabel;
   final String? headerNotes;
+  final List<OrderTicketInfoLine> infoLines;
+  final List<OrderTicketLineViewModel> lines;
+  final List<String> footerLines;
   final String totalLabel;
-  final List<OrderTicketLine> lines;
+  final bool showFinancialSummary;
 }
 
 abstract final class OrderTicketMapper {
-  static OrderTicketViewModel fromDetail(OperationalOrderDetail detail) {
-    final lines = detail.items
-        .map((itemDetail) {
-          final item = itemDetail.item;
-          final modifierLines = itemDetail.modifiers
-              .map(
-                (modifier) =>
-                    '- ${modifier.groupNameSnapshot ?? 'Modificador'}: ${modifier.optionNameSnapshot} (${modifier.adjustmentTypeSnapshot})',
-              )
+  static OrderTicketViewModel fromDocument(OrderTicketDocument ticket) {
+    final lines = ticket.lines
+        .map((line) {
+          final modifierLines = line.modifiers
+              .map((modifier) {
+                final parts = <String>[
+                  if (modifier.groupName?.trim().isNotEmpty ?? false)
+                    '${modifier.groupName}:',
+                  modifier.optionName,
+                ];
+                if (ticket.showFinancialSummary &&
+                    modifier.priceDeltaCents != 0) {
+                  parts.add(
+                    AppFormatters.currencyFromCents(modifier.priceDeltaCents),
+                  );
+                }
+                return parts.join(' ');
+              })
               .toList(growable: false);
-          return OrderTicketLine(
-            title: item.productNameSnapshot,
-            quantityLabel: AppFormatters.quantityFromMil(item.quantityMil),
-            unitPriceLabel: AppFormatters.currencyFromCents(
-              item.unitPriceCents,
-            ),
-            totalPriceLabel: AppFormatters.currencyFromCents(
-              itemDetail.totalCents,
-            ),
+
+          return OrderTicketLineViewModel(
+            title: line.productName,
+            quantityLabel: AppFormatters.quantityFromMil(line.quantityMil),
+            summaryLabel: ticket.showFinancialSummary
+                ? '${AppFormatters.quantityFromMil(line.quantityMil)} x ${AppFormatters.currencyFromCents(line.unitPriceCents)}'
+                : 'Quantidade ${AppFormatters.quantityFromMil(line.quantityMil)}',
             modifierLines: modifierLines,
-            notes: item.notes,
+            notes: line.notes,
+            totalLabel: ticket.showFinancialSummary
+                ? AppFormatters.currencyFromCents(line.totalCents)
+                : null,
           );
         })
         .toList(growable: false);
 
     return OrderTicketViewModel(
-      orderNumber: '#${detail.order.id}',
-      statusLabel: _statusLabel(detail.order.status),
-      updatedAtLabel: AppFormatters.shortDateTime(detail.order.updatedAt),
-      headerNotes: detail.order.notes,
-      totalLabel: AppFormatters.currencyFromCents(detail.totalCents),
+      title: ticket.title,
+      profileLabel: ticket.isKitchenProfile ? 'Cozinha' : 'Interno',
+      businessName: ticket.businessName,
+      orderNumber: '#${ticket.orderId}',
+      statusLabel: operationalOrderStatusLabel(ticket.status),
+      headerNotes: ticket.orderNotes,
+      infoLines: [
+        OrderTicketInfoLine(
+          label: 'Criado em',
+          value: AppFormatters.shortDateTime(ticket.createdAt),
+        ),
+        OrderTicketInfoLine(
+          label: 'Atualizado em',
+          value: AppFormatters.shortDateTime(ticket.updatedAt),
+        ),
+        OrderTicketInfoLine(
+          label: 'Status',
+          value: operationalOrderStatusLabel(ticket.status),
+        ),
+        OrderTicketInfoLine(label: 'Itens', value: '${ticket.totalUnits}'),
+        if (ticket.showFinancialSummary)
+          OrderTicketInfoLine(
+            label: 'Total',
+            value: AppFormatters.currencyFromCents(ticket.totalCents),
+          ),
+      ],
       lines: lines,
+      footerLines: ticket.footerLines,
+      totalLabel: AppFormatters.currencyFromCents(ticket.totalCents),
+      showFinancialSummary: ticket.showFinancialSummary,
     );
-  }
-
-  static String _statusLabel(OperationalOrderStatus status) {
-    switch (status) {
-      case OperationalOrderStatus.open:
-        return 'Aberto';
-      case OperationalOrderStatus.inPreparation:
-        return 'Em preparo';
-      case OperationalOrderStatus.ready:
-        return 'Pronto';
-      case OperationalOrderStatus.delivered:
-        return 'Entregue';
-      case OperationalOrderStatus.canceled:
-        return 'Cancelado';
-      case OperationalOrderStatus.draft:
-        return 'Rascunho';
-    }
   }
 }

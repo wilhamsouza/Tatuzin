@@ -43,6 +43,44 @@ extension OperationalOrderStatusX on OperationalOrderStatus {
   }
 }
 
+extension OperationalOrderStatusRules on OperationalOrderStatus {
+  bool get isTerminal {
+    return this == OperationalOrderStatus.delivered ||
+        this == OperationalOrderStatus.canceled;
+  }
+
+  bool get allowsItemChanges => !isTerminal;
+
+  bool canTransitionTo(OperationalOrderStatus next) {
+    if (this == next) {
+      return true;
+    }
+
+    if (isTerminal) {
+      return false;
+    }
+
+    if (next == OperationalOrderStatus.canceled) {
+      return true;
+    }
+
+    switch (next) {
+      case OperationalOrderStatus.draft:
+        return false;
+      case OperationalOrderStatus.open:
+        return true;
+      case OperationalOrderStatus.inPreparation:
+        return this != OperationalOrderStatus.draft;
+      case OperationalOrderStatus.ready:
+        return this == OperationalOrderStatus.inPreparation;
+      case OperationalOrderStatus.delivered:
+        return this == OperationalOrderStatus.ready;
+      case OperationalOrderStatus.canceled:
+        return true;
+    }
+  }
+}
+
 class OperationalOrder {
   const OperationalOrder({
     required this.id,
@@ -61,6 +99,9 @@ class OperationalOrder {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? closedAt;
+
+  bool get isTerminal => status.isTerminal;
+  bool get allowsItemChanges => status.allowsItemChanges;
 }
 
 class OperationalOrderInput {
