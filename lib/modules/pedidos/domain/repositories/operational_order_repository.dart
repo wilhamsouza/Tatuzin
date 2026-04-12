@@ -1,11 +1,17 @@
 import '../entities/operational_order.dart';
 import '../entities/operational_order_item.dart';
 import '../entities/operational_order_item_modifier.dart';
+import '../entities/operational_order_summary.dart';
 
 abstract interface class OperationalOrderRepository {
   Future<int> create(OperationalOrderInput input);
 
   Future<List<OperationalOrder>> list({String query = ''});
+
+  Future<List<OperationalOrderSummary>> listSummaries({
+    String query = '',
+    OperationalOrderStatus? status,
+  });
 
   Future<OperationalOrder?> findById(int orderId);
 

@@ -23,6 +23,7 @@ import '../../modules/compras/presentation/pages/purchases_page.dart';
 import '../../modules/comprovantes/presentation/pages/receipt_preview_page.dart';
 import '../../modules/dashboard/presentation/pages/dashboard_page.dart';
 import '../../modules/pedidos/presentation/pages/order_detail_page.dart';
+import '../../modules/pedidos/presentation/pages/kitchen_order_view_page.dart';
 import '../../modules/pedidos/presentation/pages/orders_page.dart';
 import '../../modules/fiado/presentation/pages/fiado_detail_page.dart';
 import '../../modules/fiado/presentation/pages/fiado_page.dart';
@@ -173,6 +174,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final orderId = int.parse(state.pathParameters['orderId']!);
           return OrderDetailPage(orderId: orderId);
+        },
+      ),
+      GoRoute(
+        path: AppRoutePaths.orderKitchen,
+        name: AppRouteNames.orderKitchen,
+        builder: (context, state) {
+          final orderId = int.parse(state.pathParameters['orderId']!);
+          return KitchenOrderViewPage(orderId: orderId);
         },
       ),
       GoRoute(
