@@ -3,50 +3,12 @@ import 'package:flutter/material.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../domain/entities/operational_order.dart';
 
-class OperationalOrderFilterOption {
-  const OperationalOrderFilterOption({
-    required this.label,
-    required this.status,
-  });
-
-  final String label;
-  final OperationalOrderStatus? status;
-}
-
-const operationalOrderFilterOptions = <OperationalOrderFilterOption>[
-  OperationalOrderFilterOption(label: 'Todos', status: null),
-  OperationalOrderFilterOption(
-    label: 'Rascunhos',
-    status: OperationalOrderStatus.draft,
-  ),
-  OperationalOrderFilterOption(
-    label: 'Abertos',
-    status: OperationalOrderStatus.open,
-  ),
-  OperationalOrderFilterOption(
-    label: 'Em preparo',
-    status: OperationalOrderStatus.inPreparation,
-  ),
-  OperationalOrderFilterOption(
-    label: 'Prontos',
-    status: OperationalOrderStatus.ready,
-  ),
-  OperationalOrderFilterOption(
-    label: 'Entregues',
-    status: OperationalOrderStatus.delivered,
-  ),
-  OperationalOrderFilterOption(
-    label: 'Cancelados',
-    status: OperationalOrderStatus.canceled,
-  ),
-];
-
 String operationalOrderStatusLabel(OperationalOrderStatus status) {
   switch (status) {
     case OperationalOrderStatus.draft:
       return 'Rascunho';
     case OperationalOrderStatus.open:
-      return 'Aberto';
+      return 'Enviado';
     case OperationalOrderStatus.inPreparation:
       return 'Em preparo';
     case OperationalOrderStatus.ready:
@@ -61,17 +23,17 @@ String operationalOrderStatusLabel(OperationalOrderStatus status) {
 String operationalOrderStatusDescription(OperationalOrderStatus status) {
   switch (status) {
     case OperationalOrderStatus.draft:
-      return 'Pedido ainda em montagem';
+      return 'Pedido em montagem no balcao';
     case OperationalOrderStatus.open:
-      return 'Aguardando inicio de preparo';
+      return 'Pedido enviado para a fila da cozinha';
     case OperationalOrderStatus.inPreparation:
-      return 'Producao em andamento';
+      return 'Cozinha preparando o pedido';
     case OperationalOrderStatus.ready:
-      return 'Pronto para entrega';
+      return 'Pedido pronto para retirada ou entrega';
     case OperationalOrderStatus.delivered:
-      return 'Pedido encerrado';
+      return 'Fluxo operacional concluido, pronto para faturar';
     case OperationalOrderStatus.canceled:
-      return 'Fluxo interrompido';
+      return 'Pedido interrompido';
   }
 }
 
@@ -86,7 +48,7 @@ AppStatusTone operationalOrderStatusTone(OperationalOrderStatus status) {
     case OperationalOrderStatus.ready:
       return AppStatusTone.success;
     case OperationalOrderStatus.delivered:
-      return AppStatusTone.success;
+      return AppStatusTone.neutral;
     case OperationalOrderStatus.canceled:
       return AppStatusTone.danger;
   }
@@ -97,11 +59,11 @@ IconData operationalOrderStatusIcon(OperationalOrderStatus status) {
     case OperationalOrderStatus.draft:
       return Icons.edit_note_rounded;
     case OperationalOrderStatus.open:
-      return Icons.receipt_long_rounded;
+      return Icons.send_to_mobile_rounded;
     case OperationalOrderStatus.inPreparation:
       return Icons.local_fire_department_rounded;
     case OperationalOrderStatus.ready:
-      return Icons.check_circle_rounded;
+      return Icons.notifications_active_rounded;
     case OperationalOrderStatus.delivered:
       return Icons.delivery_dining_rounded;
     case OperationalOrderStatus.canceled:
@@ -109,33 +71,106 @@ IconData operationalOrderStatusIcon(OperationalOrderStatus status) {
   }
 }
 
+String operationalOrderServiceTypeLabel(
+  OperationalOrderServiceType serviceType,
+) {
+  switch (serviceType) {
+    case OperationalOrderServiceType.counter:
+      return 'Balcao';
+    case OperationalOrderServiceType.pickup:
+      return 'Retirada';
+    case OperationalOrderServiceType.delivery:
+      return 'Delivery';
+    case OperationalOrderServiceType.table:
+      return 'Mesa';
+  }
+}
+
+String operationalOrderServiceTypeHint(
+  OperationalOrderServiceType serviceType,
+) {
+  switch (serviceType) {
+    case OperationalOrderServiceType.counter:
+      return 'Consumo imediato no balcao';
+    case OperationalOrderServiceType.pickup:
+      return 'Cliente retira no local';
+    case OperationalOrderServiceType.delivery:
+      return 'Sai para entrega';
+    case OperationalOrderServiceType.table:
+      return 'Atendimento em mesa';
+  }
+}
+
+IconData operationalOrderServiceTypeIcon(
+  OperationalOrderServiceType serviceType,
+) {
+  switch (serviceType) {
+    case OperationalOrderServiceType.counter:
+      return Icons.storefront_rounded;
+    case OperationalOrderServiceType.pickup:
+      return Icons.shopping_bag_rounded;
+    case OperationalOrderServiceType.delivery:
+      return Icons.delivery_dining_rounded;
+    case OperationalOrderServiceType.table:
+      return Icons.table_restaurant_rounded;
+  }
+}
+
+String orderTicketDispatchStatusLabel(OrderTicketDispatchStatus status) {
+  switch (status) {
+    case OrderTicketDispatchStatus.pending:
+      return 'Nao enviado';
+    case OrderTicketDispatchStatus.sent:
+      return 'Enviado';
+    case OrderTicketDispatchStatus.failed:
+      return 'Falhou';
+  }
+}
+
+AppStatusTone orderTicketDispatchStatusTone(OrderTicketDispatchStatus status) {
+  switch (status) {
+    case OrderTicketDispatchStatus.pending:
+      return AppStatusTone.neutral;
+    case OrderTicketDispatchStatus.sent:
+      return AppStatusTone.success;
+    case OrderTicketDispatchStatus.failed:
+      return AppStatusTone.danger;
+  }
+}
+
+IconData orderTicketDispatchStatusIcon(OrderTicketDispatchStatus status) {
+  switch (status) {
+    case OrderTicketDispatchStatus.pending:
+      return Icons.print_disabled_rounded;
+    case OrderTicketDispatchStatus.sent:
+      return Icons.print_rounded;
+    case OrderTicketDispatchStatus.failed:
+      return Icons.error_outline_rounded;
+  }
+}
+
 String operationalOrderElapsedLabel(OperationalOrder order, {DateTime? now}) {
   final currentTime = now ?? DateTime.now();
-  final reference = order.status.isTerminal ? order.updatedAt : order.createdAt;
+  final reference = order.status.isTerminal
+      ? (order.closedAt ?? order.updatedAt)
+      : order.createdAt;
   final duration = currentTime.difference(reference);
 
   if (duration.inMinutes < 1) {
     return 'Agora mesmo';
   }
   if (duration.inMinutes < 60) {
-    final minutes = duration.inMinutes;
-    return '$minutes min';
+    return '${duration.inMinutes} min';
   }
   if (duration.inHours < 24) {
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
-    if (minutes == 0) {
-      return '${hours}h';
-    }
-    return '${hours}h ${minutes}min';
+    return minutes == 0 ? '${hours}h' : '${hours}h ${minutes}min';
   }
 
   final days = duration.inDays;
   final hours = duration.inHours.remainder(24);
-  if (hours == 0) {
-    return '${days}d';
-  }
-  return '${days}d ${hours}h';
+  return hours == 0 ? '${days}d' : '${days}d ${hours}h';
 }
 
 String operationalOrderShortNotes(String? value, {int maxLength = 92}) {
@@ -147,4 +182,11 @@ String operationalOrderShortNotes(String? value, {int maxLength = 92}) {
     return normalized;
   }
   return '${normalized.substring(0, maxLength - 1)}...';
+}
+
+String operationalOrderModifierLabel(String optionName, String adjustmentType) {
+  if (adjustmentType == 'remove') {
+    return 'Sem $optionName';
+  }
+  return optionName;
 }

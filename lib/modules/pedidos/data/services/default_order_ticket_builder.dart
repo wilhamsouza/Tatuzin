@@ -39,10 +39,13 @@ class DefaultOrderTicketBuilder implements OrderTicketBuilder {
       profile: profile,
       businessName: AppConstants.defaultLocalCompanyName,
       title: profile == OrderTicketProfile.kitchen
-          ? 'PEDIDO COZINHA'
-          : 'TICKET OPERACIONAL',
+          ? 'COMANDA COZINHA'
+          : 'PREVIEW OPERACIONAL',
       orderId: detail.order.id,
       status: detail.order.status,
+      serviceType: detail.order.serviceType,
+      customerIdentifier: detail.order.customerIdentifier,
+      customerPhone: detail.order.customerPhone,
       createdAt: detail.order.createdAt,
       updatedAt: detail.order.updatedAt,
       orderNotes: detail.order.notes,
@@ -55,7 +58,7 @@ class DefaultOrderTicketBuilder implements OrderTicketBuilder {
         if (profile == OrderTicketProfile.kitchen)
           'Uso interno da cozinha. Nao entregar ao cliente.',
         if (profile == OrderTicketProfile.internal)
-          'Ticket interno. O comprovante comercial permanece no modulo de comprovantes.',
+          'Preview tecnico para conferencia e diagnostico da impressao.',
       ],
     );
   }

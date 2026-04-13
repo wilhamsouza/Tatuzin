@@ -8,6 +8,7 @@ import '../../data/services/escpos_kitchen_print_service.dart';
 import '../../data/shared_preferences_kitchen_printer_settings_repository.dart';
 import '../../domain/entities/kitchen_printer_config.dart';
 import '../../domain/entities/order_ticket_document.dart';
+import '../../domain/entities/operational_order.dart';
 import '../../domain/repositories/kitchen_printer_settings_repository.dart';
 import '../../domain/services/kitchen_print_service.dart';
 import '../../domain/services/order_ticket_builder.dart';
@@ -54,10 +55,32 @@ final kitchenPrinterConfigControllerProvider =
       KitchenPrinterConfigController.new,
     );
 
-final orderKitchenPrintControllerProvider =
-    AsyncNotifierProvider<OrderKitchenPrintController, void>(
-      OrderKitchenPrintController.new,
+final kitchenPrinterTestControllerProvider =
+    AsyncNotifierProvider<KitchenPrinterTestController, void>(
+      KitchenPrinterTestController.new,
     );
+
+final orderKitchenDispatchControllerProvider =
+    AsyncNotifierProvider<OrderKitchenDispatchController, void>(
+      OrderKitchenDispatchController.new,
+    );
+
+final orderTicketReprintControllerProvider =
+    AsyncNotifierProvider<OrderTicketReprintController, void>(
+      OrderTicketReprintController.new,
+    );
+
+class OrderTicketDispatchResult {
+  const OrderTicketDispatchResult({
+    required this.printed,
+    required this.failureMessage,
+  });
+
+  final bool printed;
+  final String? failureMessage;
+
+  bool get hasFailure => !printed;
+}
 
 class KitchenPrinterConfigController extends AsyncNotifier<void> {
   @override
@@ -90,33 +113,98 @@ class KitchenPrinterConfigController extends AsyncNotifier<void> {
   }
 }
 
-class OrderKitchenPrintController extends AsyncNotifier<void> {
+class KitchenPrinterTestController extends AsyncNotifier<void> {
   @override
   FutureOr<void> build() {}
 
-  Future<void> printOrder(int orderId) async {
+  Future<void> printTest(KitchenPrinterConfig config) async {
     state = const AsyncLoading();
     try {
-      final printer = await ref.read(kitchenPrinterConfigProvider.future);
-      if (printer == null) {
-        throw const ValidationException(
-          'Nenhuma impressora de cozinha configurada.',
-        );
-      }
-
-      final ticket = await ref.read(
-        orderTicketDocumentProvider((
-          orderId: orderId,
-          profile: OrderTicketProfile.kitchen,
-        )).future,
-      );
-      await ref
-          .read(kitchenPrintServiceProvider)
-          .print(printer: printer, ticket: ticket);
+      await ref.read(kitchenPrintServiceProvider).printTest(printer: config);
       state = const AsyncData(null);
     } catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);
       rethrow;
     }
   }
+}
+
+class OrderKitchenDispatchController extends AsyncNotifier<void> {
+  @override
+  FutureOr<void> build() {}
+
+  Future<OrderTicketDispatchResult> sendToKitchen(int orderId) async {
+    state = const AsyncLoading();
+    try {
+      await ref.read(operationalOrderRepositoryProvider).sendToKitchen(orderId);
+      final result = await _dispatchTicket(ref, orderId);
+      _invalidateOrder(ref, orderId);
+      state = const AsyncData(null);
+      return result;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+}
+
+class OrderTicketReprintController extends AsyncNotifier<void> {
+  @override
+  FutureOr<void> build() {}
+
+  Future<OrderTicketDispatchResult> reprint(int orderId) async {
+    state = const AsyncLoading();
+    try {
+      final result = await _dispatchTicket(ref, orderId);
+      _invalidateOrder(ref, orderId);
+      state = const AsyncData(null);
+      return result;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+}
+
+Future<OrderTicketDispatchResult> _dispatchTicket(Ref ref, int orderId) async {
+  final repository = ref.read(operationalOrderRepositoryProvider);
+  try {
+    final printer = await ref.read(kitchenPrinterConfigProvider.future);
+    if (printer == null) {
+      throw const ValidationException(
+        'Nenhuma impressora configurada para cozinha.',
+      );
+    }
+
+    final ticket = await ref.read(
+      orderTicketDocumentProvider((
+        orderId: orderId,
+        profile: OrderTicketProfile.kitchen,
+      )).future,
+    );
+    await ref
+        .read(kitchenPrintServiceProvider)
+        .print(printer: printer, ticket: ticket);
+    await repository.updateTicketDispatchState(
+      orderId: orderId,
+      status: OrderTicketDispatchStatus.sent,
+    );
+    return const OrderTicketDispatchResult(printed: true, failureMessage: null);
+  } catch (error) {
+    await repository.updateTicketDispatchState(
+      orderId: orderId,
+      status: OrderTicketDispatchStatus.failed,
+      failureMessage: error.toString(),
+    );
+    return OrderTicketDispatchResult(
+      printed: false,
+      failureMessage: error.toString(),
+    );
+  }
+}
+
+void _invalidateOrder(Ref ref, int orderId) {
+  ref.invalidate(kitchenPrinterConfigProvider);
+  ref.invalidate(operationalOrderBoardProvider);
+  ref.invalidate(operationalOrderDetailProvider(orderId));
 }

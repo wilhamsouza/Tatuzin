@@ -53,6 +53,26 @@ class KitchenPrinterConfig {
     }
   }
 
+  KitchenPrinterConfig copyWith({
+    String? displayName,
+    KitchenPrinterConnectionType? connectionType,
+    String? host,
+    int? port,
+    String? bluetoothAddress,
+    int? charactersPerLine,
+    bool? autoCut,
+  }) {
+    return KitchenPrinterConfig(
+      displayName: displayName ?? this.displayName,
+      connectionType: connectionType ?? this.connectionType,
+      host: host ?? this.host,
+      port: port ?? this.port,
+      bluetoothAddress: bluetoothAddress ?? this.bluetoothAddress,
+      charactersPerLine: charactersPerLine ?? this.charactersPerLine,
+      autoCut: autoCut ?? this.autoCut,
+    );
+  }
+
   Map<String, Object?> toJson() {
     return {
       'displayName': displayName,

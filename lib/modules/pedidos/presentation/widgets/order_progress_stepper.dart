@@ -9,7 +9,7 @@ class OrderProgressStepper extends StatelessWidget {
 
   static const List<(OperationalOrderStatus, String)> _steps =
       <(OperationalOrderStatus, String)>[
-        (OperationalOrderStatus.open, 'Aberto'),
+        (OperationalOrderStatus.open, 'Enviado'),
         (OperationalOrderStatus.inPreparation, 'Em preparo'),
         (OperationalOrderStatus.ready, 'Pronto'),
         (OperationalOrderStatus.delivered, 'Entregue'),
@@ -75,7 +75,6 @@ class OrderProgressStepper extends StatelessWidget {
   int _progressIndex(OperationalOrderStatus status) {
     switch (status) {
       case OperationalOrderStatus.draft:
-        return 0;
       case OperationalOrderStatus.open:
         return 0;
       case OperationalOrderStatus.inPreparation:

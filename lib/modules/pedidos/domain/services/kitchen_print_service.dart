@@ -6,4 +6,6 @@ abstract interface class KitchenPrintService {
     required KitchenPrinterConfig printer,
     required OrderTicketDocument ticket,
   });
+
+  Future<void> printTest({required KitchenPrinterConfig printer});
 }

@@ -5,9 +5,9 @@ import 'dart:io';
 import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../domain/entities/kitchen_printer_config.dart';
-import '../../domain/entities/operational_order.dart';
 import '../../domain/entities/order_ticket_document.dart';
 import '../../domain/services/kitchen_print_service.dart';
+import '../../presentation/support/order_ui_support.dart';
 
 class EscPosKitchenPrintService implements KitchenPrintService {
   const EscPosKitchenPrintService();
@@ -19,22 +19,48 @@ class EscPosKitchenPrintService implements KitchenPrintService {
   }) async {
     switch (printer.connectionType) {
       case KitchenPrinterConnectionType.network:
-        await _printOverNetwork(printer: printer, ticket: ticket);
+        await _printOverNetwork(
+          printer: printer,
+          bytes: _buildTicketBytes(
+            ticket: ticket,
+            charactersPerLine: printer.charactersPerLine,
+            autoCut: printer.autoCut,
+          ),
+        );
       case KitchenPrinterConnectionType.bluetooth:
         throw const ValidationException(
-          'Bluetooth termico ainda nao esta disponivel nesta versao. Use uma impressora ESC/POS em rede.',
+          'Fluxo Bluetooth preparado, mas a camada nativa de envio termico ainda nao foi conectada nesta versao.',
+        );
+    }
+  }
+
+  @override
+  Future<void> printTest({required KitchenPrinterConfig printer}) async {
+    switch (printer.connectionType) {
+      case KitchenPrinterConnectionType.network:
+        await _printOverNetwork(
+          printer: printer,
+          bytes: _buildTestBytes(
+            printerName: printer.displayName,
+            charactersPerLine: printer.charactersPerLine,
+            autoCut: printer.autoCut,
+          ),
+        );
+      case KitchenPrinterConnectionType.bluetooth:
+        throw const ValidationException(
+          'Configuracao Bluetooth salva. Falta apenas conectar o adaptador nativo para teste real de impressao.',
         );
     }
   }
 
   Future<void> _printOverNetwork({
     required KitchenPrinterConfig printer,
-    required OrderTicketDocument ticket,
+    required List<int> bytes,
   }) async {
     final host = printer.host?.trim();
     if (host == null || host.isEmpty) {
       throw const ValidationException(
-        'Configure o IP da impressora de cozinha antes de imprimir.',
+        'Configure o IP da impressora antes de imprimir.',
       );
     }
 
@@ -45,12 +71,7 @@ class EscPosKitchenPrintService implements KitchenPrintService {
         printer.port,
         timeout: const Duration(seconds: 5),
       );
-      socket.add(
-        _buildBytes(
-          ticket: ticket,
-          charactersPerLine: printer.charactersPerLine,
-        ),
-      );
+      socket.add(bytes);
       await socket.flush();
       await socket.close();
     } on SocketException catch (error) {
@@ -60,7 +81,7 @@ class EscPosKitchenPrintService implements KitchenPrintService {
       );
     } on TimeoutException catch (error) {
       throw ValidationException(
-        'A conexao com a impressora demorou demais. Confira se ela esta ligada e acessivel na rede.',
+        'A conexao com a impressora demorou demais. Confira se ela esta ligada e acessivel.',
         cause: error,
       );
     } catch (error) {
@@ -73,9 +94,10 @@ class EscPosKitchenPrintService implements KitchenPrintService {
     }
   }
 
-  List<int> _buildBytes({
+  List<int> _buildTicketBytes({
     required OrderTicketDocument ticket,
     required int charactersPerLine,
+    required bool autoCut,
   }) {
     final writer = _EscPosWriter(charactersPerLine: charactersPerLine);
     writer.initialize();
@@ -90,7 +112,14 @@ class EscPosKitchenPrintService implements KitchenPrintService {
     writer.doubleSize();
     writer.text('Pedido #${ticket.orderId}');
     writer.normalSize();
-    writer.text(_statusLabel(ticket.status));
+    writer.text(operationalOrderStatusLabel(ticket.status));
+    writer.text(operationalOrderServiceTypeLabel(ticket.serviceType));
+    if (ticket.customerIdentifier?.trim().isNotEmpty ?? false) {
+      writer.text(ticket.customerIdentifier!.trim());
+    }
+    if (ticket.customerPhone?.trim().isNotEmpty ?? false) {
+      writer.text(ticket.customerPhone!.trim());
+    }
     writer.text(AppFormatters.shortDateTime(ticket.updatedAt));
     writer.separator();
     writer.left();
@@ -108,13 +137,16 @@ class EscPosKitchenPrintService implements KitchenPrintService {
         final modifierLabel = [
           if (modifier.groupName?.trim().isNotEmpty ?? false)
             '${modifier.groupName}:',
-          modifier.optionName,
+          operationalOrderModifierLabel(
+            modifier.optionName,
+            modifier.adjustmentType,
+          ),
         ].join(' ');
         writer.indented(modifierLabel);
       }
 
       if (line.notes?.trim().isNotEmpty ?? false) {
-        writer.indented('OBS: ${line.notes!.trim()}');
+        writer.indented('OBS ITEM: ${line.notes!.trim()}');
       }
 
       writer.separator();
@@ -129,30 +161,45 @@ class EscPosKitchenPrintService implements KitchenPrintService {
     }
 
     writer.text('Itens: ${ticket.totalUnits}');
+    if (ticket.showFinancialSummary) {
+      writer.text(
+        'Total: ${AppFormatters.currencyFromCents(ticket.totalCents)}',
+      );
+    }
     for (final footerLine in ticket.footerLines) {
       writer.feed();
       writer.text(footerLine);
     }
     writer.feed(lines: 4);
-    writer.cut();
+    if (autoCut) {
+      writer.cut();
+    }
     return writer.bytes;
   }
 
-  String _statusLabel(OperationalOrderStatus status) {
-    switch (status) {
-      case OperationalOrderStatus.draft:
-        return 'Rascunho';
-      case OperationalOrderStatus.open:
-        return 'Aberto';
-      case OperationalOrderStatus.inPreparation:
-        return 'Em preparo';
-      case OperationalOrderStatus.ready:
-        return 'Pronto';
-      case OperationalOrderStatus.delivered:
-        return 'Entregue';
-      case OperationalOrderStatus.canceled:
-        return 'Cancelado';
+  List<int> _buildTestBytes({
+    required String printerName,
+    required int charactersPerLine,
+    required bool autoCut,
+  }) {
+    final writer = _EscPosWriter(charactersPerLine: charactersPerLine);
+    writer.initialize();
+    writer.center();
+    writer.bold(true);
+    writer.text('TESTE DE IMPRESSAO');
+    writer.bold(false);
+    writer.text(printerName);
+    writer.feed();
+    writer.left();
+    writer.text(
+      'Se este ticket saiu completo, a configuracao basica esta funcionando.',
+    );
+    writer.text(AppFormatters.shortDateTime(DateTime.now()));
+    writer.feed(lines: 4);
+    if (autoCut) {
+      writer.cut();
     }
+    return writer.bytes;
   }
 }
 

@@ -23,12 +23,31 @@ abstract interface class OperationalOrderRepository {
 
   Future<void> linkToSale({required int orderId, required int saleId});
 
+  Future<void> updateDraft(int orderId, OperationalOrderDraftInput input);
+
+  Future<void> sendToKitchen(int orderId);
+
   Future<void> updateStatus(int orderId, OperationalOrderStatus status);
 
+  Future<void> updateTicketDispatchState({
+    required int orderId,
+    required OrderTicketDispatchStatus status,
+    String? failureMessage,
+  });
+
   Future<int> addItem(int orderId, OperationalOrderItemInput input);
+
+  Future<void> updateItem(int orderItemId, OperationalOrderItemInput input);
+
+  Future<void> removeItem(int orderItemId);
 
   Future<int> addItemModifier(
     int orderItemId,
     OperationalOrderItemModifierInput input,
+  );
+
+  Future<void> replaceItemModifiers(
+    int orderItemId,
+    List<OperationalOrderItemModifierInput> modifiers,
   );
 }
