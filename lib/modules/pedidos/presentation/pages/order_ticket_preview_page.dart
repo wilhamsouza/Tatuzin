@@ -5,6 +5,8 @@ import '../../../../app/core/widgets/app_section_card.dart';
 import '../../domain/entities/order_ticket_document.dart';
 import '../mappers/order_ticket_mapper.dart';
 import '../providers/order_print_providers.dart';
+import '../providers/order_providers.dart';
+import '../support/order_ui_support.dart';
 import '../widgets/kitchen_printer_config_dialog.dart';
 
 class OrderTicketPreviewPage extends ConsumerStatefulWidget {
@@ -23,14 +25,18 @@ class _OrderTicketPreviewPageState
 
   @override
   Widget build(BuildContext context) {
+    final detailAsync = ref.watch(
+      operationalOrderDetailProvider(widget.orderId),
+    );
     final ticketAsync = ref.watch(
       orderTicketDocumentProvider((orderId: widget.orderId, profile: _profile)),
     );
-    final printState = ref.watch(orderKitchenPrintControllerProvider);
+    final reprintState = ref.watch(orderTicketReprintControllerProvider);
+    final printerAsync = ref.watch(kitchenPrinterConfigProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Preview operacional'),
+        title: const Text('Preview tecnico do ticket'),
         actions: [
           IconButton(
             tooltip: 'Configurar impressora',
@@ -45,6 +51,37 @@ class _OrderTicketPreviewPageState
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
             children: [
+              detailAsync.maybeWhen(
+                data: (detail) {
+                  if (detail == null) {
+                    return const SizedBox.shrink();
+                  }
+                  return AppSectionCard(
+                    title: 'Uso deste preview',
+                    subtitle:
+                        'Fallback tecnico para conferencia visual, diagnostico e comparacao com a impressao real.',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Status do ticket: ${orderTicketDispatchStatusLabel(detail.order.ticketMeta.status)}',
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          printerAsync.maybeWhen(
+                            data: (config) => config == null
+                                ? 'Impressora: nao configurada'
+                                : 'Impressora: ${config.displayName} | ${config.targetLabel}',
+                            orElse: () => 'Impressora: carregando...',
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                orElse: () => const SizedBox.shrink(),
+              ),
+              const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -68,8 +105,9 @@ class _OrderTicketPreviewPageState
               const SizedBox(height: 12),
               AppSectionCard(
                 title: viewModel.title,
-                subtitle:
-                    'Preview interno para operacao. O comprovante comercial permanece separado no fluxo de vendas.',
+                subtitle: _profile == OrderTicketProfile.kitchen
+                    ? 'Representacao visual da comanda enviada para cozinha.'
+                    : 'Visual tecnico do documento interno usado para conferencia.',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -81,7 +119,7 @@ class _OrderTicketPreviewPageState
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${viewModel.profileLabel} • ${viewModel.statusLabel}',
+                      '${viewModel.profileLabel} | ${viewModel.statusLabel}',
                     ),
                     if (viewModel.businessName?.trim().isNotEmpty ?? false) ...[
                       const SizedBox(height: 4),
@@ -256,8 +294,8 @@ class _OrderTicketPreviewPageState
           ? SafeArea(
               minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               child: FilledButton.icon(
-                onPressed: printState.isLoading ? null : _printKitchen,
-                icon: printState.isLoading
+                onPressed: reprintState.isLoading ? null : _reprint,
+                icon: reprintState.isLoading
                     ? const SizedBox(
                         width: 18,
                         height: 18,
@@ -265,9 +303,9 @@ class _OrderTicketPreviewPageState
                       )
                     : const Icon(Icons.print_rounded),
                 label: Text(
-                  printState.isLoading
-                      ? 'Imprimindo cozinha...'
-                      : 'Imprimir cozinha',
+                  reprintState.isLoading
+                      ? 'Reimprimindo...'
+                      : 'Reimprimir ticket',
                 ),
               ),
             )
@@ -275,29 +313,24 @@ class _OrderTicketPreviewPageState
     );
   }
 
-  Future<void> _printKitchen() async {
-    try {
-      await ref
-          .read(orderKitchenPrintControllerProvider.notifier)
-          .printOrder(widget.orderId);
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Ticket da cozinha enviado.')),
-        );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(content: Text('Falha ao imprimir cozinha: $error')),
-        );
+  Future<void> _reprint() async {
+    final result = await ref
+        .read(orderTicketReprintControllerProvider.notifier)
+        .reprint(widget.orderId);
+    if (!mounted) {
+      return;
     }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            result.hasFailure
+                ? 'Falha ao reimprimir: ${result.failureMessage}'
+                : 'Ticket reimpresso com sucesso.',
+          ),
+        ),
+      );
   }
 
   Future<void> _openPrinterConfig() async {

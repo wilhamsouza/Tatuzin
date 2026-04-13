@@ -9,6 +9,9 @@ class OrderTicketDocument {
     required this.title,
     required this.orderId,
     required this.status,
+    required this.serviceType,
+    required this.customerIdentifier,
+    required this.customerPhone,
     required this.createdAt,
     required this.updatedAt,
     required this.orderNotes,
@@ -25,6 +28,9 @@ class OrderTicketDocument {
   final String title;
   final int orderId;
   final OperationalOrderStatus status;
+  final OperationalOrderServiceType serviceType;
+  final String? customerIdentifier;
+  final String? customerPhone;
   final DateTime createdAt;
   final DateTime updatedAt;
   final String? orderNotes;

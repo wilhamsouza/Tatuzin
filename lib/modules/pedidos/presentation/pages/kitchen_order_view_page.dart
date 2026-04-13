@@ -20,8 +20,8 @@ class KitchenOrderViewPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final detailAsync = ref.watch(operationalOrderDetailProvider(orderId));
     final statusState = ref.watch(operationalOrderStatusControllerProvider);
-    final printState = ref.watch(orderKitchenPrintControllerProvider);
-    final isBusy = statusState.isLoading || printState.isLoading;
+    final reprintState = ref.watch(orderTicketReprintControllerProvider);
+    final isBusy = statusState.isLoading || reprintState.isLoading;
 
     return Scaffold(
       appBar: AppBar(
@@ -70,9 +70,12 @@ class KitchenOrderViewPage extends ConsumerWidget {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                AppFormatters.shortDateTime(
-                                  detail.order.updatedAt,
-                                ),
+                                detail.order.customerLabel,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${operationalOrderServiceTypeLabel(detail.order.serviceType)} | ${AppFormatters.shortDateTime(detail.order.updatedAt)}',
                                 style: Theme.of(context).textTheme.titleSmall,
                               ),
                             ],
@@ -90,13 +93,6 @@ class KitchenOrderViewPage extends ConsumerWidget {
                         Chip(
                           label: Text(
                             'Tempo ${operationalOrderElapsedLabel(detail.order)}',
-                          ),
-                        ),
-                        Chip(
-                          label: Text(
-                            operationalOrderStatusDescription(
-                              detail.order.status,
-                            ),
                           ),
                         ),
                       ],
@@ -214,10 +210,8 @@ class KitchenOrderViewPage extends ConsumerWidget {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed: isBusy
-                        ? null
-                        : () => _printKitchen(context, ref),
-                    icon: printState.isLoading
+                    onPressed: isBusy ? null : () => _reprint(context, ref),
+                    icon: reprintState.isLoading
                         ? const SizedBox(
                             width: 18,
                             height: 18,
@@ -225,9 +219,9 @@ class KitchenOrderViewPage extends ConsumerWidget {
                           )
                         : const Icon(Icons.print_rounded),
                     label: Text(
-                      printState.isLoading
-                          ? 'Imprimindo cozinha...'
-                          : 'Imprimir cozinha',
+                      reprintState.isLoading
+                          ? 'Reimprimindo...'
+                          : 'Reimprimir ticket',
                     ),
                   ),
                 ),
@@ -274,29 +268,24 @@ class KitchenOrderViewPage extends ConsumerWidget {
     }
   }
 
-  Future<void> _printKitchen(BuildContext context, WidgetRef ref) async {
-    try {
-      await ref
-          .read(orderKitchenPrintControllerProvider.notifier)
-          .printOrder(orderId);
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Ticket da cozinha enviado.')),
-        );
-    } catch (error) {
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(content: Text('Falha ao imprimir cozinha: $error')),
-        );
+  Future<void> _reprint(BuildContext context, WidgetRef ref) async {
+    final result = await ref
+        .read(orderTicketReprintControllerProvider.notifier)
+        .reprint(orderId);
+    if (!context.mounted) {
+      return;
     }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            result.hasFailure
+                ? 'Falha ao reimprimir ticket: ${result.failureMessage}'
+                : 'Ticket reimpresso com sucesso.',
+          ),
+        ),
+      );
   }
 
   Future<void> _openPrinterConfig(BuildContext context, WidgetRef ref) async {

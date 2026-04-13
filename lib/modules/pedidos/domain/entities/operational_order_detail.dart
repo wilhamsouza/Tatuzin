@@ -20,6 +20,14 @@ class OperationalOrderItemDetail {
       item.subtotalCents + (modifierDeltaCents * (item.quantityMil ~/ 1000));
 
   int get quantityUnits => item.quantityMil ~/ 1000;
+
+  List<OperationalOrderItemModifier> get additions => modifiers
+      .where((modifier) => modifier.adjustmentTypeSnapshot == 'add')
+      .toList(growable: false);
+
+  List<OperationalOrderItemModifier> get removals => modifiers
+      .where((modifier) => modifier.adjustmentTypeSnapshot == 'remove')
+      .toList(growable: false);
 }
 
 class OperationalOrderDetail {
@@ -40,4 +48,6 @@ class OperationalOrderDetail {
 
   int get totalCents =>
       items.fold<int>(0, (sum, item) => sum + item.totalCents);
+
+  bool get hasItems => items.isNotEmpty;
 }

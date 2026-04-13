@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/widgets/app_card.dart';
 import '../../domain/entities/operational_order_detail.dart';
+import '../support/order_ui_support.dart';
 
 class OperationalOrderItemCard extends StatelessWidget {
   const OperationalOrderItemCard({
@@ -10,11 +11,15 @@ class OperationalOrderItemCard extends StatelessWidget {
     required this.itemDetail,
     this.showPrices = true,
     this.kitchenMode = false,
+    this.onEdit,
+    this.onRemove,
   });
 
   final OperationalOrderItemDetail itemDetail;
   final bool showPrices;
   final bool kitchenMode;
+  final VoidCallback? onEdit;
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +114,7 @@ class OperationalOrderItemCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Modificadores',
+                    'Adicionais e remocoes',
                     style: theme.textTheme.labelLarge?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
@@ -132,7 +137,10 @@ class OperationalOrderItemCard extends StatelessWidget {
                                       .isNotEmpty ??
                                   false)
                                 '${modifier.groupNameSnapshot}:',
-                              modifier.optionNameSnapshot,
+                              operationalOrderModifierLabel(
+                                modifier.optionNameSnapshot,
+                                modifier.adjustmentTypeSnapshot,
+                              ),
                               if (modifier.quantity > 1)
                                 'x${modifier.quantity}',
                             ].join(' '),
@@ -155,6 +163,27 @@ class OperationalOrderItemCard extends StatelessWidget {
                   ],
                 ],
               ),
+            ),
+          ],
+          if (onEdit != null || onRemove != null) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (onEdit != null)
+                  FilledButton.tonalIcon(
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit_rounded),
+                    label: const Text('Editar item'),
+                  ),
+                if (onRemove != null)
+                  OutlinedButton.icon(
+                    onPressed: onRemove,
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    label: const Text('Remover'),
+                  ),
+              ],
             ),
           ],
         ],

@@ -35,6 +35,8 @@ abstract final class AppMigrations {
     const MigrationStep(version: 19, up: _createVersion19Schema),
     const MigrationStep(version: 20, up: _createVersion20Schema),
     const MigrationStep(version: 21, up: _createVersion21Schema),
+    const MigrationStep(version: 22, up: _createVersion22Schema),
+    const MigrationStep(version: 23, up: _createVersion23Schema),
   ];
 
   static Future<void> runCreate(DatabaseExecutor db, int version) async {
@@ -2861,6 +2863,142 @@ abstract final class AppMigrations {
         ELSE COALESCE(valor_final_centavos, 0)
       END
       WHERE COALESCE(valor_recebido_imediato_centavos, 0) = 0
+    ''');
+  }
+
+  static Future<void> _createVersion22Schema(DatabaseExecutor db) async {
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.produtoVariantes,
+      columnName: 'foto_path',
+      columnDefinition: 'TEXT',
+    );
+  }
+
+  static Future<void> _createVersion23Schema(DatabaseExecutor db) async {
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionais,
+      columnName: 'atendimento_tipo',
+      columnDefinition: "TEXT NOT NULL DEFAULT 'counter'",
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionais,
+      columnName: 'cliente_identificador',
+      columnDefinition: 'TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionais,
+      columnName: 'telefone_cliente',
+      columnDefinition: 'TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionais,
+      columnName: 'ticket_status',
+      columnDefinition: "TEXT NOT NULL DEFAULT 'pending'",
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionais,
+      columnName: 'ticket_tentativas',
+      columnDefinition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionais,
+      columnName: 'ticket_ultimo_erro',
+      columnDefinition: 'TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionais,
+      columnName: 'ticket_ultima_tentativa_em',
+      columnDefinition: 'TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionais,
+      columnName: 'ticket_enviado_em',
+      columnDefinition: 'TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionais,
+      columnName: 'enviado_cozinha_em',
+      columnDefinition: 'TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionais,
+      columnName: 'em_preparo_em',
+      columnDefinition: 'TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionais,
+      columnName: 'pronto_em',
+      columnDefinition: 'TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionais,
+      columnName: 'entregue_em',
+      columnDefinition: 'TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionais,
+      columnName: 'cancelado_em',
+      columnDefinition: 'TEXT',
+    );
+
+    await db.execute('''
+      UPDATE ${TableNames.pedidosOperacionais}
+      SET atendimento_tipo = COALESCE(NULLIF(TRIM(atendimento_tipo), ''), 'counter')
+    ''');
+
+    await db.execute('''
+      UPDATE ${TableNames.pedidosOperacionais}
+      SET enviado_cozinha_em = CASE
+            WHEN enviado_cozinha_em IS NOT NULL THEN enviado_cozinha_em
+            WHEN status IN ('open', 'in_preparation', 'ready', 'delivered')
+              THEN atualizado_em
+            ELSE enviado_cozinha_em
+          END,
+          em_preparo_em = CASE
+            WHEN em_preparo_em IS NOT NULL THEN em_preparo_em
+            WHEN status IN ('in_preparation', 'ready', 'delivered')
+              THEN atualizado_em
+            ELSE em_preparo_em
+          END,
+          pronto_em = CASE
+            WHEN pronto_em IS NOT NULL THEN pronto_em
+            WHEN status IN ('ready', 'delivered') THEN atualizado_em
+            ELSE pronto_em
+          END,
+          entregue_em = CASE
+            WHEN entregue_em IS NOT NULL THEN entregue_em
+            WHEN status = 'delivered' THEN COALESCE(fechado_em, atualizado_em)
+            ELSE entregue_em
+          END,
+          cancelado_em = CASE
+            WHEN cancelado_em IS NOT NULL THEN cancelado_em
+            WHEN status = 'canceled' THEN COALESCE(fechado_em, atualizado_em)
+            ELSE cancelado_em
+          END
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_pedidos_operacionais_atendimento_status
+      ON ${TableNames.pedidosOperacionais}(atendimento_tipo, status, atualizado_em DESC)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_pedidos_operacionais_cliente_identificador
+      ON ${TableNames.pedidosOperacionais}(cliente_identificador)
     ''');
   }
 }

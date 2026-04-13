@@ -18,36 +18,34 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
   @override
   Future<int> create(OperationalOrderInput input) async {
     final database = await _appDatabase.database;
-    final now = DateTime.now().toIso8601String();
+    final nowIso = DateTime.now().toIso8601String();
     return database.insert(TableNames.pedidosOperacionais, {
       'uuid': IdGenerator.next(),
       'status': input.status.dbValue,
+      'atendimento_tipo': input.serviceType.dbValue,
+      'cliente_identificador': _cleanNullable(input.customerIdentifier),
+      'telefone_cliente': _cleanNullable(input.customerPhone),
       'observacao': _cleanNullable(input.notes),
-      'criado_em': now,
-      'atualizado_em': now,
+      'ticket_status': OrderTicketDispatchStatus.pending.dbValue,
+      'ticket_tentativas': 0,
+      'ticket_ultimo_erro': null,
+      'ticket_ultima_tentativa_em': null,
+      'ticket_enviado_em': null,
+      'enviado_cozinha_em': null,
+      'em_preparo_em': null,
+      'pronto_em': null,
+      'entregue_em': null,
+      'cancelado_em': null,
+      'criado_em': nowIso,
+      'atualizado_em': nowIso,
       'fechado_em': null,
     });
   }
 
   @override
   Future<List<OperationalOrder>> list({String query = ''}) async {
-    final database = await _appDatabase.database;
-    final trimmed = query.trim();
-    if (trimmed.isEmpty) {
-      final rows = await database.query(
-        TableNames.pedidosOperacionais,
-        orderBy: 'atualizado_em DESC, id DESC',
-      );
-      return rows.map(_mapOrder).toList();
-    }
-
-    final rows = await database.query(
-      TableNames.pedidosOperacionais,
-      where: 'COALESCE(observacao, \'\') LIKE ? COLLATE NOCASE',
-      whereArgs: ['%$trimmed%'],
-      orderBy: 'atualizado_em DESC, id DESC',
-    );
-    return rows.map(_mapOrder).toList();
+    final summaries = await listSummaries(query: query);
+    return summaries.map((summary) => summary.order).toList(growable: false);
   }
 
   @override
@@ -57,7 +55,7 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
   }) async {
     final database = await _appDatabase.database;
     final trimmed = query.trim();
-    final normalizedLike = '%$trimmed%';
+    final like = '%$trimmed%';
     final args = <Object?>[];
     final where = <String>[];
 
@@ -65,24 +63,25 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       where.add(
         '('
         'CAST(p.id AS TEXT) LIKE ? '
-        'OR COALESCE(p.observacao, \'\') LIKE ? COLLATE NOCASE '
+        'OR COALESCE(p.cliente_identificador, "") LIKE ? COLLATE NOCASE '
+        'OR COALESCE(p.telefone_cliente, "") LIKE ? COLLATE NOCASE '
+        'OR COALESCE(p.atendimento_tipo, "") LIKE ? COLLATE NOCASE '
+        'OR CASE p.atendimento_tipo '
+        '    WHEN "counter" THEN "balcao" '
+        '    WHEN "pickup" THEN "retirada" '
+        '    WHEN "delivery" THEN "delivery" '
+        '    WHEN "table" THEN "mesa" '
+        '    ELSE "" '
+        '  END LIKE ? COLLATE NOCASE '
         'OR EXISTS ('
-        '  SELECT 1'
-        '  FROM ${TableNames.pedidosOperacionaisItens} i2'
-        '  WHERE i2.pedido_operacional_id = p.id'
-        '    AND ('
-        '      COALESCE(i2.nome_produto_snapshot, \'\') LIKE ? COLLATE NOCASE'
-        '      OR COALESCE(i2.observacao, \'\') LIKE ? COLLATE NOCASE'
-        '    )'
+        '  SELECT 1 '
+        '  FROM ${TableNames.pedidosOperacionaisItens} i2 '
+        '  WHERE i2.pedido_operacional_id = p.id '
+        '    AND COALESCE(i2.nome_produto_snapshot, "") LIKE ? COLLATE NOCASE'
         ')'
         ')',
       );
-      args.addAll(<Object?>[
-        normalizedLike,
-        normalizedLike,
-        normalizedLike,
-        normalizedLike,
-      ]);
+      args.addAll(<Object?>[like, like, like, like, like, like]);
     }
 
     if (status != null) {
@@ -93,10 +92,13 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
     final rows = await database.rawQuery('''
       SELECT
         p.*,
+        vpo.venda_id AS linked_sale_id,
         COALESCE(item_agg.line_items_count, 0) AS line_items_count,
         COALESCE(item_agg.total_units, 0) AS total_units,
         COALESCE(item_agg.total_cents, 0) AS total_cents
       FROM ${TableNames.pedidosOperacionais} p
+      LEFT JOIN ${TableNames.vendasPedidosOperacionais} vpo
+        ON vpo.pedido_operacional_id = p.id
       LEFT JOIN (
         SELECT
           i.pedido_operacional_id AS order_id,
@@ -116,7 +118,8 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
         LEFT JOIN (
           SELECT
             pedido_operacional_item_id AS order_item_id,
-            COALESCE(SUM(preco_delta_centavos * quantidade), 0) AS total_modifier_delta_cents
+            COALESCE(SUM(preco_delta_centavos * quantidade), 0)
+              AS total_modifier_delta_cents
           FROM ${TableNames.pedidosOperacionaisItemModificadores}
           GROUP BY pedido_operacional_item_id
         ) mod_agg
@@ -127,8 +130,8 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       ${where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}'}
       ORDER BY
         CASE p.status
-          WHEN 'in_preparation' THEN 1
-          WHEN 'open' THEN 2
+          WHEN 'open' THEN 1
+          WHEN 'in_preparation' THEN 2
           WHEN 'ready' THEN 3
           WHEN 'draft' THEN 4
           WHEN 'delivered' THEN 5
@@ -136,7 +139,7 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
           ELSE 7
         END ASC,
         CASE
-          WHEN p.status IN ('in_preparation', 'open', 'ready', 'draft')
+          WHEN p.status IN ('draft', 'open', 'in_preparation', 'ready')
             THEN p.criado_em
         END ASC,
         CASE
@@ -144,7 +147,7 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
             THEN p.atualizado_em
         END DESC,
         p.id DESC
-      ''', args);
+    ''', args);
 
     return rows.map(_mapSummary).toList(growable: false);
   }
@@ -181,7 +184,7 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       ''',
       [orderId],
     );
-    return rows.map(_mapItem).toList();
+    return rows.map(_mapItem).toList(growable: false);
   }
 
   @override
@@ -195,7 +198,7 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       whereArgs: [orderItemId],
       orderBy: 'id ASC',
     );
-    return rows.map(_mapModifier).toList();
+    return rows.map(_mapModifier).toList(growable: false);
   }
 
   @override
@@ -224,7 +227,7 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       );
     }
 
-    final now = DateTime.now().toIso8601String();
+    final nowIso = DateTime.now().toIso8601String();
 
     await database.insert(
       TableNames.vendasPedidosOperacionais,
@@ -232,8 +235,8 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
         'uuid': IdGenerator.next(),
         'venda_id': saleId,
         'pedido_operacional_id': orderId,
-        'criado_em': now,
-        'atualizado_em': now,
+        'criado_em': nowIso,
+        'atualizado_em': nowIso,
       },
       conflictAlgorithm: ConflictAlgorithm.ignore,
     );
@@ -242,8 +245,70 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       TableNames.pedidosOperacionais,
       {
         'status': OperationalOrderStatus.delivered.dbValue,
-        'atualizado_em': now,
-        'fechado_em': now,
+        'entregue_em': nowIso,
+        'atualizado_em': nowIso,
+        'fechado_em': nowIso,
+      },
+      where: 'id = ?',
+      whereArgs: [orderId],
+    );
+  }
+
+  @override
+  Future<void> updateDraft(
+    int orderId,
+    OperationalOrderDraftInput input,
+  ) async {
+    final database = await _appDatabase.database;
+    final currentOrder = await _requireOrder(database, orderId);
+    if (currentOrder.isTerminal) {
+      throw const ValidationException(
+        'Pedido encerrado nao pode ser alterado.',
+      );
+    }
+
+    await database.update(
+      TableNames.pedidosOperacionais,
+      {
+        'atendimento_tipo': input.serviceType.dbValue,
+        'cliente_identificador': _cleanNullable(input.customerIdentifier),
+        'telefone_cliente': _cleanNullable(input.customerPhone),
+        'observacao': _cleanNullable(input.notes),
+        'atualizado_em': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [orderId],
+    );
+  }
+
+  @override
+  Future<void> sendToKitchen(int orderId) async {
+    final database = await _appDatabase.database;
+    final currentOrder = await _requireOrder(database, orderId);
+    if (currentOrder.status == OperationalOrderStatus.open) {
+      return;
+    }
+    if (!currentOrder.status.canTransitionTo(OperationalOrderStatus.open)) {
+      throw ValidationException(
+        'Pedido #$orderId nao pode ser enviado para cozinha neste status.',
+      );
+    }
+
+    final itemsCount = await _countItems(database, orderId);
+    if (itemsCount <= 0) {
+      throw const ValidationException(
+        'Adicione pelo menos um item antes de enviar o pedido para a cozinha.',
+      );
+    }
+
+    final nowIso = DateTime.now().toIso8601String();
+    await database.update(
+      TableNames.pedidosOperacionais,
+      {
+        'status': OperationalOrderStatus.open.dbValue,
+        'enviado_cozinha_em': nowIso,
+        'atualizado_em': nowIso,
+        'fechado_em': null,
       },
       where: 'id = ?',
       whereArgs: [orderId],
@@ -264,18 +329,80 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       return;
     }
 
-    final now = DateTime.now();
-    final closedAt = status.isTerminal ? now.toIso8601String() : null;
+    final nowIso = DateTime.now().toIso8601String();
+    final payload = <String, Object?>{
+      'status': status.dbValue,
+      'atualizado_em': nowIso,
+      'fechado_em': status.isTerminal ? nowIso : null,
+    };
+
+    switch (status) {
+      case OperationalOrderStatus.draft:
+        break;
+      case OperationalOrderStatus.open:
+        payload['enviado_cozinha_em'] =
+            currentOrder.sentToKitchenAt?.toIso8601String() ?? nowIso;
+        break;
+      case OperationalOrderStatus.inPreparation:
+        payload['em_preparo_em'] = nowIso;
+        break;
+      case OperationalOrderStatus.ready:
+        payload['pronto_em'] = nowIso;
+        break;
+      case OperationalOrderStatus.delivered:
+        payload['entregue_em'] = nowIso;
+        break;
+      case OperationalOrderStatus.canceled:
+        payload['cancelado_em'] = nowIso;
+        break;
+    }
 
     await database.update(
       TableNames.pedidosOperacionais,
-      {
-        'status': status.dbValue,
-        'atualizado_em': now.toIso8601String(),
-        'fechado_em': closedAt,
-      },
+      payload,
       where: 'id = ?',
       whereArgs: [orderId],
+    );
+  }
+
+  @override
+  Future<void> updateTicketDispatchState({
+    required int orderId,
+    required OrderTicketDispatchStatus status,
+    String? failureMessage,
+  }) async {
+    final database = await _appDatabase.database;
+    await _requireOrder(database, orderId);
+    final nowIso = DateTime.now().toIso8601String();
+
+    await database.rawUpdate(
+      '''
+      UPDATE ${TableNames.pedidosOperacionais}
+      SET
+        ticket_status = ?,
+        ticket_tentativas = COALESCE(ticket_tentativas, 0) + 1,
+        ticket_ultima_tentativa_em = ?,
+        ticket_enviado_em = CASE
+          WHEN ? = 'sent' THEN ?
+          ELSE ticket_enviado_em
+        END,
+        ticket_ultimo_erro = CASE
+          WHEN ? = 'failed' THEN ?
+          ELSE NULL
+        END,
+        atualizado_em = ?
+      WHERE id = ?
+      ''',
+      <Object?>[
+        status.dbValue,
+        nowIso,
+        status.dbValue,
+        nowIso,
+        status.dbValue,
+        _cleanNullable(failureMessage),
+        nowIso,
+        orderId,
+      ],
     );
   }
 
@@ -285,11 +412,11 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
     final currentOrder = await _requireOrder(database, orderId);
     if (!currentOrder.allowsItemChanges) {
       throw const ValidationException(
-        'Nao e permitido adicionar itens em pedidos entregues ou cancelados.',
+        'Nao e permitido adicionar itens neste pedido.',
       );
     }
 
-    final now = DateTime.now().toIso8601String();
+    final nowIso = DateTime.now().toIso8601String();
     final itemId = await database.insert(TableNames.pedidosOperacionaisItens, {
       'uuid': IdGenerator.next(),
       'pedido_operacional_id': orderId,
@@ -299,11 +426,71 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       'valor_unitario_centavos': input.unitPriceCents,
       'subtotal_centavos': input.subtotalCents,
       'observacao': _cleanNullable(input.notes),
-      'criado_em': now,
-      'atualizado_em': now,
+      'criado_em': nowIso,
+      'atualizado_em': nowIso,
     });
-    await _touchOrder(database, orderId: orderId, nowIso: now);
+    await _touchOrder(database, orderId: orderId, nowIso: nowIso);
     return itemId;
+  }
+
+  @override
+  Future<void> updateItem(
+    int orderItemId,
+    OperationalOrderItemInput input,
+  ) async {
+    final database = await _appDatabase.database;
+    final orderId = await _findOrderIdByItem(database, orderItemId);
+    if (orderId == null) {
+      throw const ValidationException('Item do pedido nao encontrado.');
+    }
+
+    final currentOrder = await _requireOrder(database, orderId);
+    if (!currentOrder.allowsItemChanges) {
+      throw const ValidationException(
+        'Nao e permitido editar itens neste pedido.',
+      );
+    }
+
+    final nowIso = DateTime.now().toIso8601String();
+    await database.update(
+      TableNames.pedidosOperacionaisItens,
+      {
+        'produto_id': input.productId,
+        'nome_produto_snapshot': input.productNameSnapshot.trim(),
+        'quantidade_mil': input.quantityMil,
+        'valor_unitario_centavos': input.unitPriceCents,
+        'subtotal_centavos': input.subtotalCents,
+        'observacao': _cleanNullable(input.notes),
+        'atualizado_em': nowIso,
+      },
+      where: 'id = ?',
+      whereArgs: [orderItemId],
+    );
+    await _touchOrder(database, orderId: orderId, nowIso: nowIso);
+  }
+
+  @override
+  Future<void> removeItem(int orderItemId) async {
+    final database = await _appDatabase.database;
+    final orderId = await _findOrderIdByItem(database, orderItemId);
+    if (orderId == null) {
+      throw const ValidationException('Item do pedido nao encontrado.');
+    }
+
+    final currentOrder = await _requireOrder(database, orderId);
+    if (!currentOrder.allowsItemChanges) {
+      throw const ValidationException(
+        'Nao e permitido remover itens neste pedido.',
+      );
+    }
+
+    final nowIso = DateTime.now().toIso8601String();
+    await database.delete(
+      TableNames.pedidosOperacionaisItens,
+      where: 'id = ?',
+      whereArgs: [orderItemId],
+    );
+    await _touchOrder(database, orderId: orderId, nowIso: nowIso);
   }
 
   @override
@@ -322,28 +509,56 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
     final currentOrder = await _requireOrder(database, orderId);
     if (!currentOrder.allowsItemChanges) {
       throw const ValidationException(
-        'Nao e permitido alterar itens em pedidos entregues ou cancelados.',
+        'Nao e permitido alterar itens neste pedido.',
       );
     }
 
-    final now = DateTime.now().toIso8601String();
-    final modifierId = await database
-        .insert(TableNames.pedidosOperacionaisItemModificadores, {
-          'uuid': IdGenerator.next(),
-          'pedido_operacional_item_id': orderItemId,
-          'grupo_modificador_id': input.modifierGroupId,
-          'opcao_modificador_id': input.modifierOptionId,
-          'nome_grupo_snapshot': _cleanNullable(input.groupNameSnapshot),
-          'nome_opcao_snapshot': input.optionNameSnapshot.trim(),
-          'tipo_ajuste_snapshot': input.adjustmentTypeSnapshot,
-          'preco_delta_centavos': input.priceDeltaCents,
-          'quantidade': input.quantity,
-          'criado_em': now,
-          'atualizado_em': now,
-        });
-
-    await _touchOrder(database, orderId: orderId, nowIso: now);
+    final nowIso = DateTime.now().toIso8601String();
+    final modifierId = await _insertModifier(
+      database,
+      orderItemId: orderItemId,
+      input: input,
+      nowIso: nowIso,
+    );
+    await _touchOrder(database, orderId: orderId, nowIso: nowIso);
     return modifierId;
+  }
+
+  @override
+  Future<void> replaceItemModifiers(
+    int orderItemId,
+    List<OperationalOrderItemModifierInput> modifiers,
+  ) async {
+    final database = await _appDatabase.database;
+    final orderId = await _findOrderIdByItem(database, orderItemId);
+    if (orderId == null) {
+      throw const ValidationException('Item do pedido nao encontrado.');
+    }
+
+    final currentOrder = await _requireOrder(database, orderId);
+    if (!currentOrder.allowsItemChanges) {
+      throw const ValidationException(
+        'Nao e permitido alterar itens neste pedido.',
+      );
+    }
+
+    final nowIso = DateTime.now().toIso8601String();
+    await database.transaction((txn) async {
+      await txn.delete(
+        TableNames.pedidosOperacionaisItemModificadores,
+        where: 'pedido_operacional_item_id = ?',
+        whereArgs: [orderItemId],
+      );
+      for (final modifier in modifiers) {
+        await _insertModifier(
+          txn,
+          orderItemId: orderItemId,
+          input: modifier,
+          nowIso: nowIso,
+        );
+      }
+      await _touchOrder(txn, orderId: orderId, nowIso: nowIso);
+    });
   }
 
   OperationalOrder _mapOrder(Map<String, Object?> row) {
@@ -351,12 +566,29 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       id: row['id'] as int,
       uuid: row['uuid'] as String,
       status: OperationalOrderStatusX.fromDb(row['status'] as String),
+      serviceType: OperationalOrderServiceTypeX.fromDb(
+        row['atendimento_tipo'] as String?,
+      ),
+      customerIdentifier: row['cliente_identificador'] as String?,
+      customerPhone: row['telefone_cliente'] as String?,
       notes: row['observacao'] as String?,
+      ticketMeta: OperationalOrderTicketMeta(
+        status: OrderTicketDispatchStatusX.fromDb(
+          row['ticket_status'] as String?,
+        ),
+        dispatchAttempts: row['ticket_tentativas'] as int? ?? 0,
+        lastAttemptAt: _parseDateTime(row['ticket_ultima_tentativa_em']),
+        lastSentAt: _parseDateTime(row['ticket_enviado_em']),
+        lastFailureMessage: row['ticket_ultimo_erro'] as String?,
+      ),
       createdAt: DateTime.parse(row['criado_em'] as String),
       updatedAt: DateTime.parse(row['atualizado_em'] as String),
-      closedAt: row['fechado_em'] == null
-          ? null
-          : DateTime.parse(row['fechado_em'] as String),
+      sentToKitchenAt: _parseDateTime(row['enviado_cozinha_em']),
+      preparationStartedAt: _parseDateTime(row['em_preparo_em']),
+      readyAt: _parseDateTime(row['pronto_em']),
+      deliveredAt: _parseDateTime(row['entregue_em']),
+      canceledAt: _parseDateTime(row['cancelado_em']),
+      closedAt: _parseDateTime(row['fechado_em']),
     );
   }
 
@@ -366,6 +598,7 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       lineItemsCount: row['line_items_count'] as int? ?? 0,
       totalUnits: row['total_units'] as int? ?? 0,
       totalCents: row['total_cents'] as int? ?? 0,
+      linkedSaleId: row['linked_sale_id'] as int?,
     );
   }
 
@@ -406,6 +639,17 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
   String? _cleanNullable(String? value) {
     final trimmed = value?.trim();
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
+  DateTime? _parseDateTime(Object? value) {
+    if (value == null) {
+      return null;
+    }
+    final raw = value.toString().trim();
+    if (raw.isEmpty) {
+      return null;
+    }
+    return DateTime.parse(raw);
   }
 
   Future<void> _touchOrder(
@@ -452,5 +696,38 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       return null;
     }
     return rows.first['pedido_operacional_id'] as int?;
+  }
+
+  Future<int> _countItems(DatabaseExecutor database, int orderId) async {
+    final rows = await database.rawQuery(
+      '''
+      SELECT COUNT(*) AS total
+      FROM ${TableNames.pedidosOperacionaisItens}
+      WHERE pedido_operacional_id = ?
+      ''',
+      [orderId],
+    );
+    return rows.first['total'] as int? ?? 0;
+  }
+
+  Future<int> _insertModifier(
+    DatabaseExecutor database, {
+    required int orderItemId,
+    required OperationalOrderItemModifierInput input,
+    required String nowIso,
+  }) {
+    return database.insert(TableNames.pedidosOperacionaisItemModificadores, {
+      'uuid': IdGenerator.next(),
+      'pedido_operacional_item_id': orderItemId,
+      'grupo_modificador_id': input.modifierGroupId,
+      'opcao_modificador_id': input.modifierOptionId,
+      'nome_grupo_snapshot': _cleanNullable(input.groupNameSnapshot),
+      'nome_opcao_snapshot': input.optionNameSnapshot.trim(),
+      'tipo_ajuste_snapshot': input.adjustmentTypeSnapshot,
+      'preco_delta_centavos': input.priceDeltaCents,
+      'quantidade': input.quantity,
+      'criado_em': nowIso,
+      'atualizado_em': nowIso,
+    });
   }
 }

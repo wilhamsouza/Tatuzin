@@ -3,305 +3,119 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
-import '../../../../app/core/widgets/app_card.dart';
+import '../../../../app/core/widgets/app_input.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
+import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
-import '../../../carrinho/domain/entities/cart_item.dart';
-import '../../../vendas/domain/entities/checkout_input.dart';
 import '../../../vendas/domain/entities/sale_enums.dart';
-import '../../../vendas/presentation/providers/sales_providers.dart';
 import '../../domain/entities/operational_order.dart';
 import '../../domain/entities/operational_order_detail.dart';
 import '../providers/order_print_providers.dart';
 import '../providers/order_providers.dart';
 import '../support/order_ui_support.dart';
-import '../widgets/add_order_item_sheet.dart';
 import '../widgets/kitchen_printer_config_dialog.dart';
 import '../widgets/operational_order_item_card.dart';
+import '../widgets/order_item_editor_sheet.dart';
 import '../widgets/order_progress_stepper.dart';
 import '../widgets/order_status_badge.dart';
 import 'order_ticket_preview_page.dart';
 
-class OrderDetailPage extends ConsumerWidget {
+class OrderDetailPage extends ConsumerStatefulWidget {
   const OrderDetailPage({super.key, required this.orderId});
 
   final int orderId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final orderAsync = ref.watch(operationalOrderDetailProvider(orderId));
+  ConsumerState<OrderDetailPage> createState() => _OrderDetailPageState();
+}
+
+class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
+  late final TextEditingController _customerController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _notesController;
+  OperationalOrderServiceType _serviceType =
+      OperationalOrderServiceType.counter;
+  String? _syncedVersion;
+  bool _headerDirty = false;
+  bool _notesDirty = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _customerController = TextEditingController();
+    _phoneController = TextEditingController();
+    _notesController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _customerController.dispose();
+    _phoneController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final detailAsync = ref.watch(
+      operationalOrderDetailProvider(widget.orderId),
+    );
+    final printerAsync = ref.watch(kitchenPrinterConfigProvider);
+    final draftState = ref.watch(operationalOrderDraftControllerProvider);
+    final itemState = ref.watch(operationalOrderItemControllerProvider);
     final statusState = ref.watch(operationalOrderStatusControllerProvider);
-    final addItemState = ref.watch(addOperationalOrderItemControllerProvider);
-    final printState = ref.watch(orderKitchenPrintControllerProvider);
+    final dispatchState = ref.watch(orderKitchenDispatchControllerProvider);
+    final reprintState = ref.watch(orderTicketReprintControllerProvider);
+    final billingState = ref.watch(operationalOrderBillingControllerProvider);
     final busy =
-        statusState.isLoading || addItemState.isLoading || printState.isLoading;
+        draftState.isLoading ||
+        itemState.isLoading ||
+        statusState.isLoading ||
+        dispatchState.isLoading ||
+        reprintState.isLoading ||
+        billingState.isLoading;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Pedido #$orderId'),
+        title: Text('Pedido #${widget.orderId}'),
         actions: [
           IconButton(
             tooltip: 'Modo cozinha',
             onPressed: () {
               context.pushNamed(
                 AppRouteNames.orderKitchen,
-                pathParameters: {'orderId': '$orderId'},
+                pathParameters: {'orderId': '${widget.orderId}'},
               );
             },
             icon: const Icon(Icons.soup_kitchen_rounded),
           ),
+          IconButton(
+            tooltip: 'Preview tecnico',
+            onPressed: () => _openTicketPreview(context),
+            icon: const Icon(Icons.preview_rounded),
+          ),
         ],
       ),
-      floatingActionButton: orderAsync.maybeWhen(
-        data: (detail) {
-          if (detail == null || !detail.order.allowsItemChanges) {
-            return null;
-          }
-          return FloatingActionButton.extended(
-            onPressed: busy ? null : () => _addItem(context, ref),
-            icon: addItemState.isLoading
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.add_rounded),
-            label: Text(
-              addItemState.isLoading ? 'Adicionando...' : 'Adicionar item',
-            ),
-          );
-        },
-        orElse: () => null,
-      ),
-      body: orderAsync.when(
+      body: detailAsync.when(
         data: (detail) {
           if (detail == null) {
             return const Center(child: Text('Pedido nao encontrado.'));
           }
 
+          _syncDraftFields(detail);
+
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
             children: [
-              _OrderOverviewCard(detail: detail),
+              _buildHeaderSection(context, detail, busy),
               const SizedBox(height: 12),
-              AppSectionCard(
-                title: 'Fluxo do pedido',
-                subtitle: operationalOrderStatusDescription(
-                  detail.order.status,
-                ),
-                child: OrderProgressStepper(status: detail.order.status),
-              ),
+              _buildItemsSection(context, detail, busy),
               const SizedBox(height: 12),
-              AppSectionCard(
-                title: 'Acoes operacionais',
-                subtitle:
-                    'Atualize o fluxo sem gambiarras locais. As mudancas passam pelo repositorio e invalidam os dados da tela.',
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _StatusActionButton(
-                      label: 'Marcar aberto',
-                      icon: Icons.receipt_long_rounded,
-                      onPressed:
-                          detail.order.status.canTransitionTo(
-                                OperationalOrderStatus.open,
-                              ) &&
-                              !busy
-                          ? () => _updateStatus(
-                              context,
-                              ref,
-                              OperationalOrderStatus.open,
-                            )
-                          : null,
-                    ),
-                    _StatusActionButton(
-                      label: 'Iniciar preparo',
-                      icon: Icons.local_fire_department_rounded,
-                      onPressed:
-                          detail.order.status.canTransitionTo(
-                                OperationalOrderStatus.inPreparation,
-                              ) &&
-                              !busy
-                          ? () => _updateStatus(
-                              context,
-                              ref,
-                              OperationalOrderStatus.inPreparation,
-                            )
-                          : null,
-                    ),
-                    _StatusActionButton(
-                      label: 'Marcar pronto',
-                      icon: Icons.check_circle_rounded,
-                      onPressed:
-                          detail.order.status.canTransitionTo(
-                                OperationalOrderStatus.ready,
-                              ) &&
-                              !busy
-                          ? () => _updateStatus(
-                              context,
-                              ref,
-                              OperationalOrderStatus.ready,
-                            )
-                          : null,
-                    ),
-                    _StatusActionButton(
-                      label: 'Marcar entregue',
-                      icon: Icons.delivery_dining_rounded,
-                      onPressed:
-                          detail.order.status.canTransitionTo(
-                                OperationalOrderStatus.delivered,
-                              ) &&
-                              !busy
-                          ? () => _updateStatus(
-                              context,
-                              ref,
-                              OperationalOrderStatus.delivered,
-                            )
-                          : null,
-                    ),
-                    _StatusActionButton(
-                      label: 'Cancelar pedido',
-                      icon: Icons.cancel_rounded,
-                      isDanger: true,
-                      onPressed:
-                          detail.order.status.canTransitionTo(
-                                OperationalOrderStatus.canceled,
-                              ) &&
-                              !busy
-                          ? () => _confirmAndCancel(context, ref)
-                          : null,
-                    ),
-                  ],
-                ),
-              ),
+              _buildNotesSection(context, detail, busy),
               const SizedBox(height: 12),
-              AppSectionCard(
-                title: 'Itens do pedido',
-                subtitle: detail.items.isEmpty
-                    ? 'Nenhum item adicionado ainda.'
-                    : '${detail.lineItemsCount} linha(s) • ${detail.totalUnits} item(ns)',
-                child: detail.items.isEmpty
-                    ? const Text('Adicione itens para iniciar a producao.')
-                    : Column(
-                        children: detail.items
-                            .map(
-                              (itemDetail) => Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: OperationalOrderItemCard(
-                                  itemDetail: itemDetail,
-                                ),
-                              ),
-                            )
-                            .toList(growable: false),
-                      ),
-              ),
+              _buildSummarySection(context, detail, printerAsync),
               const SizedBox(height: 12),
-              AppSectionCard(
-                title: 'Ticket e cozinha',
-                subtitle:
-                    'Acesse o preview interno, o modo cozinha e a impressao termica a partir do mesmo documento operacional.',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    FutureBuilder(
-                      future: ref.read(kitchenPrinterConfigProvider.future),
-                      builder: (context, snapshot) {
-                        final config = snapshot.data;
-                        return Text(
-                          config == null
-                              ? 'Impressora: nao configurada'
-                              : 'Impressora: ${config.displayName} • ${config.targetLabel}',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: () => _openTicketPreview(context),
-                          icon: const Icon(Icons.preview_rounded),
-                          label: const Text('Preview ticket'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            context.pushNamed(
-                              AppRouteNames.orderKitchen,
-                              pathParameters: {'orderId': '$orderId'},
-                            );
-                          },
-                          icon: const Icon(Icons.soup_kitchen_rounded),
-                          label: const Text('Modo cozinha'),
-                        ),
-                        FilledButton.tonalIcon(
-                          onPressed: busy
-                              ? null
-                              : () => _openPrinterConfig(context, ref),
-                          icon: const Icon(Icons.settings_rounded),
-                          label: const Text('Impressora'),
-                        ),
-                        FilledButton.icon(
-                          onPressed: busy
-                              ? null
-                              : () => _printKitchen(context, ref),
-                          icon: printState.isLoading
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.print_rounded),
-                          label: Text(
-                            printState.isLoading
-                                ? 'Imprimindo...'
-                                : 'Imprimir cozinha',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              AppSectionCard(
-                title: 'Conversao em venda',
-                subtitle:
-                    'Separada das acoes de producao para evitar misturar cozinha, expedicao e fechamento comercial.',
-                child: detail.linkedSaleId != null
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Venda #${detail.linkedSaleId} ja vinculada a este pedido.',
-                          ),
-                          const SizedBox(height: 10),
-                          FilledButton.icon(
-                            onPressed: () {
-                              context.pushNamed(
-                                AppRouteNames.saleReceipt,
-                                pathParameters: {
-                                  'saleId': '${detail.linkedSaleId}',
-                                },
-                              );
-                            },
-                            icon: const Icon(Icons.point_of_sale_rounded),
-                            label: const Text('Abrir venda vinculada'),
-                          ),
-                        ],
-                      )
-                    : FilledButton.icon(
-                        onPressed: _canConvertToSale(detail) && !busy
-                            ? () => _convertToSale(context, ref, detail)
-                            : null,
-                        icon: const Icon(Icons.point_of_sale_rounded),
-                        label: Text(_convertButtonLabel(detail)),
-                      ),
-              ),
+              _buildActionsSection(context, detail, busy),
             ],
           );
         },
@@ -312,12 +126,473 @@ class OrderDetailPage extends ConsumerWidget {
     );
   }
 
-  Future<void> _addItem(BuildContext context, WidgetRef ref) async {
-    final result = await showModalBottomSheet<AddOperationalOrderItemResult>(
+  Widget _buildHeaderSection(
+    BuildContext context,
+    OperationalOrderDetail detail,
+    bool busy,
+  ) {
+    final order = detail.order;
+    final editingEnabled = !order.isTerminal;
+
+    return AppSectionCard(
+      title: 'Cabecalho do pedido',
+      subtitle:
+          'Defina o atendimento e identifique o pedido antes de seguir o fluxo operacional.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      order.customerLabel,
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OrderStatusBadge(status: order.status),
+                        AppStatusBadge(
+                          label: orderTicketDispatchStatusLabel(
+                            order.ticketMeta.status,
+                          ),
+                          tone: orderTicketDispatchStatusTone(
+                            order.ticketMeta.status,
+                          ),
+                          icon: orderTicketDispatchStatusIcon(
+                            order.ticketMeta.status,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                AppFormatters.currencyFromCents(detail.totalCents),
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _InfoChip(
+                icon: Icons.schedule_rounded,
+                label: 'Criado ${AppFormatters.shortDateTime(order.createdAt)}',
+              ),
+              _InfoChip(
+                icon: Icons.timelapse_rounded,
+                label: 'Tempo ${operationalOrderElapsedLabel(order)}',
+              ),
+              _InfoChip(
+                icon: operationalOrderServiceTypeIcon(order.serviceType),
+                label: operationalOrderServiceTypeHint(order.serviceType),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SegmentedButton<OperationalOrderServiceType>(
+            segments: const [
+              ButtonSegment<OperationalOrderServiceType>(
+                value: OperationalOrderServiceType.counter,
+                icon: Icon(Icons.storefront_rounded),
+                label: Text('Balcao'),
+              ),
+              ButtonSegment<OperationalOrderServiceType>(
+                value: OperationalOrderServiceType.pickup,
+                icon: Icon(Icons.shopping_bag_rounded),
+                label: Text('Retirada'),
+              ),
+              ButtonSegment<OperationalOrderServiceType>(
+                value: OperationalOrderServiceType.delivery,
+                icon: Icon(Icons.delivery_dining_rounded),
+                label: Text('Delivery'),
+              ),
+              ButtonSegment<OperationalOrderServiceType>(
+                value: OperationalOrderServiceType.table,
+                icon: Icon(Icons.table_restaurant_rounded),
+                label: Text('Mesa'),
+              ),
+            ],
+            selected: <OperationalOrderServiceType>{_serviceType},
+            onSelectionChanged: editingEnabled && !busy
+                ? (selection) {
+                    setState(() {
+                      _serviceType = selection.first;
+                      _headerDirty = true;
+                    });
+                  }
+                : null,
+          ),
+          const SizedBox(height: 12),
+          AppInput(
+            controller: _customerController,
+            enabled: editingEnabled && !busy,
+            labelText: 'Cliente ou identificador',
+            hintText: 'Ex.: Ana, retirada Joao, Mesa 08',
+            onChanged: (_) => setState(() => _headerDirty = true),
+          ),
+          const SizedBox(height: 10),
+          AppInput(
+            controller: _phoneController,
+            enabled: editingEnabled && !busy,
+            labelText: 'Telefone (opcional)',
+            keyboardType: TextInputType.phone,
+            onChanged: (_) => setState(() => _headerDirty = true),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.tonalIcon(
+              onPressed: editingEnabled && !busy && _headerDirty
+                  ? () => _saveDraft(context, showFeedback: true)
+                  : null,
+              icon: const Icon(Icons.save_outlined),
+              label: Text(
+                _headerDirty ? 'Salvar cabecalho' : 'Cabecalho salvo',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemsSection(
+    BuildContext context,
+    OperationalOrderDetail detail,
+    bool busy,
+  ) {
+    return AppSectionCard(
+      title: 'Itens do pedido',
+      subtitle: detail.items.isEmpty
+          ? 'Monte o pedido pelos itens, nao por observacao.'
+          : '${detail.lineItemsCount} linha(s) | ${detail.totalUnits} item(ns)',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: detail.order.allowsItemChanges && !busy
+                  ? () => _addItem(context)
+                  : null,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Adicionar item'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (detail.items.isEmpty)
+            const Text('Nenhum item adicionado ainda.')
+          else
+            ...detail.items.map(
+              (itemDetail) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: OperationalOrderItemCard(
+                  itemDetail: itemDetail,
+                  onEdit: detail.order.allowsItemChanges && !busy
+                      ? () => _editItem(context, itemDetail)
+                      : null,
+                  onRemove: detail.order.allowsItemChanges && !busy
+                      ? () => _removeItem(context, itemDetail)
+                      : null,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNotesSection(
+    BuildContext context,
+    OperationalOrderDetail detail,
+    bool busy,
+  ) {
+    return AppSectionCard(
+      title: 'Observacao geral',
+      subtitle:
+          'Use para recados do pedido inteiro. Observacoes especificas devem ficar em cada item.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppInput(
+            controller: _notesController,
+            enabled: !detail.order.isTerminal && !busy,
+            labelText: 'Observacao geral do pedido',
+            minLines: 3,
+            maxLines: 4,
+            onChanged: (_) => setState(() => _notesDirty = true),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.tonalIcon(
+              onPressed: !detail.order.isTerminal && !busy && _notesDirty
+                  ? () => _saveDraft(context, showFeedback: true)
+                  : null,
+              icon: const Icon(Icons.notes_rounded),
+              label: Text(
+                _notesDirty ? 'Salvar observacao' : 'Observacao salva',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummarySection(
+    BuildContext context,
+    OperationalOrderDetail detail,
+    AsyncValue<dynamic> printerAsync,
+  ) {
+    final order = detail.order;
+
+    return AppSectionCard(
+      title: 'Resumo financeiro',
+      subtitle:
+          'Valor parcial do pedido operacional. O faturamento comercial acontece so depois da entrega.',
+      child: Column(
+        children: [
+          _SummaryRow(
+            label: 'Atendimento',
+            value: operationalOrderServiceTypeLabel(order.serviceType),
+          ),
+          _SummaryRow(label: 'Itens', value: '${detail.totalUnits} item(ns)'),
+          _SummaryRow(label: 'Linhas', value: '${detail.lineItemsCount}'),
+          _SummaryRow(
+            label: 'Ticket',
+            value: orderTicketDispatchStatusLabel(order.ticketMeta.status),
+          ),
+          _SummaryRow(
+            label: 'Tentativas de impressao',
+            value: '${order.ticketMeta.dispatchAttempts}',
+          ),
+          _SummaryRow(
+            label: 'Impressora',
+            value: printerAsync.maybeWhen(
+              data: (config) =>
+                  config == null ? 'Nao configurada' : config.targetLabel,
+              orElse: () => 'Carregando...',
+            ),
+          ),
+          const Divider(height: 24),
+          _SummaryRow(
+            label: 'Valor parcial',
+            value: AppFormatters.currencyFromCents(detail.totalCents),
+            emphasize: true,
+          ),
+          if (detail.linkedSaleId != null) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.tonalIcon(
+                onPressed: () {
+                  context.pushNamed(
+                    AppRouteNames.saleReceipt,
+                    pathParameters: {'saleId': '${detail.linkedSaleId}'},
+                  );
+                },
+                icon: const Icon(Icons.receipt_long_rounded),
+                label: Text('Abrir venda #${detail.linkedSaleId}'),
+              ),
+            ),
+          ],
+          if (order.ticketMeta.hasFailure) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.errorContainer.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                order.ticketMeta.lastFailureMessage ??
+                    'Falha ao enviar ticket.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onErrorContainer,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionsSection(
+    BuildContext context,
+    OperationalOrderDetail detail,
+    bool busy,
+  ) {
+    final canSend =
+        detail.order.status == OperationalOrderStatus.draft && detail.hasItems;
+    final canReprint =
+        detail.order.status != OperationalOrderStatus.draft &&
+        detail.order.status != OperationalOrderStatus.canceled;
+    final canInvoice =
+        detail.order.canBeInvoiced && detail.linkedSaleId == null;
+
+    return AppSectionCard(
+      title: 'Acoes operacionais',
+      subtitle:
+          'Operacao primeiro, faturamento depois. O ticket de preview fica apenas como apoio.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          OrderProgressStepper(status: detail.order.status),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: (!busy && (_headerDirty || _notesDirty))
+                    ? () => _saveDraft(context, showFeedback: true)
+                    : null,
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Salvar rascunho'),
+              ),
+              FilledButton.icon(
+                onPressed: canSend && !busy
+                    ? () => _sendToKitchen(context)
+                    : null,
+                icon: const Icon(Icons.send_rounded),
+                label: const Text('Enviar para cozinha'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: canReprint && !busy ? () => _reprint(context) : null,
+                icon: const Icon(Icons.print_rounded),
+                label: const Text('Reimprimir ticket'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed:
+                    detail.order.status.canTransitionTo(
+                          OperationalOrderStatus.inPreparation,
+                        ) &&
+                        !busy
+                    ? () => _updateStatus(
+                        context,
+                        OperationalOrderStatus.inPreparation,
+                      )
+                    : null,
+                icon: const Icon(Icons.local_fire_department_rounded),
+                label: const Text('Marcar em preparo'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed:
+                    detail.order.status.canTransitionTo(
+                          OperationalOrderStatus.ready,
+                        ) &&
+                        !busy
+                    ? () => _updateStatus(context, OperationalOrderStatus.ready)
+                    : null,
+                icon: const Icon(Icons.notifications_active_rounded),
+                label: const Text('Marcar pronto'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed:
+                    detail.order.status.canTransitionTo(
+                          OperationalOrderStatus.delivered,
+                        ) &&
+                        !busy
+                    ? () => _updateStatus(
+                        context,
+                        OperationalOrderStatus.delivered,
+                      )
+                    : null,
+                icon: const Icon(Icons.delivery_dining_rounded),
+                label: const Text('Marcar entregue'),
+              ),
+              FilledButton.icon(
+                onPressed: canInvoice && !busy
+                    ? () => _invoice(context, detail)
+                    : null,
+                icon: const Icon(Icons.point_of_sale_rounded),
+                label: const Text('Faturar pedido'),
+              ),
+              OutlinedButton.icon(
+                onPressed: !detail.order.isTerminal && !busy
+                    ? () => _confirmCancel(context)
+                    : null,
+                icon: const Icon(Icons.cancel_rounded),
+                label: const Text('Cancelar pedido'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => _openTicketPreview(context),
+                icon: const Icon(Icons.preview_rounded),
+                label: const Text('Preview tecnico'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () {
+                  context.pushNamed(
+                    AppRouteNames.orderKitchen,
+                    pathParameters: {'orderId': '${widget.orderId}'},
+                  );
+                },
+                icon: const Icon(Icons.soup_kitchen_rounded),
+                label: const Text('Modo cozinha'),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: busy ? null : () => _openPrinterConfig(context),
+                icon: const Icon(Icons.settings_rounded),
+                label: const Text('Impressora'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _syncDraftFields(OperationalOrderDetail detail) {
+    final version = detail.order.updatedAt.toIso8601String();
+    if (_syncedVersion == version) {
+      return;
+    }
+
+    if (!_headerDirty) {
+      _serviceType = detail.order.serviceType;
+      _customerController.text = detail.order.customerIdentifier ?? '';
+      _phoneController.text = detail.order.customerPhone ?? '';
+    }
+    if (!_notesDirty) {
+      _notesController.text = detail.order.notes ?? '';
+    }
+    _syncedVersion = version;
+  }
+
+  Future<void> _addItem(BuildContext context) async {
+    final result = await showModalBottomSheet<OrderItemEditorResult>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => const AddOrderItemSheet(),
+      builder: (_) => const OrderItemEditorSheet(),
     );
     if (result == null) {
       return;
@@ -325,10 +600,13 @@ class OrderDetailPage extends ConsumerWidget {
 
     try {
       await ref
-          .read(addOperationalOrderItemControllerProvider.notifier)
+          .read(operationalOrderItemControllerProvider.notifier)
           .addItemWithModifiers(
-            orderId: orderId,
-            product: result.product,
+            orderId: widget.orderId,
+            productId: result.productId,
+            baseProductId: result.baseProductId,
+            productName: result.productName,
+            unitPriceCents: result.unitPriceCents,
             quantityUnits: result.quantityUnits,
             notes: result.notes,
             modifiers: result.modifiers,
@@ -336,115 +614,238 @@ class OrderDetailPage extends ConsumerWidget {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Item adicionado ao pedido.')),
-        );
+      _showMessage(context, 'Item adicionado ao pedido.');
     } catch (error) {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(content: Text('Falha ao adicionar item: $error')),
-        );
+      _showMessage(context, 'Falha ao adicionar item: $error');
     }
   }
 
-  void _openTicketPreview(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => OrderTicketPreviewPage(orderId: orderId),
+  Future<void> _editItem(
+    BuildContext context,
+    OperationalOrderItemDetail itemDetail,
+  ) async {
+    final result = await showModalBottomSheet<OrderItemEditorResult>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => OrderItemEditorSheet(
+        seed: OrderItemEditorSeed(
+          orderItemId: itemDetail.item.id,
+          productId: itemDetail.item.productId,
+          baseProductId: itemDetail.item.baseProductId,
+          productName: itemDetail.item.productNameSnapshot,
+          unitPriceCents: itemDetail.item.unitPriceCents,
+          quantityUnits: itemDetail.quantityUnits,
+          notes: itemDetail.item.notes,
+          selectedModifierOptionIds: itemDetail.modifiers
+              .map((modifier) => modifier.modifierOptionId)
+              .whereType<int>()
+              .toSet(),
+        ),
       ),
     );
-  }
-
-  Future<void> _openPrinterConfig(BuildContext context, WidgetRef ref) async {
-    final config = await ref.read(kitchenPrinterConfigProvider.future);
-    if (!context.mounted) {
+    if (result == null) {
       return;
     }
-    final updated = await showDialog<bool>(
-      context: context,
-      builder: (_) => KitchenPrinterConfigDialog(initialConfig: config),
-    );
-    if (updated == true && context.mounted) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Impressora da cozinha atualizada.')),
-        );
-    }
-  }
-
-  Future<void> _printKitchen(BuildContext context, WidgetRef ref) async {
     try {
       await ref
-          .read(orderKitchenPrintControllerProvider.notifier)
-          .printOrder(orderId);
+          .read(operationalOrderItemControllerProvider.notifier)
+          .updateItemWithModifiers(
+            orderId: widget.orderId,
+            orderItemId: itemDetail.item.id,
+            productId: result.productId,
+            baseProductId: result.baseProductId,
+            productName: result.productName,
+            unitPriceCents: result.unitPriceCents,
+            quantityUnits: result.quantityUnits,
+            notes: result.notes,
+            modifiers: result.modifiers,
+          );
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text('Ticket da cozinha enviado.')),
-        );
+      _showMessage(context, 'Item atualizado.');
     } catch (error) {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(content: Text('Falha ao imprimir cozinha: $error')),
+      _showMessage(context, 'Falha ao atualizar item: $error');
+    }
+  }
+
+  Future<void> _removeItem(
+    BuildContext context,
+    OperationalOrderItemDetail itemDetail,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Remover item'),
+          content: Text(
+            'Remover ${itemDetail.item.productNameSnapshot} do pedido?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Voltar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Remover'),
+            ),
+          ],
         );
+      },
+    );
+    if (confirmed != true) {
+      return;
+    }
+
+    try {
+      await ref
+          .read(operationalOrderItemControllerProvider.notifier)
+          .removeItem(orderId: widget.orderId, orderItemId: itemDetail.item.id);
+      if (!context.mounted) {
+        return;
+      }
+      _showMessage(context, 'Item removido.');
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      _showMessage(context, 'Falha ao remover item: $error');
+    }
+  }
+
+  Future<bool> _saveDraft(
+    BuildContext context, {
+    required bool showFeedback,
+  }) async {
+    try {
+      await ref
+          .read(operationalOrderDraftControllerProvider.notifier)
+          .save(
+            orderId: widget.orderId,
+            serviceType: _serviceType,
+            customerIdentifier: _cleanNullable(_customerController.text),
+            customerPhone: _cleanNullable(_phoneController.text),
+            notes: _cleanNullable(_notesController.text),
+          );
+      if (!mounted || !context.mounted) {
+        return false;
+      }
+      setState(() {
+        _headerDirty = false;
+        _notesDirty = false;
+      });
+      if (showFeedback) {
+        _showMessage(context, 'Rascunho atualizado.');
+      }
+      return true;
+    } catch (error) {
+      if (!mounted || !context.mounted) {
+        return false;
+      }
+      _showMessage(context, 'Falha ao salvar rascunho: $error');
+      return false;
+    }
+  }
+
+  Future<bool> _persistDraftIfNeeded(BuildContext context) async {
+    if (!_headerDirty && !_notesDirty) {
+      return true;
+    }
+    return _saveDraft(context, showFeedback: false);
+  }
+
+  Future<void> _sendToKitchen(BuildContext context) async {
+    if (!await _persistDraftIfNeeded(context)) {
+      return;
+    }
+
+    try {
+      final result = await ref
+          .read(orderKitchenDispatchControllerProvider.notifier)
+          .sendToKitchen(widget.orderId);
+      if (!context.mounted) {
+        return;
+      }
+      if (result.hasFailure) {
+        _showMessage(
+          context,
+          'Pedido enviado para cozinha, mas a impressao falhou: ${result.failureMessage}',
+        );
+        return;
+      }
+      _showMessage(context, 'Pedido enviado para cozinha e ticket impresso.');
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      _showMessage(context, 'Falha ao enviar pedido: $error');
+    }
+  }
+
+  Future<void> _reprint(BuildContext context) async {
+    try {
+      final result = await ref
+          .read(orderTicketReprintControllerProvider.notifier)
+          .reprint(widget.orderId);
+      if (!context.mounted) {
+        return;
+      }
+      if (result.hasFailure) {
+        _showMessage(context, 'Falha ao reimprimir: ${result.failureMessage}');
+        return;
+      }
+      _showMessage(context, 'Ticket reimpresso com sucesso.');
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      _showMessage(context, 'Falha ao reimprimir: $error');
     }
   }
 
   Future<void> _updateStatus(
     BuildContext context,
-    WidgetRef ref,
     OperationalOrderStatus status,
   ) async {
+    if (!await _persistDraftIfNeeded(context)) {
+      return;
+    }
+
     try {
       await ref
           .read(operationalOrderStatusControllerProvider.notifier)
-          .updateStatus(orderId: orderId, status: status);
+          .updateStatus(orderId: widget.orderId, status: status);
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(
-              'Pedido atualizado para ${operationalOrderStatusLabel(status)}.',
-            ),
-          ),
-        );
+      _showMessage(
+        context,
+        'Pedido atualizado para ${operationalOrderStatusLabel(status)}.',
+      );
     } catch (error) {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(content: Text('Falha ao atualizar pedido: $error')),
-        );
+      _showMessage(context, 'Falha ao atualizar pedido: $error');
     }
   }
 
-  Future<void> _confirmAndCancel(BuildContext context, WidgetRef ref) async {
+  Future<void> _confirmCancel(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('Cancelar pedido'),
           content: const Text(
-            'Deseja cancelar este pedido? O fluxo normal nao podera ser retomado sem regra explicita.',
+            'Deseja cancelar este pedido? O fluxo operacional sera encerrado.',
           ),
           actions: [
             TextButton(
@@ -459,58 +860,17 @@ class OrderDetailPage extends ConsumerWidget {
         );
       },
     );
-    if (confirmed != true) {
+    if (confirmed != true || !context.mounted) {
       return;
     }
-    if (!context.mounted) {
-      return;
-    }
-    await _updateStatus(context, ref, OperationalOrderStatus.canceled);
+    await _updateStatus(context, OperationalOrderStatus.canceled);
   }
 
-  Future<void> _convertToSale(
+  Future<void> _invoice(
     BuildContext context,
-    WidgetRef ref,
     OperationalOrderDetail detail,
   ) async {
-    if (detail.items.isEmpty) {
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nao ha itens para converter em venda.')),
-      );
-      return;
-    }
-
-    if (detail.order.status == OperationalOrderStatus.canceled) {
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Pedido cancelado nao pode ser convertido em venda.'),
-        ),
-      );
-      return;
-    }
-
-    if (detail.order.status == OperationalOrderStatus.delivered) {
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Pedido ja esta encerrado. Vincule a venda existente se necessario.',
-          ),
-        ),
-      );
-      return;
-    }
-
-    final confirmed = await _confirmConvertToSale(context, detail);
-    if (confirmed != true) {
+    if (!await _persistDraftIfNeeded(context)) {
       return;
     }
     if (!context.mounted) {
@@ -518,64 +878,17 @@ class OrderDetailPage extends ConsumerWidget {
     }
 
     final paymentMethod = await _pickImmediatePaymentMethod(context);
-    if (paymentMethod == null) {
+    if (paymentMethod == null || !context.mounted) {
       return;
     }
-    if (!context.mounted) {
-      return;
-    }
-
-    final List<CartItem> cartItems = detail.items
-        .map<CartItem>((entry) {
-          final item = entry.item;
-          final modifiers = entry.modifiers
-              .map(
-                (modifier) => CartItemModifier(
-                  modifierGroupId: modifier.modifierGroupId,
-                  modifierOptionId: modifier.modifierOptionId,
-                  groupName: modifier.groupNameSnapshot ?? 'Modificador',
-                  optionName: modifier.optionNameSnapshot,
-                  adjustmentType: modifier.adjustmentTypeSnapshot,
-                  priceDeltaCents: modifier.priceDeltaCents,
-                  quantity: modifier.quantity,
-                ),
-              )
-              .toList(growable: false);
-          return CartItem(
-            id: 'order_item_${item.id}',
-            productId: item.productId,
-            productName: item.productNameSnapshot,
-            primaryPhotoPath: null,
-            baseProductId: item.baseProductId,
-            baseProductName: null,
-            quantityMil: item.quantityMil,
-            availableStockMil: item.quantityMil,
-            unitPriceCents: item.unitPriceCents,
-            unitMeasure: 'un',
-            productType: 'unidade',
-            modifiers: modifiers,
-            notes: item.notes,
-          );
-        })
-        .toList(growable: false);
-
-    final checkoutInput = CheckoutInput(
-      items: cartItems,
-      saleType: SaleType.cash,
-      paymentMethod: paymentMethod,
-      operationalOrderId: orderId,
-      notes: 'Venda originada do pedido operacional #$orderId.',
-    );
 
     try {
       final sale = await ref
-          .read(saleRepositoryProvider)
-          .completeCashSale(input: checkoutInput);
+          .read(operationalOrderBillingControllerProvider.notifier)
+          .invoice(detail: detail, paymentMethod: paymentMethod);
       if (!context.mounted) {
         return;
       }
-      ref.invalidate(operationalOrderDetailProvider(orderId));
-      ref.invalidate(operationalOrdersProvider);
       context.pushNamed(
         AppRouteNames.saleReceipt,
         pathParameters: {'saleId': '${sale.saleId}'},
@@ -585,37 +898,8 @@ class OrderDetailPage extends ConsumerWidget {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Falha ao converter: $error')));
+      _showMessage(context, 'Falha ao faturar pedido: $error');
     }
-  }
-
-  Future<bool?> _confirmConvertToSale(
-    BuildContext context,
-    OperationalOrderDetail detail,
-  ) {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Confirmar conversao'),
-          content: Text(
-            'Gerar venda para o pedido #$orderId com ${detail.totalUnits} item(ns), total de ${AppFormatters.currencyFromCents(detail.totalCents)}?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Converter'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   Future<PaymentMethod?> _pickImmediatePaymentMethod(
@@ -648,128 +932,42 @@ class OrderDetailPage extends ConsumerWidget {
     );
   }
 
-  bool _canConvertToSale(OperationalOrderDetail detail) {
-    return detail.items.isNotEmpty &&
-        detail.linkedSaleId == null &&
-        detail.order.status != OperationalOrderStatus.canceled &&
-        detail.order.status != OperationalOrderStatus.delivered;
-  }
-
-  String _convertButtonLabel(OperationalOrderDetail detail) {
-    if (detail.items.isEmpty) {
-      return 'Sem itens';
-    }
-    if (detail.order.status == OperationalOrderStatus.canceled) {
-      return 'Pedido cancelado';
-    }
-    if (detail.order.status == OperationalOrderStatus.delivered) {
-      return 'Pedido encerrado';
-    }
-    return 'Converter em venda';
-  }
-}
-
-class _OrderOverviewCard extends StatelessWidget {
-  const _OrderOverviewCard({required this.detail});
-
-  final OperationalOrderDetail detail;
-
-  @override
-  Widget build(BuildContext context) {
-    final order = detail.order;
-    final theme = Theme.of(context);
-
-    return AppCard(
-      padding: const EdgeInsets.all(18),
-      gradient: LinearGradient(
-        colors: [
-          Theme.of(context).colorScheme.surface,
-          Theme.of(context).colorScheme.surfaceContainerLow,
-        ],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Pedido #${order.id}',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    OrderStatusBadge(status: order.status),
-                  ],
-                ),
-              ),
-              Text(
-                AppFormatters.currencyFromCents(detail.totalCents),
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _OverviewChip(
-                icon: Icons.event_rounded,
-                label: 'Criado ${AppFormatters.shortDateTime(order.createdAt)}',
-              ),
-              _OverviewChip(
-                icon: Icons.update_rounded,
-                label:
-                    'Atualizado ${AppFormatters.shortDateTime(order.updatedAt)}',
-              ),
-              _OverviewChip(
-                icon: Icons.schedule_rounded,
-                label: 'Tempo ${operationalOrderElapsedLabel(order)}',
-              ),
-              _OverviewChip(
-                icon: Icons.layers_rounded,
-                label:
-                    '${detail.totalUnits} item(ns) • ${detail.lineItemsCount} linha(s)',
-              ),
-            ],
-          ),
-          if (order.notes?.trim().isNotEmpty ?? false) ...[
-            const SizedBox(height: 14),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.75),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Text(
-                order.notes!.trim(),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ],
+  void _openTicketPreview(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => OrderTicketPreviewPage(orderId: widget.orderId),
       ),
     );
   }
+
+  Future<void> _openPrinterConfig(BuildContext context) async {
+    final config = await ref.read(kitchenPrinterConfigProvider.future);
+    if (!context.mounted) {
+      return;
+    }
+    final updated = await showDialog<bool>(
+      context: context,
+      builder: (_) => KitchenPrinterConfigDialog(initialConfig: config),
+    );
+    if (updated == true && context.mounted) {
+      _showMessage(context, 'Configuracao da impressora atualizada.');
+    }
+  }
+
+  String? _cleanNullable(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
+  void _showMessage(BuildContext context, String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
 }
 
-class _OverviewChip extends StatelessWidget {
-  const _OverviewChip({required this.icon, required this.label});
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({required this.icon, required this.label});
 
   final IconData icon;
   final String label;
@@ -799,33 +997,34 @@ class _OverviewChip extends StatelessWidget {
   }
 }
 
-class _StatusActionButton extends StatelessWidget {
-  const _StatusActionButton({
+class _SummaryRow extends StatelessWidget {
+  const _SummaryRow({
     required this.label,
-    required this.icon,
-    required this.onPressed,
-    this.isDanger = false,
+    required this.value,
+    this.emphasize = false,
   });
 
   final String label;
-  final IconData icon;
-  final VoidCallback? onPressed;
-  final bool isDanger;
+  final String value;
+  final bool emphasize;
 
   @override
   Widget build(BuildContext context) {
-    if (isDanger) {
-      return OutlinedButton.icon(
-        onPressed: onPressed,
-        icon: Icon(icon),
-        label: Text(label),
-      );
-    }
+    final style = emphasize
+        ? Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)
+        : Theme.of(context).textTheme.bodyMedium;
 
-    return FilledButton.tonalIcon(
-      onPressed: onPressed,
-      icon: Icon(icon),
-      label: Text(label),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(child: Text(label)),
+          const SizedBox(width: 12),
+          Text(value, style: style, textAlign: TextAlign.right),
+        ],
+      ),
     );
   }
 }

@@ -64,7 +64,10 @@ abstract final class OrderTicketMapper {
                 final parts = <String>[
                   if (modifier.groupName?.trim().isNotEmpty ?? false)
                     '${modifier.groupName}:',
-                  modifier.optionName,
+                  operationalOrderModifierLabel(
+                    modifier.optionName,
+                    modifier.adjustmentType,
+                  ),
                 ];
                 if (ticket.showFinancialSummary &&
                     modifier.priceDeltaCents != 0) {
@@ -93,12 +96,26 @@ abstract final class OrderTicketMapper {
 
     return OrderTicketViewModel(
       title: ticket.title,
-      profileLabel: ticket.isKitchenProfile ? 'Cozinha' : 'Interno',
+      profileLabel: ticket.isKitchenProfile ? 'Cozinha' : 'Preview',
       businessName: ticket.businessName,
       orderNumber: '#${ticket.orderId}',
       statusLabel: operationalOrderStatusLabel(ticket.status),
       headerNotes: ticket.orderNotes,
       infoLines: [
+        OrderTicketInfoLine(
+          label: 'Atendimento',
+          value: operationalOrderServiceTypeLabel(ticket.serviceType),
+        ),
+        if (ticket.customerIdentifier?.trim().isNotEmpty ?? false)
+          OrderTicketInfoLine(
+            label: 'Cliente',
+            value: ticket.customerIdentifier!.trim(),
+          ),
+        if (ticket.customerPhone?.trim().isNotEmpty ?? false)
+          OrderTicketInfoLine(
+            label: 'Telefone',
+            value: ticket.customerPhone!.trim(),
+          ),
         OrderTicketInfoLine(
           label: 'Criado em',
           value: AppFormatters.shortDateTime(ticket.createdAt),
