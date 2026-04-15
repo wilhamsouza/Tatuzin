@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/widgets/app_section_card.dart';
+import '../../../../app/routes/route_names.dart';
 import '../../domain/entities/commercial_receipt_request.dart';
 import '../providers/receipt_providers.dart';
 import '../widgets/commercial_receipt_view.dart';
@@ -38,6 +40,8 @@ class ReceiptPreviewPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final receiptAsync = ref.watch(commercialReceiptProvider(request));
+    final showBackToSales =
+        showSuccessBanner && request.type == CommercialReceiptRequestType.sale;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Comprovante')),
@@ -51,9 +55,19 @@ class ReceiptPreviewPage extends ConsumerWidget {
                   title: 'Ações do comprovante',
                   subtitle:
                       'Visualize, salve em PDF ou compartilhe o comprovante comercial (separado do ticket operacional).',
-                  child: ReceiptActionBar(
-                    request: request,
-                    showViewAction: false,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (showBackToSales) ...[
+                        FilledButton.icon(
+                          onPressed: () => context.goNamed(AppRouteNames.sales),
+                          icon: const Icon(Icons.storefront_rounded),
+                          label: const Text('Voltar para vendas'),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      ReceiptActionBar(request: request, showViewAction: false),
+                    ],
                   ),
                 ),
               ),
