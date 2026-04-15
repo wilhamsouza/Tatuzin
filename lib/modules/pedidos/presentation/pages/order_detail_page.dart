@@ -204,38 +204,43 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             ],
           ),
           const SizedBox(height: 16),
-          SegmentedButton<OperationalOrderServiceType>(
-            segments: const [
-              ButtonSegment<OperationalOrderServiceType>(
-                value: OperationalOrderServiceType.counter,
-                icon: Icon(Icons.storefront_rounded),
-                label: Text('Balcao'),
-              ),
-              ButtonSegment<OperationalOrderServiceType>(
-                value: OperationalOrderServiceType.pickup,
-                icon: Icon(Icons.shopping_bag_rounded),
-                label: Text('Retirada'),
-              ),
-              ButtonSegment<OperationalOrderServiceType>(
-                value: OperationalOrderServiceType.delivery,
-                icon: Icon(Icons.delivery_dining_rounded),
-                label: Text('Delivery'),
-              ),
-              ButtonSegment<OperationalOrderServiceType>(
-                value: OperationalOrderServiceType.table,
-                icon: Icon(Icons.table_restaurant_rounded),
-                label: Text('Mesa'),
-              ),
-            ],
-            selected: <OperationalOrderServiceType>{_serviceType},
-            onSelectionChanged: editingEnabled && !busy
-                ? (selection) {
-                    setState(() {
-                      _serviceType = selection.first;
-                      _headerDirty = true;
-                    });
-                  }
-                : null,
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: OperationalOrderServiceType.values
+                  .map(
+                    (serviceType) => Padding(
+                      padding: EdgeInsets.only(
+                        right:
+                            serviceType ==
+                                OperationalOrderServiceType.values.last
+                            ? 0
+                            : 8,
+                      ),
+                      child: ChoiceChip(
+                        avatar: Icon(
+                          operationalOrderServiceTypeIcon(serviceType),
+                          size: 18,
+                        ),
+                        label: Text(
+                          operationalOrderServiceTypeLabel(serviceType),
+                          softWrap: false,
+                          overflow: TextOverflow.fade,
+                        ),
+                        selected: _serviceType == serviceType,
+                        onSelected: editingEnabled && !busy
+                            ? (_) {
+                                setState(() {
+                                  _serviceType = serviceType;
+                                  _headerDirty = true;
+                                });
+                              }
+                            : null,
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
           ),
           const SizedBox(height: 12),
           AppInput(
