@@ -119,6 +119,17 @@ class AppMainDrawer extends ConsumerWidget {
                         ),
                       ),
                       _DrawerItem(
+                        label: 'Pedidos',
+                        icon: Icons.receipt_long_rounded,
+                        isSelected: currentPath == AppRoutePaths.orders,
+                        onTap: () => _navigateTo(
+                          context,
+                          currentPath: currentPath,
+                          path: AppRoutePaths.orders,
+                          routeName: AppRouteNames.orders,
+                        ),
+                      ),
+                      _DrawerItem(
                         label: 'Caixa',
                         icon: Icons.account_balance_wallet_rounded,
                         isSelected: currentPath == AppRoutePaths.cash,

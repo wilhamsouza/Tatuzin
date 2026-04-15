@@ -117,9 +117,9 @@ class SaleValidationSupport {
         'Pedido operacional #$orderId esta cancelado e nao pode ser convertido.',
       );
     }
-    if (status == 'delivered') {
+    if (status != 'delivered') {
       throw ValidationException(
-        'Pedido operacional #$orderId ja foi encerrado e nao pode ser convertido novamente.',
+        'Pedido operacional #$orderId ainda nao foi entregue e nao pode ser faturado.',
       );
     }
   }

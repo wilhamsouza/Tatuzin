@@ -529,7 +529,7 @@ class _CartPageState extends ConsumerState<CartPage> {
       }
 
       ref.read(cartProvider.notifier).clear();
-      ref.invalidate(operationalOrdersProvider);
+      ref.invalidate(operationalOrderBoardProvider);
       if (!context.mounted) {
         return;
       }

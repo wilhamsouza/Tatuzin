@@ -6,10 +6,15 @@ import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/widgets/app_bottom_action_bar.dart';
+import '../../../../app/core/widgets/app_bottom_sheet_container.dart';
+import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_input.dart';
+import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
+import '../../../../app/theme/app_design_tokens.dart';
 import '../../../carrinho/domain/entities/cart_item.dart';
 import '../../../carrinho/presentation/providers/cart_provider.dart';
 import '../../../produtos/domain/entities/modifier_group.dart';
@@ -46,8 +51,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
   Widget build(BuildContext context) {
     final productsAsync = ref.watch(salesCatalogProvider);
     final cart = ref.watch(cartProvider);
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final layout = context.appLayout;
 
     return Scaffold(
       drawer: const AppMainDrawer(),
@@ -67,7 +71,9 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final horizontalPadding = constraints.maxWidth >= 900 ? 18.0 : 12.0;
+          final horizontalPadding = constraints.maxWidth >= 900
+              ? layout.pagePadding + 2
+              : layout.pagePaddingCompact;
           final tileHeight = constraints.maxWidth >= 900 ? 206.0 : 188.0;
           final maxTileWidth = constraints.maxWidth >= 1200
               ? 216.0
@@ -80,7 +86,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
               Padding(
                 padding: EdgeInsets.fromLTRB(
                   horizontalPadding,
-                  6,
+                  layout.space3,
                   horizontalPadding,
                   0,
                 ),
@@ -97,7 +103,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                   onScan: _scanBarcode,
                   onOpenHistory: () =>
                       context.pushNamed(AppRouteNames.salesHistory),
-                  onOpenOrders: () => context.pushNamed(AppRouteNames.orders),
                   onOpenCart: () => context.pushNamed(AppRouteNames.cart),
                   onOpenCheckout: cart.isEmpty
                       ? null
@@ -108,28 +113,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 child: productsAsync.when(
                   data: (products) {
                     if (products.isEmpty) {
-                      return Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(horizontalPadding),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'Nenhum produto dispon\u00edvel com esse filtro.',
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.bodyLarge?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              OutlinedButton.icon(
-                                onPressed: () =>
-                                    context.pushNamed(AppRouteNames.orders),
-                                icon: const Icon(Icons.receipt_long_rounded),
-                                label: const Text('Abrir pedidos operacionais'),
-                              ),
-                            ],
-                          ),
+                      return Padding(
+                        padding: EdgeInsets.all(horizontalPadding),
+                        child: const AppStateCard(
+                          title: 'Nenhum produto disponivel',
+                          message:
+                              'A busca atual nao encontrou itens no catalogo. Ajuste o filtro ou leia um codigo pelo scanner.',
+                          compact: true,
                         ),
                       );
                     }
@@ -142,7 +132,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       child: GridView.builder(
                         padding: EdgeInsets.fromLTRB(
                           horizontalPadding,
-                          8,
+                          layout.space4,
                           horizontalPadding,
                           cart.isEmpty ? 20 : 96,
                         ),
@@ -159,12 +149,21 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       ),
                     );
                   },
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (error, _) => Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(horizontalPadding),
-                      child: Text('Falha ao carregar cat\u00e1logo: $error'),
+                  loading: () => const Center(
+                    child: AppStateCard(
+                      title: 'Atualizando catalogo',
+                      message: 'Buscando produtos e variacoes para o PDV.',
+                      tone: AppStateTone.loading,
+                      compact: true,
+                    ),
+                  ),
+                  error: (error, _) => Padding(
+                    padding: EdgeInsets.all(horizontalPadding),
+                    child: AppStateCard(
+                      title: 'Falha ao carregar catalogo',
+                      message: '$error',
+                      tone: AppStateTone.error,
+                      compact: true,
                     ),
                   ),
                 ),
@@ -175,33 +174,18 @@ class _SalesPageState extends ConsumerState<SalesPage> {
       ),
       bottomNavigationBar: cart.isEmpty
           ? null
-          : SafeArea(
-              minimum: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: colorScheme.surface,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  child: _BottomCartBar(
-                    cartItems: cart.totalItems,
-                    totalCents: cart.totalCents,
-                    onOpenCart: () => context.pushNamed(AppRouteNames.cart),
-                    onOpenCheckout: () =>
-                        context.pushNamed(AppRouteNames.checkout),
-                  ),
-                ),
+          : AppBottomActionBar(
+              minimum: EdgeInsets.fromLTRB(
+                layout.pagePaddingCompact,
+                0,
+                layout.pagePaddingCompact,
+                layout.pagePaddingCompact,
+              ),
+              child: _BottomCartBar(
+                cartItems: cart.totalItems,
+                totalCents: cart.totalCents,
+                onOpenCart: () => context.pushNamed(AppRouteNames.cart),
+                onOpenCheckout: () => context.pushNamed(AppRouteNames.checkout),
               ),
             ),
     );
@@ -261,7 +245,6 @@ class _CompactSalesHeader extends StatelessWidget {
     required this.onClear,
     required this.onScan,
     required this.onOpenHistory,
-    required this.onOpenOrders,
     required this.onOpenCart,
     required this.onOpenCheckout,
   });
@@ -274,7 +257,6 @@ class _CompactSalesHeader extends StatelessWidget {
   final VoidCallback onClear;
   final VoidCallback onScan;
   final VoidCallback onOpenHistory;
-  final VoidCallback onOpenOrders;
   final VoidCallback onOpenCart;
   final VoidCallback? onOpenCheckout;
 
@@ -282,106 +264,125 @@ class _CompactSalesHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final canClear = controller.text.trim().isNotEmpty;
     final theme = Theme.of(context);
+    final layout = context.appLayout;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const AppStatusBadge(
-              label: 'PDV',
-              tone: AppStatusTone.info,
-              icon: Icons.point_of_sale_rounded,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Operação de venda',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+    return AppCard(
+      tone: AppCardTone.brand,
+      padding: EdgeInsets.all(layout.compactCardPadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const AppStatusBadge(
+                label: 'PDV',
+                tone: AppStatusTone.info,
+                icon: Icons.point_of_sale_rounded,
               ),
-            ),
-            if (cartItems > 0)
-              Text(
-                cartItems == 1 ? '1 item' : '$cartItems itens',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: AppInput(
-                controller: controller,
-                textInputAction: TextInputAction.search,
-                prefixIcon: const Icon(Icons.search, size: 20),
-                hintText: 'Buscar produto ou código',
-                suffixIcon: canClear
-                    ? IconButton(
-                        tooltip: 'Limpar busca',
-                        onPressed: onClear,
-                        icon: const Icon(Icons.close_rounded),
-                      )
-                    : null,
-                onChanged: onChanged,
-                onSubmitted: onSubmitted,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Tooltip(
-              message: 'Ler c\u00f3digo de barras',
-              child: SizedBox(
-                width: 44,
-                height: 44,
-                child: FilledButton.tonal(
-                  onPressed: onScan,
-                  style: FilledButton.styleFrom(
-                    padding: EdgeInsets.zero,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Operação de venda',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
-                  child: const Icon(Icons.qr_code_scanner_rounded, size: 20),
                 ),
               ),
+              if (cartItems > 0)
+                Text(
+                  cartItems == 1 ? '1 item' : '$cartItems itens',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: AppInput(
+                  controller: controller,
+                  textInputAction: TextInputAction.search,
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  hintText: 'Buscar produto ou código',
+                  suffixIcon: canClear
+                      ? IconButton(
+                          tooltip: 'Limpar busca',
+                          onPressed: onClear,
+                          icon: const Icon(Icons.close_rounded),
+                        )
+                      : null,
+                  onChanged: onChanged,
+                  onSubmitted: onSubmitted,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: 'Ler c\u00f3digo de barras',
+                child: SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: FilledButton.tonal(
+                    onPressed: onScan,
+                    style: FilledButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Icon(Icons.qr_code_scanner_rounded, size: 20),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
             ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _HeaderQuickAction(
-              label: 'Histórico',
-              icon: Icons.history_rounded,
-              onTap: onOpenHistory,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.all(6),
+              child: Row(
+                children: [
+                  _HeaderQuickAction(
+                    label: 'Histórico',
+                    icon: Icons.history_rounded,
+                    tooltip: 'Abrir histórico de vendas',
+                    onTap: onOpenHistory,
+                  ),
+                  const SizedBox(width: 6),
+                  _HeaderQuickAction(
+                    label: 'Carrinho',
+                    icon: Icons.shopping_cart_checkout_rounded,
+                    tooltip: cartIsEmpty
+                        ? 'Abrir carrinho'
+                        : 'Abrir carrinho com $cartItems item(ns)',
+                    badgeCount: cartItems,
+                    onTap: onOpenCart,
+                  ),
+                  const SizedBox(width: 6),
+                  _HeaderQuickAction(
+                    label: 'Finalizar',
+                    icon: Icons.check_circle_outline_rounded,
+                    tooltip: 'Finalizar venda',
+                    onTap: onOpenCheckout,
+                    isPrimary: true,
+                  ),
+                ],
+              ),
             ),
-            _HeaderQuickAction(
-              label: 'Pedidos',
-              icon: Icons.receipt_long_rounded,
-              onTap: onOpenOrders,
-            ),
-            _HeaderQuickAction(
-              label: cartIsEmpty ? 'Carrinho' : 'Carrinho ($cartItems)',
-              icon: Icons.shopping_cart_checkout_rounded,
-              onTap: onOpenCart,
-            ),
-            _HeaderQuickAction(
-              label: 'Finalizar',
-              icon: Icons.check_circle_outline_rounded,
-              onTap: onOpenCheckout,
-              isPrimary: true,
-            ),
-          ],
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -390,46 +391,81 @@ class _HeaderQuickAction extends StatelessWidget {
   const _HeaderQuickAction({
     required this.label,
     required this.icon,
+    required this.tooltip,
     required this.onTap,
+    this.badgeCount = 0,
     this.isPrimary = false,
   });
 
   final String label;
   final IconData icon;
+  final String tooltip;
   final VoidCallback? onTap;
+  final int badgeCount;
   final bool isPrimary;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final labelWidget = Text(
-      label,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
+    final foregroundColor = isPrimary
+        ? colorScheme.onPrimary
+        : colorScheme.onSurface;
+    final backgroundColor = isPrimary
+        ? colorScheme.primary
+        : colorScheme.surface;
+    final borderColor = isPrimary
+        ? colorScheme.primary
+        : colorScheme.outlineVariant;
 
-    return SizedBox(
-      height: 38,
-      child: isPrimary
-          ? FilledButton.icon(
-              onPressed: onTap,
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    return Semantics(
+      button: true,
+      label: tooltip,
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: backgroundColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: borderColor),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: 40,
+                minWidth: isPrimary ? 108 : 92,
               ),
-              icon: Icon(icon, size: 18),
-              label: labelWidget,
-            )
-          : OutlinedButton.icon(
-              onPressed: onTap,
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                side: BorderSide(color: colorScheme.outlineVariant),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Badge(
+                      isLabelVisible: badgeCount > 0,
+                      label: Text('$badgeCount'),
+                      child: Icon(icon, size: 18, color: foregroundColor),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: foregroundColor,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              icon: Icon(icon, size: 18),
-              label: labelWidget,
             ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1374,27 +1410,18 @@ class _BarcodeScannerSheetState extends State<_BarcodeScannerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+    return AppBottomSheetContainer(
+      title: 'Ler codigo de barras',
+      subtitle:
+          'Aponte a camera para o codigo. Ao identificar, o item sera procurado e adicionado ao carrinho.',
+      trailing: IconButton(
+        tooltip: 'Fechar',
+        onPressed: () => Navigator.of(context).pop(),
+        icon: const Icon(Icons.close_rounded),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Ler c\u00f3digo de barras',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Fechar',
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close_rounded),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(24),
             child: SizedBox(
@@ -1420,11 +1447,6 @@ class _BarcodeScannerSheetState extends State<_BarcodeScannerSheet> {
                 },
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Aponte a c\u00e2mera para o c\u00f3digo. Ao identificar, o item ser\u00e1 procurado e adicionado ao carrinho.',
-            textAlign: TextAlign.center,
           ),
         ],
       ),
