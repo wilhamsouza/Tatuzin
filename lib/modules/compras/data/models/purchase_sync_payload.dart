@@ -1,5 +1,6 @@
 import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../../../app/core/sync/sync_status.dart';
+import '../../domain/entities/purchase_item.dart';
 import '../../domain/entities/purchase_status.dart';
 
 class PurchaseSyncPayload {
@@ -56,15 +57,25 @@ class PurchaseSyncPayload {
   final DateTime? lastSyncedAt;
   final List<PurchaseSyncItemPayload> items;
   final List<PurchaseSyncPaymentPayload> payments;
+
+  bool get containsSupplyItems => items.any((item) => item.isSupply);
 }
 
 class PurchaseSyncItemPayload {
   const PurchaseSyncItemPayload({
     required this.itemId,
     required this.itemUuid,
+    required this.itemType,
     required this.productLocalId,
+    required this.productVariantLocalId,
+    required this.supplyLocalId,
     required this.productRemoteId,
-    required this.productNameSnapshot,
+    required this.productVariantRemoteId,
+    required this.supplyRemoteId,
+    required this.itemNameSnapshot,
+    required this.variantSkuSnapshot,
+    required this.variantColorLabelSnapshot,
+    required this.variantSizeLabelSnapshot,
     required this.unitMeasureSnapshot,
     required this.quantityMil,
     required this.unitCostCents,
@@ -73,13 +84,23 @@ class PurchaseSyncItemPayload {
 
   final int itemId;
   final String itemUuid;
-  final int productLocalId;
+  final PurchaseItemType itemType;
+  final int? productLocalId;
+  final int? productVariantLocalId;
+  final int? supplyLocalId;
   final String? productRemoteId;
-  final String productNameSnapshot;
+  final String? productVariantRemoteId;
+  final String? supplyRemoteId;
+  final String itemNameSnapshot;
+  final String? variantSkuSnapshot;
+  final String? variantColorLabelSnapshot;
+  final String? variantSizeLabelSnapshot;
   final String unitMeasureSnapshot;
   final int quantityMil;
   final int unitCostCents;
   final int subtotalCents;
+
+  bool get isSupply => itemType == PurchaseItemType.supply;
 }
 
 class PurchaseSyncPaymentPayload {

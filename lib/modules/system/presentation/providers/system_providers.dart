@@ -30,6 +30,7 @@ import '../../../clientes/presentation/providers/client_providers.dart';
 import '../../../compras/presentation/providers/purchase_providers.dart';
 import '../../../fiado/presentation/providers/fiado_providers.dart';
 import '../../../fornecedores/presentation/providers/supplier_providers.dart';
+import '../../../insumos/presentation/providers/supply_providers.dart';
 import '../../../produtos/presentation/providers/product_providers.dart';
 import '../../../vendas/presentation/providers/sales_providers.dart';
 
@@ -130,8 +131,10 @@ final remoteDiagnosticsProvider = FutureProvider<List<RemoteFeatureDiagnostic>>(
   (ref) async {
     return <RemoteFeatureDiagnostic>[
       await ref.watch(suppliersRemoteDatasourceProvider).fetchDiagnostic(),
+      await ref.watch(suppliesRemoteDatasourceProvider).fetchDiagnostic(),
       await ref.watch(categoriesRemoteDatasourceProvider).fetchDiagnostic(),
       await ref.watch(productsRemoteDatasourceProvider).fetchDiagnostic(),
+      await ref.watch(productRecipesRemoteDatasourceProvider).fetchDiagnostic(),
       await ref.watch(customersRemoteDatasourceProvider).fetchDiagnostic(),
       await ref.watch(purchasesRemoteDatasourceProvider).fetchDiagnostic(),
       await ref.watch(salesRemoteDatasourceProvider).fetchDiagnostic(),

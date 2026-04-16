@@ -1,7 +1,9 @@
 import '../../../../../app/core/formatters/app_formatters.dart';
 import '../../../../../app/core/utils/money_parser.dart';
 import '../../../../../app/core/utils/quantity_parser.dart';
+import '../../../../insumos/domain/entities/supply.dart';
 import '../../../domain/entities/product.dart';
+import '../../../domain/services/product_cost_calculator.dart';
 
 class EditableProductPhoto {
   const EditableProductPhoto({
@@ -80,6 +82,86 @@ class EditableModifierOption {
       name: option.name,
       adjustmentType: option.adjustmentType,
       priceDeltaCents: option.priceDeltaCents,
+    );
+  }
+}
+
+class EditableProductRecipeItemDraft {
+  const EditableProductRecipeItemDraft({
+    required this.supply,
+    required this.quantityUsedMil,
+    this.wasteBasisPoints = 0,
+    this.notes,
+  });
+
+  final Supply supply;
+  final int quantityUsedMil;
+  final int wasteBasisPoints;
+  final String? notes;
+
+  ProductCostComponentInput toCostInput() {
+    return ProductCostComponentInput(
+      supplyId: supply.id,
+      supplyName: supply.name,
+      purchaseUnitType: supply.purchaseUnitType,
+      unitType: supply.unitType,
+      conversionFactor: supply.conversionFactor,
+      lastPurchasePriceCents: supply.lastPurchasePriceCents,
+      quantityUsedMil: quantityUsedMil,
+      wasteBasisPoints: wasteBasisPoints,
+      notes: notes,
+    );
+  }
+
+  ProductRecipeItemInput toRecipeInput() {
+    return ProductRecipeItemInput(
+      supplyId: supply.id,
+      quantityUsedMil: quantityUsedMil,
+      unitType: supply.unitType,
+      wasteBasisPoints: wasteBasisPoints,
+      notes: notes,
+    );
+  }
+
+  EditableProductRecipeItemDraft copyWith({
+    Supply? supply,
+    int? quantityUsedMil,
+    int? wasteBasisPoints,
+    String? notes,
+  }) {
+    return EditableProductRecipeItemDraft(
+      supply: supply ?? this.supply,
+      quantityUsedMil: quantityUsedMil ?? this.quantityUsedMil,
+      wasteBasisPoints: wasteBasisPoints ?? this.wasteBasisPoints,
+      notes: notes ?? this.notes,
+    );
+  }
+
+  factory EditableProductRecipeItemDraft.fromProductRecipeItem(
+    ProductRecipeItem item,
+  ) {
+    return EditableProductRecipeItemDraft(
+      supply: Supply(
+        id: item.supplyId,
+        uuid: 'linked:${item.supplyId}',
+        name: item.supplyName,
+        sku: null,
+        unitType: item.unitType,
+        purchaseUnitType: item.purchaseUnitType,
+        conversionFactor: item.conversionFactor,
+        lastPurchasePriceCents: item.lastPurchasePriceCents,
+        averagePurchasePriceCents: null,
+        currentStockMil: null,
+        minimumStockMil: null,
+        defaultSupplierId: null,
+        defaultSupplierName: null,
+        isActive: true,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      ),
+      quantityUsedMil: item.quantityUsedMil,
+      wasteBasisPoints: item.wasteBasisPoints,
+      notes: item.notes,
     );
   }
 }

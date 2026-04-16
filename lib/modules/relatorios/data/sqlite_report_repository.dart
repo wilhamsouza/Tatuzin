@@ -1,3 +1,5 @@
+import 'package:sqflite/sqflite.dart';
+
 import '../../clientes/domain/entities/customer_credit_transaction.dart';
 import '../domain/entities/report_customer_credit_summary.dart';
 import '../../../app/core/database/app_database.dart';
@@ -8,16 +10,21 @@ import '../domain/entities/report_payment_summary.dart';
 import '../domain/entities/report_period.dart';
 import '../domain/entities/report_sold_product_summary.dart';
 import '../domain/entities/report_summary.dart';
+import '../domain/entities/report_variant_summary.dart';
 import '../domain/repositories/report_repository.dart';
 
 class SqliteReportRepository implements ReportRepository {
-  SqliteReportRepository(this._appDatabase);
+  SqliteReportRepository(AppDatabase appDatabase)
+    : _databaseLoader = (() => appDatabase.database);
 
-  final AppDatabase _appDatabase;
+  SqliteReportRepository.forDatabase(Future<Database> Function() databaseLoader)
+    : _databaseLoader = databaseLoader;
+
+  final Future<Database> Function() _databaseLoader;
 
   @override
   Future<ReportSummary> fetchSummary({required ReportPeriod period}) async {
-    final database = await _appDatabase.database;
+    final database = await _databaseLoader();
     final range = period.resolveRange(DateTime.now());
     final startIso = range.start.toIso8601String();
     final endIso = range.endExclusive.toIso8601String();
@@ -280,6 +287,184 @@ class SqliteReportRepository implements ReportRepository {
       [startIso, endIso],
     );
 
+    final variantRows = await database.rawQuery(
+      '''
+      WITH sold AS (
+        SELECT
+          iv.produto_id AS product_id,
+          iv.produto_variante_id AS variant_id,
+          MAX(
+            COALESCE(
+              NULLIF(TRIM(p.model_name), ''),
+              NULLIF(TRIM(iv.nome_produto_snapshot), ''),
+              NULLIF(TRIM(p.nome), ''),
+              'Produto'
+            )
+          ) AS model_name,
+          MAX(
+            COALESCE(
+              NULLIF(TRIM(iv.sku_variante_snapshot), ''),
+              NULLIF(TRIM(pv.sku), '')
+            )
+          ) AS variant_sku,
+          MAX(
+            COALESCE(
+              NULLIF(TRIM(iv.cor_variante_snapshot), ''),
+              NULLIF(TRIM(pv.cor), '')
+            )
+          ) AS color_label,
+          MAX(
+            COALESCE(
+              NULLIF(TRIM(iv.tamanho_variante_snapshot), ''),
+              NULLIF(TRIM(pv.tamanho), '')
+            )
+          ) AS size_label,
+          COALESCE(SUM(iv.quantidade_mil), 0) AS sold_quantity_mil,
+          COALESCE(
+            SUM(
+              COALESCE(
+                iv.subtotal_centavos,
+                CAST(
+                  ROUND(
+                    (iv.quantidade_mil * iv.valor_unitario_centavos) / 1000.0,
+                    0
+                  ) AS INTEGER
+                )
+              )
+            ),
+            0
+          ) AS gross_revenue_cents
+        FROM ${TableNames.itensVenda} iv
+        INNER JOIN ${TableNames.vendas} v ON v.id = iv.venda_id
+        LEFT JOIN ${TableNames.produtos} p ON p.id = iv.produto_id
+        LEFT JOIN ${TableNames.produtoVariantes} pv
+          ON pv.id = iv.produto_variante_id
+        WHERE v.status = 'ativa'
+          AND iv.produto_variante_id IS NOT NULL
+          AND v.data_venda >= ?
+          AND v.data_venda < ?
+        GROUP BY iv.produto_id, iv.produto_variante_id
+      ),
+      purchased AS (
+        SELECT
+          ic.produto_id AS product_id,
+          ic.produto_variante_id AS variant_id,
+          MAX(
+            COALESCE(
+              NULLIF(TRIM(p.model_name), ''),
+              NULLIF(TRIM(ic.nome_item_snapshot), ''),
+              NULLIF(TRIM(p.nome), ''),
+              'Produto'
+            )
+          ) AS model_name,
+          MAX(
+            COALESCE(
+              NULLIF(TRIM(ic.sku_variante_snapshot), ''),
+              NULLIF(TRIM(pv.sku), '')
+            )
+          ) AS variant_sku,
+          MAX(
+            COALESCE(
+              NULLIF(TRIM(ic.cor_variante_snapshot), ''),
+              NULLIF(TRIM(pv.cor), '')
+            )
+          ) AS color_label,
+          MAX(
+            COALESCE(
+              NULLIF(TRIM(ic.tamanho_variante_snapshot), ''),
+              NULLIF(TRIM(pv.tamanho), '')
+            )
+          ) AS size_label,
+          COALESCE(SUM(ic.quantidade_mil), 0) AS purchased_quantity_mil
+        FROM ${TableNames.itensCompra} ic
+        INNER JOIN ${TableNames.compras} c ON c.id = ic.compra_id
+        LEFT JOIN ${TableNames.produtos} p ON p.id = ic.produto_id
+        LEFT JOIN ${TableNames.produtoVariantes} pv
+          ON pv.id = ic.produto_variante_id
+        WHERE c.status != 'cancelada'
+          AND ic.item_type = 'product'
+          AND ic.produto_variante_id IS NOT NULL
+          AND c.data_compra >= ?
+          AND c.data_compra < ?
+        GROUP BY ic.produto_id, ic.produto_variante_id
+      ),
+      variant_index AS (
+        SELECT
+          pv.produto_id AS product_id,
+          pv.id AS variant_id,
+          COALESCE(
+            NULLIF(TRIM(p.model_name), ''),
+            NULLIF(TRIM(p.nome), ''),
+            'Produto'
+          ) AS model_name,
+          pv.sku AS variant_sku,
+          pv.cor AS color_label,
+          pv.tamanho AS size_label,
+          pv.estoque_mil AS current_stock_mil,
+          COALESCE(pv.ordem, 0) AS variant_order
+        FROM ${TableNames.produtoVariantes} pv
+        INNER JOIN ${TableNames.produtos} p ON p.id = pv.produto_id
+        WHERE p.deletado_em IS NULL
+
+        UNION
+
+        SELECT
+          sold.product_id,
+          sold.variant_id,
+          sold.model_name,
+          sold.variant_sku,
+          sold.color_label,
+          sold.size_label,
+          COALESCE(pv.estoque_mil, 0) AS current_stock_mil,
+          COALESCE(pv.ordem, 9999) AS variant_order
+        FROM sold
+        LEFT JOIN ${TableNames.produtoVariantes} pv ON pv.id = sold.variant_id
+
+        UNION
+
+        SELECT
+          purchased.product_id,
+          purchased.variant_id,
+          purchased.model_name,
+          purchased.variant_sku,
+          purchased.color_label,
+          purchased.size_label,
+          COALESCE(pv.estoque_mil, 0) AS current_stock_mil,
+          COALESCE(pv.ordem, 9999) AS variant_order
+        FROM purchased
+        LEFT JOIN ${TableNames.produtoVariantes} pv
+          ON pv.id = purchased.variant_id
+      )
+      SELECT
+        idx.product_id,
+        idx.variant_id,
+        MAX(idx.model_name) AS model_name,
+        MAX(idx.variant_sku) AS variant_sku,
+        MAX(idx.color_label) AS color_label,
+        MAX(idx.size_label) AS size_label,
+        COALESCE(MAX(idx.current_stock_mil), 0) AS current_stock_mil,
+        COALESCE(MAX(sold.sold_quantity_mil), 0) AS sold_quantity_mil,
+        COALESCE(MAX(purchased.purchased_quantity_mil), 0) AS purchased_quantity_mil,
+        COALESCE(MAX(sold.gross_revenue_cents), 0) AS gross_revenue_cents,
+        MIN(idx.variant_order) AS variant_order
+      FROM variant_index idx
+      LEFT JOIN sold
+        ON sold.product_id = idx.product_id
+        AND sold.variant_id = idx.variant_id
+      LEFT JOIN purchased
+        ON purchased.product_id = idx.product_id
+        AND purchased.variant_id = idx.variant_id
+      GROUP BY idx.product_id, idx.variant_id
+      ORDER BY
+        sold_quantity_mil DESC,
+        model_name COLLATE NOCASE ASC,
+        variant_order ASC,
+        color_label COLLATE NOCASE ASC,
+        size_label COLLATE NOCASE ASC
+    ''',
+      [startIso, endIso, startIso, endIso],
+    );
+
     final paymentSummaryMap = <PaymentMethod, _PaymentAccumulator>{};
     for (final row in paymentRows) {
       final paymentMethod =
@@ -321,6 +506,23 @@ class SqliteReportRepository implements ReportRepository {
           ),
         )
         .toList();
+
+    final variantSummaries = variantRows
+        .map(
+          (row) => ReportVariantSummary(
+            productId: row['product_id'] as int? ?? 0,
+            variantId: row['variant_id'] as int? ?? 0,
+            modelName: row['model_name'] as String? ?? 'Produto',
+            variantSku: row['variant_sku'] as String?,
+            colorLabel: row['color_label'] as String?,
+            sizeLabel: row['size_label'] as String?,
+            currentStockMil: _toInt(row['current_stock_mil']),
+            soldQuantityMil: _toInt(row['sold_quantity_mil']),
+            purchasedQuantityMil: _toInt(row['purchased_quantity_mil']),
+            grossRevenueCents: _toInt(row['gross_revenue_cents']),
+          ),
+        )
+        .toList(growable: false);
 
     final topCreditCustomers = topCreditCustomerRows
         .map(
@@ -366,6 +568,7 @@ class SqliteReportRepository implements ReportRepository {
       topCreditCustomers: topCreditCustomers,
       paymentSummaries: paymentSummaries,
       soldProducts: soldProducts,
+      variantSummaries: variantSummaries,
     );
   }
 

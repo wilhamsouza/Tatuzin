@@ -13,9 +13,12 @@ import '../../../app/core/sync/sync_remote_identity_recovery.dart';
 import '../../../app/core/sync/sync_status.dart';
 import '../../../app/core/utils/id_generator.dart';
 import '../../categorias/data/sqlite_category_repository.dart';
+import 'support/product_cost_database_support.dart';
 import '../domain/entities/product.dart';
 import '../domain/repositories/product_repository.dart';
 import 'models/remote_product_record.dart';
+import 'models/remote_product_recipe_record.dart';
+import 'models/product_recipe_sync_payload.dart';
 
 class SqliteProductRepository implements ProductRepository {
   SqliteProductRepository(
@@ -28,6 +31,7 @@ class SqliteProductRepository implements ProductRepository {
            categoryRepository ?? SqliteCategoryRepository(_appDatabase);
 
   static const String featureKey = SyncFeatureKeys.products;
+  static const String recipeFeatureKey = SyncFeatureKeys.productRecipes;
 
   final AppDatabase _appDatabase;
   final SqliteSyncMetadataRepository _syncMetadataRepository;
@@ -63,6 +67,8 @@ class SqliteProductRepository implements ProductRepository {
             ? 'un'
             : input.unitMeasure.trim(),
         'custo_centavos': input.costCents,
+        'manual_cost_centavos': input.costCents,
+        'cost_source': ProductCostSource.manual.storageValue,
         'preco_venda_centavos': input.salePriceCents,
         'estoque_mil': resolvedStockMil,
         'ativo': input.isActive ? 1 : 0,
@@ -105,6 +111,12 @@ class SqliteProductRepository implements ProductRepository {
         txn: txn,
         productId: id,
         variants: input.variants,
+      );
+      await _syncRecipeState(
+        txn,
+        id,
+        recipeItems: input.recipeItems,
+        changedAt: now,
       );
       return id;
     });
@@ -225,7 +237,7 @@ class SqliteProductRepository implements ProductRepository {
           'unidade_medida': input.unitMeasure.trim().isEmpty
               ? 'un'
               : input.unitMeasure.trim(),
-          'custo_centavos': input.costCents,
+          ..._resolveLocalCostColumns(existing, input),
           'preco_venda_centavos': input.salePriceCents,
           'estoque_mil': resolvedStockMil,
           'ativo': input.isActive ? 1 : 0,
@@ -279,6 +291,12 @@ class SqliteProductRepository implements ProductRepository {
         productId: id,
         variants: input.variants,
       );
+      await _syncRecipeState(
+        txn,
+        id,
+        recipeItems: input.recipeItems,
+        changedAt: now,
+      );
     });
   }
 
@@ -322,6 +340,129 @@ class SqliteProductRepository implements ProductRepository {
   Future<List<ProductVariant>> listProductVariants(int productId) async {
     final database = await _appDatabase.database;
     return _loadProductVariants(database, productId);
+  }
+
+  Future<List<ProductRecipeItem>> listProductRecipeItems(int productId) async {
+    final database = await _appDatabase.database;
+    final rows = await ProductCostDatabaseSupport.loadRecipeDetailRows(
+      database,
+      productId: productId,
+    );
+    return rows.map(_mapProductRecipeItem).toList(growable: false);
+  }
+
+  Future<void> seedPendingRecipeSyncIfNeeded() async {
+    final database = await _appDatabase.database;
+    await database.transaction((txn) async {
+      final productRows = await txn.rawQuery(
+        '''
+        SELECT DISTINCT
+          p.id
+        FROM ${TableNames.productRecipeItems} pri
+        INNER JOIN ${TableNames.produtos} p
+          ON p.id = pri.product_id
+        LEFT JOIN ${TableNames.syncRegistros} recipe_sync
+          ON recipe_sync.feature_key = '$recipeFeatureKey'
+          AND recipe_sync.local_id = p.id
+        WHERE recipe_sync.local_id IS NULL
+      ''',
+      );
+
+      for (final row in productRows) {
+        await _markRecipeForSync(
+          txn,
+          productId: row['id'] as int,
+          changedAt: DateTime.now(),
+        );
+      }
+    });
+  }
+
+  Future<ProductRecipeSyncPayload?> findProductRecipeForSync(int productId) async {
+    final database = await _appDatabase.database;
+    final productRows = await database.rawQuery(
+      '''
+      SELECT
+        p.id,
+        p.uuid,
+        p.criado_em,
+        p.atualizado_em,
+        product_sync.remote_id AS product_remote_id,
+        recipe_sync.remote_id AS recipe_remote_id,
+        recipe_sync.sync_status AS recipe_sync_status,
+        recipe_sync.last_synced_at AS recipe_last_synced_at,
+        recipe_sync.updated_at AS recipe_sync_updated_at
+      FROM ${TableNames.produtos} p
+      LEFT JOIN ${TableNames.syncRegistros} product_sync
+        ON product_sync.feature_key = '$featureKey'
+        AND product_sync.local_id = p.id
+      LEFT JOIN ${TableNames.syncRegistros} recipe_sync
+        ON recipe_sync.feature_key = '$recipeFeatureKey'
+        AND recipe_sync.local_id = p.id
+      WHERE p.id = ?
+      LIMIT 1
+    ''',
+      [productId],
+    );
+    if (productRows.isEmpty) {
+      return null;
+    }
+
+    final row = productRows.first;
+    final itemRows = await database.rawQuery(
+      '''
+      SELECT
+        pri.*,
+        supply_sync.remote_id AS supply_remote_id
+      FROM ${TableNames.productRecipeItems} pri
+      LEFT JOIN ${TableNames.syncRegistros} supply_sync
+        ON supply_sync.feature_key = '${SyncFeatureKeys.supplies}'
+        AND supply_sync.local_id = pri.supply_id
+      WHERE pri.product_id = ?
+      ORDER BY pri.id ASC
+    ''',
+      [productId],
+    );
+
+    final latestRecipeUpdatedAt = itemRows.isEmpty
+        ? null
+        : itemRows
+              .map((item) => DateTime.parse(item['updated_at'] as String))
+              .reduce((left, right) => left.isAfter(right) ? left : right);
+    final productUpdatedAt = DateTime.parse(row['atualizado_em'] as String);
+    final recipeUpdatedAt =
+        latestRecipeUpdatedAt == null || latestRecipeUpdatedAt.isBefore(productUpdatedAt)
+        ? productUpdatedAt
+        : latestRecipeUpdatedAt;
+
+    return ProductRecipeSyncPayload(
+      productId: row['id'] as int,
+      productUuid: row['uuid'] as String,
+      productRemoteId: row['product_remote_id'] as String?,
+      remoteId: row['recipe_remote_id'] as String?,
+      createdAt: DateTime.parse(row['criado_em'] as String),
+      updatedAt: recipeUpdatedAt,
+      syncStatus: syncStatusFromStorage(row['recipe_sync_status'] as String?),
+      lastSyncedAt: row['recipe_last_synced_at'] == null
+          ? null
+          : DateTime.parse(row['recipe_last_synced_at'] as String),
+      items: itemRows
+          .map(
+            (item) => ProductRecipeSyncItemPayload(
+              recipeItemId: item['id'] as int,
+              recipeItemUuid: item['uuid'] as String,
+              supplyLocalId: item['supply_id'] as int,
+              supplyRemoteId: item['supply_remote_id'] as String?,
+              quantityUsedMil: item['quantity_used_mil'] as int? ?? 0,
+              unitType: item['unit_type'] as String? ?? 'un',
+              wasteBasisPoints: item['waste_basis_points'] as int? ?? 0,
+              notes: item['notes'] as String?,
+              createdAt: DateTime.parse(item['created_at'] as String),
+              updatedAt: DateTime.parse(item['updated_at'] as String),
+            ),
+          )
+          .toList(growable: false),
+    );
   }
 
   Future<Product?> findByRemoteId(String remoteId) async {
@@ -417,7 +558,7 @@ class SqliteProductRepository implements ProductRepository {
             'model_name': remote.modelName,
             'variant_label': remote.variantLabel,
             'unidade_medida': remote.unitMeasure,
-            'custo_centavos': remote.costCents,
+            ..._resolveRemoteCostColumns(remote),
             'preco_venda_centavos': remote.salePriceCents,
             'estoque_mil': _resolveRemoteStockMil(remote),
             'ativo': remote.isActive ? 1 : 0,
@@ -443,7 +584,7 @@ class SqliteProductRepository implements ProductRepository {
           'model_name': remote.modelName,
           'variant_label': remote.variantLabel,
           'unidade_medida': remote.unitMeasure,
-          'custo_centavos': remote.costCents,
+          ..._resolveRemoteCostColumns(remote),
           'preco_venda_centavos': remote.salePriceCents,
           'estoque_mil': _resolveRemoteStockMil(remote),
           'ativo': remote.isActive ? 1 : 0,
@@ -464,6 +605,11 @@ class SqliteProductRepository implements ProductRepository {
         txn: txn,
         productId: localId,
         variants: remoteInput.variants,
+      );
+      await _refreshRecipeSnapshotIfPresent(
+        txn,
+        productId: localId,
+        changedAt: remote.updatedAt,
       );
       await _syncMetadataRepository.markSynced(
         txn,
@@ -513,7 +659,7 @@ class SqliteProductRepository implements ProductRepository {
           'model_name': remote.modelName,
           'variant_label': remote.variantLabel,
           'unidade_medida': remote.unitMeasure,
-          'custo_centavos': remote.costCents,
+          ..._resolveRemoteCostColumns(remote),
           'preco_venda_centavos': remote.salePriceCents,
           'estoque_mil': _resolveRemoteStockMil(remote),
           'ativo': remote.isActive ? 1 : 0,
@@ -536,6 +682,11 @@ class SqliteProductRepository implements ProductRepository {
         productId: product.id,
         variants: remoteInput.variants,
       );
+      await _refreshRecipeSnapshotIfPresent(
+        txn,
+        productId: product.id,
+        changedAt: remote.updatedAt,
+      );
       await _syncMetadataRepository.markSynced(
         txn,
         featureKey: featureKey,
@@ -546,6 +697,174 @@ class SqliteProductRepository implements ProductRepository {
         createdAt: product.createdAt,
         updatedAt: remote.updatedAt,
         syncedAt: DateTime.now(),
+      );
+    });
+  }
+
+  Future<void> applyProductRecipePushResult({
+    required ProductRecipeSyncPayload recipe,
+    required RemoteProductRecipeRecord remote,
+  }) async {
+    final database = await _appDatabase.database;
+    await database.transaction((txn) async {
+      await _syncMetadataRepository.markSynced(
+        txn,
+        featureKey: recipeFeatureKey,
+        localId: recipe.productId,
+        localUuid: recipe.productUuid,
+        remoteId: remote.productRemoteId,
+        origin: RecordOrigin.merged,
+        createdAt: recipe.createdAt,
+        updatedAt: remote.updatedAt,
+        syncedAt: DateTime.now(),
+      );
+    });
+  }
+
+  Future<void> clearProductRecipeSyncState(int productId) async {
+    final database = await _appDatabase.database;
+    await database.transaction((txn) async {
+      await _syncMetadataRepository.removeByLocalId(
+        txn,
+        featureKey: recipeFeatureKey,
+        localId: productId,
+      );
+      await _syncQueueRepository.removeForEntity(
+        txn,
+        featureKey: recipeFeatureKey,
+        localEntityId: productId,
+      );
+    });
+  }
+
+  Future<void> upsertRecipeFromRemote(RemoteProductRecipeRecord remote) async {
+    final database = await _appDatabase.database;
+    await database.transaction((txn) async {
+      final productId = await _resolveLocalRecipeProductId(txn, remote);
+      if (productId == null) {
+        return;
+      }
+
+      final productRow = await _findRowById(txn, productId);
+      if (productRow == null) {
+        return;
+      }
+
+      final recipeMetadata = await _syncMetadataRepository.findByLocalId(
+        txn,
+        featureKey: recipeFeatureKey,
+        localId: productId,
+      );
+      final localUpdatedAt =
+          recipeMetadata?.updatedAt ??
+          DateTime.parse(productRow['atualizado_em'] as String);
+      if (localUpdatedAt.isAfter(remote.updatedAt)) {
+        await _markRecipeForSync(
+          txn,
+          productId: productId,
+          changedAt: localUpdatedAt,
+        );
+        return;
+      }
+
+      for (final item in remote.items) {
+        final supplyLocalId = await _resolveLocalRecipeSupplyId(
+          txn,
+          remoteSupplyId: item.supplyRemoteId,
+          supplyLocalUuid: item.supplyLocalUuid,
+        );
+        if (supplyLocalId == null) {
+          return;
+        }
+      }
+
+      await txn.delete(
+        TableNames.productRecipeItems,
+        where: 'product_id = ?',
+        whereArgs: [productId],
+      );
+
+      for (final item in remote.items) {
+        final supplyLocalId = await _resolveLocalRecipeSupplyId(
+          txn,
+          remoteSupplyId: item.supplyRemoteId,
+          supplyLocalUuid: item.supplyLocalUuid,
+        );
+        if (supplyLocalId == null) {
+          return;
+        }
+        await txn.insert(TableNames.productRecipeItems, {
+          'uuid': item.localUuid.trim().isNotEmpty
+              ? item.localUuid.trim()
+              : IdGenerator.next(),
+          'product_id': productId,
+          'supply_id': supplyLocalId,
+          'quantity_used_mil': item.quantityUsedMil,
+          'unit_type': item.unitType,
+          'waste_basis_points': item.wasteBasisPoints,
+          'notes': _cleanNullable(item.notes),
+          'created_at': item.createdAt.toIso8601String(),
+          'updated_at': item.updatedAt.toIso8601String(),
+        });
+      }
+
+      await ProductCostDatabaseSupport.recalculateAndPersistForProduct(
+        txn,
+        productId: productId,
+        changedAt: remote.updatedAt,
+      );
+      await _syncMetadataRepository.markSynced(
+        txn,
+        featureKey: recipeFeatureKey,
+        localId: productId,
+        localUuid: productRow['uuid'] as String,
+        remoteId: remote.productRemoteId,
+        origin: RecordOrigin.merged,
+        createdAt: DateTime.parse(productRow['criado_em'] as String),
+        updatedAt: remote.updatedAt,
+        syncedAt: DateTime.now(),
+      );
+    });
+  }
+
+  Future<void> markProductRecipeSyncError({
+    required ProductRecipeSyncPayload recipe,
+    required String message,
+    required SyncErrorType errorType,
+  }) async {
+    final database = await _appDatabase.database;
+    final now = DateTime.now();
+    await database.transaction((txn) async {
+      await _syncMetadataRepository.markSyncError(
+        txn,
+        featureKey: recipeFeatureKey,
+        localId: recipe.productId,
+        localUuid: recipe.productUuid,
+        remoteId: recipe.remoteId ?? recipe.productRemoteId,
+        createdAt: recipe.createdAt,
+        updatedAt: now,
+        message: message,
+        errorType: errorType,
+      );
+    });
+  }
+
+  Future<void> markProductRecipeConflict({
+    required ProductRecipeSyncPayload recipe,
+    required String message,
+    required DateTime detectedAt,
+  }) async {
+    final database = await _appDatabase.database;
+    await database.transaction((txn) async {
+      await _syncMetadataRepository.markConflict(
+        txn,
+        featureKey: recipeFeatureKey,
+        localId: recipe.productId,
+        localUuid: recipe.productUuid,
+        remoteId: recipe.remoteId ?? recipe.productRemoteId,
+        createdAt: recipe.createdAt,
+        updatedAt: detectedAt,
+        message: message,
       );
     });
   }
@@ -678,6 +997,11 @@ class SqliteProductRepository implements ProductRepository {
         COALESCE(variant_attrs.serialized_attrs, '') AS variant_attributes_serialized,
         COALESCE(variant_index.serialized_variants, '') AS variant_index_serialized,
         COALESCE(mod_groups.serialized_groups, '') AS modifier_groups_serialized,
+        pcs.variable_cost_snapshot_cents AS variable_cost_snapshot_cents,
+        pcs.estimated_gross_margin_cents AS estimated_gross_margin_cents,
+        pcs.estimated_gross_margin_percent_basis_points
+          AS estimated_gross_margin_percent_basis_points,
+        pcs.last_cost_updated_at AS last_cost_updated_at,
         sync.remote_id AS sync_remote_id,
         sync.sync_status AS sync_status,
         sync.last_synced_at AS sync_last_synced_at
@@ -730,6 +1054,8 @@ class SqliteProductRepository implements ProductRepository {
         GROUP BY g.produto_base_id
       ) mod_groups
         ON mod_groups.produto_base_id = pb.id
+      LEFT JOIN ${TableNames.productCostSnapshot} pcs
+        ON pcs.product_id = p.id
       LEFT JOIN ${TableNames.syncRegistros} sync
         ON sync.feature_key = '$featureKey'
         AND sync.local_id = p.id
@@ -777,6 +1103,252 @@ class SqliteProductRepository implements ProductRepository {
     }
 
     return rows.first;
+  }
+
+  Future<void> _syncRecipeState(
+    DatabaseExecutor txn,
+    int productId, {
+    required List<ProductRecipeItemInput>? recipeItems,
+    required DateTime changedAt,
+  }) async {
+    if (recipeItems == null) {
+      await _refreshRecipeSnapshotIfPresent(
+        txn,
+        productId: productId,
+        changedAt: changedAt,
+      );
+      return;
+    }
+
+    await _replaceProductRecipeItems(
+      txn: txn,
+      productId: productId,
+      recipeItems: recipeItems,
+    );
+    await ProductCostDatabaseSupport.recalculateAndPersistForProduct(
+      txn,
+      productId: productId,
+      changedAt: changedAt,
+    );
+    await _markRecipeForSync(
+      txn,
+      productId: productId,
+      changedAt: changedAt,
+    );
+  }
+
+  Future<void> _refreshRecipeSnapshotIfPresent(
+    DatabaseExecutor txn, {
+    required int productId,
+    required DateTime changedAt,
+  }) async {
+    final rows = await txn.query(
+      TableNames.productRecipeItems,
+      columns: const ['id'],
+      where: 'product_id = ?',
+      whereArgs: [productId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return;
+    }
+
+    await ProductCostDatabaseSupport.recalculateAndPersistForProduct(
+      txn,
+      productId: productId,
+      changedAt: changedAt,
+    );
+  }
+
+  Future<void> _replaceProductRecipeItems({
+    required DatabaseExecutor txn,
+    required int productId,
+    required List<ProductRecipeItemInput> recipeItems,
+  }) async {
+    await txn.delete(
+      TableNames.productRecipeItems,
+      where: 'product_id = ?',
+      whereArgs: [productId],
+    );
+
+    final now = DateTime.now().toIso8601String();
+    for (final item in recipeItems) {
+      await txn.insert(TableNames.productRecipeItems, {
+        'uuid': IdGenerator.next(),
+        'product_id': productId,
+        'supply_id': item.supplyId,
+        'quantity_used_mil': item.quantityUsedMil,
+        'unit_type': item.unitType.trim().isEmpty ? 'un' : item.unitType.trim(),
+        'waste_basis_points': item.wasteBasisPoints,
+        'notes': _cleanNullable(item.notes),
+        'created_at': now,
+        'updated_at': now,
+      });
+    }
+  }
+
+  Future<void> _markRecipeForSync(
+    DatabaseExecutor txn, {
+    required int productId,
+    required DateTime changedAt,
+  }) async {
+    final productRow = await _findRowById(txn, productId);
+    if (productRow == null) {
+      return;
+    }
+
+    final recipeRows = await txn.query(
+      TableNames.productRecipeItems,
+      columns: const ['id'],
+      where: 'product_id = ?',
+      whereArgs: [productId],
+      limit: 1,
+    );
+    final recipeMetadata = await _syncMetadataRepository.findByLocalId(
+      txn,
+      featureKey: recipeFeatureKey,
+      localId: productId,
+    );
+    final productMetadata = await _syncMetadataRepository.findByLocalId(
+      txn,
+      featureKey: featureKey,
+      localId: productId,
+    );
+    final productUuid = productRow['uuid'] as String;
+    final createdAt = DateTime.parse(productRow['criado_em'] as String);
+
+    if (recipeRows.isEmpty) {
+      final remoteId =
+          recipeMetadata?.identity.remoteId ?? productMetadata?.identity.remoteId;
+      if (remoteId == null) {
+        await _syncMetadataRepository.removeByLocalId(
+          txn,
+          featureKey: recipeFeatureKey,
+          localId: productId,
+        );
+        await _syncQueueRepository.removeForEntity(
+          txn,
+          featureKey: recipeFeatureKey,
+          localEntityId: productId,
+        );
+        return;
+      }
+
+      await _syncMetadataRepository.markPendingUpdate(
+        txn,
+        featureKey: recipeFeatureKey,
+        localId: productId,
+        localUuid: productUuid,
+        remoteId: remoteId,
+        createdAt: createdAt,
+        updatedAt: changedAt,
+      );
+      await _syncQueueRepository.enqueueMutation(
+        txn,
+        featureKey: recipeFeatureKey,
+        entityType: 'product_recipe',
+        localEntityId: productId,
+        localUuid: productUuid,
+        remoteId: remoteId,
+        operation: SyncQueueOperation.delete,
+        localUpdatedAt: changedAt,
+      );
+      return;
+    }
+
+    if (recipeMetadata?.identity.remoteId == null) {
+      await _syncMetadataRepository.markPendingUpload(
+        txn,
+        featureKey: recipeFeatureKey,
+        localId: productId,
+        localUuid: productUuid,
+        createdAt: createdAt,
+        updatedAt: changedAt,
+      );
+    } else {
+      await _syncMetadataRepository.markPendingUpdate(
+        txn,
+        featureKey: recipeFeatureKey,
+        localId: productId,
+        localUuid: productUuid,
+        remoteId: recipeMetadata!.identity.remoteId,
+        createdAt: createdAt,
+        updatedAt: changedAt,
+      );
+    }
+    await _syncQueueRepository.enqueueMutation(
+      txn,
+      featureKey: recipeFeatureKey,
+      entityType: 'product_recipe',
+      localEntityId: productId,
+      localUuid: productUuid,
+      remoteId:
+          recipeMetadata?.identity.remoteId ?? productMetadata?.identity.remoteId,
+      operation: recipeMetadata?.identity.remoteId == null
+          ? SyncQueueOperation.create
+          : SyncQueueOperation.update,
+      localUpdatedAt: changedAt,
+    );
+  }
+
+  Future<int?> _resolveLocalRecipeProductId(
+    DatabaseExecutor txn,
+    RemoteProductRecipeRecord remote,
+  ) async {
+    if (remote.productRemoteId.trim().isNotEmpty) {
+      final productMetadata = await _syncMetadataRepository.findByRemoteId(
+        txn,
+        featureKey: featureKey,
+        remoteId: remote.productRemoteId.trim(),
+      );
+      if (productMetadata?.identity.localId != null) {
+        return productMetadata!.identity.localId;
+      }
+    }
+
+    final rows = await txn.query(
+      TableNames.produtos,
+      columns: const ['id'],
+      where: 'uuid = ?',
+      whereArgs: [remote.productLocalUuid],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return rows.first['id'] as int;
+  }
+
+  Future<int?> _resolveLocalRecipeSupplyId(
+    DatabaseExecutor txn, {
+    required String? remoteSupplyId,
+    required String? supplyLocalUuid,
+  }) async {
+    if (remoteSupplyId != null && remoteSupplyId.trim().isNotEmpty) {
+      final metadata = await _syncMetadataRepository.findByRemoteId(
+        txn,
+        featureKey: SyncFeatureKeys.supplies,
+        remoteId: remoteSupplyId.trim(),
+      );
+      if (metadata?.identity.localId != null) {
+        return metadata!.identity.localId;
+      }
+    }
+
+    if (supplyLocalUuid != null && supplyLocalUuid.trim().isNotEmpty) {
+      final rows = await txn.query(
+        TableNames.supplies,
+        columns: const ['id'],
+        where: 'uuid = ?',
+        whereArgs: [supplyLocalUuid.trim()],
+        limit: 1,
+      );
+      if (rows.isNotEmpty) {
+        return rows.first['id'] as int;
+      }
+    }
+
+    return null;
   }
 
   Future<int?> _resolveLocalCategoryId(RemoteProductRecord remote) async {
@@ -1140,6 +1712,18 @@ class SqliteProductRepository implements ProductRepository {
       modifierGroups: modifierGroups,
       unitMeasure: row['unidade_medida'] as String,
       costCents: row['custo_centavos'] as int,
+      manualCostCents:
+          row['manual_cost_centavos'] as int? ??
+          row['custo_centavos'] as int? ??
+          0,
+      costSource: productCostSourceFromStorage(row['cost_source'] as String?),
+      variableCostSnapshotCents: row['variable_cost_snapshot_cents'] as int?,
+      estimatedGrossMarginCents: row['estimated_gross_margin_cents'] as int?,
+      estimatedGrossMarginPercentBasisPoints:
+          row['estimated_gross_margin_percent_basis_points'] as int?,
+      lastCostUpdatedAt: row['last_cost_updated_at'] == null
+          ? null
+          : DateTime.parse(row['last_cost_updated_at'] as String),
       salePriceCents: row['preco_venda_centavos'] as int,
       stockMil: row['estoque_mil'] as int,
       isActive: (row['ativo'] as int? ?? 1) == 1,
@@ -1153,6 +1737,29 @@ class SqliteProductRepository implements ProductRepository {
       lastSyncedAt: row['sync_last_synced_at'] == null
           ? null
           : DateTime.parse(row['sync_last_synced_at'] as String),
+    );
+  }
+
+  ProductRecipeItem _mapProductRecipeItem(Map<String, Object?> row) {
+    return ProductRecipeItem(
+      id: row['id'] as int,
+      uuid: row['uuid'] as String,
+      productId: row['product_id'] as int,
+      supplyId: row['supply_id'] as int,
+      supplyName: row['supply_name'] as String? ?? 'Insumo',
+      purchaseUnitType:
+          row['supply_purchase_unit_type'] as String? ??
+          row['unit_type'] as String? ??
+          'un',
+      lastPurchasePriceCents:
+          row['supply_last_purchase_price_cents'] as int? ?? 0,
+      conversionFactor: row['supply_conversion_factor'] as int? ?? 1,
+      quantityUsedMil: row['quantity_used_mil'] as int? ?? 0,
+      unitType: row['unit_type'] as String? ?? 'un',
+      wasteBasisPoints: row['waste_basis_points'] as int? ?? 0,
+      notes: row['notes'] as String?,
+      createdAt: DateTime.parse(row['created_at'] as String),
+      updatedAt: DateTime.parse(row['updated_at'] as String),
     );
   }
 
@@ -1275,6 +1882,8 @@ class SqliteProductRepository implements ProductRepository {
             sellableVariantPriceAdditionalCents: variant.priceAdditionalCents,
             unitMeasure: product.unitMeasure,
             costCents: product.costCents,
+            manualCostCents: product.manualCostCents,
+            costSource: product.costSource,
             salePriceCents:
                 product.salePriceCents + variant.priceAdditionalCents,
             stockMil: variant.stockMil,
@@ -1313,6 +1922,41 @@ class SqliteProductRepository implements ProductRepository {
       attributes.add(ProductVariantAttribute(key: key, value: value));
     }
     return attributes;
+  }
+
+  Map<String, Object?> _resolveLocalCostColumns(
+    Map<String, Object?> existing,
+    ProductInput input,
+  ) {
+    final existingSource = productCostSourceFromStorage(
+      existing['cost_source'] as String?,
+    );
+    final shouldPreserveDerivedCost =
+        input.recipeItems == null &&
+        existingSource == ProductCostSource.recipeSnapshot;
+
+    return {
+      'manual_cost_centavos': input.costCents,
+      'cost_source': shouldPreserveDerivedCost
+          ? ProductCostSource.recipeSnapshot.storageValue
+          : ProductCostSource.manual.storageValue,
+      'custo_centavos': shouldPreserveDerivedCost
+          ? existing['custo_centavos'] as int? ?? input.costCents
+          : input.costCents,
+    };
+  }
+
+  Map<String, Object?> _resolveRemoteCostColumns(RemoteProductRecord remote) {
+    return {
+      'custo_centavos': remote.costCents,
+      'manual_cost_centavos': remote.manualCostCents,
+      'cost_source': remote.costSource.storageValue,
+      'variable_cost_snapshot_cents': remote.variableCostSnapshotCents,
+      'estimated_gross_margin_cents': remote.estimatedGrossMarginCents,
+      'estimated_gross_margin_percent_basis_points':
+          remote.estimatedGrossMarginPercentBasisPoints,
+      'last_cost_updated_at': remote.lastCostUpdatedAt?.toIso8601String(),
+    };
   }
 
   String? _cleanNullable(String? value) {

@@ -179,6 +179,29 @@ class AppMainDrawer extends ConsumerWidget {
                         ),
                       ),
                       _DrawerItem(
+                        label: 'Insumos',
+                        icon: Icons.scale_rounded,
+                        isSelected: currentPath == AppRoutePaths.supplies,
+                        onTap: () => _navigateTo(
+                          context,
+                          currentPath: currentPath,
+                          path: AppRoutePaths.supplies,
+                          routeName: AppRouteNames.supplies,
+                        ),
+                      ),
+                      _DrawerItem(
+                        label: 'Lucratividade',
+                        icon: Icons.insights_rounded,
+                        isSelected:
+                            currentPath == AppRoutePaths.productProfitability,
+                        onTap: () => _navigateTo(
+                          context,
+                          currentPath: currentPath,
+                          path: AppRoutePaths.productProfitability,
+                          routeName: AppRouteNames.productProfitability,
+                        ),
+                      ),
+                      _DrawerItem(
                         label: 'Categorias',
                         icon: Icons.category_rounded,
                         isSelected: currentPath == AppRoutePaths.categories,

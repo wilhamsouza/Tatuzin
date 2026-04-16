@@ -57,6 +57,8 @@ model Company {
   deviceSessions   DeviceSession[]
   sessionAuditLogs SessionAuditLog[] @relation("SessionAuditCompany")
   suppliers        Supplier[]
+  supplies         Supply[]
+  productRecipeItems ProductRecipeItem[]
   categories       Category[]
   products         Product[]
   customers        Customer[]
@@ -65,6 +67,7 @@ model Company {
   financialEvents  FinancialEvent[]
   fiadoPayments    FiadoPayment[]
   cashEvents       CashEvent[]
+  supplyCostHistory SupplyCostHistory[]
 }
 
 model Membership {
@@ -201,6 +204,12 @@ model Product {
   variantLabel   String?
   unitMeasure    String   @default("un")
   costPriceCents Int      @default(0)
+  manualCostCents Int     @default(0)
+  costSource     String   @default("manual")
+  variableCostSnapshotCents Int?
+  estimatedGrossMarginCents Int?
+  estimatedGrossMarginPercentBasisPoints Int?
+  lastCostUpdatedAt DateTime?
   salePriceCents Int
   stockMil       Int      @default(0)
   isActive       Boolean  @default(true)
@@ -214,6 +223,7 @@ model Product {
   linkedModifierOptions ProductModifierOption[] @relation("ProductModifierLinkedProduct")
   saleItems      SaleItem[]
   purchaseItems  PurchaseItem[]
+  recipeItems    ProductRecipeItem[]
 
   @@unique([companyId, localUuid])
   @@index([companyId, updatedAt])
@@ -238,6 +248,7 @@ model ProductVariant {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
   product              Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  purchaseItems        PurchaseItem[]
 
   @@index([productId, sortOrder])
   @@index([sku])
@@ -316,11 +327,65 @@ model Supplier {
   updatedAt        DateTime   @updatedAt
   company          Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
   purchases        Purchase[]
+  defaultSupplies  Supply[]   @relation("SupplyDefaultSupplier")
 
   @@unique([companyId, localUuid])
   @@index([companyId, updatedAt])
   @@index([companyId, name])
   @@index([companyId, document])
+}
+
+model Supply {
+  id                       String              @id @default(uuid())
+  companyId                String
+  localUuid                String
+  defaultSupplierId        String?
+  name                     String
+  sku                      String?
+  unitType                 String
+  purchaseUnitType         String
+  conversionFactor         Int
+  lastPurchasePriceCents   Int                 @default(0)
+  averagePurchasePriceCents Int?
+  currentStockMil          Int?
+  minimumStockMil          Int?
+  isActive                 Boolean             @default(true)
+  deletedAt                DateTime?
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+  company                  Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  defaultSupplier          Supplier?           @relation("SupplyDefaultSupplier", fields: [defaultSupplierId], references: [id], onDelete: SetNull)
+  recipeItems              ProductRecipeItem[]
+  purchaseItems            PurchaseItem[]
+  costHistory              SupplyCostHistory[]
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, updatedAt])
+  @@index([companyId, name])
+  @@index([companyId, defaultSupplierId])
+}
+
+model ProductRecipeItem {
+  id                String   @id @default(uuid())
+  companyId         String
+  localUuid         String
+  productId         String
+  supplyId          String
+  quantityUsedMil   Int
+  unitType          String
+  wasteBasisPoints  Int      @default(0)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supply            Supply   @relation(fields: [supplyId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, productId])
+  @@index([companyId, supplyId])
+  @@index([productId])
+  @@index([supplyId])
 }
 
 model Purchase {
@@ -348,6 +413,7 @@ model Purchase {
   supplier           Supplier          @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   items              PurchaseItem[]
   payments           PurchasePayment[]
+  supplyCostHistoryEntries SupplyCostHistory[] @relation("SupplyCostHistoryPurchase")
 
   @@unique([companyId, localUuid])
   @@index([companyId, purchasedAt])
@@ -360,8 +426,14 @@ model PurchaseItem {
   id                  String    @id @default(uuid())
   purchaseId          String
   localUuid           String
+  itemType            String    @default("product")
   productId           String?
+  productVariantId    String?
+  supplyId            String?
   productNameSnapshot String
+  variantSkuSnapshot  String?
+  variantColorLabelSnapshot String?
+  variantSizeLabelSnapshot String?
   unitMeasureSnapshot String
   quantityMil         Int
   unitCostCents       Int
@@ -370,10 +442,15 @@ model PurchaseItem {
   updatedAt           DateTime  @updatedAt
   purchase            Purchase  @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   product             Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productVariant      ProductVariant? @relation(fields: [productVariantId], references: [id], onDelete: SetNull)
+  supply              Supply?   @relation(fields: [supplyId], references: [id], onDelete: SetNull)
+  supplyCostHistoryEntries SupplyCostHistory[] @relation("SupplyCostHistoryPurchaseItem")
 
   @@unique([purchaseId, localUuid])
   @@index([purchaseId])
   @@index([productId])
+  @@index([productVariantId])
+  @@index([supplyId])
 }
 
 model PurchasePayment {
@@ -497,4 +574,33 @@ model CashEvent {
   @@unique([companyId, localUuid])
   @@index([companyId, createdAt])
   @@index([companyId, eventType])
+}
+
+model SupplyCostHistory {
+  id                       String      @id @default(uuid())
+  companyId                String
+  localUuid                String
+  supplyId                 String
+  purchaseId               String?
+  purchaseItemId           String?
+  source                   String
+  eventType                String
+  purchaseUnitType         String
+  conversionFactor         Int
+  lastPurchasePriceCents   Int
+  averagePurchasePriceCents Int?
+  changeSummary            String?
+  notes                    String?
+  occurredAt               DateTime
+  createdAt                DateTime    @default(now())
+  company                  Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  supply                   Supply      @relation(fields: [supplyId], references: [id], onDelete: Cascade)
+  purchase                 Purchase?   @relation("SupplyCostHistoryPurchase", fields: [purchaseId], references: [id], onDelete: SetNull)
+  purchaseItem             PurchaseItem? @relation("SupplyCostHistoryPurchaseItem", fields: [purchaseItemId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, supplyId, occurredAt])
+  @@index([companyId, eventType, occurredAt])
+  @@index([purchaseId])
+  @@index([purchaseItemId])
 }

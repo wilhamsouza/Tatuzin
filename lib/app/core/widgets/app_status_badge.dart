@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/app_design_tokens.dart';
+
 enum AppStatusTone { neutral, info, success, warning, danger }
 
 class AppStatusBadge extends StatelessWidget {
@@ -17,28 +19,31 @@ class AppStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = Theme.of(context).colorScheme;
-    final colors = _colors(colorScheme);
+    final layout = context.appLayout;
+    final colors = _colors(context.appColors);
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.$1,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: colors.$1.withValues(alpha: 0.72)),
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(layout.radiusPill),
+        border: Border.all(color: colors.border),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        padding: EdgeInsets.symmetric(
+          horizontal: layout.space5 - 1,
+          vertical: layout.space3 - 1,
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 14, color: colors.$2),
-              const SizedBox(width: 5),
+              Icon(icon, size: 14, color: colors.onSurface),
+              SizedBox(width: layout.space2 + 1),
             ],
             Text(
               label,
               style: theme.textTheme.labelSmall?.copyWith(
-                color: colors.$2,
+                color: colors.onSurface,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -48,18 +53,18 @@ class AppStatusBadge extends StatelessWidget {
     );
   }
 
-  (Color, Color) _colors(ColorScheme scheme) {
+  AppTonePalette _colors(AppColorTokens tokens) {
     switch (tone) {
       case AppStatusTone.info:
-        return (scheme.primaryContainer, scheme.onPrimaryContainer);
+        return tokens.info;
       case AppStatusTone.success:
-        return (const Color(0xFFDCFCE7), const Color(0xFF166534));
+        return tokens.success;
       case AppStatusTone.warning:
-        return (const Color(0xFFFEF3C7), const Color(0xFF92400E));
+        return tokens.warning;
       case AppStatusTone.danger:
-        return (scheme.errorContainer, scheme.onErrorContainer);
+        return tokens.danger;
       case AppStatusTone.neutral:
-        return (scheme.surfaceContainerHigh, scheme.onSurfaceVariant);
+        return tokens.interactive;
     }
   }
 }

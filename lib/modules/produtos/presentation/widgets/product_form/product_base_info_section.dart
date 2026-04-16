@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../../../../app/core/widgets/app_card.dart';
+import '../../../../../app/core/widgets/app_summary_block.dart';
 import '../../../../../app/core/utils/money_parser.dart';
 import '../../../../../app/core/utils/quantity_parser.dart';
 import '../../../../../app/core/widgets/app_section_card.dart';
+import '../../../../../app/theme/app_design_tokens.dart';
 import '../../../../categorias/domain/entities/category.dart';
 import '../../../domain/entities/base_product.dart';
 import '../../../domain/entities/product.dart';
@@ -70,11 +73,13 @@ class ProductBaseInfoSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final layout = context.appLayout;
 
     return AppSectionCard(
       title: 'Dados base',
       subtitle:
           'Cadastre as informacoes principais do produto. A estrutura operacional aparece nas proximas secoes.',
+      tone: AppCardTone.standard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -117,7 +122,7 @@ class ProductBaseInfoSection extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: layout.sectionGap),
             DropdownButtonFormField<int?>(
               initialValue: baseProductId,
               decoration: const InputDecoration(
@@ -156,7 +161,7 @@ class ProductBaseInfoSection extends StatelessWidget {
               },
             ),
           ],
-          const SizedBox(height: 14),
+          SizedBox(height: layout.sectionGap),
           TextFormField(
             controller: descriptionController,
             decoration: const InputDecoration(
@@ -167,7 +172,7 @@ class ProductBaseInfoSection extends StatelessWidget {
             maxLines: 4,
             textCapitalization: TextCapitalization.sentences,
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: layout.sectionGap),
           _ResponsiveFieldRow(
             children: [
               DropdownButtonFormField<int?>(
@@ -195,7 +200,7 @@ class ProductBaseInfoSection extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: layout.sectionGap),
           _ResponsiveFieldRow(
             children: [
               DropdownButtonFormField<String>(
@@ -231,7 +236,7 @@ class ProductBaseInfoSection extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: layout.sectionGap),
           _ResponsiveFieldRow(
             children: [
               TextFormField(
@@ -265,37 +270,19 @@ class ProductBaseInfoSection extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: layout.sectionGap),
           if (usesVariantStock)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.grid_view_rounded,
-                    size: 18,
-                    color: colorScheme.primary,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      activeVariantCount > 0
-                          ? 'O estoque sera calculado automaticamente pela grade. Hoje ha $activeVariantCount variantes configuradas.'
-                          : 'O estoque sera calculado automaticamente pela grade assim que voce preencher tamanhos e cores.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                        height: 1.35,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            AppSummaryBlock(
+              label: 'Estoque por grade',
+              value: activeVariantCount > 0
+                  ? '$activeVariantCount variantes ativas'
+                  : 'Grade ainda nao configurada',
+              caption: activeVariantCount > 0
+                  ? 'O estoque total sera calculado automaticamente pela grade.'
+                  : 'Preencha tamanhos e cores para liberar o estoque automatico por SKU.',
+              icon: Icons.grid_view_rounded,
+              palette: context.appColors.info,
+              compact: true,
             )
           else
             TextFormField(
@@ -333,6 +320,8 @@ class _ResponsiveFieldRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final layout = context.appLayout;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < 620) {
@@ -340,7 +329,8 @@ class _ResponsiveFieldRow extends StatelessWidget {
             children: [
               for (var index = 0; index < children.length; index++) ...[
                 children[index],
-                if (index != children.length - 1) const SizedBox(height: 14),
+                if (index != children.length - 1)
+                  SizedBox(height: layout.sectionGap),
               ],
             ],
           );
@@ -351,7 +341,8 @@ class _ResponsiveFieldRow extends StatelessWidget {
           children: [
             for (var index = 0; index < children.length; index++) ...[
               Expanded(child: children[index]),
-              if (index != children.length - 1) const SizedBox(width: 12),
+              if (index != children.length - 1)
+                SizedBox(width: layout.blockGap),
             ],
           ],
         );

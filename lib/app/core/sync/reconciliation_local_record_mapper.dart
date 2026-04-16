@@ -1,4 +1,5 @@
 import '../../../modules/compras/data/models/purchase_sync_payload.dart';
+import '../../../modules/compras/domain/entities/purchase_item.dart';
 import '../../../modules/compras/domain/entities/purchase_status.dart';
 import '../../../modules/fiado/data/models/fiado_payment_sync_payload.dart';
 import '../../../modules/vendas/data/models/sale_cancellation_sync_payload.dart';
@@ -201,8 +202,10 @@ class ReconciliationLocalRecordMapper {
             .map(
               (item) => <String, dynamic>{
                 'localUuid': item.itemUuid,
+                'itemType': item.itemType.storageValue,
                 'productId': item.productRemoteId,
-                'productNameSnapshot': item.productNameSnapshot,
+                'supplyId': item.supplyRemoteId,
+                'productNameSnapshot': item.itemNameSnapshot,
                 'unitMeasureSnapshot': item.unitMeasureSnapshot,
                 'quantityMil': item.quantityMil,
                 'unitCostCents': item.unitCostCents,

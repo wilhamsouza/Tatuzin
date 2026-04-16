@@ -9,6 +9,7 @@ import '../../../modules/clientes/presentation/providers/client_providers.dart';
 import '../../../modules/compras/presentation/providers/purchase_providers.dart';
 import '../../../modules/fiado/presentation/providers/fiado_providers.dart';
 import '../../../modules/fornecedores/presentation/providers/supplier_providers.dart';
+import '../../../modules/insumos/presentation/providers/supply_providers.dart';
 import '../../../modules/produtos/presentation/providers/product_providers.dart';
 import '../../../modules/vendas/presentation/providers/sales_providers.dart';
 import '../database/app_database.dart';
@@ -61,6 +62,7 @@ final syncDependencyResolverProvider = Provider<SyncDependencyResolver>((ref) {
     categoryRepository: ref.read(localCategoryRepositoryProvider),
     productRepository: ref.read(localProductRepositoryProvider),
     supplierRepository: ref.read(localSupplierRepositoryProvider),
+    supplyRepository: ref.read(localSupplyRepositoryProvider),
     purchaseRepository: ref.read(localPurchaseRepositoryProvider),
     saleRepository: ref.read(localSaleRepositoryProvider),
     fiadoRepository: ref.read(localFiadoRepositoryProvider),
@@ -73,7 +75,9 @@ final syncFeatureProcessorsProvider = Provider<List<SyncFeatureProcessor>>((
 ) {
   return <SyncFeatureProcessor>[
     ref.read(categoryHybridRepositoryProvider),
+    ref.read(supplyHybridRepositoryProvider),
     ref.read(productHybridRepositoryProvider),
+    ref.read(productRecipeSyncProcessorProvider),
     ref.read(clientHybridRepositoryProvider),
     ref.read(supplierHybridRepositoryProvider),
     ref.read(purchaseHybridRepositoryProvider),

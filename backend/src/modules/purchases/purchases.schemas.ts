@@ -22,15 +22,46 @@ const paymentMethodSchema = z
   .optional()
   .transform((value) => value ?? null);
 
-const purchaseItemSchema = z.object({
-  localUuid: z.string().trim().min(1).max(80),
-  productId: nullableUuid,
-  productNameSnapshot: z.string().trim().min(1).max(180),
-  unitMeasureSnapshot: z.string().trim().min(1).max(20),
-  quantityMil: z.coerce.number().int().positive(),
-  unitCostCents: z.coerce.number().int().min(0),
-  subtotalCents: z.coerce.number().int().min(0),
-});
+const purchaseItemSchema = z
+  .object({
+    localUuid: z.string().trim().min(1).max(80),
+    itemType: z.enum(['product', 'supply']).default('product'),
+    productId: nullableUuid,
+    productVariantId: nullableUuid,
+    supplyId: nullableUuid,
+    productNameSnapshot: z.string().trim().min(1).max(180),
+    variantSkuSnapshot: nullableTrimmedString(80),
+    variantColorLabelSnapshot: nullableTrimmedString(80),
+    variantSizeLabelSnapshot: nullableTrimmedString(80),
+    unitMeasureSnapshot: z.string().trim().min(1).max(20),
+    quantityMil: z.coerce.number().int().positive(),
+    unitCostCents: z.coerce.number().int().min(0),
+    subtotalCents: z.coerce.number().int().min(0),
+  })
+  .superRefine((value, ctx) => {
+    const hasProduct = value.productId != null;
+    const hasSupply = value.supplyId != null;
+
+    if (value.itemType === 'product') {
+      if (!hasProduct || hasSupply) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['productId'],
+          message: 'Itens de compra do tipo product exigem productId e nao aceitam supplyId.',
+        });
+      }
+      return;
+    }
+
+    if (!hasSupply || hasProduct || value.productVariantId != null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['supplyId'],
+        message:
+          'Itens de compra do tipo supply exigem supplyId e nao aceitam productId nem productVariantId.',
+      });
+    }
+  });
 
 const purchasePaymentSchema = z.object({
   localUuid: z.string().trim().min(1).max(80),

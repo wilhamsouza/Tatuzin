@@ -29,6 +29,8 @@ class PurchaseModel extends Purchase {
     super.remoteId,
     super.syncStatus,
     super.lastSyncedAt,
+    super.syncIssueMessage,
+    super.syncIssueType,
   });
 
   factory PurchaseModel.fromMap(Map<String, Object?> map) {
@@ -65,6 +67,8 @@ class PurchaseModel extends Purchase {
       itemsCount: map['itens_quantidade'] as int? ?? 0,
       remoteId: map['sync_remote_id'] as String?,
       syncStatus: syncStatusFromStorage(map['sync_status'] as String?),
+      syncIssueMessage: map['sync_last_error'] as String?,
+      syncIssueType: map['sync_last_error_type'] as String?,
       lastSyncedAt: map['sync_last_synced_at'] == null
           ? null
           : DateTime.parse(map['sync_last_synced_at'] as String),
@@ -94,6 +98,8 @@ class PurchaseModel extends Purchase {
       'atualizado_em': updatedAt.toIso8601String(),
       'sync_remote_id': remoteId,
       'sync_status': syncStatus?.storageValue,
+      'sync_last_error': syncIssueMessage,
+      'sync_last_error_type': syncIssueType,
       'sync_last_synced_at': lastSyncedAt?.toIso8601String(),
     };
   }
@@ -123,6 +129,8 @@ class PurchaseModel extends Purchase {
     String? remoteId,
     SyncStatus? syncStatus,
     DateTime? lastSyncedAt,
+    String? syncIssueMessage,
+    String? syncIssueType,
   }) {
     return PurchaseModel(
       id: id ?? this.id,
@@ -149,6 +157,8 @@ class PurchaseModel extends Purchase {
       remoteId: remoteId ?? this.remoteId,
       syncStatus: syncStatus ?? this.syncStatus,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+      syncIssueMessage: syncIssueMessage ?? this.syncIssueMessage,
+      syncIssueType: syncIssueType ?? this.syncIssueType,
     );
   }
 }

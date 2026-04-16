@@ -740,7 +740,9 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
   String _displayNameFor(String featureKey) {
     return switch (featureKey) {
       SyncFeatureKeys.categories => 'Categorias',
+      SyncFeatureKeys.supplies => 'Insumos',
       SyncFeatureKeys.products => 'Produtos',
+      SyncFeatureKeys.productRecipes => 'Fichas tecnicas',
       SyncFeatureKeys.customers => 'Clientes',
       SyncFeatureKeys.suppliers => 'Fornecedores',
       SyncFeatureKeys.purchases => 'Compras',

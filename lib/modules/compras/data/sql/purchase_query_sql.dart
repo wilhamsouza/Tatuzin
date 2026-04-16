@@ -3,15 +3,15 @@ import '../../../../app/core/database/table_names.dart';
 class PurchaseQuerySql {
   const PurchaseQuerySql._();
 
-  static String selectPurchaseBase({
-    required String featureKey,
-  }) {
+  static String selectPurchaseBase({required String featureKey}) {
     return '''
       SELECT
         c.*,
         f.nome AS fornecedor_nome,
         sync.remote_id AS sync_remote_id,
         sync.sync_status AS sync_status,
+        sync.last_error AS sync_last_error,
+        sync.last_error_type AS sync_last_error_type,
         sync.last_synced_at AS sync_last_synced_at,
         COUNT(ic.id) AS itens_quantidade
       FROM ${TableNames.compras} c
@@ -50,6 +50,8 @@ class PurchaseQuerySql {
       f.nome,
       sync.remote_id,
       sync.sync_status,
+      sync.last_error,
+      sync.last_error_type,
       sync.last_synced_at
     ''';
   }
@@ -58,21 +60,15 @@ class PurchaseQuerySql {
     return 'c.data_compra DESC, c.id DESC';
   }
 
-  static String selectPurchaseById({
-    required String featureKey,
-  }) {
+  static String selectPurchaseById({required String featureKey}) {
     return '${selectPurchaseBase(featureKey: featureKey)} AND c.id = ? GROUP BY ${purchaseGroupBy()} LIMIT 1';
   }
 
-  static String selectPurchaseByRemoteId({
-    required String featureKey,
-  }) {
+  static String selectPurchaseByRemoteId({required String featureKey}) {
     return '${selectPurchaseBase(featureKey: featureKey)} AND sync.remote_id = ? GROUP BY ${purchaseGroupBy()} LIMIT 1';
   }
 
-  static String selectPurchasesForListing({
-    required String featureKey,
-  }) {
+  static String selectPurchasesForListing({required String featureKey}) {
     return '${selectPurchaseBase(featureKey: featureKey)} GROUP BY ${purchaseGroupBy()} ORDER BY ${defaultGroupedOrderBy()}';
   }
 }

@@ -12,6 +12,8 @@ import '../../../app/core/sync/sync_queue_operation.dart';
 import '../../../app/core/utils/id_generator.dart';
 import '../../clientes/data/customer_credit_database_support.dart';
 import '../../clientes/domain/entities/customer_credit_transaction.dart';
+import '../../insumos/data/support/supply_inventory_support.dart';
+import '../../insumos/data/support/supply_sync_mutation_support.dart';
 import '../domain/entities/checkout_input.dart';
 import '../domain/entities/completed_sale.dart';
 import '../domain/entities/sale_enums.dart';
@@ -56,7 +58,7 @@ class SqliteSaleRepository implements SaleRepository {
     final database = await _appDatabase.database;
 
     return database.transaction<CompletedSale>((txn) async {
-      return _completeSale(txn, input: input, saleType: SaleType.cash);
+      return completeCashSaleWithinTransaction(txn, input: input);
     });
   }
 
@@ -69,6 +71,27 @@ class SqliteSaleRepository implements SaleRepository {
     return database.transaction<CompletedSale>((txn) async {
       return _completeSale(txn, input: input, saleType: SaleType.fiado);
     });
+  }
+
+  Future<CompletedSale> completeCashSaleWithinTransaction(
+    DatabaseExecutor txn, {
+    required CheckoutInput input,
+  }) {
+    return _completeSale(txn, input: input, saleType: SaleType.cash);
+  }
+
+  Future<void> registerCashEventForSyncWithinTransaction(
+    DatabaseExecutor txn, {
+    required int movementId,
+    required String movementUuid,
+    required DateTime createdAt,
+  }) {
+    return _registerCashMovementForSync(
+      txn,
+      movementId: movementId,
+      movementUuid: movementUuid,
+      createdAt: createdAt,
+    );
   }
 
   @override
@@ -111,6 +134,20 @@ class SqliteSaleRepository implements SaleRepository {
 
       final now = DateTime.now();
       final nowIso = now.toIso8601String();
+      final affectedSupplyIds =
+          await SupplyInventorySupport.reverseSaleConsumption(
+            txn,
+            saleUuid: saleRow['uuid'] as String,
+            saleRemoteId: null,
+            occurredAt: now,
+          );
+      await SupplySyncMutationSupport.markSuppliesForSync(
+        txn,
+        supplyIds: affectedSupplyIds,
+        changedAt: now,
+        syncMetadataRepository: _syncMetadataRepository,
+        syncQueueRepository: _syncQueueRepository,
+      );
 
       for (final itemRow in soldItems) {
         final productId = itemRow['produto_id'] as int;
@@ -400,6 +437,20 @@ class SqliteSaleRepository implements SaleRepository {
       saleId: saleId,
       items: input.items,
       snapshots: productSnapshots,
+    );
+    final affectedSupplyIds =
+        await SupplyInventorySupport.recordSaleConsumption(
+          txn,
+          saleUuid: saleUuid,
+          items: input.items,
+          occurredAt: now,
+        );
+    await SupplySyncMutationSupport.markSuppliesForSync(
+      txn,
+      supplyIds: affectedSupplyIds,
+      changedAt: now,
+      syncMetadataRepository: _syncMetadataRepository,
+      syncQueueRepository: _syncQueueRepository,
     );
 
     int? fiadoId;

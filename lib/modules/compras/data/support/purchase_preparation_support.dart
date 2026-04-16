@@ -4,6 +4,7 @@ import '../../../../app/core/database/table_names.dart';
 import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../domain/entities/purchase.dart';
+import '../../domain/entities/purchase_item.dart';
 import '../../domain/entities/purchase_status.dart';
 import '../models/purchase_item_model.dart';
 
@@ -45,24 +46,77 @@ class PurchasePreparationSupport {
     }
 
     final uniqueProductIds = input.items
+        .where((item) => item.itemType == PurchaseItemType.product)
         .map((item) => item.productId)
+        .whereType<int>()
         .toSet()
-        .toList();
-    final placeholders = List.filled(uniqueProductIds.length, '?').join(',');
-    final productRows = await db.rawQuery(
-      '''
-      SELECT
-        id,
-        nome,
-        unidade_medida,
-        estoque_mil,
-        deletado_em
-      FROM ${TableNames.produtos}
-      WHERE id IN ($placeholders)
-    ''',
-      uniqueProductIds,
-    );
-    final productMap = {for (final row in productRows) row['id'] as int: row};
+        .toList(growable: false);
+    final uniqueSupplyIds = input.items
+        .where((item) => item.itemType == PurchaseItemType.supply)
+        .map((item) => item.supplyId)
+        .whereType<int>()
+        .toSet()
+        .toList(growable: false);
+
+    final productMap = <int, Map<String, Object?>>{};
+    final productVariantMap = <int, Map<String, Object?>>{};
+    if (uniqueProductIds.isNotEmpty) {
+      final placeholders = List.filled(uniqueProductIds.length, '?').join(',');
+      final productRows = await db.rawQuery(
+        '''
+        SELECT
+          id,
+          nome,
+          unidade_medida,
+          estoque_mil,
+          deletado_em
+        FROM ${TableNames.produtos}
+        WHERE id IN ($placeholders)
+      ''',
+        uniqueProductIds,
+      );
+      productMap.addEntries(
+        productRows.map((row) => MapEntry(row['id'] as int, row)),
+      );
+
+      final variantRows = await db.rawQuery(
+        '''
+        SELECT
+          id,
+          produto_id,
+          sku,
+          cor,
+          tamanho,
+          ativo
+        FROM ${TableNames.produtoVariantes}
+        WHERE produto_id IN ($placeholders)
+      ''',
+        uniqueProductIds,
+      );
+      productVariantMap.addEntries(
+        variantRows.map((row) => MapEntry(row['id'] as int, row)),
+      );
+    }
+
+    final supplyMap = <int, Map<String, Object?>>{};
+    if (uniqueSupplyIds.isNotEmpty) {
+      final placeholders = List.filled(uniqueSupplyIds.length, '?').join(',');
+      final supplyRows = await db.rawQuery(
+        '''
+        SELECT
+          id,
+          name,
+          purchase_unit_type,
+          conversion_factor
+        FROM ${TableNames.supplies}
+        WHERE id IN ($placeholders)
+      ''',
+        uniqueSupplyIds,
+      );
+      supplyMap.addEntries(
+        supplyRows.map((row) => MapEntry(row['id'] as int, row)),
+      );
+    }
 
     final items = <PurchaseItemModel>[];
     var subtotalCents = 0;
@@ -79,28 +133,98 @@ class PurchasePreparationSupport {
         );
       }
 
-      final productRow = productMap[inputItem.productId];
-      if (productRow == null ||
-          (productRow['deletado_em'] as String?) != null) {
-        throw const ValidationException(
-          'Um dos produtos selecionados nao esta mais disponivel.',
-        );
-      }
-
       final itemSubtotal = calculateSubtotalCents(
         quantityMil: inputItem.quantityMil,
         unitCostCents: inputItem.unitCostCents,
       );
       subtotalCents += itemSubtotal;
 
+      if (inputItem.itemType == PurchaseItemType.product) {
+        if (inputItem.productId == null || inputItem.supplyId != null) {
+          throw const ValidationException(
+            'Cada item de produto precisa apontar apenas para um produto valido.',
+          );
+        }
+        final productRow = productMap[inputItem.productId];
+        if (productRow == null ||
+            (productRow['deletado_em'] as String?) != null) {
+          throw const ValidationException(
+            'Um dos produtos selecionados nao esta mais disponivel.',
+          );
+        }
+        final productVariantId = inputItem.productVariantId;
+        Map<String, Object?>? productVariantRow;
+        if (productVariantId != null) {
+          productVariantRow = productVariantMap[productVariantId];
+          if (productVariantRow == null ||
+              productVariantRow['produto_id'] != inputItem.productId ||
+              (productVariantRow['ativo'] as int? ?? 0) != 1) {
+            throw const ValidationException(
+              'A variante selecionada nao pertence ao produto informado.',
+            );
+          }
+        } else {
+          final hasAnyActiveVariant = productVariantMap.values.any(
+            (row) =>
+                row['produto_id'] == inputItem.productId &&
+                (row['ativo'] as int? ?? 0) == 1,
+          );
+          if (hasAnyActiveVariant) {
+            throw const ValidationException(
+              'Selecione a cor e o tamanho corretos para lancar esta compra.',
+            );
+          }
+        }
+
+        items.add(
+          PurchaseItemModel(
+            id: 0,
+            uuid: '',
+            purchaseId: 0,
+            itemType: PurchaseItemType.product,
+            productId: inputItem.productId,
+            productVariantId: productVariantId,
+            supplyId: null,
+            itemNameSnapshot: productRow['nome'] as String,
+            variantSkuSnapshot: productVariantRow?['sku'] as String?,
+            variantColorLabelSnapshot: productVariantRow?['cor'] as String?,
+            variantSizeLabelSnapshot: productVariantRow?['tamanho'] as String?,
+            unitMeasureSnapshot: productRow['unidade_medida'] as String? ?? 'un',
+            quantityMil: inputItem.quantityMil,
+            unitCostCents: inputItem.unitCostCents,
+            subtotalCents: itemSubtotal,
+          ),
+        );
+        continue;
+      }
+
+      if (inputItem.supplyId == null || inputItem.productId != null) {
+        throw const ValidationException(
+          'Cada item de insumo precisa apontar apenas para um insumo valido.',
+        );
+      }
+      final supplyRow = supplyMap[inputItem.supplyId];
+      if (supplyRow == null) {
+        throw const ValidationException(
+          'Um dos insumos selecionados nao esta mais disponivel.',
+        );
+      }
+
       items.add(
         PurchaseItemModel(
           id: 0,
           uuid: '',
           purchaseId: 0,
-          productId: inputItem.productId,
-          productNameSnapshot: productRow['nome'] as String,
-          unitMeasureSnapshot: productRow['unidade_medida'] as String? ?? 'un',
+          itemType: PurchaseItemType.supply,
+          productId: null,
+          productVariantId: null,
+          supplyId: inputItem.supplyId,
+          itemNameSnapshot: supplyRow['name'] as String? ?? 'Insumo',
+          variantSkuSnapshot: null,
+          variantColorLabelSnapshot: null,
+          variantSizeLabelSnapshot: null,
+          unitMeasureSnapshot:
+              supplyRow['purchase_unit_type'] as String? ?? 'un',
           quantityMil: inputItem.quantityMil,
           unitCostCents: inputItem.unitCostCents,
           subtotalCents: itemSubtotal,

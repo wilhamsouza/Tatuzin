@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/app_design_tokens.dart';
 import 'app_card.dart';
 
 class AppMetricCard extends StatelessWidget {
@@ -24,13 +25,16 @@ class AppMetricCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final layout = context.appLayout;
+    final tokens = context.appColors;
     final effectiveAccent = accentColor ?? colorScheme.primary;
 
     return AppCard(
       onTap: onTap,
-      borderRadius: 16,
-      padding: const EdgeInsets.all(11),
+      borderRadius: layout.radiusXl,
+      padding: EdgeInsets.all(layout.compactCardPadding - 1),
       color: effectiveAccent.withValues(alpha: 0.08),
+      borderColor: effectiveAccent.withValues(alpha: 0.12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -38,11 +42,11 @@ class AppMetricCard extends StatelessWidget {
             children: [
               DecoratedBox(
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.84),
-                  borderRadius: BorderRadius.circular(9),
+                  color: Colors.white.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(layout.radiusSm),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(6),
+                  padding: EdgeInsets.all(layout.space3),
                   child: Icon(icon, size: 15, color: effectiveAccent),
                 ),
               ),
@@ -50,12 +54,12 @@ class AppMetricCard extends StatelessWidget {
               if (onTap != null)
                 Icon(
                   Icons.chevron_right_rounded,
-                  size: 18,
-                  color: colorScheme.onSurfaceVariant,
+                  size: layout.iconMd,
+                  color: tokens.interactive.onSurface,
                 ),
             ],
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: layout.space4),
           Text(
             label,
             style: theme.textTheme.labelMedium?.copyWith(
@@ -63,7 +67,7 @@ class AppMetricCard extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 2),
+          SizedBox(height: layout.space2),
           Text(
             value,
             maxLines: 1,
@@ -73,7 +77,7 @@ class AppMetricCard extends StatelessWidget {
             ),
           ),
           if (caption?.isNotEmpty ?? false) ...[
-            const SizedBox(height: 2),
+            SizedBox(height: layout.space2),
             Text(
               caption!,
               maxLines: 2,

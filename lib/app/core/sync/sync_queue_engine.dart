@@ -151,24 +151,28 @@ class SyncQueueEngine {
     switch (featureKey) {
       case SyncFeatureKeys.categories:
         return 0;
-      case SyncFeatureKeys.products:
-        return 1;
-      case SyncFeatureKeys.customers:
-        return 2;
       case SyncFeatureKeys.suppliers:
+        return 1;
+      case SyncFeatureKeys.supplies:
+        return 2;
+      case SyncFeatureKeys.products:
         return 3;
-      case SyncFeatureKeys.purchases:
+      case SyncFeatureKeys.productRecipes:
         return 4;
-      case SyncFeatureKeys.sales:
+      case SyncFeatureKeys.customers:
         return 5;
-      case SyncFeatureKeys.financialEvents:
+      case SyncFeatureKeys.purchases:
         return 6;
-      case SyncFeatureKeys.saleCancellations:
+      case SyncFeatureKeys.sales:
         return 7;
-      case SyncFeatureKeys.fiadoPayments:
+      case SyncFeatureKeys.financialEvents:
         return 8;
-      case SyncFeatureKeys.cashEvents:
+      case SyncFeatureKeys.saleCancellations:
         return 9;
+      case SyncFeatureKeys.fiadoPayments:
+        return 10;
+      case SyncFeatureKeys.cashEvents:
+        return 11;
       default:
         return 99;
     }

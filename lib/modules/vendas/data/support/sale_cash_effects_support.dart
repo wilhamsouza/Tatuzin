@@ -79,6 +79,43 @@ class SaleCashEffectsSupport {
     );
   }
 
+  static Future<InsertedCashMovement> registerSaleReturnRefund(
+    DatabaseExecutor txn, {
+    required DateTime timestamp,
+    required int? userId,
+    required int saleId,
+    required int amountCents,
+    required String receiptNumber,
+    required String reason,
+    required PaymentMethod paymentMethod,
+  }) async {
+    final sessionId = await CashDatabaseSupport.ensureOpenSession(
+      txn,
+      timestamp: timestamp,
+      userId: userId,
+      notes: 'Sessao aberta automaticamente para registrar devolucao de venda.',
+    );
+    await CashSessionMathSupport.applySessionDeltas(
+      txn,
+      sessionId: sessionId,
+      cashEntriesDeltaCents: paymentMethod == PaymentMethod.cash
+          ? -amountCents
+          : 0,
+    );
+    return CashDatabaseSupport.insertMovement(
+      txn,
+      sessionId: sessionId,
+      type: CashMovementType.cancellation,
+      amountCents: -amountCents,
+      timestamp: timestamp,
+      referenceType: 'venda',
+      referenceId: saleId,
+      description:
+          'Devolucao da venda $receiptNumber. Motivo: ${reason.trim()}',
+      paymentMethod: paymentMethod,
+    );
+  }
+
   static Future<InsertedCashMovement> registerFiadoReceiptRefund(
     DatabaseExecutor txn, {
     required DateTime timestamp,

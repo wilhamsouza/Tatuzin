@@ -15,6 +15,12 @@ class RemoteProductRecord {
     required this.variantLabel,
     required this.unitMeasure,
     required this.costCents,
+    required this.manualCostCents,
+    required this.costSource,
+    required this.variableCostSnapshotCents,
+    required this.estimatedGrossMarginCents,
+    required this.estimatedGrossMarginPercentBasisPoints,
+    required this.lastCostUpdatedAt,
     required this.salePriceCents,
     required this.stockMil,
     this.variants = const <RemoteProductVariantRecord>[],
@@ -45,6 +51,19 @@ class RemoteProductRecord {
       variantLabel: json['variantLabel'] as String?,
       unitMeasure: (json['unitMeasure'] as String?) ?? 'un',
       costCents: json['costPriceCents'] as int? ?? 0,
+      manualCostCents:
+          json['manualCostCents'] as int? ??
+          json['costPriceCents'] as int? ??
+          0,
+      costSource: productCostSourceFromStorage(json['costSource'] as String?),
+      variableCostSnapshotCents:
+          json['variableCostSnapshotCents'] as int?,
+      estimatedGrossMarginCents: json['estimatedGrossMarginCents'] as int?,
+      estimatedGrossMarginPercentBasisPoints:
+          json['estimatedGrossMarginPercentBasisPoints'] as int?,
+      lastCostUpdatedAt: json['lastCostUpdatedAt'] == null
+          ? null
+          : DateTime.parse(json['lastCostUpdatedAt'] as String),
       salePriceCents: json['salePriceCents'] as int? ?? 0,
       stockMil: json['stockMil'] as int? ?? 0,
       variants: ((json['variants'] as List<dynamic>?) ?? const <dynamic>[])
@@ -83,6 +102,13 @@ class RemoteProductRecord {
       variantLabel: product.variantLabel,
       unitMeasure: product.unitMeasure,
       costCents: product.costCents,
+      manualCostCents: product.manualCostCents,
+      costSource: product.costSource,
+      variableCostSnapshotCents: product.variableCostSnapshotCents,
+      estimatedGrossMarginCents: product.estimatedGrossMarginCents,
+      estimatedGrossMarginPercentBasisPoints:
+          product.estimatedGrossMarginPercentBasisPoints,
+      lastCostUpdatedAt: product.lastCostUpdatedAt,
       salePriceCents: product.salePriceCents,
       stockMil: product.stockMil,
       variants: product.variants
@@ -115,6 +141,12 @@ class RemoteProductRecord {
   final String? variantLabel;
   final String unitMeasure;
   final int costCents;
+  final int manualCostCents;
+  final ProductCostSource costSource;
+  final int? variableCostSnapshotCents;
+  final int? estimatedGrossMarginCents;
+  final int? estimatedGrossMarginPercentBasisPoints;
+  final DateTime? lastCostUpdatedAt;
   final int salePriceCents;
   final int stockMil;
   final List<RemoteProductVariantRecord> variants;
@@ -151,6 +183,13 @@ class RemoteProductRecord {
       'variantLabel': variantLabel,
       'unitMeasure': unitMeasure,
       'costPriceCents': costCents,
+      'manualCostCents': manualCostCents,
+      'costSource': costSource.storageValue,
+      'variableCostSnapshotCents': variableCostSnapshotCents,
+      'estimatedGrossMarginCents': estimatedGrossMarginCents,
+      'estimatedGrossMarginPercentBasisPoints':
+          estimatedGrossMarginPercentBasisPoints,
+      'lastCostUpdatedAt': lastCostUpdatedAt?.toIso8601String(),
       'salePriceCents': salePriceCents,
       'stockMil': stockMil,
       'variants': variants.map((variant) => variant.toJson()).toList(),

@@ -68,8 +68,14 @@ class SqliteSyncReadinessRepository implements SyncReadinessRepository {
     final categoryMetadata = await metadataRepository.listByFeature(
       SyncFeatureKeys.categories,
     );
+    final supplyMetadata = await metadataRepository.listByFeature(
+      SyncFeatureKeys.supplies,
+    );
     final productMetadata = await metadataRepository.listByFeature(
       SyncFeatureKeys.products,
+    );
+    final productRecipeMetadata = await metadataRepository.listByFeature(
+      SyncFeatureKeys.productRecipes,
     );
     final customerMetadata = await metadataRepository.listByFeature(
       SyncFeatureKeys.customers,
@@ -88,9 +94,19 @@ class SqliteSyncReadinessRepository implements SyncReadinessRepository {
         metadata: categoryMetadata,
       ),
       SyncFeatureSummary.fromMetadata(
+        featureKey: SyncFeatureKeys.supplies,
+        displayName: 'Insumos',
+        metadata: supplyMetadata,
+      ),
+      SyncFeatureSummary.fromMetadata(
         featureKey: SyncFeatureKeys.products,
         displayName: 'Produtos',
         metadata: productMetadata,
+      ),
+      SyncFeatureSummary.fromMetadata(
+        featureKey: SyncFeatureKeys.productRecipes,
+        displayName: 'Fichas tecnicas',
+        metadata: productRecipeMetadata,
       ),
       SyncFeatureSummary.fromMetadata(
         featureKey: SyncFeatureKeys.customers,

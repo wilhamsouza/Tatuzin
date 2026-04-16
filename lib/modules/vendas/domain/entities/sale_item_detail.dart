@@ -2,6 +2,7 @@ class SaleItemDetail {
   const SaleItemDetail({
     required this.id,
     required this.productId,
+    this.productVariantId,
     required this.productName,
     this.variantSkuSnapshot,
     this.variantColorSnapshot,
@@ -19,6 +20,7 @@ class SaleItemDetail {
 
   final int id;
   final int productId;
+  final int? productVariantId;
   final String productName;
   final String? variantSkuSnapshot;
   final String? variantColorSnapshot;
@@ -34,6 +36,19 @@ class SaleItemDetail {
   final List<SaleItemModifierSnapshot> modifiers;
 
   int get quantityUnits => quantityMil ~/ 1000;
+
+  String? get variantSummary {
+    final labels = <String>[
+      if ((variantColorSnapshot ?? '').trim().isNotEmpty)
+        variantColorSnapshot!.trim(),
+      if ((variantSizeSnapshot ?? '').trim().isNotEmpty)
+        variantSizeSnapshot!.trim(),
+    ];
+    if (labels.isEmpty) {
+      return null;
+    }
+    return labels.join(' / ');
+  }
 
   int get modifiersUnitDeltaCents => modifiers.fold<int>(
     0,

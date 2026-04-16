@@ -6,6 +6,11 @@ abstract final class AppRouteNames {
   static const categoryForm = 'category-form';
   static const products = 'products';
   static const productForm = 'product-form';
+  static const productProfitability = 'product-profitability';
+  static const supplies = 'supplies';
+  static const supplyForm = 'supply-form';
+  static const supplyInventory = 'supply-inventory';
+  static const reorderSuggestions = 'reorder-suggestions';
   static const clients = 'clients';
   static const clientForm = 'client-form';
   static const clientCreditStatement = 'client-credit-statement';
@@ -46,6 +51,11 @@ abstract final class AppRoutePaths {
   static const categoryForm = '/categorias/form';
   static const products = '/produtos';
   static const productForm = '/produtos/form';
+  static const productProfitability = '/produtos/lucratividade';
+  static const supplies = '/insumos';
+  static const supplyForm = '/insumos/form';
+  static const supplyInventory = '/insumos/estoque';
+  static const reorderSuggestions = '/insumos/recompra';
   static const clients = '/clientes';
   static const clientForm = '/clientes/form';
   static const clientCreditStatement = '/clientes/:clientId/haver';

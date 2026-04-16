@@ -1,4 +1,4 @@
-import type { Prisma, Purchase, PurchaseItem, PurchasePayment } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 
 import { prisma } from '../../database/prisma';
 import { AppError } from '../../shared/http/app-error';
@@ -8,15 +8,37 @@ import type {
   PurchaseUpsertInput,
 } from './purchases.schemas';
 
-type PurchaseWithRelations = Purchase & {
-  items: PurchaseItem[];
-  payments: PurchasePayment[];
-  supplier: {
-    id: string;
-    localUuid: string;
-    name: string;
+type PurchaseWithRelations = Prisma.PurchaseGetPayload<{
+  include: {
+    supplier: {
+      select: {
+        id: true;
+        localUuid: true;
+        name: true;
+      };
+    };
+    items: {
+      include: {
+        productVariant: {
+          select: {
+            id: true;
+            sku: true;
+            colorLabel: true;
+            sizeLabel: true;
+          };
+        };
+        supply: {
+          select: {
+            id: true;
+            localUuid: true;
+            name: true;
+          };
+        };
+      };
+    };
+    payments: true;
   };
-};
+}>;
 
 export class PurchasesService {
   async listForCompany(companyId: string) {
@@ -32,6 +54,23 @@ export class PurchasesService {
         },
         items: {
           orderBy: { createdAt: 'asc' },
+          include: {
+            productVariant: {
+              select: {
+                id: true,
+                sku: true,
+                colorLabel: true,
+                sizeLabel: true,
+              },
+            },
+            supply: {
+              select: {
+                id: true,
+                localUuid: true,
+                name: true,
+              },
+            },
+          },
         },
         payments: {
           orderBy: { paidAt: 'asc' },
@@ -59,6 +98,23 @@ export class PurchasesService {
         },
         items: {
           orderBy: { createdAt: 'asc' },
+          include: {
+            productVariant: {
+              select: {
+                id: true,
+                sku: true,
+                colorLabel: true,
+                sizeLabel: true,
+              },
+            },
+            supply: {
+              select: {
+                id: true,
+                localUuid: true,
+                name: true,
+              },
+            },
+          },
         },
         payments: {
           orderBy: { paidAt: 'asc' },
@@ -126,6 +182,23 @@ export class PurchasesService {
         },
         items: {
           orderBy: { createdAt: 'asc' },
+          include: {
+            productVariant: {
+              select: {
+                id: true,
+                sku: true,
+                colorLabel: true,
+                sizeLabel: true,
+              },
+            },
+            supply: {
+              select: {
+                id: true,
+                localUuid: true,
+                name: true,
+              },
+            },
+          },
         },
         payments: {
           orderBy: { paidAt: 'asc' },
@@ -198,6 +271,23 @@ export class PurchasesService {
           },
           items: {
             orderBy: { createdAt: 'asc' },
+            include: {
+              productVariant: {
+                select: {
+                  id: true,
+                  sku: true,
+                  colorLabel: true,
+                  sizeLabel: true,
+                },
+              },
+              supply: {
+                select: {
+                  id: true,
+                  localUuid: true,
+                  name: true,
+                },
+              },
+            },
           },
           payments: {
             orderBy: { paidAt: 'asc' },
@@ -234,11 +324,33 @@ export class PurchasesService {
     const resolvedItems: Prisma.PurchaseItemUncheckedCreateWithoutPurchaseInput[] = [];
 
     for (const item of items) {
-      const productId = await this.resolveProductId(companyId, item.productId);
+      const productId =
+        item.itemType === 'product'
+          ? await this.resolveProductId(companyId, item.productId)
+          : null;
+      const productVariantId =
+        item.itemType === 'product'
+          ? await this.resolveProductVariantId(
+              companyId,
+              productId,
+              item.productVariantId,
+              item.variantSkuSnapshot,
+            )
+          : null;
+      const supplyId =
+        item.itemType === 'supply'
+          ? await this.resolveSupplyId(companyId, item.supplyId)
+          : null;
       resolvedItems.push({
         localUuid: item.localUuid,
+        itemType: item.itemType,
         productId,
+        productVariantId,
+        supplyId,
         productNameSnapshot: item.productNameSnapshot,
+        variantSkuSnapshot: item.variantSkuSnapshot,
+        variantColorLabelSnapshot: item.variantColorLabelSnapshot,
+        variantSizeLabelSnapshot: item.variantSizeLabelSnapshot,
         unitMeasureSnapshot: item.unitMeasureSnapshot,
         quantityMil: item.quantityMil,
         unitCostCents: item.unitCostCents,
@@ -286,6 +398,73 @@ export class PurchasesService {
     return product.id;
   }
 
+  private async resolveProductVariantId(
+    companyId: string,
+    productId: string | null,
+    productVariantId: string | null,
+    variantSkuSnapshot: string | null,
+  ) {
+    if (productId == null) {
+      return null;
+    }
+
+    const normalizedSku = variantSkuSnapshot?.trim().toUpperCase();
+    if (productVariantId == null &&
+        (normalizedSku == null || normalizedSku.length == 0)) {
+      return null;
+    }
+
+    const variant = await prisma.productVariant.findFirst({
+      where: {
+        productId,
+        product: {
+          companyId,
+          deletedAt: null,
+        },
+        ...(productVariantId == null ? {} : { id: productVariantId }),
+        ...(normalizedSku == null || normalizedSku.length == 0
+          ? {}
+          : { sku: normalizedSku }),
+      },
+      select: { id: true },
+    });
+
+    if (!variant) {
+      throw new AppError(
+        'Variante remota invalida para esta compra.',
+        400,
+        'PRODUCT_VARIANT_INVALID',
+      );
+    }
+
+    return variant.id;
+  }
+
+  private async resolveSupplyId(companyId: string, supplyId: string | null) {
+    if (supplyId == null) {
+      return null;
+    }
+
+    const supply = await prisma.supply.findFirst({
+      where: {
+        id: supplyId,
+        companyId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (!supply) {
+      throw new AppError(
+        'Insumo remoto invalido para esta compra.',
+        400,
+        'SUPPLY_INVALID',
+      );
+    }
+
+    return supply.id;
+  }
+
   private toPurchaseDto(purchase: PurchaseWithRelations) {
     return {
       id: purchase.id,
@@ -314,8 +493,18 @@ export class PurchasesService {
         id: item.id,
         localUuid: item.localUuid,
         purchaseId: item.purchaseId,
+        itemType: item.itemType,
         productId: item.productId,
+        productVariantId: item.productVariantId,
+        supplyId: item.supplyId,
+        supplyLocalUuid: item.supply?.localUuid ?? null,
         productNameSnapshot: item.productNameSnapshot,
+        variantSkuSnapshot:
+          item.variantSkuSnapshot ?? item.productVariant?.sku ?? null,
+        variantColorLabelSnapshot:
+          item.variantColorLabelSnapshot ?? item.productVariant?.colorLabel ?? null,
+        variantSizeLabelSnapshot:
+          item.variantSizeLabelSnapshot ?? item.productVariant?.sizeLabel ?? null,
         unitMeasureSnapshot: item.unitMeasureSnapshot,
         quantityMil: item.quantityMil,
         unitCostCents: item.unitCostCents,

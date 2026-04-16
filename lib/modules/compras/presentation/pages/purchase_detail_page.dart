@@ -4,10 +4,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/sync/sync_status.dart';
 import '../../../../app/core/utils/money_parser.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
+import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../../vendas/domain/entities/sale_enums.dart';
+import '../../domain/entities/purchase.dart';
 import '../../domain/entities/purchase_detail.dart';
 import '../../domain/entities/purchase_item.dart';
 import '../../domain/entities/purchase_payment.dart';
@@ -38,6 +41,10 @@ class PurchaseDetailPage extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
             children: [
               _PurchaseHeader(detail: detail),
+              if (_shouldShowSyncNotice(detail.purchase)) ...[
+                const SizedBox(height: 16),
+                _PurchaseSyncNotice(purchase: detail.purchase),
+              ],
               const SizedBox(height: 16),
               AppSectionCard(
                 title: 'Resumo financeiro',
@@ -361,6 +368,13 @@ class _PurchaseHeader extends StatelessWidget {
       trailing: PurchaseStatusBadge(status: purchase.status),
       child: Column(
         children: [
+          if (_shouldShowSyncNotice(purchase)) ...[
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: _PurchaseSyncHeaderBadge(),
+            ),
+            const SizedBox(height: 16),
+          ],
           _InfoLine(
             label: 'Valor final',
             value: AppFormatters.currencyFromCents(purchase.finalAmountCents),
@@ -384,6 +398,98 @@ class _PurchaseHeader extends StatelessWidget {
   }
 }
 
+class _PurchaseSyncNotice extends StatelessWidget {
+  const _PurchaseSyncNotice({required this.purchase});
+
+  final Purchase purchase;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _noticeLabel(purchase);
+    final description = _noticeDescription(purchase);
+    final tone = purchase.syncStatus == SyncStatus.syncError ||
+            purchase.syncStatus == SyncStatus.conflict
+        ? AppStatusTone.warning
+        : AppStatusTone.info;
+    final icon = purchase.syncStatus == SyncStatus.conflict
+        ? Icons.warning_amber_rounded
+        : purchase.isLocalOnly
+        ? Icons.cloud_off_rounded
+        : Icons.sync_problem_rounded;
+    return AppSectionCard(
+      title: 'Sincronizacao',
+      subtitle: 'Status remoto desta compra mista.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppStatusBadge(
+            label: label,
+            tone: tone,
+            icon: icon,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            description,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          if (purchase.syncIssueMessage?.trim().isNotEmpty ?? false) ...[
+            const SizedBox(height: 10),
+            Text(
+              purchase.syncIssueMessage!,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+bool _shouldShowSyncNotice(Purchase purchase) {
+  return purchase.isLocalOnly ||
+      purchase.syncStatus == SyncStatus.pendingUpload ||
+      purchase.syncStatus == SyncStatus.pendingUpdate ||
+      purchase.syncStatus == SyncStatus.syncError ||
+      purchase.syncStatus == SyncStatus.conflict ||
+      (purchase.syncIssueMessage?.trim().isNotEmpty ?? false);
+}
+
+class _PurchaseSyncHeaderBadge extends StatelessWidget {
+  const _PurchaseSyncHeaderBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return const AppStatusBadge(
+      label: 'Sync em acompanhamento',
+      tone: AppStatusTone.info,
+      icon: Icons.sync_problem_rounded,
+    );
+  }
+}
+
+String _noticeLabel(Purchase purchase) {
+  if (purchase.isLocalOnly) {
+    return 'Compra salva somente localmente';
+  }
+  return switch (purchase.syncStatus) {
+    null => 'Sincronizacao em andamento',
+    SyncStatus.pendingUpload => 'Envio remoto pendente',
+    SyncStatus.pendingUpdate => 'Atualizacao remota pendente',
+    SyncStatus.syncError => 'Falha de sincronizacao',
+    SyncStatus.conflict => 'Conflito de sincronizacao',
+    _ => 'Sincronizacao em andamento',
+  };
+}
+
+String _noticeDescription(Purchase purchase) {
+  if (purchase.isLocalOnly) {
+    return 'Compra com insumo salva localmente. A sincronizacao remota desse tipo de compra sera habilitada em fase futura.';
+  }
+  return purchase.syncIssueMessage?.trim().isNotEmpty == true
+      ? purchase.syncIssueMessage!.trim()
+      : 'A compra esta no fluxo normal de sincronizacao e sera reenviada assim que as dependencias remotas estiverem prontas.';
+}
+
 class _PurchaseItemRow extends StatelessWidget {
   const _PurchaseItemRow({required this.item});
 
@@ -395,7 +501,7 @@ class _PurchaseItemRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${item.productNameSnapshot} (${item.unitMeasureSnapshot})',
+          '${item.itemNameSnapshot} (${item.unitMeasureSnapshot})',
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 8),
@@ -403,6 +509,11 @@ class _PurchaseItemRow extends StatelessWidget {
           spacing: 12,
           runSpacing: 8,
           children: [
+            _MetaChip(label: 'Tipo', value: item.itemType.label),
+            if (item.variantSummary != null)
+              _MetaChip(label: 'Variante', value: item.variantSummary!),
+            if ((item.variantSkuSnapshot ?? '').trim().isNotEmpty)
+              _MetaChip(label: 'SKU', value: item.variantSkuSnapshot!.trim()),
             _MetaChip(
               label: 'Quantidade',
               value: AppFormatters.quantityFromMil(item.quantityMil),

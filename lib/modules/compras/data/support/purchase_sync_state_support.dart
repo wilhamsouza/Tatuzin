@@ -5,6 +5,7 @@ import '../../../../app/core/sync/sqlite_sync_metadata_repository.dart';
 import '../../../../app/core/sync/sqlite_sync_queue_repository.dart';
 import '../../../../app/core/sync/sync_error_type.dart';
 import '../../../../app/core/sync/sync_queue_operation.dart';
+import '../../../../app/core/sync/sync_status.dart';
 import '../models/purchase_sync_payload.dart';
 
 class PurchaseSyncStateSupport {
@@ -25,6 +26,8 @@ class PurchaseSyncStateSupport {
     required String purchaseUuid,
     required DateTime createdAt,
     required DateTime updatedAt,
+    bool localOnly = false,
+    String? reason,
   }) async {
     final metadata = await _syncMetadataRepository.findByLocalId(
       txn,
@@ -32,6 +35,30 @@ class PurchaseSyncStateSupport {
       localId: purchaseId,
     );
     final remoteId = metadata?.identity.remoteId;
+    if (localOnly) {
+      await _syncMetadataRepository.saveExplicit(
+        txn,
+        featureKey: featureKey,
+        localId: purchaseId,
+        localUuid: purchaseUuid,
+        remoteId: remoteId,
+        status: SyncStatus.localOnly,
+        origin: remoteId == null ? RecordOrigin.local : RecordOrigin.merged,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        lastSyncedAt: metadata?.lastSyncedAt,
+        lastError: reason,
+        lastErrorType: SyncErrorType.dependency.storageValue,
+        lastErrorAt: updatedAt,
+      );
+      await _syncQueueRepository.removeForEntity(
+        txn,
+        featureKey: featureKey,
+        localEntityId: purchaseId,
+      );
+      return;
+    }
+
     if (remoteId == null) {
       await _syncMetadataRepository.markPendingUpload(
         txn,

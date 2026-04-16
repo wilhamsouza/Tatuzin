@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/sync/sync_status.dart';
+import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../domain/entities/purchase.dart';
 import 'purchase_status_badge.dart';
 
@@ -43,6 +45,14 @@ class PurchaseCard extends StatelessWidget {
                           _subtitleText(),
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
+                        if (_showSyncBadge) ...[
+                          const SizedBox(height: 8),
+                          AppStatusBadge(
+                            label: _syncBadgeLabel,
+                            tone: _syncBadgeTone,
+                            icon: _syncBadgeIcon,
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -79,6 +89,13 @@ class PurchaseCard extends StatelessWidget {
                   ),
                 ],
               ),
+              if (purchase.syncIssueMessage?.trim().isNotEmpty ?? false) ...[
+                const SizedBox(height: 14),
+                Text(
+                  purchase.syncIssueMessage!,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
             ],
           ),
         ),
@@ -94,6 +111,44 @@ class PurchaseCard extends StatelessWidget {
         'Doc. ${purchase.documentNumber}',
     ];
     return parts.join(' | ');
+  }
+
+  bool get _showSyncBadge {
+    return purchase.isLocalOnly ||
+        purchase.syncStatus == SyncStatus.syncError ||
+        purchase.syncStatus == SyncStatus.pendingUpload ||
+        purchase.syncStatus == SyncStatus.pendingUpdate ||
+        purchase.syncStatus == SyncStatus.conflict;
+  }
+
+  String get _syncBadgeLabel {
+    if (purchase.isLocalOnly) {
+      return 'Compra local com insumo';
+    }
+    return switch (purchase.syncStatus) {
+      SyncStatus.pendingUpload => 'Sync pendente',
+      SyncStatus.pendingUpdate => 'Atualizacao pendente',
+      SyncStatus.syncError => 'Falha no sync',
+      SyncStatus.conflict => 'Conflito de sync',
+      _ => 'Aguardando sync',
+    };
+  }
+
+  AppStatusTone get _syncBadgeTone {
+    return switch (purchase.syncStatus) {
+      null => AppStatusTone.info,
+      SyncStatus.syncError || SyncStatus.conflict => AppStatusTone.warning,
+      _ => AppStatusTone.info,
+    };
+  }
+
+  IconData get _syncBadgeIcon {
+    return switch (purchase.syncStatus) {
+      null => Icons.sync_problem_rounded,
+      SyncStatus.syncError => Icons.cloud_off_rounded,
+      SyncStatus.conflict => Icons.warning_amber_rounded,
+      _ => Icons.sync_problem_rounded,
+    };
   }
 }
 

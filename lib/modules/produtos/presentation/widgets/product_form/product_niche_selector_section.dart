@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../../../../app/core/widgets/app_card.dart';
 import '../../../../../app/core/widgets/app_section_card.dart';
+import '../../../../../app/core/widgets/app_summary_block.dart';
+import '../../../../../app/theme/app_design_tokens.dart';
 import '../../../domain/entities/product.dart';
 
 class ProductNicheSelectorSection extends StatelessWidget {
@@ -21,23 +24,23 @@ class ProductNicheSelectorSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final layout = context.appLayout;
 
     return AppSectionCard(
       title: 'Estrutura do cadastro',
       subtitle:
           'Defina primeiro o nicho e o tipo de cadastro. O restante da tela se ajusta ao fluxo certo.',
+      tone: AppCardTone.muted,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Nicho',
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: layout.space5),
           _AdaptiveOptionGroup(
             children: [
               _SelectorOptionCard(
@@ -56,14 +59,14 @@ class ProductNicheSelectorSection extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: layout.sectionGap),
           Text(
             'Tipo do cadastro',
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: layout.space5),
           _AdaptiveOptionGroup(
             children: [
               _SelectorOptionCard(
@@ -82,28 +85,15 @@ class ProductNicheSelectorSection extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer.withValues(alpha: 0.28),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.label_outline_rounded, color: colorScheme.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    previewLabel,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          SizedBox(height: layout.sectionGap),
+          AppSummaryBlock(
+            label: 'Preview comercial',
+            value: previewLabel,
+            caption:
+                'Esse nome guia como o produto aparece no catalogo e nas proximas secoes.',
+            icon: Icons.label_outline_rounded,
+            palette: context.appColors.brand,
+            compact: true,
           ),
         ],
       ),
@@ -118,6 +108,8 @@ class _AdaptiveOptionGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final layout = context.appLayout;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < 620) {
@@ -125,7 +117,8 @@ class _AdaptiveOptionGroup extends StatelessWidget {
             children: [
               for (var index = 0; index < children.length; index++) ...[
                 children[index],
-                if (index != children.length - 1) const SizedBox(height: 10),
+                if (index != children.length - 1)
+                  SizedBox(height: layout.gridGap),
               ],
             ],
           );
@@ -135,7 +128,7 @@ class _AdaptiveOptionGroup extends StatelessWidget {
           children: [
             for (var index = 0; index < children.length; index++) ...[
               Expanded(child: children[index]),
-              if (index != children.length - 1) const SizedBox(width: 10),
+              if (index != children.length - 1) SizedBox(width: layout.gridGap),
             ],
           ],
         );
@@ -162,62 +155,57 @@ class _SelectorOptionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final tokens = context.appColors;
+    final layout = context.appLayout;
+    final palette = selected ? tokens.selection : tokens.interactive;
 
-    return Material(
-      color: selected
-          ? colorScheme.primaryContainer.withValues(alpha: 0.35)
-          : colorScheme.surfaceContainerLowest,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Ink(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: selected
-                  ? colorScheme.primary
-                  : colorScheme.outlineVariant,
-              width: selected ? 1.2 : 1,
+    return AppCard(
+      onTap: onTap,
+      tone: selected ? AppCardTone.brand : AppCardTone.standard,
+      color: selected ? palette.surface : tokens.cardBackground,
+      borderColor: selected ? palette.border : tokens.outlineSoft,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.88),
+              borderRadius: BorderRadius.circular(layout.radiusMd),
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(layout.space4),
+              child: Icon(
+                icon,
+                size: layout.iconLg,
+                color: selected
+                    ? tokens.brand.base
+                    : tokens.interactive.onSurface,
+              ),
             ),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                icon,
-                size: 20,
-                color: selected
-                    ? colorScheme.primary
-                    : colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
+          SizedBox(width: layout.space6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-            ],
+                SizedBox(height: layout.space2),
+                Text(
+                  subtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

@@ -4,6 +4,7 @@ import '../../../../app/core/database/table_names.dart';
 import '../../../../app/core/sync/sync_feature_keys.dart';
 import '../../../../app/core/sync/sync_status.dart';
 import '../../../vendas/domain/entities/sale_enums.dart';
+import '../../domain/entities/purchase_item.dart';
 import '../../domain/entities/purchase_status.dart';
 import '../models/purchase_sync_payload.dart';
 
@@ -45,11 +46,15 @@ class PurchaseSyncPayloadLoader {
       '''
       SELECT
         ic.*,
-        product_sync.remote_id AS produto_remote_id
+        product_sync.remote_id AS produto_remote_id,
+        supply_sync.remote_id AS supply_remote_id
       FROM ${TableNames.itensCompra} ic
       LEFT JOIN ${TableNames.syncRegistros} product_sync
         ON product_sync.feature_key = '${SyncFeatureKeys.products}'
         AND product_sync.local_id = ic.produto_id
+      LEFT JOIN ${TableNames.syncRegistros} supply_sync
+        ON supply_sync.feature_key = '${SyncFeatureKeys.supplies}'
+        AND supply_sync.local_id = ic.supply_id
       WHERE ic.compra_id = ?
       ORDER BY ic.id ASC
     ''',
@@ -99,9 +104,21 @@ class PurchaseSyncPayloadLoader {
             (item) => PurchaseSyncItemPayload(
               itemId: item['id'] as int,
               itemUuid: item['uuid'] as String,
-              productLocalId: item['produto_id'] as int,
+              itemType: purchaseItemTypeFromStorage(item['item_type'] as String?),
+              productLocalId: item['produto_id'] as int?,
+              productVariantLocalId: item['produto_variante_id'] as int?,
+              supplyLocalId: item['supply_id'] as int?,
               productRemoteId: item['produto_remote_id'] as String?,
-              productNameSnapshot: item['nome_produto_snapshot'] as String,
+              productVariantRemoteId: null,
+              supplyRemoteId: item['supply_remote_id'] as String?,
+              itemNameSnapshot:
+                  item['nome_item_snapshot'] as String? ??
+                  item['nome_produto_snapshot'] as String? ??
+                  'Item',
+              variantSkuSnapshot: item['sku_variante_snapshot'] as String?,
+              variantColorLabelSnapshot: item['cor_variante_snapshot'] as String?,
+              variantSizeLabelSnapshot:
+                  item['tamanho_variante_snapshot'] as String?,
               unitMeasureSnapshot:
                   item['unidade_medida_snapshot'] as String? ?? 'un',
               quantityMil: item['quantidade_mil'] as int? ?? 0,

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/widgets/app_card.dart';
+import '../../../../app/core/widgets/app_selector_chip.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
+import '../../../../app/theme/app_design_tokens.dart';
 import '../../domain/entities/operational_order_summary.dart';
 import '../support/order_ui_support.dart';
 import 'order_status_badge.dart';
@@ -35,10 +37,12 @@ class OrderQueueCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final order = summary.order;
     final theme = Theme.of(context);
+    final layout = context.appLayout;
+    final tokens = context.appColors;
 
     return AppCard(
       onTap: onOpen,
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(layout.cardPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -55,7 +59,7 @@ class OrderQueueCard extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: layout.space2),
                     Text(
                       order.customerLabel,
                       style: theme.textTheme.bodyMedium?.copyWith(
@@ -65,12 +69,12 @@ class OrderQueueCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: layout.space6),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   OrderStatusBadge(status: order.status),
-                  const SizedBox(height: 6),
+                  SizedBox(height: layout.space3),
                   AppStatusBadge(
                     label: orderTicketDispatchStatusLabel(
                       order.ticketMeta.status,
@@ -86,10 +90,10 @@ class OrderQueueCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: layout.sectionGap),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: layout.space3,
+            runSpacing: layout.space3,
             children: [
               _MetaChip(
                 icon: operationalOrderServiceTypeIcon(order.serviceType),
@@ -119,7 +123,7 @@ class OrderQueueCard extends StatelessWidget {
             ],
           ),
           if (order.notes?.trim().isNotEmpty ?? false) ...[
-            const SizedBox(height: 12),
+            SizedBox(height: layout.blockGap),
             Text(
               operationalOrderShortNotes(order.notes),
               style: theme.textTheme.bodyMedium?.copyWith(
@@ -128,27 +132,23 @@ class OrderQueueCard extends StatelessWidget {
             ),
           ],
           if (order.ticketMeta.hasFailure) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.errorContainer.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(12),
-              ),
+            SizedBox(height: layout.blockGap),
+            AppCard(
+              tone: AppCardTone.danger,
+              padding: EdgeInsets.all(layout.compactCardPadding),
               child: Text(
                 operationalOrderShortNotes(order.ticketMeta.lastFailureMessage),
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onErrorContainer,
+                  color: tokens.danger.onSurface,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ),
           ],
-          const SizedBox(height: 14),
+          SizedBox(height: layout.sectionGap),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: layout.space3,
+            runSpacing: layout.space3,
             children: [
               _ActionChip(
                 icon: Icons.open_in_new_rounded,
@@ -158,7 +158,7 @@ class OrderQueueCard extends StatelessWidget {
               if (onSendToKitchen != null)
                 _ActionChip(
                   icon: Icons.send_rounded,
-                  label: 'Enviar para cozinha',
+                  label: 'Enviar',
                   onPressed: onSendToKitchen!,
                 ),
               if (onReprint != null)
@@ -170,19 +170,19 @@ class OrderQueueCard extends StatelessWidget {
               if (onMarkInPreparation != null)
                 _ActionChip(
                   icon: Icons.local_fire_department_rounded,
-                  label: 'Marcar em preparo',
+                  label: 'Em preparo',
                   onPressed: onMarkInPreparation!,
                 ),
               if (onMarkReady != null)
                 _ActionChip(
                   icon: Icons.notifications_active_rounded,
-                  label: 'Marcar pronto',
+                  label: 'Pronto',
                   onPressed: onMarkReady!,
                 ),
               if (onMarkDelivered != null)
                 _ActionChip(
                   icon: Icons.delivery_dining_rounded,
-                  label: 'Marcar entregue',
+                  label: 'Entregue',
                   onPressed: onMarkDelivered!,
                 ),
               if (onInvoice != null)
@@ -190,13 +190,14 @@ class OrderQueueCard extends StatelessWidget {
                   icon: Icons.point_of_sale_rounded,
                   label: 'Faturar',
                   onPressed: onInvoice!,
+                  tone: AppSelectorChipTone.brand,
                 ),
               if (onCancel != null)
                 _ActionChip(
                   icon: Icons.cancel_rounded,
                   label: 'Cancelar',
                   onPressed: onCancel!,
-                  danger: true,
+                  tone: AppSelectorChipTone.danger,
                 ),
             ],
           ),
@@ -214,27 +215,11 @@ class _MetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: colorScheme.primary),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: Theme.of(
-              context,
-            ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
-        ],
-      ),
+    return AppSelectorChip(
+      icon: icon,
+      label: label,
+      selected: true,
+      tone: AppSelectorChipTone.info,
     );
   }
 }
@@ -244,34 +229,22 @@ class _ActionChip extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onPressed,
-    this.danger = false,
+    this.tone = AppSelectorChipTone.neutral,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onPressed;
-  final bool danger;
+  final AppSelectorChipTone tone;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return ActionChip(
-      avatar: Icon(
-        icon,
-        size: 18,
-        color: danger ? colorScheme.error : colorScheme.primary,
-      ),
-      label: Text(label),
-      onPressed: onPressed,
-      side: BorderSide(
-        color: danger
-            ? colorScheme.error.withValues(alpha: 0.4)
-            : colorScheme.outlineVariant,
-      ),
-      backgroundColor: danger
-          ? colorScheme.errorContainer.withValues(alpha: 0.35)
-          : colorScheme.surfaceContainerLow,
+    return AppSelectorChip(
+      icon: icon,
+      label: label,
+      selected: true,
+      tone: tone,
+      onSelected: (_) => onPressed(),
     );
   }
 }

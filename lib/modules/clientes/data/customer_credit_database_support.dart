@@ -164,6 +164,24 @@ abstract final class CustomerCreditDatabaseSupport {
     );
   }
 
+  static Future<CustomerCreditTransaction> createCreditFromSaleReturn(
+    DatabaseExecutor db, {
+    required int customerId,
+    required int saleId,
+    required int amountCents,
+    String? description,
+  }) {
+    return _insertTransaction(
+      db,
+      customerId: customerId,
+      type: CustomerCreditTransactionType.saleReturnCredit,
+      amountCents: amountCents.abs(),
+      description:
+          description ?? 'Devolucao convertida em haver para o cliente.',
+      saleId: saleId,
+    );
+  }
+
   static Future<CustomerCreditTransaction> reverseCreditTransaction(
     DatabaseExecutor db, {
     required int transactionId,

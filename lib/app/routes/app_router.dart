@@ -27,6 +27,11 @@ import '../../modules/pedidos/presentation/pages/kitchen_order_view_page.dart';
 import '../../modules/pedidos/presentation/pages/orders_page.dart';
 import '../../modules/fiado/presentation/pages/fiado_detail_page.dart';
 import '../../modules/fiado/presentation/pages/fiado_page.dart';
+import '../../modules/insumos/domain/entities/supply.dart';
+import '../../modules/insumos/presentation/pages/reorder_suggestions_page.dart';
+import '../../modules/insumos/presentation/pages/supply_inventory_page.dart';
+import '../../modules/insumos/presentation/pages/supplies_page.dart';
+import '../../modules/insumos/presentation/pages/supply_form_page.dart';
 import '../../modules/custos/presentation/pages/costs_page.dart';
 import '../../modules/fornecedores/domain/entities/supplier.dart';
 import '../../modules/fornecedores/presentation/pages/supplier_detail_page.dart';
@@ -36,6 +41,7 @@ import '../../modules/historico_vendas/presentation/pages/sale_detail_page.dart'
 import '../../modules/historico_vendas/presentation/pages/sales_history_page.dart';
 import '../../modules/produtos/domain/entities/product.dart';
 import '../../modules/produtos/presentation/pages/product_form_page.dart';
+import '../../modules/produtos/presentation/pages/product_profitability_page.dart';
 import '../../modules/produtos/presentation/pages/products_page.dart';
 import '../../modules/relatorios/presentation/pages/reports_page.dart';
 import '../../modules/system/presentation/pages/system_page.dart';
@@ -84,6 +90,33 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRouteNames.productForm,
         builder: (context, state) =>
             ProductFormPage(initialProduct: state.extra as Product?),
+      ),
+      GoRoute(
+        path: AppRoutePaths.productProfitability,
+        name: AppRouteNames.productProfitability,
+        builder: (context, state) => const ProductProfitabilityPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.supplies,
+        name: AppRouteNames.supplies,
+        builder: (context, state) => const SuppliesPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.supplyForm,
+        name: AppRouteNames.supplyForm,
+        builder: (context, state) =>
+            SupplyFormPage(initialSupply: state.extra as Supply?),
+      ),
+      GoRoute(
+        path: AppRoutePaths.supplyInventory,
+        name: AppRouteNames.supplyInventory,
+        builder: (context, state) =>
+            SupplyInventoryPage(initialSupplyId: state.extra as int?),
+      ),
+      GoRoute(
+        path: AppRoutePaths.reorderSuggestions,
+        name: AppRouteNames.reorderSuggestions,
+        builder: (context, state) => const ReorderSuggestionsPage(),
       ),
       GoRoute(
         path: AppRoutePaths.clients,
