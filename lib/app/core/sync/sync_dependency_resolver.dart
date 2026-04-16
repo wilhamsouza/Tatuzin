@@ -2,6 +2,7 @@ import '../../../modules/categorias/data/sqlite_category_repository.dart';
 import '../../../modules/caixa/data/sqlite_cash_repository.dart';
 import '../../../modules/fiado/data/sqlite_fiado_repository.dart';
 import '../../../modules/fornecedores/data/sqlite_supplier_repository.dart';
+import '../../../modules/insumos/data/sqlite_supply_repository.dart';
 import '../../../modules/vendas/data/sqlite_sale_repository.dart';
 import '../../../modules/compras/data/sqlite_purchase_repository.dart';
 import '../../../modules/produtos/data/sqlite_product_repository.dart';
@@ -21,6 +22,7 @@ class SyncDependencyResolver {
     required SqliteCategoryRepository categoryRepository,
     required SqliteProductRepository productRepository,
     required SqliteSupplierRepository supplierRepository,
+    required SqliteSupplyRepository supplyRepository,
     required SqlitePurchaseRepository purchaseRepository,
     required SqliteSaleRepository saleRepository,
     required SqliteFiadoRepository fiadoRepository,
@@ -28,6 +30,7 @@ class SyncDependencyResolver {
   }) : _categoryRepository = categoryRepository,
        _productRepository = productRepository,
        _supplierRepository = supplierRepository,
+       _supplyRepository = supplyRepository,
        _purchaseRepository = purchaseRepository,
        _saleRepository = saleRepository,
        _fiadoRepository = fiadoRepository,
@@ -36,6 +39,7 @@ class SyncDependencyResolver {
   final SqliteCategoryRepository _categoryRepository;
   final SqliteProductRepository _productRepository;
   final SqliteSupplierRepository _supplierRepository;
+  final SqliteSupplyRepository _supplyRepository;
   final SqlitePurchaseRepository _purchaseRepository;
   final SqliteSaleRepository _saleRepository;
   final SqliteFiadoRepository _fiadoRepository;
@@ -48,6 +52,14 @@ class SyncDependencyResolver {
 
     if (item.featureKey == SyncFeatureKeys.purchases) {
       return _checkPurchase(item);
+    }
+
+    if (item.featureKey == SyncFeatureKeys.supplies) {
+      return _checkSupply(item);
+    }
+
+    if (item.featureKey == SyncFeatureKeys.productRecipes) {
+      return _checkProductRecipe(item);
     }
 
     if (item.featureKey == SyncFeatureKeys.financialEvents) {
@@ -91,6 +103,88 @@ class SyncDependencyResolver {
     return const DependencyResolution(isBlocked: false);
   }
 
+  Future<DependencyResolution> _checkSupply(SyncQueueItem item) async {
+    final supply = await _supplyRepository.findSupplyForSync(item.localEntityId);
+    if (supply == null) {
+      return const DependencyResolution(isBlocked: false);
+    }
+
+    if (supply.defaultSupplierLocalId == null) {
+      return const DependencyResolution(isBlocked: false);
+    }
+
+    final supplier = await _supplierRepository.findById(
+      supply.defaultSupplierLocalId!,
+    );
+    if (supplier == null) {
+      return const DependencyResolution(
+        isBlocked: true,
+        reason:
+            'Insumo ainda nao pode subir porque o fornecedor padrao local nao esta mais disponivel.',
+      );
+    }
+    if (supplier.remoteId == null) {
+      return const DependencyResolution(
+        isBlocked: true,
+        reason:
+            'Insumo ainda nao pode subir porque o fornecedor padrao remoto ainda nao foi recriado.',
+      );
+    }
+
+    return const DependencyResolution(isBlocked: false);
+  }
+
+  Future<DependencyResolution> _checkProductRecipe(SyncQueueItem item) async {
+    final recipe = await _productRepository.findProductRecipeForSync(
+      item.localEntityId,
+    );
+    if (recipe == null) {
+      return const DependencyResolution(isBlocked: false);
+    }
+
+    final product = await _productRepository.findById(
+      recipe.productId,
+      includeDeleted: true,
+    );
+    if (product == null) {
+      return const DependencyResolution(
+        isBlocked: true,
+        reason:
+            'Ficha tecnica ainda nao pode subir porque o produto local nao esta mais disponivel.',
+      );
+    }
+    if (product.remoteId == null) {
+      return const DependencyResolution(
+        isBlocked: true,
+        reason:
+            'Ficha tecnica ainda nao pode subir porque o produto remoto ainda nao foi recriado.',
+      );
+    }
+
+    for (final itemPayload in recipe.items) {
+      final supply = await _supplyRepository.findById(itemPayload.supplyLocalId);
+      if (supply == null) {
+        return const DependencyResolution(
+          isBlocked: true,
+          reason:
+              'Ficha tecnica ainda nao pode subir porque um dos insumos locais nao esta mais disponivel.',
+        );
+      }
+      final syncedSupply = await _supplyRepository.findSupplyForSync(
+        itemPayload.supplyLocalId,
+      );
+      if (syncedSupply?.remoteId == null) {
+        return const DependencyResolution(
+          isBlocked: true,
+          reason:
+              'Ficha tecnica ainda nao pode subir porque um dos insumos ainda nao recebeu remoteId.',
+        );
+      }
+    }
+
+    return const DependencyResolution(isBlocked: false);
+  }
+
   Future<DependencyResolution> _checkPurchase(SyncQueueItem item) async {
     final purchase = await _purchaseRepository.findPurchaseForSync(
       item.localEntityId,
@@ -118,22 +212,58 @@ class SyncDependencyResolver {
     }
 
     for (final purchaseItem in purchase.items) {
+      if (purchaseItem.isSupply) {
+        if (purchaseItem.supplyLocalId == null) {
+          return DependencyResolution(
+            isBlocked: true,
+            reason:
+                'Compra ainda nao pode subir porque o insumo "${purchaseItem.itemNameSnapshot}" esta sem referencia local valida.',
+          );
+        }
+        final supply = await _supplyRepository.findById(
+          purchaseItem.supplyLocalId!,
+        );
+        if (supply == null) {
+          return DependencyResolution(
+            isBlocked: true,
+            reason:
+                'Compra ainda nao pode subir porque o insumo "${purchaseItem.itemNameSnapshot}" nao existe mais localmente.',
+          );
+        }
+        if (purchaseItem.supplyRemoteId == null ||
+            purchaseItem.supplyRemoteId!.isEmpty) {
+          return DependencyResolution(
+            isBlocked: true,
+            reason:
+                'Compra ainda nao pode subir porque o insumo "${purchaseItem.itemNameSnapshot}" ainda nao foi recriado no backend.',
+          );
+        }
+        continue;
+      }
+
+      if (purchaseItem.productLocalId == null) {
+        return DependencyResolution(
+          isBlocked: true,
+          reason:
+              'Compra ainda nao pode subir porque o produto "${purchaseItem.itemNameSnapshot}" esta sem referencia local valida.',
+        );
+      }
       final product = await _productRepository.findById(
-        purchaseItem.productLocalId,
+        purchaseItem.productLocalId!,
         includeDeleted: true,
       );
       if (product == null) {
         return DependencyResolution(
           isBlocked: true,
           reason:
-              'Compra ainda nao pode subir porque o produto "${purchaseItem.productNameSnapshot}" nao existe mais localmente.',
+              'Compra ainda nao pode subir porque o produto "${purchaseItem.itemNameSnapshot}" nao existe mais localmente.',
         );
       }
       if (product.remoteId == null) {
         return DependencyResolution(
           isBlocked: true,
           reason:
-              'Compra ainda nao pode subir porque o produto "${purchaseItem.productNameSnapshot}" ainda nao foi recriado no backend.',
+              'Compra ainda nao pode subir porque o produto "${purchaseItem.itemNameSnapshot}" ainda nao foi recriado no backend.',
         );
       }
     }

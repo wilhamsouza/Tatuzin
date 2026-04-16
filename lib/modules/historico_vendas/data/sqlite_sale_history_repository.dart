@@ -173,6 +173,7 @@ class SqliteSaleHistoryRepository implements SaleHistoryRepository {
     return SaleItemDetail(
       id: row['id'] as int,
       productId: row['produto_id'] as int,
+      productVariantId: row['produto_variante_id'] as int?,
       productName: row['nome_produto_snapshot'] as String,
       variantSkuSnapshot: row['sku_variante_snapshot'] as String?,
       variantColorSnapshot: row['cor_variante_snapshot'] as String?,

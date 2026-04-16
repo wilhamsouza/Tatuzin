@@ -15,6 +15,7 @@ import '../../domain/entities/report_summary.dart';
 import '../providers/report_providers.dart';
 import '../widgets/financial_summary_widget.dart';
 import '../widgets/product_sales_summary_widget.dart';
+import '../widgets/variant_sales_summary_widget.dart';
 
 class ReportsPage extends ConsumerWidget {
   const ReportsPage({super.key});
@@ -329,6 +330,8 @@ class _ReportSummaryContent extends StatelessWidget {
         FinancialSummaryWidget(summary: summary),
         const SizedBox(height: 14),
         ProductSalesSummaryWidget(soldProducts: summary.soldProducts),
+        const SizedBox(height: 14),
+        VariantSalesSummaryWidget(variants: summary.variantSummaries),
       ],
     );
   }

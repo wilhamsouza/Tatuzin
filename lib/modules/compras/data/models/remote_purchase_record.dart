@@ -1,4 +1,5 @@
 import '../../../vendas/domain/entities/sale_enums.dart';
+import '../../domain/entities/purchase_item.dart';
 import '../../domain/entities/purchase_status.dart';
 import 'purchase_sync_payload.dart';
 
@@ -164,8 +165,14 @@ class RemotePurchaseItemRecord {
   const RemotePurchaseItemRecord({
     required this.remoteId,
     required this.localUuid,
+    required this.itemType,
     required this.remoteProductId,
-    required this.productNameSnapshot,
+    required this.remoteProductVariantId,
+    required this.remoteSupplyId,
+    required this.itemNameSnapshot,
+    required this.variantSkuSnapshot,
+    required this.variantColorLabelSnapshot,
+    required this.variantSizeLabelSnapshot,
     required this.unitMeasureSnapshot,
     required this.quantityMil,
     required this.unitCostCents,
@@ -176,8 +183,14 @@ class RemotePurchaseItemRecord {
     return RemotePurchaseItemRecord(
       remoteId: json['id'] as String,
       localUuid: json['localUuid'] as String,
+      itemType: purchaseItemTypeFromStorage(json['itemType'] as String?),
       remoteProductId: json['productId'] as String?,
-      productNameSnapshot: json['productNameSnapshot'] as String,
+      remoteProductVariantId: json['productVariantId'] as String?,
+      remoteSupplyId: json['supplyId'] as String?,
+      itemNameSnapshot: json['productNameSnapshot'] as String,
+      variantSkuSnapshot: json['variantSkuSnapshot'] as String?,
+      variantColorLabelSnapshot: json['variantColorLabelSnapshot'] as String?,
+      variantSizeLabelSnapshot: json['variantSizeLabelSnapshot'] as String?,
       unitMeasureSnapshot: json['unitMeasureSnapshot'] as String,
       quantityMil: json['quantityMil'] as int? ?? 0,
       unitCostCents: json['unitCostCents'] as int? ?? 0,
@@ -191,8 +204,14 @@ class RemotePurchaseItemRecord {
     return RemotePurchaseItemRecord(
       remoteId: '',
       localUuid: item.itemUuid,
+      itemType: item.itemType,
       remoteProductId: item.productRemoteId,
-      productNameSnapshot: item.productNameSnapshot,
+      remoteProductVariantId: item.productVariantRemoteId,
+      remoteSupplyId: item.supplyRemoteId,
+      itemNameSnapshot: item.itemNameSnapshot,
+      variantSkuSnapshot: item.variantSkuSnapshot,
+      variantColorLabelSnapshot: item.variantColorLabelSnapshot,
+      variantSizeLabelSnapshot: item.variantSizeLabelSnapshot,
       unitMeasureSnapshot: item.unitMeasureSnapshot,
       quantityMil: item.quantityMil,
       unitCostCents: item.unitCostCents,
@@ -202,8 +221,14 @@ class RemotePurchaseItemRecord {
 
   final String remoteId;
   final String localUuid;
+  final PurchaseItemType itemType;
   final String? remoteProductId;
-  final String productNameSnapshot;
+  final String? remoteProductVariantId;
+  final String? remoteSupplyId;
+  final String itemNameSnapshot;
+  final String? variantSkuSnapshot;
+  final String? variantColorLabelSnapshot;
+  final String? variantSizeLabelSnapshot;
   final String unitMeasureSnapshot;
   final int quantityMil;
   final int unitCostCents;
@@ -212,8 +237,14 @@ class RemotePurchaseItemRecord {
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
       'localUuid': localUuid,
+      'itemType': itemType.storageValue,
       'productId': remoteProductId,
-      'productNameSnapshot': productNameSnapshot,
+      'productVariantId': remoteProductVariantId,
+      'supplyId': remoteSupplyId,
+      'productNameSnapshot': itemNameSnapshot,
+      'variantSkuSnapshot': variantSkuSnapshot,
+      'variantColorLabelSnapshot': variantColorLabelSnapshot,
+      'variantSizeLabelSnapshot': variantSizeLabelSnapshot,
       'unitMeasureSnapshot': unitMeasureSnapshot,
       'quantityMil': quantityMil,
       'unitCostCents': unitCostCents,

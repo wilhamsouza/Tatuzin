@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/app_design_tokens.dart';
+import 'app_card.dart';
+
 enum AppStateTone { neutral, loading, success, warning, error }
 
 class AppStateCard extends StatelessWidget {
@@ -25,20 +28,13 @@ class AppStateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final colors = _colors(colorScheme);
+    final layout = context.appLayout;
+    final colors = _colors(context.appColors);
     final resolvedIcon = icon ?? _defaultIcon();
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      width: double.infinity,
-      padding: EdgeInsets.all(compact ? 16 : 20),
-      decoration: BoxDecoration(
-        color: colors.$1,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.$3),
-      ),
+    return AppCard(
+      tone: _cardTone(),
+      padding: EdgeInsets.all(compact ? layout.cardPadding : layout.space10),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -51,26 +47,28 @@ class AppStateCard extends StatelessWidget {
                     height: compact ? 28 : 32,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.4,
-                      valueColor: AlwaysStoppedAnimation<Color>(colors.$2),
+                      valueColor: AlwaysStoppedAnimation<Color>(colors.base),
                     ),
                   )
-                : Container(
+                : DecoratedBox(
                     key: ValueKey(resolvedIcon),
-                    width: compact ? 40 : 44,
-                    height: compact ? 40 : 44,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.84),
-                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.white.withValues(alpha: 0.86),
+                      borderRadius: BorderRadius.circular(layout.radiusMd),
                     ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      resolvedIcon,
-                      size: compact ? 18 : 20,
-                      color: colors.$2,
+                    child: Padding(
+                      padding: EdgeInsets.all(
+                        compact ? layout.space4 : layout.space5,
+                      ),
+                      child: Icon(
+                        resolvedIcon,
+                        size: compact ? 18 : 20,
+                        color: colors.onSurface,
+                      ),
                     ),
                   ),
           ),
-          SizedBox(height: compact ? 12 : 14),
+          SizedBox(height: compact ? layout.blockGap : layout.sectionGap),
           Text(
             title,
             textAlign: TextAlign.center,
@@ -78,21 +76,49 @@ class AppStateCard extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: layout.space2),
           Text(
             message,
             textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurface),
           ),
           if (actionLabel != null && onAction != null) ...[
-            SizedBox(height: compact ? 12 : 14),
+            SizedBox(height: compact ? layout.blockGap : layout.sectionGap),
             FilledButton.tonal(onPressed: onAction, child: Text(actionLabel!)),
           ],
         ],
       ),
     );
+  }
+
+  AppTonePalette _colors(AppColorTokens tokens) {
+    switch (tone) {
+      case AppStateTone.loading:
+        return tokens.info;
+      case AppStateTone.success:
+        return tokens.success;
+      case AppStateTone.warning:
+        return tokens.warning;
+      case AppStateTone.error:
+        return tokens.danger;
+      case AppStateTone.neutral:
+        return tokens.interactive;
+    }
+  }
+
+  AppCardTone _cardTone() {
+    switch (tone) {
+      case AppStateTone.loading:
+        return AppCardTone.info;
+      case AppStateTone.success:
+        return AppCardTone.success;
+      case AppStateTone.warning:
+        return AppCardTone.warning;
+      case AppStateTone.error:
+        return AppCardTone.danger;
+      case AppStateTone.neutral:
+        return AppCardTone.standard;
+    }
   }
 
   IconData _defaultIcon() {
@@ -107,37 +133,6 @@ class AppStateCard extends StatelessWidget {
         return Icons.error_outline_rounded;
       case AppStateTone.neutral:
         return Icons.inbox_outlined;
-    }
-  }
-
-  (Color, Color, Color) _colors(ColorScheme scheme) {
-    switch (tone) {
-      case AppStateTone.loading:
-        return (
-          scheme.surfaceContainerLow,
-          scheme.primary,
-          scheme.outlineVariant,
-        );
-      case AppStateTone.success:
-        return (
-          scheme.tertiaryContainer.withValues(alpha: 0.62),
-          scheme.onTertiaryContainer,
-          scheme.tertiary.withValues(alpha: 0.22),
-        );
-      case AppStateTone.warning:
-        return (
-          scheme.secondaryContainer.withValues(alpha: 0.6),
-          scheme.onSecondaryContainer,
-          scheme.secondary.withValues(alpha: 0.22),
-        );
-      case AppStateTone.error:
-        return (
-          scheme.errorContainer.withValues(alpha: 0.72),
-          scheme.onErrorContainer,
-          scheme.error.withValues(alpha: 0.2),
-        );
-      case AppStateTone.neutral:
-        return (scheme.surface, scheme.primary, scheme.outlineVariant);
     }
   }
 }

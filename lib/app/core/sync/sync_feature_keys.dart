@@ -1,7 +1,10 @@
 abstract final class SyncFeatureKeys {
   static const suppliers = 'suppliers';
+  static const supplies = 'supplies';
+  static const supplyInventoryMovements = 'supply_inventory_movements';
   static const categories = 'categories';
   static const products = 'products';
+  static const productRecipes = 'product_recipes';
   static const customers = 'customers';
   static const purchases = 'purchases';
   static const sales = 'sales';
@@ -16,8 +19,11 @@ abstract final class SyncFeatureKeys {
 String syncFeatureDisplayName(String featureKey) {
   return switch (featureKey) {
     SyncFeatureKeys.suppliers => 'Fornecedores',
+    SyncFeatureKeys.supplies => 'Insumos',
+    SyncFeatureKeys.supplyInventoryMovements => 'Movimentos de estoque',
     SyncFeatureKeys.categories => 'Categorias',
     SyncFeatureKeys.products => 'Produtos',
+    SyncFeatureKeys.productRecipes => 'Fichas tecnicas',
     SyncFeatureKeys.customers => 'Clientes',
     SyncFeatureKeys.purchases => 'Compras',
     SyncFeatureKeys.sales => 'Vendas',

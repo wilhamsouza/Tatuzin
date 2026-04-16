@@ -9,9 +9,13 @@ import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_feedback.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
+import '../../../../app/core/widgets/app_selector_chip.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
+import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
+import '../../../../app/core/widgets/app_summary_block.dart';
 import '../../../../app/routes/route_names.dart';
+import '../../../../app/theme/app_design_tokens.dart';
 import '../../../../app/theme/app_theme.dart';
 import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../domain/entities/cash_enums.dart';
@@ -59,6 +63,7 @@ class _CashPageState extends ConsumerState<CashPage> {
     final movementCounts = ref.watch(cashMovementCountsProvider);
     final actionState = ref.watch(cashActionControllerProvider);
     final operatorName = ref.watch(currentCashOperatorNameProvider);
+    final layout = context.appLayout;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Caixa')),
@@ -69,7 +74,12 @@ class _CashPageState extends ConsumerState<CashPage> {
           await ref.read(currentCashSessionProvider.future);
         },
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
+          padding: EdgeInsets.fromLTRB(
+            layout.pagePadding,
+            layout.space5,
+            layout.pagePadding,
+            layout.space10,
+          ),
           children: [
             AppPageHeader(
               title: 'Caixa operacional',
@@ -111,21 +121,15 @@ class _CashPageState extends ConsumerState<CashPage> {
               ),
             ),
             if (actionState.hasError) ...[
-              const SizedBox(height: 14),
-              Card(
-                color: Theme.of(context).colorScheme.errorContainer,
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Text(
-                    actionState.error.toString(),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onErrorContainer,
-                    ),
-                  ),
-                ),
+              SizedBox(height: layout.sectionGap),
+              AppStateCard(
+                title: 'Falha em uma acao do caixa',
+                message: actionState.error.toString(),
+                tone: AppStateTone.error,
+                compact: true,
               ),
             ],
-            const SizedBox(height: 14),
+            SizedBox(height: layout.sectionGap),
             AppSectionCard(
               title: 'Movimentações',
               subtitle:
@@ -142,24 +146,25 @@ class _CashPageState extends ConsumerState<CashPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SizedBox(
-                        height: 36,
+                        height: layout.quickActionHeight + 2,
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: CashMovementFilter.values.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 6),
+                          separatorBuilder: (_, __) =>
+                              SizedBox(width: layout.space3),
                           itemBuilder: (context, index) {
                             final item = CashMovementFilter.values[index];
-                            return ChoiceChip(
-                              label: Text(
-                                '${item.label} (${movementCounts[item] ?? 0})',
-                              ),
+                            return AppSelectorChip(
+                              label: item.label,
+                              count: movementCounts[item] ?? 0,
                               selected: filter == item,
+                              tone: AppSelectorChipTone.info,
                               onSelected: (_) => _selectFilter(item),
                             );
                           },
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      SizedBox(height: layout.blockGap),
                       for (final movement in visibleMovements) ...[
                         _MovementTile(movement: movement),
                         const SizedBox(height: 8),
@@ -185,7 +190,7 @@ class _CashPageState extends ConsumerState<CashPage> {
                     Text('Falha ao carregar movimentações: $error'),
               ),
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: layout.sectionGap),
             AppSectionCard(
               title: 'Histórico de sessões',
               subtitle: 'Fechamentos recentes e divergências de caixa.',
@@ -1024,72 +1029,26 @@ class _CashMetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final tokens = context.appColors;
+    final palette = accentColor == AppTheme.success
+        ? tokens.cashflowPositive
+        : accentColor == AppTheme.warning
+        ? tokens.warning
+        : accentColor == AppTheme.secondary
+        ? tokens.info
+        : tokens.brand;
 
-    return AppCard(
-      onTap: onTap,
-      borderRadius: 16,
-      padding: const EdgeInsets.all(12),
-      color: accentColor.withValues(alpha: 0.08),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.84),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(7),
-                  child: Icon(icon, size: 16, color: accentColor),
-                ),
-              ),
-              const Spacer(),
-              if (infoMessage != null)
-                Tooltip(
-                  message: infoMessage!,
-                  child: Icon(
-                    Icons.info_outline_rounded,
-                    color: colorScheme.onSurfaceVariant,
-                    size: 18,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Semantics(
-            label: semanticLabel,
-            child: TweenAnimationBuilder<int>(
-              tween: IntTween(begin: 0, end: valueCents),
-              duration: const Duration(milliseconds: 650),
-              builder: (context, value, _) => Text(
-                AppFormatters.currencyFromCents(value),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-              ),
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            caption,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
+    return Semantics(
+      label: semanticLabel,
+      child: AppSummaryBlock(
+        label: label,
+        value: AppFormatters.currencyFromCents(valueCents),
+        caption: caption,
+        icon: icon,
+        onTap: onTap,
+        palette: palette,
+        compact: true,
+        infoMessage: infoMessage,
       ),
     );
   }
@@ -1138,10 +1097,9 @@ class _MovementTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isNegative = movement.amountCents < 0;
-    final color = isNegative
-        ? const Color(0xFFB91C1C)
-        : const Color(0xFF166534);
-    final bg = isNegative ? const Color(0xFFFEE2E2) : const Color(0xFFDCFCE7);
+    final palette = isNegative
+        ? context.appColors.cashflowNegative
+        : context.appColors.cashflowPositive;
     return AppCard(
       padding: const EdgeInsets.all(12),
       child: Row(
@@ -1149,12 +1107,16 @@ class _MovementTile extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
             decoration: BoxDecoration(
-              color: bg,
+              color: palette.surface,
               borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: palette.border),
             ),
             child: Text(
               movement.type.label,
-              style: TextStyle(color: color, fontWeight: FontWeight.w700),
+              style: TextStyle(
+                color: palette.onSurface,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           const SizedBox(width: 10),
@@ -1189,7 +1151,7 @@ class _MovementTile extends StatelessWidget {
             child: Text(
               AppFormatters.currencyFromCents(movement.amountCents.abs()),
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: color,
+                color: palette.onSurface,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -1212,10 +1174,12 @@ class _SessionHistoryTile extends StatelessWidget {
     final isNegativeDifference = (difference ?? 0) < 0;
     final isPositiveDifference = (difference ?? 0) > 0;
     final colorScheme = Theme.of(context).colorScheme;
+    final negativePalette = context.appColors.cashflowNegative;
+    final positivePalette = context.appColors.cashflowPositive;
     final valueColor = isNegativeDifference
-        ? const Color(0xFFB91C1C)
+        ? negativePalette.onSurface
         : isPositiveDifference
-        ? const Color(0xFF166534)
+        ? positivePalette.onSurface
         : session.isOpen
         ? colorScheme.primary
         : colorScheme.onSurface;
@@ -1232,9 +1196,9 @@ class _SessionHistoryTile extends StatelessWidget {
         ? 'Diferença positiva'
         : 'Fechado sem diferença';
     final badgeBackground = isNegativeDifference
-        ? const Color(0xFFFEE2E2)
+        ? negativePalette.surface
         : isPositiveDifference
-        ? const Color(0xFFDCFCE7)
+        ? positivePalette.surface
         : session.isOpen
         ? colorScheme.primaryContainer.withValues(alpha: 0.7)
         : colorScheme.surfaceContainerHigh;
@@ -1276,11 +1240,11 @@ class _SessionHistoryTile extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (isNegativeDifference)
-                    const Padding(
-                      padding: EdgeInsets.only(right: 4),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
                       child: Icon(
                         Icons.warning_amber_rounded,
-                        color: Color(0xFFB91C1C),
+                        color: negativePalette.onSurface,
                         size: 18,
                       ),
                     ),
@@ -1301,7 +1265,7 @@ class _SessionHistoryTile extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(
                     color: isNegativeDifference
-                        ? const Color(0xFFEF4444)
+                        ? negativePalette.border
                         : Colors.transparent,
                   ),
                 ),
@@ -1386,15 +1350,17 @@ class _DifferenceBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final isNegative = differenceCents < 0;
     final isPositive = differenceCents > 0;
+    final negativePalette = context.appColors.cashflowNegative;
+    final positivePalette = context.appColors.cashflowPositive;
     final color = isNegative
-        ? const Color(0xFFB91C1C)
+        ? negativePalette.onSurface
         : isPositive
-        ? const Color(0xFF166534)
+        ? positivePalette.onSurface
         : Theme.of(context).colorScheme.onSurfaceVariant;
     final background = isNegative
-        ? const Color(0xFFFEE2E2)
+        ? negativePalette.surface
         : isPositive
-        ? const Color(0xFFDCFCE7)
+        ? positivePalette.surface
         : Theme.of(context).colorScheme.surfaceContainerHigh;
     return Container(
       width: double.infinity,

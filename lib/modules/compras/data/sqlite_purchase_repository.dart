@@ -8,9 +8,14 @@ import '../../../app/core/sync/sqlite_sync_metadata_repository.dart';
 import '../../../app/core/sync/sqlite_sync_queue_repository.dart';
 import '../../../app/core/sync/sync_error_type.dart';
 import '../../../app/core/sync/sync_feature_keys.dart';
+import '../../../app/core/sync/sync_queue_operation.dart';
 import '../../../app/core/utils/id_generator.dart';
+import '../../insumos/data/support/supply_inventory_support.dart';
+import '../../insumos/data/support/supply_purchase_cost_support.dart';
+import '../../insumos/domain/entities/supply_cost_history_entry.dart';
 import '../../vendas/domain/entities/sale_enums.dart';
 import '../domain/entities/purchase.dart';
+import '../domain/entities/purchase_item.dart';
 import '../domain/entities/purchase_detail.dart';
 import '../domain/entities/purchase_payment.dart';
 import '../domain/entities/purchase_status.dart';
@@ -29,10 +34,11 @@ import 'support/purchase_sync_state_support.dart';
 
 class SqlitePurchaseRepository implements PurchaseRepository {
   SqlitePurchaseRepository(this._appDatabase, this._operationalContext)
-    : _syncMetadataRepository = SqliteSyncMetadataRepository(_appDatabase) {
+    : _syncMetadataRepository = SqliteSyncMetadataRepository(_appDatabase),
+      _syncQueueRepository = SqliteSyncQueueRepository(_appDatabase) {
     _syncStateSupport = PurchaseSyncStateSupport(
       syncMetadataRepository: _syncMetadataRepository,
-      syncQueueRepository: SqliteSyncQueueRepository(_appDatabase),
+      syncQueueRepository: _syncQueueRepository,
       featureKey: featureKey,
     );
   }
@@ -42,6 +48,7 @@ class SqlitePurchaseRepository implements PurchaseRepository {
   final AppDatabase _appDatabase;
   final AppOperationalContext _operationalContext;
   final SqliteSyncMetadataRepository _syncMetadataRepository;
+  final SqliteSyncQueueRepository _syncQueueRepository;
   late final PurchaseSyncStateSupport _syncStateSupport;
 
   @override
@@ -80,8 +87,14 @@ class SqlitePurchaseRepository implements PurchaseRepository {
         await txn.insert(TableNames.itensCompra, {
           'uuid': IdGenerator.next(),
           'compra_id': purchaseId,
+          'item_type': item.itemType.storageValue,
           'produto_id': item.productId,
-          'nome_produto_snapshot': item.productNameSnapshot,
+          'produto_variante_id': item.productVariantId,
+          'supply_id': item.supplyId,
+          'nome_item_snapshot': item.itemNameSnapshot,
+          'sku_variante_snapshot': item.variantSkuSnapshot,
+          'cor_variante_snapshot': item.variantColorLabelSnapshot,
+          'tamanho_variante_snapshot': item.variantSizeLabelSnapshot,
           'unidade_medida_snapshot': item.unitMeasureSnapshot,
           'quantidade_mil': item.quantityMil,
           'custo_unitario_centavos': item.unitCostCents,
@@ -93,6 +106,20 @@ class SqlitePurchaseRepository implements PurchaseRepository {
         txn,
         prepared.items,
         factor: 1,
+      );
+      await SupplyInventorySupport.replacePurchaseEntries(
+        txn,
+        purchaseUuid: purchaseUuid,
+        items: prepared.items,
+        occurredAt: now,
+      );
+      await SupplyPurchaseCostSupport.refreshSupplyPricing(
+        txn,
+        supplyIds: _collectSupplyIds(prepared.items),
+        changedAt: now,
+        eventType: SupplyCostHistoryEventType.purchaseCreated,
+        syncMetadataRepository: _syncMetadataRepository,
+        syncQueueRepository: SqliteSyncQueueRepository(_appDatabase),
       );
 
       if (prepared.paidAmountCents > 0) {
@@ -165,6 +192,10 @@ class SqlitePurchaseRepository implements PurchaseRepository {
       );
       final now = DateTime.now();
       final nowIso = now.toIso8601String();
+      final affectedSupplyIds = <int>{
+        ..._collectSupplyIds(previousItems),
+        ..._collectSupplyIds(prepared.items),
+      };
 
       await PurchaseStockSupport.applyStockEntries(
         txn,
@@ -204,8 +235,14 @@ class SqlitePurchaseRepository implements PurchaseRepository {
         await txn.insert(TableNames.itensCompra, {
           'uuid': IdGenerator.next(),
           'compra_id': id,
+          'item_type': item.itemType.storageValue,
           'produto_id': item.productId,
-          'nome_produto_snapshot': item.productNameSnapshot,
+          'produto_variante_id': item.productVariantId,
+          'supply_id': item.supplyId,
+          'nome_item_snapshot': item.itemNameSnapshot,
+          'sku_variante_snapshot': item.variantSkuSnapshot,
+          'cor_variante_snapshot': item.variantColorLabelSnapshot,
+          'tamanho_variante_snapshot': item.variantSizeLabelSnapshot,
           'unidade_medida_snapshot': item.unitMeasureSnapshot,
           'quantidade_mil': item.quantityMil,
           'custo_unitario_centavos': item.unitCostCents,
@@ -216,6 +253,20 @@ class SqlitePurchaseRepository implements PurchaseRepository {
         txn,
         prepared.items,
         factor: 1,
+      );
+      await SupplyInventorySupport.replacePurchaseEntries(
+        txn,
+        purchaseUuid: purchaseRow['uuid'] as String,
+        items: prepared.items,
+        occurredAt: now,
+      );
+      await SupplyPurchaseCostSupport.refreshSupplyPricing(
+        txn,
+        supplyIds: affectedSupplyIds,
+        changedAt: now,
+        eventType: SupplyCostHistoryEventType.purchaseUpdated,
+        syncMetadataRepository: _syncMetadataRepository,
+        syncQueueRepository: SqliteSyncQueueRepository(_appDatabase),
       );
 
       if (prepared.paidAmountCents > 0) {
@@ -263,6 +314,11 @@ class SqlitePurchaseRepository implements PurchaseRepository {
 
       final now = DateTime.now();
       final nowIso = now.toIso8601String();
+      await SupplyInventorySupport.cancelPurchaseEntries(
+        txn,
+        purchaseUuid: purchaseRow['uuid'] as String,
+        occurredAt: now,
+      );
       await txn.update(
         TableNames.compras,
         {
@@ -278,6 +334,14 @@ class SqlitePurchaseRepository implements PurchaseRepository {
         },
         where: 'id = ?',
         whereArgs: [purchaseId],
+      );
+      await SupplyPurchaseCostSupport.refreshSupplyPricing(
+        txn,
+        supplyIds: _collectSupplyIds(items),
+        changedAt: now,
+        eventType: SupplyCostHistoryEventType.purchaseCanceled,
+        syncMetadataRepository: _syncMetadataRepository,
+        syncQueueRepository: SqliteSyncQueueRepository(_appDatabase),
       );
 
       await _syncStateSupport.registerPurchaseForSync(
@@ -470,6 +534,39 @@ class SqlitePurchaseRepository implements PurchaseRepository {
     return rows.map(PurchaseModel.fromMap).toList();
   }
 
+  Future<void> seedPendingSupplyPurchaseSyncIfNeeded() async {
+    final database = await _appDatabase.database;
+    await database.transaction((txn) async {
+      final rows = await txn.rawQuery('''
+        SELECT
+          c.id,
+          c.uuid,
+          c.criado_em,
+          c.atualizado_em
+        FROM ${TableNames.compras} c
+        INNER JOIN ${TableNames.itensCompra} ic
+          ON ic.compra_id = c.id
+          AND ic.item_type = 'supply'
+        LEFT JOIN ${TableNames.syncRegistros} sync
+          ON sync.feature_key = '$featureKey'
+          AND sync.local_id = c.id
+        WHERE sync.local_id IS NULL
+           OR sync.sync_status = 'local_only'
+        GROUP BY c.id, c.uuid, c.criado_em, c.atualizado_em
+      ''');
+
+      for (final row in rows) {
+        await _syncStateSupport.registerPurchaseForSync(
+          txn,
+          purchaseId: row['id'] as int,
+          purchaseUuid: row['uuid'] as String,
+          createdAt: DateTime.parse(row['criado_em'] as String),
+          updatedAt: DateTime.parse(row['atualizado_em'] as String),
+        );
+      }
+    });
+  }
+
   Future<PurchaseSyncPayload?> findPurchaseForSync(int purchaseId) async {
     final database = await _appDatabase.database;
     return _loadPurchaseForSync(database, purchaseId);
@@ -485,6 +582,11 @@ class SqlitePurchaseRepository implements PurchaseRepository {
         txn,
         purchase: purchase,
         remoteId: remote.remoteId,
+      );
+      await _markLinkedSuppliesForSync(
+        txn,
+        purchase.items,
+        changedAt: DateTime.now(),
       );
     });
   }
@@ -633,5 +735,79 @@ class SqlitePurchaseRepository implements PurchaseRepository {
       return cleanedCurrent;
     }
     return '$cleanedCurrent\n$cleanedAppended';
+  }
+
+  Set<int> _collectSupplyIds(List<PurchaseItem> items) {
+    return items
+        .where((item) => item.isSupply && item.supplyId != null)
+        .map((item) => item.supplyId!)
+        .toSet();
+  }
+
+  Future<void> _markLinkedSuppliesForSync(
+    DatabaseExecutor txn,
+    List<PurchaseSyncItemPayload> items, {
+    required DateTime changedAt,
+  }) async {
+    final supplyIds = items
+        .where((item) => item.isSupply && item.supplyLocalId != null)
+        .map((item) => item.supplyLocalId!)
+        .toSet();
+    if (supplyIds.isEmpty) {
+      return;
+    }
+
+    final placeholders = List.filled(supplyIds.length, '?').join(',');
+    final rows = await txn.query(
+      TableNames.supplies,
+      columns: const ['id', 'uuid', 'created_at'],
+      where: 'id IN ($placeholders)',
+      whereArgs: supplyIds.toList(growable: false),
+    );
+
+    for (final row in rows) {
+      final localId = row['id'] as int;
+      final localUuid = row['uuid'] as String;
+      final createdAt = DateTime.parse(row['created_at'] as String);
+      final metadata = await _syncMetadataRepository.findByLocalId(
+        txn,
+        featureKey: SyncFeatureKeys.supplies,
+        localId: localId,
+      );
+
+      if (metadata?.identity.remoteId == null) {
+        await _syncMetadataRepository.markPendingUpload(
+          txn,
+          featureKey: SyncFeatureKeys.supplies,
+          localId: localId,
+          localUuid: localUuid,
+          createdAt: createdAt,
+          updatedAt: changedAt,
+        );
+      } else {
+        await _syncMetadataRepository.markPendingUpdate(
+          txn,
+          featureKey: SyncFeatureKeys.supplies,
+          localId: localId,
+          localUuid: localUuid,
+          remoteId: metadata!.identity.remoteId,
+          createdAt: createdAt,
+          updatedAt: changedAt,
+        );
+      }
+
+      await _syncQueueRepository.enqueueMutation(
+        txn,
+        featureKey: SyncFeatureKeys.supplies,
+        entityType: 'supply',
+        localEntityId: localId,
+        localUuid: localUuid,
+        remoteId: metadata?.identity.remoteId,
+        operation: metadata?.identity.remoteId == null
+            ? SyncQueueOperation.create
+            : SyncQueueOperation.update,
+        localUpdatedAt: changedAt,
+      );
+    }
   }
 }

@@ -75,6 +75,20 @@ export const productUpsertSchema = z
     variantLabel: nullableTrimmedString(80),
     unitMeasure: z.string().trim().min(1).max(20).default('un'),
     costPriceCents: z.coerce.number().int().min(0).default(0),
+    manualCostCents: z.coerce.number().int().min(0).default(0),
+    costSource: z.enum(['manual', 'recipe_snapshot']).default('manual'),
+    variableCostSnapshotCents: z
+      .union([z.coerce.number().int().min(0), z.null(), z.undefined()])
+      .transform((value) => value ?? null),
+    estimatedGrossMarginCents: z
+      .union([z.coerce.number().int(), z.null(), z.undefined()])
+      .transform((value) => value ?? null),
+    estimatedGrossMarginPercentBasisPoints: z
+      .union([z.coerce.number().int(), z.null(), z.undefined()])
+      .transform((value) => value ?? null),
+    lastCostUpdatedAt: z
+      .union([z.string().datetime(), z.null(), z.undefined()])
+      .transform((value) => (value == null ? null : new Date(value))),
     salePriceCents: z.coerce.number().int().min(0),
     stockMil: z.coerce.number().int().min(0).default(0),
     variants: z.array(productVariantSchema).default([]),

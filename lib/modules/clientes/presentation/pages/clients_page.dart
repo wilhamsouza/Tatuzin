@@ -12,6 +12,7 @@ import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../domain/entities/client.dart';
 import '../providers/client_providers.dart';
+import '../support/customer_credit_action_dialog.dart';
 
 class ClientsPage extends ConsumerWidget {
   const ClientsPage({super.key});
@@ -40,8 +41,8 @@ class ClientsPage extends ConsumerWidget {
             child: AppPageHeader(
               title: 'Consulta de clientes',
               subtitle:
-                  'Busque rápido, confira pendências e entre em edição sem ruído.',
-              badgeLabel: 'Operação',
+                  'Busque rapido, confira pendencias e entre em edicao sem ruido.',
+              badgeLabel: 'Operacao',
               badgeIcon: Icons.people_alt_rounded,
             ),
           ),
@@ -64,7 +65,7 @@ class ClientsPage extends ConsumerWidget {
                     child: AppStateCard(
                       title: 'Nenhum cliente cadastrado',
                       message:
-                          'Cadastre o primeiro cliente para consultar pendências e histórico.',
+                          'Cadastre o primeiro cliente para consultar pendencias e historico.',
                       actionLabel: 'Novo cliente',
                       onAction: () async {
                         final created = await context.pushNamed(
@@ -107,7 +108,7 @@ class ClientsPage extends ConsumerWidget {
                   padding: const EdgeInsets.all(24),
                   child: AppStateCard(
                     title: 'Falha ao carregar clientes',
-                    message: 'Verifique a conexão local e tente novamente.',
+                    message: 'Verifique a conexao local e tente novamente.',
                     tone: AppStateTone.error,
                     compact: true,
                     actionLabel: 'Tentar novamente',
@@ -196,7 +197,7 @@ class _ClientTile extends ConsumerWidget {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          parts.join(' • '),
+                          parts.join(' - '),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall?.copyWith(
@@ -213,7 +214,7 @@ class _ClientTile extends ConsumerWidget {
                     children: [
                       Text(
                         hasDebt
-                            ? 'Com pendência'
+                            ? 'Com pendencia'
                             : hasCredit
                             ? 'Com haver'
                             : 'Em dia',
@@ -249,14 +250,31 @@ class _ClientTile extends ConsumerWidget {
                     ],
                   ),
                   PopupMenuButton<_ClientAction>(
-                    tooltip: 'Ações do cliente',
+                    tooltip: 'Acoes do cliente',
                     itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: _ClientAction.addCredit,
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.add_circle_outline),
+                          title: Text('Adicionar haver'),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: _ClientAction.addDebit,
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.remove_circle_outline),
+                          title: Text('Registrar pendencia'),
+                        ),
+                      ),
+                      PopupMenuDivider(),
                       PopupMenuItem(
                         value: _ClientAction.edit,
                         child: ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: Icon(Icons.edit_outlined),
-                          title: Text('Editar'),
+                          title: Text('Editar cliente'),
                         ),
                       ),
                       PopupMenuItem(
@@ -264,12 +282,28 @@ class _ClientTile extends ConsumerWidget {
                         child: ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: Icon(Icons.delete_outline),
-                          title: Text('Excluir'),
+                          title: Text('Excluir cliente'),
                         ),
                       ),
                     ],
                     onSelected: (value) async {
                       switch (value) {
+                        case _ClientAction.addCredit:
+                          await openCustomerCreditActionDialog(
+                            context,
+                            ref,
+                            client: client,
+                            isCredit: true,
+                          );
+                          break;
+                        case _ClientAction.addDebit:
+                          await openCustomerCreditActionDialog(
+                            context,
+                            ref,
+                            client: client,
+                            isCredit: false,
+                          );
+                          break;
                         case _ClientAction.edit:
                           await _openEditor(context, ref);
                           break;
@@ -302,7 +336,7 @@ class _ClientTile extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: _MiniClientMetric(
-                    label: 'Haver disponível',
+                    label: 'Haver disponivel',
                     value: AppFormatters.currencyFromCents(
                       client.creditBalanceCents,
                     ),
@@ -313,38 +347,17 @@ class _ClientTile extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () => context.pushNamed(
-                    AppRouteNames.clientCreditStatement,
-                    pathParameters: {'clientId': '${client.id}'},
-                    extra: client,
-                  ),
-                  icon: const Icon(Icons.receipt_long_outlined),
-                  label: const Text('Ver extrato'),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () => context.pushNamed(
+                  AppRouteNames.clientCreditStatement,
+                  pathParameters: {'clientId': '${client.id}'},
+                  extra: client,
                 ),
-                FilledButton.tonalIcon(
-                  onPressed: () => context.pushNamed(
-                    AppRouteNames.clientCreditStatement,
-                    pathParameters: {'clientId': '${client.id}'},
-                    extra: client,
-                  ),
-                  icon: const Icon(Icons.add_circle_outline),
-                  label: const Text('Lançar crédito'),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: () => context.pushNamed(
-                    AppRouteNames.clientCreditStatement,
-                    pathParameters: {'clientId': '${client.id}'},
-                    extra: client,
-                  ),
-                  icon: const Icon(Icons.remove_circle_outline),
-                  label: const Text('Lançar débito'),
-                ),
-              ],
+                icon: const Icon(Icons.receipt_long_outlined),
+                label: const Text('Ver extrato'),
+              ),
             ),
           ],
         ),
@@ -394,17 +407,17 @@ class _ClientTile extends ConsumerWidget {
       if (!context.mounted) {
         return;
       }
-      AppFeedback.success(context, 'Cliente "${client.name}" excluído.');
+      AppFeedback.success(context, 'Cliente "${client.name}" excluido.');
     } catch (error) {
       if (!context.mounted) {
         return;
       }
-      AppFeedback.error(context, 'Não foi possível excluir o cliente: $error');
+      AppFeedback.error(context, 'Nao foi possivel excluir o cliente: $error');
     }
   }
 }
 
-enum _ClientAction { edit, delete }
+enum _ClientAction { addCredit, addDebit, edit, delete }
 
 class _MiniClientMetric extends StatelessWidget {
   const _MiniClientMetric({

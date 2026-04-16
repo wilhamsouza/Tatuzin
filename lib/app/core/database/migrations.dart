@@ -37,6 +37,13 @@ abstract final class AppMigrations {
     const MigrationStep(version: 21, up: _createVersion21Schema),
     const MigrationStep(version: 22, up: _createVersion22Schema),
     const MigrationStep(version: 23, up: _createVersion23Schema),
+    const MigrationStep(version: 24, up: _createVersion24Schema),
+    const MigrationStep(version: 25, up: _createVersion25Schema),
+    const MigrationStep(version: 26, up: _createVersion26Schema),
+    const MigrationStep(version: 27, up: _createVersion27Schema),
+    const MigrationStep(version: 28, up: _createVersion28Schema),
+    const MigrationStep(version: 29, up: _createVersion29Schema),
+    const MigrationStep(version: 30, up: _createVersion30Schema),
   ];
 
   static Future<void> runCreate(DatabaseExecutor db, int version) async {
@@ -2999,6 +3006,470 @@ abstract final class AppMigrations {
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_pedidos_operacionais_cliente_identificador
       ON ${TableNames.pedidosOperacionais}(cliente_identificador)
+    ''');
+  }
+
+  static Future<void> _createVersion24Schema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.supplies} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        sku TEXT,
+        unit_type TEXT NOT NULL,
+        purchase_unit_type TEXT NOT NULL,
+        conversion_factor INTEGER NOT NULL,
+        last_purchase_price_cents INTEGER NOT NULL DEFAULT 0,
+        average_purchase_price_cents INTEGER,
+        current_stock_mil INTEGER,
+        minimum_stock_mil INTEGER,
+        default_supplier_id INTEGER,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (default_supplier_id) REFERENCES ${TableNames.fornecedores}(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.productRecipeItems} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        product_id INTEGER NOT NULL,
+        supply_id INTEGER NOT NULL,
+        quantity_used_mil INTEGER NOT NULL,
+        unit_type TEXT NOT NULL,
+        waste_basis_points INTEGER NOT NULL DEFAULT 0,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (product_id) REFERENCES ${TableNames.produtos}(id) ON DELETE CASCADE,
+        FOREIGN KEY (supply_id) REFERENCES ${TableNames.supplies}(id) ON DELETE RESTRICT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.productCostSnapshot} (
+        product_id INTEGER PRIMARY KEY,
+        variable_cost_snapshot_cents INTEGER NOT NULL DEFAULT 0,
+        estimated_gross_margin_cents INTEGER NOT NULL DEFAULT 0,
+        estimated_gross_margin_percent_basis_points INTEGER NOT NULL DEFAULT 0,
+        last_cost_updated_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (product_id) REFERENCES ${TableNames.produtos}(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_supplies_name_active
+      ON ${TableNames.supplies}(name COLLATE NOCASE, is_active)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_product_recipe_items_product
+      ON ${TableNames.productRecipeItems}(product_id)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_product_recipe_items_supply
+      ON ${TableNames.productRecipeItems}(supply_id)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_product_cost_snapshot_product
+      ON ${TableNames.productCostSnapshot}(product_id)
+    ''');
+  }
+
+  static Future<void> _createVersion25Schema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.supplyCostHistory} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        supply_id INTEGER NOT NULL,
+        purchase_id INTEGER,
+        purchase_item_id INTEGER,
+        source TEXT NOT NULL CHECK (source IN ('manual', 'purchase')),
+        purchase_unit_type TEXT NOT NULL,
+        conversion_factor INTEGER NOT NULL,
+        last_purchase_price_cents INTEGER NOT NULL,
+        average_purchase_price_cents INTEGER,
+        notes TEXT,
+        occurred_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (supply_id) REFERENCES ${TableNames.supplies}(id) ON DELETE CASCADE,
+        FOREIGN KEY (purchase_id) REFERENCES ${TableNames.compras}(id) ON DELETE SET NULL,
+        FOREIGN KEY (purchase_item_id) REFERENCES ${TableNames.itensCompra}(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_supply_cost_history_supply
+      ON ${TableNames.supplyCostHistory}(supply_id, occurred_at DESC, id DESC)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_supply_cost_history_purchase
+      ON ${TableNames.supplyCostHistory}(purchase_id, purchase_item_id)
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.itensCompra}_v25 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        compra_id INTEGER NOT NULL,
+        item_type TEXT NOT NULL DEFAULT 'product' CHECK (item_type IN ('product', 'supply')),
+        produto_id INTEGER,
+        supply_id INTEGER,
+        nome_item_snapshot TEXT NOT NULL,
+        unidade_medida_snapshot TEXT NOT NULL,
+        quantidade_mil INTEGER NOT NULL,
+        custo_unitario_centavos INTEGER NOT NULL,
+        subtotal_centavos INTEGER NOT NULL,
+        FOREIGN KEY (compra_id) REFERENCES ${TableNames.compras}(id) ON DELETE CASCADE,
+        FOREIGN KEY (produto_id) REFERENCES ${TableNames.produtos}(id) ON DELETE RESTRICT,
+        FOREIGN KEY (supply_id) REFERENCES ${TableNames.supplies}(id) ON DELETE RESTRICT
+      )
+    ''');
+
+    final existingRows = await db.query(
+      TableNames.itensCompra,
+      columns: const ['id'],
+      limit: 1,
+    );
+    if (existingRows.isNotEmpty) {
+      await db.execute('''
+        INSERT INTO ${TableNames.itensCompra}_v25 (
+          id,
+          uuid,
+          compra_id,
+          item_type,
+          produto_id,
+          supply_id,
+          nome_item_snapshot,
+          unidade_medida_snapshot,
+          quantidade_mil,
+          custo_unitario_centavos,
+          subtotal_centavos
+        )
+        SELECT
+          id,
+          uuid,
+          compra_id,
+          'product',
+          produto_id,
+          NULL,
+          nome_produto_snapshot,
+          unidade_medida_snapshot,
+          quantidade_mil,
+          custo_unitario_centavos,
+          subtotal_centavos
+        FROM ${TableNames.itensCompra}
+      ''');
+    }
+
+    await db.execute('DROP TABLE IF EXISTS ${TableNames.itensCompra}');
+    await db.execute(
+      'ALTER TABLE ${TableNames.itensCompra}_v25 RENAME TO ${TableNames.itensCompra}',
+    );
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_itens_compra_compra
+      ON ${TableNames.itensCompra}(compra_id)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_itens_compra_produto
+      ON ${TableNames.itensCompra}(produto_id)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_itens_compra_supply
+      ON ${TableNames.itensCompra}(supply_id)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_itens_compra_tipo
+      ON ${TableNames.itensCompra}(item_type)
+    ''');
+  }
+
+  static Future<void> _createVersion26Schema(DatabaseExecutor db) async {
+    await db.execute('''
+      ALTER TABLE ${TableNames.produtos}
+      ADD COLUMN manual_cost_centavos INTEGER NOT NULL DEFAULT 0
+    ''');
+
+    await db.execute('''
+      ALTER TABLE ${TableNames.produtos}
+      ADD COLUMN cost_source TEXT NOT NULL DEFAULT 'manual'
+    ''');
+
+    await db.execute('''
+      UPDATE ${TableNames.produtos}
+      SET
+        manual_cost_centavos = custo_centavos,
+        cost_source = CASE
+          WHEN EXISTS (
+            SELECT 1
+            FROM ${TableNames.productRecipeItems} pri
+            WHERE pri.product_id = ${TableNames.produtos}.id
+          )
+          AND EXISTS (
+            SELECT 1
+            FROM ${TableNames.productCostSnapshot} pcs
+            WHERE pcs.product_id = ${TableNames.produtos}.id
+          )
+            THEN 'recipe_snapshot'
+          ELSE 'manual'
+        END
+    ''');
+
+    await db.execute('''
+      ALTER TABLE ${TableNames.supplyCostHistory}
+      ADD COLUMN event_type TEXT NOT NULL DEFAULT 'manual_edit'
+    ''');
+
+    await db.execute('''
+      ALTER TABLE ${TableNames.supplyCostHistory}
+      ADD COLUMN change_summary TEXT
+    ''');
+
+    await db.execute('''
+      UPDATE ${TableNames.supplyCostHistory}
+      SET
+        event_type = CASE
+          WHEN source = 'purchase' THEN 'purchase_updated'
+          ELSE 'manual_edit'
+        END,
+        change_summary = COALESCE(change_summary, notes)
+    ''');
+  }
+
+  static Future<void> _createVersion27Schema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.supplyInventoryMovements} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        remote_id TEXT,
+        supply_id INTEGER NOT NULL,
+        movement_type TEXT NOT NULL CHECK (
+          movement_type IN ('in', 'out', 'reversal', 'adjustment')
+        ),
+        source_type TEXT NOT NULL CHECK (
+          source_type IN (
+            'purchase',
+            'purchase_cancel',
+            'sale',
+            'sale_cancel',
+            'manual_adjustment',
+            'migration_seed'
+          )
+        ),
+        source_local_uuid TEXT,
+        source_remote_id TEXT,
+        dedupe_key TEXT NOT NULL UNIQUE,
+        quantity_delta_mil INTEGER NOT NULL,
+        unit_type TEXT NOT NULL,
+        balance_after_mil INTEGER,
+        notes TEXT,
+        occurred_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (supply_id) REFERENCES ${TableNames.supplies}(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_supply_inventory_movements_supply
+      ON ${TableNames.supplyInventoryMovements}(supply_id, occurred_at DESC, id DESC)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_supply_inventory_movements_source
+      ON ${TableNames.supplyInventoryMovements}(source_type, source_local_uuid, supply_id)
+    ''');
+
+    await db.execute('''
+      INSERT OR IGNORE INTO ${TableNames.supplyInventoryMovements} (
+        uuid,
+        remote_id,
+        supply_id,
+        movement_type,
+        source_type,
+        source_local_uuid,
+        source_remote_id,
+        dedupe_key,
+        quantity_delta_mil,
+        unit_type,
+        balance_after_mil,
+        notes,
+        occurred_at,
+        created_at,
+        updated_at
+      )
+      SELECT
+        'inventory-seed:' || s.uuid,
+        NULL,
+        s.id,
+        'adjustment',
+        'migration_seed',
+        s.uuid,
+        NULL,
+        'migration_seed:' || s.uuid,
+        s.current_stock_mil,
+        s.unit_type,
+        s.current_stock_mil,
+        'Baseline operacional criada a partir do current_stock_mil legado na migracao 27.',
+        COALESCE(s.updated_at, s.created_at),
+        COALESCE(s.updated_at, s.created_at),
+        COALESCE(s.updated_at, s.created_at)
+      FROM ${TableNames.supplies} s
+      WHERE s.current_stock_mil IS NOT NULL
+        AND s.current_stock_mil >= 0
+        AND TRIM(COALESCE(s.uuid, '')) <> ''
+        AND NOT EXISTS (
+          SELECT 1
+          FROM ${TableNames.supplyInventoryMovements} sim
+          WHERE sim.supply_id = s.id
+        )
+    ''');
+  }
+
+  static Future<void> _createVersion28Schema(DatabaseExecutor db) async {
+    await db.execute('''
+      DELETE FROM ${TableNames.supplyInventoryMovements}
+      WHERE source_type = 'migration_seed'
+        AND id NOT IN (
+          SELECT MIN(id)
+          FROM ${TableNames.supplyInventoryMovements}
+          WHERE source_type = 'migration_seed'
+          GROUP BY supply_id
+        )
+    ''');
+
+    await db.execute('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_supply_inventory_movements_single_seed
+      ON ${TableNames.supplyInventoryMovements}(supply_id)
+      WHERE source_type = 'migration_seed'
+    ''');
+
+    await db.execute('''
+      UPDATE ${TableNames.supplies}
+      SET current_stock_mil = (
+        SELECT CASE
+          WHEN COUNT(*) = 0 THEN NULL
+          ELSE COALESCE(SUM(sim.quantity_delta_mil), 0)
+        END
+        FROM ${TableNames.supplyInventoryMovements} sim
+        WHERE sim.supply_id = ${TableNames.supplies}.id
+      )
+      WHERE EXISTS (
+        SELECT 1
+        FROM ${TableNames.supplyInventoryMovements} sim
+        WHERE sim.supply_id = ${TableNames.supplies}.id
+      )
+    ''');
+  }
+
+  static Future<void> _createVersion29Schema(DatabaseExecutor db) async {
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.itensCompra,
+      columnName: 'produto_variante_id',
+      columnDefinition: 'INTEGER',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.itensCompra,
+      columnName: 'sku_variante_snapshot',
+      columnDefinition: 'TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.itensCompra,
+      columnName: 'cor_variante_snapshot',
+      columnDefinition: 'TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.itensCompra,
+      columnName: 'tamanho_variante_snapshot',
+      columnDefinition: 'TEXT',
+    );
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_itens_compra_produto_variante
+      ON ${TableNames.itensCompra}(produto_variante_id)
+    ''');
+  }
+
+  static Future<void> _createVersion30Schema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.saleReturns} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        sale_id INTEGER NOT NULL,
+        client_id INTEGER,
+        exchange_mode TEXT NOT NULL CHECK (
+          exchange_mode IN ('return_only', 'exchange_with_new_sale')
+        ),
+        reason TEXT,
+        refund_amount_cents INTEGER NOT NULL DEFAULT 0,
+        credited_amount_cents INTEGER NOT NULL DEFAULT 0,
+        applied_discount_cents INTEGER NOT NULL DEFAULT 0,
+        replacement_sale_id INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (sale_id) REFERENCES ${TableNames.vendas}(id) ON DELETE CASCADE,
+        FOREIGN KEY (client_id) REFERENCES ${TableNames.clientes}(id) ON DELETE SET NULL,
+        FOREIGN KEY (replacement_sale_id) REFERENCES ${TableNames.vendas}(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.saleReturnItems} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        sale_return_id INTEGER NOT NULL,
+        sale_item_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        product_variant_id INTEGER,
+        product_name_snapshot TEXT NOT NULL,
+        variant_sku_snapshot TEXT,
+        variant_color_snapshot TEXT,
+        variant_size_snapshot TEXT,
+        quantity_mil INTEGER NOT NULL,
+        unit_price_cents INTEGER NOT NULL,
+        subtotal_cents INTEGER NOT NULL,
+        reason TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (sale_return_id) REFERENCES ${TableNames.saleReturns}(id) ON DELETE CASCADE,
+        FOREIGN KEY (sale_item_id) REFERENCES ${TableNames.itensVenda}(id) ON DELETE RESTRICT,
+        FOREIGN KEY (product_id) REFERENCES ${TableNames.produtos}(id) ON DELETE RESTRICT,
+        FOREIGN KEY (product_variant_id) REFERENCES ${TableNames.produtoVariantes}(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_sale_returns_sale
+      ON ${TableNames.saleReturns}(sale_id, created_at DESC, id DESC)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_sale_returns_replacement_sale
+      ON ${TableNames.saleReturns}(replacement_sale_id)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_sale_return_items_return
+      ON ${TableNames.saleReturnItems}(sale_return_id, sale_item_id)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_sale_return_items_sale_item
+      ON ${TableNames.saleReturnItems}(sale_item_id)
     ''');
   }
 }

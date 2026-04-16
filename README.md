@@ -11,6 +11,23 @@ Guias praticos da identidade do Tatuzin:
 - [Brand guidelines](c:/Simples/docs/tatuzin-brand-guidelines.md)
 - [Brand verification checklist](c:/Simples/docs/tatuzin-brand-verification-checklist.md)
 
+## Tema e design system
+
+O app Tatuzin ja possui tema central e um design system base no proprio app Flutter.
+
+Pontos de referencia:
+
+- tema principal em [lib/app/theme](c:/Simples/lib/app/theme)
+- tokens semanticos e escalas de layout em [app_design_tokens.dart](c:/Simples/lib/app/theme/app_design_tokens.dart)
+- configuracao do tema Material em [app_theme.dart](c:/Simples/lib/app/theme/app_theme.dart)
+- componentes compartilhados em [lib/app/core/widgets](c:/Simples/lib/app/core/widgets)
+
+Diretriz atual:
+
+- novas decisoes visuais devem nascer do tema, dos tokens e dos widgets compartilhados
+- evitar `Color`, `EdgeInsets`, `BorderRadius` e `TextStyle` repetidos localmente quando ja houver componente ou token equivalente
+- priorizar os componentes base nas telas operacionais mais criticas: vendas, produtos, caixa, pedidos e dashboard
+
 ## Mapa real do monorepo
 
 ```text

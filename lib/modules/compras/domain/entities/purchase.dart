@@ -29,6 +29,8 @@ class Purchase {
     this.remoteId,
     this.syncStatus,
     this.lastSyncedAt,
+    this.syncIssueMessage,
+    this.syncIssueType,
   });
 
   final int id;
@@ -55,8 +57,12 @@ class Purchase {
   final String? remoteId;
   final SyncStatus? syncStatus;
   final DateTime? lastSyncedAt;
+  final String? syncIssueMessage;
+  final String? syncIssueType;
 
   bool get isCancelled => status == PurchaseStatus.cancelada;
+
+  bool get isLocalOnly => syncStatus == SyncStatus.localOnly;
 }
 
 class PurchaseUpsertInput {

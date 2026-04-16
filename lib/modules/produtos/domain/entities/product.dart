@@ -1,5 +1,30 @@
 import '../../../../app/core/sync/sync_status.dart';
 
+enum ProductCostSource { manual, recipeSnapshot }
+
+extension ProductCostSourceX on ProductCostSource {
+  String get storageValue {
+    return switch (this) {
+      ProductCostSource.manual => 'manual',
+      ProductCostSource.recipeSnapshot => 'recipe_snapshot',
+    };
+  }
+
+  String get label {
+    return switch (this) {
+      ProductCostSource.manual => 'Custo manual',
+      ProductCostSource.recipeSnapshot => 'Calculo derivado',
+    };
+  }
+}
+
+ProductCostSource productCostSourceFromStorage(String? value) {
+  return switch (value) {
+    'recipe_snapshot' => ProductCostSource.recipeSnapshot,
+    _ => ProductCostSource.manual,
+  };
+}
+
 abstract final class ProductCatalogTypes {
   static const simple = 'simple';
   static const variant = 'variant';
@@ -49,6 +74,12 @@ class Product {
     this.sellableVariantPriceAdditionalCents,
     required this.unitMeasure,
     required this.costCents,
+    required this.manualCostCents,
+    required this.costSource,
+    this.variableCostSnapshotCents,
+    this.estimatedGrossMarginCents,
+    this.estimatedGrossMarginPercentBasisPoints,
+    this.lastCostUpdatedAt,
     required this.salePriceCents,
     required this.stockMil,
     required this.isActive,
@@ -85,6 +116,12 @@ class Product {
   final int? sellableVariantPriceAdditionalCents;
   final String unitMeasure;
   final int costCents;
+  final int manualCostCents;
+  final ProductCostSource costSource;
+  final int? variableCostSnapshotCents;
+  final int? estimatedGrossMarginCents;
+  final int? estimatedGrossMarginPercentBasisPoints;
+  final DateTime? lastCostUpdatedAt;
   final int salePriceCents;
   final int stockMil;
   final bool isActive;
@@ -111,6 +148,16 @@ class Product {
 
   bool get hasPhoto =>
       primaryPhotoPath != null && primaryPhotoPath!.trim().isNotEmpty;
+
+  bool get usesManualCost => costSource == ProductCostSource.manual;
+
+  bool get usesRecipeSnapshot => costSource == ProductCostSource.recipeSnapshot;
+
+  bool get hasCostSnapshot =>
+      usesRecipeSnapshot &&
+      variableCostSnapshotCents != null &&
+      estimatedGrossMarginCents != null &&
+      estimatedGrossMarginPercentBasisPoints != null;
 
   int get modifierGroupCount => modifierGroups.length;
 
@@ -214,6 +261,7 @@ class ProductInput {
     this.baseProductId,
     this.variantAttributes = const <ProductVariantAttributeInput>[],
     this.modifierGroups,
+    this.recipeItems,
     required this.unitMeasure,
     required this.costCents,
     required this.salePriceCents,
@@ -235,6 +283,7 @@ class ProductInput {
   final int? baseProductId;
   final List<ProductVariantAttributeInput> variantAttributes;
   final List<ProductModifierGroupInput>? modifierGroups;
+  final List<ProductRecipeItemInput>? recipeItems;
   final String unitMeasure;
   final int costCents;
   final int salePriceCents;
@@ -270,6 +319,56 @@ class ProductVariant {
   final bool isActive;
   final DateTime createdAt;
   final DateTime updatedAt;
+}
+
+class ProductRecipeItem {
+  const ProductRecipeItem({
+    required this.id,
+    required this.uuid,
+    required this.productId,
+    required this.supplyId,
+    required this.supplyName,
+    required this.purchaseUnitType,
+    required this.lastPurchasePriceCents,
+    required this.conversionFactor,
+    required this.quantityUsedMil,
+    required this.unitType,
+    required this.wasteBasisPoints,
+    required this.notes,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final int id;
+  final String uuid;
+  final int productId;
+  final int supplyId;
+  final String supplyName;
+  final String purchaseUnitType;
+  final int lastPurchasePriceCents;
+  final int conversionFactor;
+  final int quantityUsedMil;
+  final String unitType;
+  final int wasteBasisPoints;
+  final String? notes;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+}
+
+class ProductRecipeItemInput {
+  const ProductRecipeItemInput({
+    required this.supplyId,
+    required this.quantityUsedMil,
+    required this.unitType,
+    this.wasteBasisPoints = 0,
+    this.notes,
+  });
+
+  final int supplyId;
+  final int quantityUsedMil;
+  final String unitType;
+  final int wasteBasisPoints;
+  final String? notes;
 }
 
 class ProductVariantInput {

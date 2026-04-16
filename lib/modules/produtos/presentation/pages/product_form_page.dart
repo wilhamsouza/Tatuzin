@@ -3,19 +3,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/utils/money_parser.dart';
 import '../../../../app/core/utils/quantity_parser.dart';
+import '../../../../app/theme/app_design_tokens.dart';
 import '../../../categorias/domain/entities/category.dart';
 import '../../../categorias/presentation/providers/category_providers.dart';
+import '../../../insumos/domain/entities/supply.dart';
+import '../../../insumos/presentation/providers/supply_providers.dart';
 import '../../domain/entities/base_product.dart';
 import '../../domain/entities/product.dart';
+import '../../domain/services/product_cost_calculator.dart';
 import '../providers/product_providers.dart';
 import '../widgets/product_form/fashion_grid_section.dart';
 import '../widgets/product_form/modifier_groups_section.dart';
 import '../widgets/product_form/product_base_info_section.dart';
 import '../widgets/product_form/product_footer_action_bar.dart';
 import '../widgets/product_form/product_form_models.dart';
+import '../widgets/product_form/product_profitability_section.dart';
+import '../widgets/product_form/product_recipe_section.dart';
 import '../widgets/product_form/product_niche_details_section.dart';
 import '../widgets/product_form/product_niche_selector_section.dart';
 import '../widgets/product_form/product_photos_section.dart';
@@ -66,6 +73,8 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   List<EditableProductPhoto> _photos = const <EditableProductPhoto>[];
   List<EditableModifierGroup> _foodModifierGroups =
       const <EditableModifierGroup>[];
+  List<EditableProductRecipeItemDraft> _recipeItems =
+      const <EditableProductRecipeItemDraft>[];
   FashionGridDraft _fashionGridDraft = const FashionGridDraft();
 
   bool get _isEditing => widget.initialProduct != null;
@@ -74,6 +83,12 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   bool get _isFoodNiche => _selectedNiche == ProductNiches.food;
   bool get _isFashionNiche => _selectedNiche == ProductNiches.fashion;
   bool get _usesVariantStock => _isFashionNiche;
+  ProductCostSummary get _recipeCostSummary => ProductCostCalculator.calculate(
+    salePriceCents: MoneyParser.parseToCents(_priceController.text),
+    items: _recipeItems
+        .map((item) => item.toCostInput())
+        .toList(growable: false),
+  );
 
   @override
   void initState() {
@@ -111,7 +126,9 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     );
     _barcodeController = TextEditingController(text: product?.barcode ?? '');
     _costController = TextEditingController(
-      text: AppFormatters.currencyInputFromCents(product?.costCents ?? 0),
+      text: AppFormatters.currencyInputFromCents(
+        product?.manualCostCents ?? product?.costCents ?? 0,
+      ),
     );
     _priceController = TextEditingController(
       text: AppFormatters.currencyInputFromCents(product?.salePriceCents ?? 0),
@@ -166,11 +183,13 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       variants: product?.variants ?? const <ProductVariant>[],
     );
 
+    _priceController.addListener(_handleLivePreviewChanged);
     _loadAdvancedData();
   }
 
   @override
   void dispose() {
+    _priceController.removeListener(_handleLivePreviewChanged);
     _nameController.dispose();
     _modelNameController.dispose();
     _variantLabelController.dispose();
@@ -190,6 +209,13 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     super.dispose();
   }
 
+  void _handleLivePreviewChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+  }
+
   Future<void> _loadAdvancedData() async {
     final product = widget.initialProduct;
     if (product == null) {
@@ -202,6 +228,9 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       final localCatalogRepository = ref.read(localCatalogRepositoryProvider);
       final photos = await localProductRepository.listProductPhotos(product.id);
       final productVariants = await localProductRepository.listProductVariants(
+        product.id,
+      );
+      final recipeItems = await localProductRepository.listProductRecipeItems(
         product.id,
       );
 
@@ -252,6 +281,9 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                   .toList(growable: false)
             : _photos;
         _foodModifierGroups = modifierGroups;
+        _recipeItems = recipeItems
+            .map(EditableProductRecipeItemDraft.fromProductRecipeItem)
+            .toList(growable: false);
         _fashionGridDraft = FashionGridDraft.fromExisting(
           gridHint: _findVariantAttributeValue(
             product,
@@ -271,8 +303,11 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   Widget build(BuildContext context) {
     final categoriesAsync = ref.watch(categoryOptionsProvider);
     final baseProductsAsync = ref.watch(baseProductOptionsProvider);
+    final suppliesAsync = ref.watch(activeSupplyOptionsProvider);
     final categories = categoriesAsync.valueOrNull ?? const <Category>[];
     final baseProducts = baseProductsAsync.valueOrNull ?? const <BaseProduct>[];
+    final supplies = suppliesAsync.valueOrNull ?? const <Supply>[];
+    final layout = context.appLayout;
 
     return Scaffold(
       appBar: AppBar(
@@ -288,8 +323,22 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         key: _formKey,
         autovalidateMode: AutovalidateMode.onUserInteraction,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 148),
+          padding: EdgeInsets.fromLTRB(
+            layout.pagePadding,
+            layout.pagePadding,
+            layout.pagePadding,
+            148,
+          ),
           children: [
+            AppPageHeader(
+              title: _isEditing ? 'Ajuste o cadastro' : 'Monte o cadastro',
+              subtitle:
+                  'Organize identidade, fotos, preco, estoque e variacoes por secoes com a mesma linguagem visual do restante do app.',
+              badgeLabel: _isEditing ? 'Edicao' : 'Cadastro',
+              badgeIcon: Icons.inventory_2_rounded,
+              emphasized: true,
+            ),
+            SizedBox(height: layout.sectionGap),
             ProductNicheSelectorSection(
               selectedNiche: _selectedNiche,
               selectedCatalogType: _selectedCatalogType,
@@ -297,7 +346,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
               onNicheChanged: (value) => setState(() => _selectedNiche = value),
               onCatalogTypeChanged: _changeCatalogType,
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: layout.sectionGap),
             ProductBaseInfoSection(
               isEditing: _isEditing,
               selectedNiche: _selectedNiche,
@@ -328,7 +377,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                   setState(() => _selectedUnitMeasure = value),
               onActiveChanged: (value) => setState(() => _isActive = value),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: layout.sectionGap),
             ProductPhotosSection(
               photos: _photos,
               maxPhotos: _maxPhotos,
@@ -336,7 +385,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
               onAddPhoto: _promptPhotoSource,
               onRemovePhoto: _removePhoto,
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: layout.sectionGap),
             ProductNicheDetailsSection(
               selectedNiche: _selectedNiche,
               foodAllergensController: _foodAllergensController,
@@ -349,7 +398,25 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
               fashionTagsController: _fashionTagsController,
               extraAttributesController: _extraAttributesController,
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: layout.sectionGap),
+            ProductRecipeSection(
+              items: _recipeItems,
+              summary: _recipeCostSummary,
+              isLoadingRecipe: _isLoadingAdvancedData,
+              isLoadingSupplies: suppliesAsync.isLoading,
+              onAddItem: () => _openRecipeItemEditor(supplies),
+              onEditItem: (index) =>
+                  _openRecipeItemEditor(supplies, index: index),
+              onRemoveItem: (index) =>
+                  setState(() => _recipeItems.removeAt(index)),
+            ),
+            SizedBox(height: layout.sectionGap),
+            ProductProfitabilitySection(
+              summary: _recipeCostSummary,
+              salePriceCents: MoneyParser.parseToCents(_priceController.text),
+              manualCostCents: MoneyParser.parseToCents(_costController.text),
+            ),
+            SizedBox(height: layout.sectionGap),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 180),
               switchInCurve: Curves.easeOut,
@@ -542,7 +609,66 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     await storage.deleteManagedFile(removed.localPath);
   }
 
+  Future<void> _openRecipeItemEditor(
+    List<Supply> supplies, {
+    int? index,
+  }) async {
+    final current = index == null ? null : _recipeItems[index];
+    final availableSupplies = <Supply>[
+      ...supplies,
+      if (current != null &&
+          !supplies.any((supply) => supply.id == current.supply.id))
+        current.supply,
+    ];
+
+    if (availableSupplies.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Cadastre pelo menos um insumo antes de montar a ficha.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final edited = await showModalBottomSheet<EditableProductRecipeItemDraft>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ProductRecipeItemEditorSheet(
+        supplies: availableSupplies,
+        initialItem: current,
+      ),
+    );
+
+    if (edited == null) {
+      return;
+    }
+
+    setState(() {
+      if (index == null) {
+        _recipeItems = [..._recipeItems, edited];
+      } else {
+        final updated = [..._recipeItems];
+        updated[index] = edited;
+        _recipeItems = updated;
+      }
+    });
+  }
+
   Future<void> _save() async {
+    if (_isLoadingAdvancedData) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aguarde o carregamento completo da ficha tecnica.'),
+        ),
+      );
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -592,6 +718,9 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         baseProductId: _isVariantCatalog ? _selectedBaseProductId : null,
         variantAttributes: variantAttributes,
         modifierGroups: modifierGroups,
+        recipeItems: _recipeItems
+            .map((item) => item.toRecipeInput())
+            .toList(growable: false),
         unitMeasure: _selectedUnitMeasure,
         costCents: MoneyParser.parseToCents(_costController.text),
         salePriceCents: MoneyParser.parseToCents(_priceController.text),

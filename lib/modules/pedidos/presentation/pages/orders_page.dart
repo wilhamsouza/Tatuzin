@@ -3,8 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/widgets/app_card.dart';
-import '../../../../app/core/widgets/app_input.dart';
+import '../../../../app/core/widgets/app_main_drawer.dart';
+import '../../../../app/core/widgets/app_page_header.dart';
+import '../../../../app/core/widgets/app_search_field.dart';
+import '../../../../app/core/widgets/app_section_card.dart';
+import '../../../../app/core/widgets/app_state_card.dart';
+import '../../../../app/core/widgets/app_summary_block.dart';
 import '../../../../app/routes/route_names.dart';
+import '../../../../app/theme/app_design_tokens.dart';
 import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../domain/entities/operational_order.dart';
 import '../../domain/entities/operational_order_summary.dart';
@@ -47,16 +53,18 @@ class _OrdersPageState extends ConsumerState<OrdersPage> {
     final dispatchState = ref.watch(orderKitchenDispatchControllerProvider);
     final reprintState = ref.watch(orderTicketReprintControllerProvider);
     final billingState = ref.watch(operationalOrderBillingControllerProvider);
+    final layout = context.appLayout;
+    final tokens = context.appColors;
     final busy =
         createState.isLoading ||
         statusState.isLoading ||
         dispatchState.isLoading ||
         reprintState.isLoading ||
         billingState.isLoading;
-    final hasQuery = _searchController.text.trim().isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Fila de pedidos')),
+      drawer: const AppMainDrawer(),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: busy ? null : () => _createOrder(context),
         icon: createState.isLoading
@@ -71,53 +79,42 @@ class _OrdersPageState extends ConsumerState<OrdersPage> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: AppCard(
-              padding: const EdgeInsets.all(16),
-              color: Theme.of(context).colorScheme.surfaceContainerLow,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Painel operacional',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Busque por numero do pedido, cliente ou tipo de atendimento e acompanhe a fila da cozinha sem misturar com faturamento.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 12),
-                  AppInput(
-                    controller: _searchController,
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    hintText: 'Buscar por pedido, cliente ou atendimento',
-                    suffixIcon: hasQuery
-                        ? IconButton(
-                            tooltip: 'Limpar busca',
-                            onPressed: _clearSearch,
-                            icon: const Icon(Icons.close_rounded),
-                          )
-                        : null,
-                    onChanged: (value) {
-                      ref
-                              .read(
-                                operationalOrderSearchQueryProvider.notifier,
-                              )
-                              .state =
-                          value;
-                      setState(() {});
-                    },
-                  ),
-                ],
-              ),
+            padding: EdgeInsets.fromLTRB(
+              layout.pagePadding,
+              layout.space6,
+              layout.pagePadding,
+              layout.space4,
+            ),
+            child: const AppPageHeader(
+              title: 'Painel operacional',
+              subtitle:
+                  'Acompanhe a fila da cozinha, o status dos tickets e o faturamento sem misturar etapas.',
+              badgeLabel: 'Pedidos',
+              badgeIcon: Icons.receipt_long_rounded,
+              emphasized: true,
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              layout.pagePadding,
+              0,
+              layout.pagePadding,
+              layout.space4,
+            ),
+            child: AppSearchField(
+              controller: _searchController,
+              hintText: 'Buscar por pedido, cliente ou atendimento',
+              onChanged: (value) {
+                ref.read(operationalOrderSearchQueryProvider.notifier).state =
+                    value;
+                setState(() {});
+              },
+              onClear: _clearSearch,
             ),
           ),
           boardAsync.when(
             data: (board) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: EdgeInsets.only(bottom: layout.space4),
               child: OrderStatusTabs(
                 selectedStatus: selectedStatus,
                 countFor: board.countFor,
@@ -129,40 +126,13 @@ class _OrdersPageState extends ConsumerState<OrdersPage> {
                 },
               ),
             ),
-            loading: () => const SizedBox(height: 52),
-            error: (_, __) => const SizedBox(height: 52),
+            loading: () => SizedBox(height: layout.quickActionHeight + 12),
+            error: (_, __) => SizedBox(height: layout.quickActionHeight + 12),
           ),
           Expanded(
             child: boardAsync.when(
               data: (board) {
                 final orders = board.filterBy(selectedStatus);
-                if (orders.isEmpty) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            hasQuery
-                                ? 'Nenhum pedido encontrado com os filtros atuais.'
-                                : 'Nenhum pedido em ${operationalOrderStatusLabel(selectedStatus).toLowerCase()} agora.',
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 10),
-                          FilledButton.icon(
-                            onPressed: busy
-                                ? null
-                                : () => _createOrder(context),
-                            icon: const Icon(Icons.add),
-                            label: const Text('Novo pedido'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }
-
                 final failedPrints = board.orders
                     .where(
                       (summary) =>
@@ -171,110 +141,171 @@ class _OrdersPageState extends ConsumerState<OrdersPage> {
                     )
                     .length;
 
+                if (orders.isEmpty) {
+                  return Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      layout.pagePadding,
+                      layout.space4,
+                      layout.pagePadding,
+                      100,
+                    ),
+                    child: AppStateCard(
+                      title: 'Nenhum pedido nessa fila',
+                      message: _emptyMessage(selectedStatus),
+                      tone: AppStateTone.neutral,
+                      actionLabel: busy ? null : 'Novo pedido',
+                      onAction: busy ? null : () => _createOrder(context),
+                    ),
+                  );
+                }
+
                 return RefreshIndicator(
                   onRefresh: () async {
                     ref.invalidate(operationalOrderBoardProvider);
                     await ref.read(operationalOrderBoardProvider.future);
                   },
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                    itemCount: orders.length + 1,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        return AppCard(
-                          padding: const EdgeInsets.all(14),
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.surfaceContainerLow,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: _StatBlock(
-                                  label: 'Ativos',
-                                  value: '${board.activeCount}',
-                                ),
-                              ),
-                              Expanded(
-                                child: _StatBlock(
-                                  label: 'Prontos',
-                                  value:
-                                      '${board.countFor(OperationalOrderStatus.ready)}',
-                                ),
-                              ),
-                              Expanded(
-                                child: _StatBlock(
-                                  label: 'Falhas ticket',
-                                  value: '$failedPrints',
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-
-                      final summary = orders[index - 1];
-                      return OrderQueueCard(
-                        summary: summary,
-                        onOpen: () => _openOrder(context, summary.order.id),
-                        onSendToKitchen: _canSendToKitchen(summary) && !busy
-                            ? () => _sendToKitchen(context, summary.order.id)
-                            : null,
-                        onReprint: _canReprint(summary) && !busy
-                            ? () => _reprint(context, summary.order.id)
-                            : null,
-                        onMarkInPreparation:
-                            summary.order.status.canTransitionTo(
+                  child: ListView(
+                    padding: EdgeInsets.fromLTRB(
+                      layout.pagePadding,
+                      layout.space2,
+                      layout.pagePadding,
+                      100,
+                    ),
+                    children: [
+                      AppSectionCard(
+                        title: 'Resumo da fila',
+                        subtitle: 'Visao rapida do que esta rodando agora.',
+                        tone: AppCardTone.muted,
+                        child: GridView.count(
+                          crossAxisCount: 3,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          crossAxisSpacing: layout.gridGap,
+                          mainAxisSpacing: layout.gridGap,
+                          childAspectRatio: 0.98,
+                          children: [
+                            AppSummaryBlock(
+                              label: 'Ativos',
+                              value: '${board.activeCount}',
+                              caption: 'Pedidos nao encerrados',
+                              icon: Icons.play_circle_outline_rounded,
+                              palette: tokens.info,
+                              compact: true,
+                            ),
+                            AppSummaryBlock(
+                              label: 'Prontos',
+                              value:
+                                  '${board.countFor(OperationalOrderStatus.ready)}',
+                              caption: 'Aguardando entrega',
+                              icon: Icons.notifications_active_rounded,
+                              palette: tokens.success,
+                              compact: true,
+                            ),
+                            AppSummaryBlock(
+                              label: 'Falhas ticket',
+                              value: '$failedPrints',
+                              caption: 'Requer atencao',
+                              icon: Icons.print_disabled_outlined,
+                              palette: failedPrints > 0
+                                  ? tokens.danger
+                                  : tokens.interactive,
+                              compact: true,
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: layout.sectionGap),
+                      for (var index = 0; index < orders.length; index++) ...[
+                        OrderQueueCard(
+                          summary: orders[index],
+                          onOpen: () =>
+                              _openOrder(context, orders[index].order.id),
+                          onSendToKitchen:
+                              _canSendToKitchen(orders[index]) && !busy
+                              ? () => _sendToKitchen(
+                                  context,
+                                  orders[index].order.id,
+                                )
+                              : null,
+                          onReprint: _canReprint(orders[index]) && !busy
+                              ? () => _reprint(context, orders[index].order.id)
+                              : null,
+                          onMarkInPreparation:
+                              orders[index].order.status.canTransitionTo(
+                                    OperationalOrderStatus.inPreparation,
+                                  ) &&
+                                  !busy
+                              ? () => _updateStatus(
+                                  context,
+                                  orders[index].order.id,
                                   OperationalOrderStatus.inPreparation,
-                                ) &&
-                                !busy
-                            ? () => _updateStatus(
-                                context,
-                                summary.order.id,
-                                OperationalOrderStatus.inPreparation,
-                              )
-                            : null,
-                        onMarkReady:
-                            summary.order.status.canTransitionTo(
+                                )
+                              : null,
+                          onMarkReady:
+                              orders[index].order.status.canTransitionTo(
+                                    OperationalOrderStatus.ready,
+                                  ) &&
+                                  !busy
+                              ? () => _updateStatus(
+                                  context,
+                                  orders[index].order.id,
                                   OperationalOrderStatus.ready,
-                                ) &&
-                                !busy
-                            ? () => _updateStatus(
-                                context,
-                                summary.order.id,
-                                OperationalOrderStatus.ready,
-                              )
-                            : null,
-                        onMarkDelivered:
-                            summary.order.status.canTransitionTo(
+                                )
+                              : null,
+                          onMarkDelivered:
+                              orders[index].order.status.canTransitionTo(
+                                    OperationalOrderStatus.delivered,
+                                  ) &&
+                                  !busy
+                              ? () => _updateStatus(
+                                  context,
+                                  orders[index].order.id,
                                   OperationalOrderStatus.delivered,
-                                ) &&
-                                !busy
-                            ? () => _updateStatus(
-                                context,
-                                summary.order.id,
-                                OperationalOrderStatus.delivered,
-                              )
-                            : null,
-                        onInvoice: _canInvoice(summary) && !busy
-                            ? () => _invoiceOrder(context, summary.order.id)
-                            : null,
-                        onCancel: !summary.order.isTerminal && !busy
-                            ? () => _confirmCancel(context, summary.order.id)
-                            : null,
-                      );
-                    },
+                                )
+                              : null,
+                          onInvoice: _canInvoice(orders[index]) && !busy
+                              ? () => _invoiceOrder(
+                                  context,
+                                  orders[index].order.id,
+                                )
+                              : null,
+                          onCancel: !orders[index].order.isTerminal && !busy
+                              ? () => _confirmCancel(
+                                  context,
+                                  orders[index].order.id,
+                                )
+                              : null,
+                        ),
+                        if (index != orders.length - 1)
+                          SizedBox(height: layout.blockGap),
+                      ],
+                    ],
                   ),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) =>
-                  Center(child: Text('Falha ao carregar pedidos: $error')),
+              error: (error, _) => Padding(
+                padding: EdgeInsets.all(layout.pagePadding + layout.space4),
+                child: AppStateCard(
+                  title: 'Falha ao carregar pedidos',
+                  message: '$error',
+                  tone: AppStateTone.error,
+                  actionLabel: 'Tentar novamente',
+                  onAction: () => ref.invalidate(operationalOrderBoardProvider),
+                ),
+              ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  String _emptyMessage(OperationalOrderStatus selectedStatus) {
+    if (_searchController.text.trim().isNotEmpty) {
+      return 'A busca atual nao encontrou pedidos com esse filtro.';
+    }
+    return 'Nenhum pedido em ${operationalOrderStatusLabel(selectedStatus).toLowerCase()} agora.';
   }
 
   Future<void> _createOrder(BuildContext context) async {
@@ -393,9 +424,7 @@ class _OrdersPageState extends ConsumerState<OrdersPage> {
       return;
     }
     if (detail == null) {
-      if (context.mounted) {
-        _showMessage(context, 'Pedido nao encontrado para faturamento.');
-      }
+      _showMessage(context, 'Pedido nao encontrado para faturamento.');
       return;
     }
 
@@ -480,29 +509,5 @@ class _OrdersPageState extends ConsumerState<OrdersPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
-  }
-}
-
-class _StatBlock extends StatelessWidget {
-  const _StatBlock({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          value,
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 4),
-        Text(label, style: Theme.of(context).textTheme.bodySmall),
-      ],
-    );
   }
 }

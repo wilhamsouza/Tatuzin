@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/app_design_tokens.dart';
+
 class AppSectionTitle extends StatelessWidget {
   const AppSectionTitle({
     super.key,
@@ -18,6 +20,7 @@ class AppSectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final layout = context.appLayout;
     final titleColor = onDarkBackground ? Colors.white : colorScheme.onSurface;
     final subtitleColor = onDarkBackground
         ? Colors.white.withValues(alpha: 0.78)
@@ -36,7 +39,7 @@ class AppSectionTitle extends StatelessWidget {
           ),
         ),
         if (subtitle?.isNotEmpty ?? false) ...[
-          const SizedBox(height: 4),
+          SizedBox(height: layout.space2),
           Text(
             subtitle!,
             style: theme.textTheme.bodySmall?.copyWith(color: subtitleColor),
@@ -52,7 +55,7 @@ class AppSectionTitle extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               header,
-              const SizedBox(height: 12),
+              SizedBox(height: layout.blockGap),
               Align(alignment: Alignment.centerLeft, child: trailing!),
             ],
           );
@@ -62,7 +65,10 @@ class AppSectionTitle extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(child: header),
-            if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+            if (trailing != null) ...[
+              SizedBox(width: layout.blockGap),
+              trailing!,
+            ],
           ],
         );
       },

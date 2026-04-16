@@ -12,6 +12,7 @@ import '../../../app/core/sync/sync_remote_identity_recovery.dart';
 import '../../../app/core/sync/sync_status.dart';
 import '../domain/entities/purchase.dart';
 import '../domain/entities/purchase_detail.dart';
+import '../domain/entities/purchase_item.dart';
 import '../domain/entities/purchase_payment.dart';
 import '../domain/entities/purchase_status.dart';
 import '../domain/repositories/purchase_repository.dart';
@@ -85,6 +86,7 @@ class PurchasesRepositoryImpl
     var failedCount = 0;
     String? message;
 
+    await _localRepository.seedPendingSupplyPurchaseSyncIfNeeded();
     await _remoteDatasource.canReachRemote();
 
     final localPurchases = await _localRepository.listForSync();
@@ -177,6 +179,7 @@ class PurchasesRepositoryImpl
   @override
   Future<void> ensureSyncAllowed() async {
     _ensureSyncIsAllowed();
+    await _localRepository.seedPendingSupplyPurchaseSyncIfNeeded();
     await _remoteDatasource.canReachRemote();
   }
 
@@ -266,8 +269,14 @@ class PurchasesRepositoryImpl
     }
 
     for (final item in purchase.items) {
+      if (item.itemType == PurchaseItemType.supply) {
+        if (item.supplyRemoteId == null || item.supplyRemoteId!.isEmpty) {
+          return 'Compra ainda nao pode subir porque o insumo "${item.itemNameSnapshot}" ainda nao foi recriado no backend.';
+        }
+        continue;
+      }
       if (item.productRemoteId == null || item.productRemoteId!.isEmpty) {
-        return 'Compra ainda nao pode subir porque o produto "${item.productNameSnapshot}" ainda nao foi recriado no backend.';
+        return 'Compra ainda nao pode subir porque o produto "${item.itemNameSnapshot}" ainda nao foi recriado no backend.';
       }
     }
 
@@ -314,7 +323,7 @@ class PurchasesRepositoryImpl
       }
 
       throw const ValidationException(
-        'Compra ainda nao pode subir porque o registro remoto antigo nao existe mais. Recrie primeiro fornecedor e produtos remotos e depois tente reenviar a compra.',
+        'Compra ainda nao pode subir porque o registro remoto antigo nao existe mais. Recrie primeiro fornecedor, produtos e insumos remotos e depois tente reenviar a compra.',
       );
     }
   }
@@ -328,7 +337,7 @@ class PurchasesRepositoryImpl
       }
 
       throw const ValidationException(
-        'Registro remoto antigo da compra nao existe mais. A recuperacao automatica nao e aplicada em compras; recrie primeiro fornecedor e produtos remotos e revise o payload.',
+        'Registro remoto antigo da compra nao existe mais. A recuperacao automatica nao e aplicada em compras; recrie primeiro fornecedor, produtos e insumos remotos e revise o payload.',
       );
     }
   }

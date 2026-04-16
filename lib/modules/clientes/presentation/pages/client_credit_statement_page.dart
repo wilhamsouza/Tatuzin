@@ -3,14 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
-import '../../../../app/core/utils/money_parser.dart';
-import '../../../../app/core/widgets/app_feedback.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../domain/entities/client.dart';
 import '../../domain/entities/customer_credit_transaction.dart';
 import '../providers/client_providers.dart';
+import '../support/customer_credit_action_dialog.dart';
 
 class ClientCreditStatementPage extends ConsumerWidget {
   const ClientCreditStatementPage({
@@ -29,7 +28,7 @@ class ClientCreditStatementPage extends ConsumerWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Haver do cliente')),
+      appBar: AppBar(title: const Text('Extrato do cliente')),
       body: FutureBuilder<Client?>(
         future: ref.read(localClientRepositoryProvider).findById(clientId),
         initialData: initialClient,
@@ -46,7 +45,7 @@ class ClientCreditStatementPage extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Haver disponível',
+                      'Haver disponivel',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 4),
@@ -63,24 +62,24 @@ class ClientCreditStatementPage extends ConsumerWidget {
                       runSpacing: 8,
                       children: [
                         FilledButton.icon(
-                          onPressed: () => _openManualDialog(
+                          onPressed: () => openCustomerCreditActionDialog(
                             context,
                             ref,
                             client: client,
                             isCredit: true,
                           ),
                           icon: const Icon(Icons.add_circle_outline),
-                          label: const Text('Lançar crédito'),
+                          label: const Text('Adicionar haver'),
                         ),
                         OutlinedButton.icon(
-                          onPressed: () => _openManualDialog(
+                          onPressed: () => openCustomerCreditActionDialog(
                             context,
                             ref,
                             client: client,
                             isCredit: false,
                           ),
                           icon: const Icon(Icons.remove_circle_outline),
-                          label: const Text('Lançar débito'),
+                          label: const Text('Registrar pendencia'),
                         ),
                       ],
                     ),
@@ -92,16 +91,16 @@ class ClientCreditStatementPage extends ConsumerWidget {
                 data: (transactions) {
                   if (transactions.isEmpty) {
                     return const AppStateCard(
-                      title: 'Sem movimentações de haver',
+                      title: 'Sem movimentacoes de haver',
                       message:
-                          'Quando houver crédito, uso ou estorno, o extrato aparecerá aqui.',
+                          'Quando houver adicao de haver, uso ou estorno, o extrato aparecera aqui.',
                       compact: true,
                     );
                   }
 
                   return AppSectionCard(
                     title: 'Extrato',
-                    subtitle: 'Movimentações registradas no cliente.',
+                    subtitle: 'Movimentacoes registradas no cliente.',
                     child: Column(
                       children: [
                         for (
@@ -127,7 +126,7 @@ class ClientCreditStatementPage extends ConsumerWidget {
                 },
                 loading: () => const AppStateCard(
                   title: 'Carregando extrato',
-                  message: 'Organizando o histórico de haver.',
+                  message: 'Organizando o historico de haver.',
                   compact: true,
                   tone: AppStateTone.loading,
                 ),
@@ -150,108 +149,6 @@ class ClientCreditStatementPage extends ConsumerWidget {
         },
       ),
     );
-  }
-
-  Future<void> _openManualDialog(
-    BuildContext context,
-    WidgetRef ref, {
-    required Client? client,
-    required bool isCredit,
-  }) async {
-    if (client == null) {
-      AppFeedback.error(
-        context,
-        'Cliente nao foi encontrado para este extrato.',
-      );
-      return;
-    }
-
-    final amountController = TextEditingController();
-    final descriptionController = TextEditingController();
-    final submitted = await showDialog<(int, String?)>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(isCredit ? 'Lançar crédito' : 'Lançar débito'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: amountController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(labelText: 'Valor'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: descriptionController,
-                decoration: const InputDecoration(
-                  labelText: 'Descrição',
-                  hintText: 'Opcional',
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(context).pop((
-                  MoneyParser.parseToCents(amountController.text),
-                  descriptionController.text.trim().isEmpty
-                      ? null
-                      : descriptionController.text.trim(),
-                ));
-              },
-              child: const Text('Confirmar'),
-            ),
-          ],
-        );
-      },
-    );
-    amountController.dispose();
-    descriptionController.dispose();
-
-    if (submitted == null) {
-      return;
-    }
-
-    try {
-      final controller = ref.read(customerCreditControllerProvider.notifier);
-      final transaction = isCredit
-          ? await controller.addManualCredit(
-              customerId: client.id,
-              amountCents: submitted.$1,
-              description: submitted.$2,
-            )
-          : await controller.addManualDebit(
-              customerId: client.id,
-              amountCents: submitted.$1,
-              description: submitted.$2,
-            );
-      if (!context.mounted) {
-        return;
-      }
-      AppFeedback.success(
-        context,
-        isCredit
-            ? 'Crédito lançado com sucesso.'
-            : 'Débito lançado com sucesso.',
-      );
-      context.pushNamed(
-        AppRouteNames.customerCreditReceipt,
-        pathParameters: {'transactionId': '${transaction.id}'},
-      );
-    } catch (error) {
-      if (!context.mounted) {
-        return;
-      }
-      AppFeedback.error(context, 'Nao foi possivel registrar o haver: $error');
-    }
   }
 }
 
@@ -301,7 +198,7 @@ class _CreditTransactionTile extends StatelessWidget {
               ),
               const SizedBox(height: 3),
               Text(
-                transaction.description ?? 'Sem observação',
+                transaction.description ?? 'Sem observacao',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
@@ -348,9 +245,9 @@ class _CreditTransactionTile extends StatelessWidget {
   static String _labelForType(String type) {
     switch (type) {
       case CustomerCreditTransactionType.manualCredit:
-        return 'Crédito manual';
+        return 'Haver manual';
       case CustomerCreditTransactionType.manualDebit:
-        return 'Débito manual';
+        return 'Pendencia manual';
       case CustomerCreditTransactionType.overpaymentCredit:
         return 'Excedente em haver';
       case CustomerCreditTransactionType.saleCancelCredit:
@@ -362,9 +259,9 @@ class _CreditTransactionTile extends StatelessWidget {
       case CustomerCreditTransactionType.creditReversal:
         return 'Estorno de haver';
       case CustomerCreditTransactionType.saleReturnCredit:
-        return 'Devolução em haver';
+        return 'Devolucao em haver';
       default:
-        return 'Movimentação de haver';
+        return 'Movimentacao de haver';
     }
   }
 }

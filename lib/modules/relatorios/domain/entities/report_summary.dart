@@ -2,6 +2,7 @@ import 'report_customer_credit_summary.dart';
 import 'report_payment_summary.dart';
 import 'report_period.dart';
 import 'report_sold_product_summary.dart';
+import 'report_variant_summary.dart';
 
 class ReportSummary {
   const ReportSummary({
@@ -27,6 +28,7 @@ class ReportSummary {
     required this.topCreditCustomers,
     required this.paymentSummaries,
     required this.soldProducts,
+    required this.variantSummaries,
   });
 
   final ReportPeriod period;
@@ -51,4 +53,5 @@ class ReportSummary {
   final List<ReportCustomerCreditSummary> topCreditCustomers;
   final List<ReportPaymentSummary> paymentSummaries;
   final List<ReportSoldProductSummary> soldProducts;
+  final List<ReportVariantSummary> variantSummaries;
 }

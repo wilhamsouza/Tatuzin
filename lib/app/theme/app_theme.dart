@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_design_tokens.dart';
+
 abstract final class AppTheme {
   static const primary = Color(0xFF7B5234);
   static const secondary = Color(0xFFA1714C);
@@ -46,10 +48,145 @@ abstract final class AppTheme {
       scrim: const Color(0xFF111827),
     );
 
+    const layoutTokens = AppLayoutTokens(
+      radiusSm: 10,
+      radiusMd: 12,
+      radiusLg: 14,
+      radiusXl: 16,
+      radiusSheet: 24,
+      radiusPill: 999,
+      space2: 4,
+      space3: 6,
+      space4: 8,
+      space5: 10,
+      space6: 12,
+      space7: 14,
+      space8: 16,
+      space9: 18,
+      space10: 20,
+      space11: 24,
+      pagePadding: 16,
+      pagePaddingCompact: 12,
+      sectionGap: 14,
+      blockGap: 12,
+      gridGap: 10,
+      iconSm: 16,
+      iconMd: 18,
+      iconLg: 20,
+      inputHeight: 48,
+      actionHeight: 48,
+      compactActionHeight: 40,
+      quickActionHeight: 44,
+      cardPadding: 16,
+      compactCardPadding: 12,
+      headerPadding: 12,
+      bottomBarPadding: 12,
+      sheetPadding: 16,
+      shadowBlur: 14,
+      shadowOffsetY: 6,
+    );
+
+    final colorTokens = AppColorTokens(
+      pageBackground: background,
+      cardBackground: colorScheme.surface,
+      sectionBackground: colorScheme.surfaceContainerLow,
+      raisedBackground: colorScheme.surfaceContainer,
+      sunkenBackground: colorScheme.surfaceContainerHighest,
+      overlay: colorScheme.scrim.withValues(alpha: 0.42),
+      outlineSoft: colorScheme.outlineVariant,
+      outlineStrong: colorScheme.outline,
+      shadowSoft: colorScheme.shadow.withValues(alpha: 0.08),
+      brand: AppTonePalette(
+        base: colorScheme.primary,
+        onBase: colorScheme.onPrimary,
+        surface: colorScheme.primaryContainer.withValues(alpha: 0.58),
+        onSurface: colorScheme.onPrimaryContainer,
+        border: colorScheme.primary.withValues(alpha: 0.14),
+      ),
+      info: AppTonePalette(
+        base: colorScheme.primary,
+        onBase: colorScheme.onPrimary,
+        surface: colorScheme.primaryContainer.withValues(alpha: 0.52),
+        onSurface: colorScheme.onPrimaryContainer,
+        border: colorScheme.primary.withValues(alpha: 0.14),
+      ),
+      success: AppTonePalette(
+        base: colorScheme.tertiary,
+        onBase: colorScheme.onTertiary,
+        surface: colorScheme.tertiaryContainer.withValues(alpha: 0.72),
+        onSurface: colorScheme.onTertiaryContainer,
+        border: colorScheme.tertiary.withValues(alpha: 0.18),
+      ),
+      warning: AppTonePalette(
+        base: warning,
+        onBase: Colors.white,
+        surface: colorScheme.secondaryContainer.withValues(alpha: 0.72),
+        onSurface: colorScheme.onSecondaryContainer,
+        border: warning.withValues(alpha: 0.18),
+      ),
+      danger: AppTonePalette(
+        base: colorScheme.error,
+        onBase: colorScheme.onError,
+        surface: colorScheme.errorContainer.withValues(alpha: 0.72),
+        onSurface: colorScheme.onErrorContainer,
+        border: colorScheme.error.withValues(alpha: 0.18),
+      ),
+      sales: const AppTonePalette(
+        base: Color(0xFF8C6239),
+        onBase: Colors.white,
+        surface: Color(0xFFF4E6D8),
+        onSurface: Color(0xFF5A3922),
+        border: Color(0xFFD2B89D),
+      ),
+      cashflowPositive: const AppTonePalette(
+        base: Color(0xFF166534),
+        onBase: Colors.white,
+        surface: Color(0xFFDCFCE7),
+        onSurface: Color(0xFF166534),
+        border: Color(0xFF86EFAC),
+      ),
+      cashflowNegative: const AppTonePalette(
+        base: Color(0xFFB91C1C),
+        onBase: Colors.white,
+        surface: Color(0xFFFEE2E2),
+        onSurface: Color(0xFF991B1B),
+        border: Color(0xFFFCA5A5),
+      ),
+      stockLow: const AppTonePalette(
+        base: Color(0xFF9A6700),
+        onBase: Colors.white,
+        surface: Color(0xFFFEF3C7),
+        onSurface: Color(0xFF92400E),
+        border: Color(0xFFF6C453),
+      ),
+      interactive: AppTonePalette(
+        base: colorScheme.primary,
+        onBase: colorScheme.onPrimary,
+        surface: colorScheme.surfaceContainerLowest,
+        onSurface: colorScheme.onSurface,
+        border: colorScheme.outlineVariant,
+      ),
+      disabled: AppTonePalette(
+        base: colorScheme.surfaceContainerHigh,
+        onBase: colorScheme.onSurfaceVariant,
+        surface: colorScheme.surfaceContainerHigh,
+        onSurface: colorScheme.onSurfaceVariant,
+        border: colorScheme.outlineVariant.withValues(alpha: 0.72),
+      ),
+      selection: AppTonePalette(
+        base: colorScheme.primary,
+        onBase: colorScheme.onPrimary,
+        surface: colorScheme.primaryContainer.withValues(alpha: 0.4),
+        onSurface: colorScheme.onPrimaryContainer,
+        border: colorScheme.primary.withValues(alpha: 0.2),
+      ),
+    );
+
     final base = ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: background,
+      scaffoldBackgroundColor: colorTokens.pageBackground,
+      extensions: <ThemeExtension<dynamic>>[colorTokens, layoutTokens],
     );
 
     final textTheme = base.textTheme.copyWith(
@@ -99,8 +236,8 @@ abstract final class AppTheme {
     );
 
     final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
-      borderSide: BorderSide(color: colorScheme.outlineVariant),
+      borderRadius: BorderRadius.circular(layoutTokens.radiusLg),
+      borderSide: BorderSide(color: colorTokens.outlineSoft),
     );
 
     return base.copyWith(
@@ -111,7 +248,7 @@ abstract final class AppTheme {
       ),
       appBarTheme: AppBarTheme(
         centerTitle: false,
-        backgroundColor: background,
+        backgroundColor: colorTokens.pageBackground,
         foregroundColor: onSurface,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -121,44 +258,53 @@ abstract final class AppTheme {
         iconTheme: IconThemeData(color: colorScheme.primary),
       ),
       cardTheme: CardThemeData(
-        color: colorScheme.surface,
+        color: colorTokens.cardBackground,
         elevation: 0,
         margin: EdgeInsets.zero,
-        shadowColor: colorScheme.shadow.withValues(alpha: 0.05),
+        shadowColor: colorTokens.shadowSoft,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: colorScheme.outlineVariant),
+          borderRadius: BorderRadius.circular(layoutTokens.radiusXl),
+          side: BorderSide(color: colorTokens.outlineSoft),
         ),
       ),
       dividerTheme: DividerThemeData(
-        color: colorScheme.outlineVariant,
+        color: colorTokens.outlineSoft,
         thickness: 1,
         space: 1,
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: colorScheme.surface,
+        backgroundColor: colorTokens.cardBackground,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(layoutTokens.radiusXl),
+        ),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: colorTokens.cardBackground,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(layoutTokens.radiusSheet),
+          ),
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: colorScheme.surface,
+        fillColor: colorTokens.cardBackground,
         hintStyle: textTheme.bodyMedium?.copyWith(
           color: colorScheme.onSurfaceVariant,
         ),
         labelStyle: textTheme.bodyMedium?.copyWith(
           color: colorScheme.onSurfaceVariant,
         ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 12,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: layoutTokens.space8,
+          vertical: layoutTokens.space6,
         ),
         border: border,
         enabledBorder: border,
         disabledBorder: border.copyWith(
-          borderSide: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.7),
-          ),
+          borderSide: BorderSide(color: colorTokens.disabled.border),
         ),
         focusedBorder: border.copyWith(
           borderSide: BorderSide(color: colorScheme.primary, width: 1.6),
@@ -172,19 +318,24 @@ abstract final class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ButtonStyle(
-          minimumSize: const WidgetStatePropertyAll(Size.fromHeight(48)),
-          padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          minimumSize: WidgetStatePropertyAll(
+            Size.fromHeight(layoutTokens.actionHeight),
+          ),
+          padding: WidgetStatePropertyAll(
+            EdgeInsets.symmetric(
+              horizontal: layoutTokens.space8,
+              vertical: layoutTokens.space6,
+            ),
           ),
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.disabled)) {
-              return colorScheme.surfaceContainerHigh;
+              return colorTokens.disabled.base;
             }
             return colorScheme.primary;
           }),
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.disabled)) {
-              return colorScheme.onSurfaceVariant;
+              return colorTokens.disabled.onBase;
             }
             return colorScheme.onPrimary;
           }),
@@ -196,26 +347,33 @@ abstract final class AppTheme {
           }),
           elevation: const WidgetStatePropertyAll(0),
           shape: WidgetStatePropertyAll(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(layoutTokens.radiusMd),
+            ),
           ),
           textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: ButtonStyle(
-          minimumSize: const WidgetStatePropertyAll(Size.fromHeight(48)),
-          padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          minimumSize: WidgetStatePropertyAll(
+            Size.fromHeight(layoutTokens.actionHeight),
+          ),
+          padding: WidgetStatePropertyAll(
+            EdgeInsets.symmetric(
+              horizontal: layoutTokens.space8,
+              vertical: layoutTokens.space6,
+            ),
           ),
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.disabled)) {
-              return colorScheme.surfaceContainerHigh;
+              return colorTokens.disabled.base;
             }
             return colorScheme.primary;
           }),
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.disabled)) {
-              return colorScheme.onSurfaceVariant;
+              return colorTokens.disabled.onBase;
             }
             return colorScheme.onPrimary;
           }),
@@ -226,27 +384,34 @@ abstract final class AppTheme {
             return null;
           }),
           shape: WidgetStatePropertyAll(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(layoutTokens.radiusMd),
+            ),
           ),
           textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: ButtonStyle(
-          minimumSize: const WidgetStatePropertyAll(Size.fromHeight(48)),
-          padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          minimumSize: WidgetStatePropertyAll(
+            Size.fromHeight(layoutTokens.actionHeight),
+          ),
+          padding: WidgetStatePropertyAll(
+            EdgeInsets.symmetric(
+              horizontal: layoutTokens.space8,
+              vertical: layoutTokens.space6,
+            ),
           ),
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.disabled)) {
-              return colorScheme.onSurfaceVariant;
+              return colorTokens.disabled.onBase;
             }
             return colorScheme.primary;
           }),
           side: WidgetStateProperty.resolveWith((states) {
             final borderColor = states.contains(WidgetState.disabled)
-                ? colorScheme.outlineVariant.withValues(alpha: 0.6)
-                : colorScheme.outlineVariant;
+                ? colorTokens.disabled.border
+                : colorTokens.outlineSoft;
             return BorderSide(color: borderColor);
           }),
           overlayColor: WidgetStateProperty.resolveWith((states) {
@@ -256,7 +421,9 @@ abstract final class AppTheme {
             return null;
           }),
           shape: WidgetStatePropertyAll(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(layoutTokens.radiusMd),
+            ),
           ),
           textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
         ),
@@ -264,36 +431,45 @@ abstract final class AppTheme {
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: colorScheme.primary,
         foregroundColor: colorScheme.onPrimary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(layoutTokens.radiusLg),
+        ),
       ),
       chipTheme: base.chipTheme.copyWith(
-        backgroundColor: colorScheme.surfaceContainerHigh,
-        selectedColor: colorScheme.primaryContainer,
-        secondarySelectedColor: colorScheme.primaryContainer,
-        disabledColor: colorScheme.surfaceContainerHigh,
+        backgroundColor: colorTokens.sectionBackground,
+        selectedColor: colorTokens.selection.surface,
+        secondarySelectedColor: colorTokens.selection.surface,
+        disabledColor: colorTokens.disabled.surface,
         labelStyle: textTheme.bodySmall?.copyWith(
           color: colorScheme.onSurface,
           fontWeight: FontWeight.w700,
         ),
         secondaryLabelStyle: textTheme.bodySmall?.copyWith(
-          color: colorScheme.onPrimaryContainer,
+          color: colorTokens.selection.onSurface,
           fontWeight: FontWeight.w700,
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(layoutTokens.radiusPill),
+        ),
         side: BorderSide.none,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: EdgeInsets.symmetric(
+          horizontal: layoutTokens.space4,
+          vertical: layoutTokens.space2,
+        ),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: onSurface,
         contentTextStyle: textTheme.bodyMedium?.copyWith(color: Colors.white),
         actionTextColor: colorScheme.secondary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(layoutTokens.radiusLg),
+        ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
-        indicatorColor: colorScheme.primaryContainer,
+        indicatorColor: colorTokens.selection.surface,
         iconTheme: WidgetStateProperty.resolveWith((states) {
           return IconThemeData(
             color: states.contains(WidgetState.selected)
@@ -310,12 +486,19 @@ abstract final class AppTheme {
         }),
       ),
       listTileTheme: ListTileThemeData(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: layoutTokens.space7,
+          vertical: 2,
+        ),
         iconColor: colorScheme.primary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(layoutTokens.radiusMd),
+        ),
       ),
       checkboxTheme: CheckboxThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(layoutTokens.space3),
+        ),
         side: BorderSide(color: colorScheme.outline),
       ),
     );

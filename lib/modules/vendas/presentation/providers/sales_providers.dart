@@ -115,6 +115,8 @@ class SalesCatalogEntry {
       sellableVariantPriceAdditionalCents: variant.priceAdditionalCents,
       unitMeasure: product.unitMeasure,
       costCents: product.costCents,
+      manualCostCents: product.manualCostCents,
+      costSource: product.costSource,
       salePriceCents: product.salePriceCents + variant.priceAdditionalCents,
       stockMil: variant.stockMil,
       isActive: product.isActive,
