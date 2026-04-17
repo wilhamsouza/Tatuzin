@@ -63,20 +63,18 @@ class SaleDetailPage extends ConsumerWidget {
             ],
             if (detail.sale.status == SaleStatus.active) ...[
               const SizedBox(height: 16),
-              if (_hasExchangeableItems(detail.items))
-                FilledButton.icon(
-                  onPressed: exchangeState.isLoading
-                      ? null
-                      : () => _openReturnFlow(context, ref, detail),
-                  icon: const Icon(Icons.swap_horiz_rounded),
-                  label: Text(
-                    exchangeState.isLoading
-                        ? 'Registrando troca...'
-                        : 'Registrar troca ou devolucao',
-                  ),
+              FilledButton.icon(
+                onPressed: exchangeState.isLoading
+                    ? null
+                    : () => _openReturnFlow(context, ref, detail),
+                icon: const Icon(Icons.swap_horiz_rounded),
+                label: Text(
+                  exchangeState.isLoading
+                      ? 'Registrando...'
+                      : 'Registrar troca ou devolucao',
                 ),
-              if (_hasExchangeableItems(detail.items))
-                const SizedBox(height: 12),
+              ),
+              const SizedBox(height: 12),
               FilledButton.tonalIcon(
                 onPressed: cancellationState.isLoading
                     ? null
@@ -100,10 +98,6 @@ class SaleDetailPage extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  bool _hasExchangeableItems(List<SaleItemDetail> items) {
-    return items.any((item) => item.productVariantId != null);
   }
 
   Future<void> _openReturnFlow(
@@ -329,10 +323,7 @@ class _ReceiptCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Comprovante',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('Comprovante', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Text(
               detail.sale.status == SaleStatus.cancelled
@@ -429,7 +420,9 @@ class _SaleItemRow extends StatelessWidget {
                     if (item.variantSummary != null)
                       _InfoPill(label: item.variantSummary!),
                     if ((item.variantSkuSnapshot ?? '').trim().isNotEmpty)
-                      _InfoPill(label: 'SKU ${item.variantSkuSnapshot!.trim()}'),
+                      _InfoPill(
+                        label: 'SKU ${item.variantSkuSnapshot!.trim()}',
+                      ),
                   ],
                 ),
               ],
@@ -690,9 +683,9 @@ class _InfoPill extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          fontWeight: FontWeight.w700,
-        ),
+        style: Theme.of(
+          context,
+        ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -733,9 +726,7 @@ class _SaleReturnSheetState extends ConsumerState<_SaleReturnSheet> {
     super.dispose();
   }
 
-  List<SaleItemDetail> get _eligibleItems => widget.detail.items
-      .where((item) => item.productVariantId != null)
-      .toList(growable: false);
+  List<SaleItemDetail> get _eligibleItems => widget.detail.items;
 
   SaleItemDetail? get _selectedSaleItem {
     final selectedId = _selectedSaleItemId;
@@ -789,14 +780,14 @@ class _SaleReturnSheetState extends ConsumerState<_SaleReturnSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Troca simples vinculada',
+                'Troca ou devolucao',
                 style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 6),
               Text(
-                'Devolva a peca original e, se quiser, gere a nova venda da troca agora.',
+                'Selecione o item, escolha devolver ou trocar por outro produto.',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
@@ -893,7 +884,7 @@ class _SaleReturnSheetState extends ConsumerState<_SaleReturnSheet> {
               if (_mode == SaleReturnMode.exchangeWithNewSale) ...[
                 const SizedBox(height: 16),
                 Text(
-                  'Nova variante',
+                  'Novo item',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -912,7 +903,7 @@ class _SaleReturnSheetState extends ConsumerState<_SaleReturnSheet> {
                   data: (products) {
                     if (products.isEmpty) {
                       return Text(
-                        'Nenhuma variante disponivel para a busca informada.',
+                        'Nenhum produto disponivel para a busca informada.',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                         ),
@@ -924,8 +915,7 @@ class _SaleReturnSheetState extends ConsumerState<_SaleReturnSheet> {
                       child: ListView.separated(
                         shrinkWrap: true,
                         itemCount: products.length,
-                        separatorBuilder: (_, __) =>
-                            const Divider(height: 1),
+                        separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (context, index) {
                           final product = products[index];
                           final isSelected =
@@ -970,7 +960,7 @@ class _SaleReturnSheetState extends ConsumerState<_SaleReturnSheet> {
                     child: LinearProgressIndicator(minHeight: 2),
                   ),
                   error: (error, _) => Text(
-                    'Falha ao buscar variantes: $error',
+                    'Falha ao buscar: $error',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colorScheme.error,
                     ),
@@ -1073,7 +1063,7 @@ class _SaleReturnSheetState extends ConsumerState<_SaleReturnSheet> {
         _replacementCartItem == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Selecione a nova variante para concluir a troca.'),
+          content: Text('Selecione o novo item para concluir a troca.'),
         ),
       );
       return;
@@ -1192,16 +1182,18 @@ class _ExchangeFinancialHint extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     final message = switch (mode) {
-      SaleReturnMode.returnOnly => saleHasClient
-          ? 'Sem nova venda: o valor devolvido vira haver do cliente.'
-          : 'Sem nova venda: o valor devolvido vira estorno financeiro.',
-      SaleReturnMode.exchangeWithNewSale => differenceCents > 0
-          ? 'A nova peca ficou mais cara. O sistema vai cobrar apenas a diferenca.'
-          : differenceCents < 0
-          ? saleHasClient
-                ? 'A troca ficou menor. O restante vira haver do cliente.'
-                : 'A troca ficou menor. O restante vira estorno financeiro.'
-          : 'A troca ficou no mesmo valor. A nova venda sai zerada.',
+      SaleReturnMode.returnOnly =>
+        saleHasClient
+            ? 'Sem nova venda: o valor devolvido vira haver do cliente.'
+            : 'Sem nova venda: o valor devolvido vira estorno financeiro.',
+      SaleReturnMode.exchangeWithNewSale =>
+        differenceCents > 0
+            ? 'A nova peca ficou mais cara. O sistema vai cobrar apenas a diferenca.'
+            : differenceCents < 0
+            ? saleHasClient
+                  ? 'A troca ficou menor. O restante vira haver do cliente.'
+                  : 'A troca ficou menor. O restante vira estorno financeiro.'
+            : 'A troca ficou no mesmo valor. A nova venda sai zerada.',
     };
 
     return Container(

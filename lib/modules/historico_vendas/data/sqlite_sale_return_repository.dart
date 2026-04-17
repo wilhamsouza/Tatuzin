@@ -150,7 +150,7 @@ class SqliteSaleReturnRepository {
       if (input.mode == SaleReturnMode.exchangeWithNewSale &&
           input.replacementItems.isEmpty) {
         throw const ValidationException(
-          'Selecione a nova variante para concluir a troca.',
+          'Selecione o novo item para concluir a troca.',
         );
       }
       if (input.mode == SaleReturnMode.returnOnly &&
@@ -195,11 +195,6 @@ class SqliteSaleReturnRepository {
         }
 
         final variantId = itemRow['produto_variante_id'] as int?;
-        if (variantId == null) {
-          throw const ValidationException(
-            'A troca simples deste piloto funciona apenas para itens de grade.',
-          );
-        }
 
         final quantityMil = returnedItem.quantityMil;
         if (quantityMil <= 0 || quantityMil % 1000 != 0) {
@@ -220,12 +215,21 @@ class SqliteSaleReturnRepository {
           );
         }
 
-        await _restockVariant(
-          txn,
-          variantId: variantId,
-          quantityMil: quantityMil,
-          updatedAtIso: nowIso,
-        );
+        if (variantId != null) {
+          await _restockVariant(
+            txn,
+            variantId: variantId,
+            quantityMil: quantityMil,
+            updatedAtIso: nowIso,
+          );
+        } else {
+          await _restockSimpleProduct(
+            txn,
+            productId: itemRow['produto_id'] as int,
+            quantityMil: quantityMil,
+            updatedAtIso: nowIso,
+          );
+        }
         touchedProductIds.add(itemRow['produto_id'] as int);
 
         final subtotalCents = _calculateReturnedSubtotal(
@@ -493,6 +497,37 @@ class SqliteSaleReturnRepository {
     }
   }
 
+  Future<void> _restockSimpleProduct(
+    DatabaseExecutor txn, {
+    required int productId,
+    required int quantityMil,
+    required String updatedAtIso,
+  }) async {
+    final rows = await txn.query(
+      TableNames.produtos,
+      columns: ['estoque_mil'],
+      where: 'id = ?',
+      whereArgs: [productId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw const ValidationException(
+        'O produto original nao foi encontrado para recompor o estoque.',
+      );
+    }
+
+    final currentStockMil = rows.first['estoque_mil'] as int? ?? 0;
+    await txn.update(
+      TableNames.produtos,
+      {
+        'estoque_mil': currentStockMil + quantityMil,
+        'atualizado_em': updatedAtIso,
+      },
+      where: 'id = ?',
+      whereArgs: [productId],
+    );
+  }
+
   int _calculateReturnedSubtotal(
     Map<String, Object?> row, {
     required int quantityMil,
@@ -509,11 +544,6 @@ class SqliteSaleReturnRepository {
 
   void _validateReplacementItems(List<CartItem> replacementItems) {
     for (final item in replacementItems) {
-      if (item.productVariantId == null) {
-        throw const ValidationException(
-          'Selecione uma variante valida para a nova peca da troca.',
-        );
-      }
       if (item.quantityMil <= 0 || item.quantityMil % 1000 != 0) {
         throw const ValidationException(
           'A nova peca da troca precisa usar quantidade inteira em pecas.',
@@ -595,7 +625,7 @@ class _ResolvedSaleReturnItem {
 
   final int saleItemId;
   final int productId;
-  final int productVariantId;
+  final int? productVariantId;
   final String productName;
   final String? variantSkuSnapshot;
   final String? variantColorSnapshot;
