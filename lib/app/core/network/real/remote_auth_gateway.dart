@@ -113,6 +113,42 @@ class RemoteAuthGateway implements AuthGateway {
   }
 
   @override
+  Future<String> requestPasswordReset({required String email}) async {
+    final response = await _apiClient.postJson(
+      '/auth/forgot-password',
+      body: <String, dynamic>{'email': email.trim()},
+    );
+
+    return _readMessage(
+      response.data,
+      fallbackMessage:
+          'Se existir uma conta com este e-mail, enviaremos as instrucoes para redefinir sua senha.',
+    );
+  }
+
+  @override
+  Future<String> resetPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    final response = await _apiClient.postJson(
+      '/auth/reset-password',
+      body: <String, dynamic>{
+        'token': token.trim(),
+        'newPassword': newPassword,
+      },
+    );
+
+    await _tokenStorage.clear();
+
+    return _readMessage(
+      response.data,
+      fallbackMessage:
+          'Sua senha foi redefinida com sucesso. Entre novamente para continuar.',
+    );
+  }
+
+  @override
   Future<void> signOut() async {
     final token = await _tokenStorage.readAccessToken();
     if (token != null) {
@@ -275,6 +311,18 @@ class RemoteAuthGateway implements AuthGateway {
     }
 
     throw AuthenticationException(fallbackMessage);
+  }
+
+  static String _readMessage(
+    Map<String, dynamic> source, {
+    required String fallbackMessage,
+  }) {
+    final value = source['message'];
+    if (value is String && value.trim().isNotEmpty) {
+      return value.trim();
+    }
+
+    return fallbackMessage;
   }
 }
 

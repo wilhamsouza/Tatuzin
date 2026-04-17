@@ -599,6 +599,32 @@ export class AuthSessionService {
     });
   }
 
+  async revokeAllUserSessions(input: {
+    userId: string;
+    actorUserId: string;
+    auditAction: string;
+    revokedReason: string;
+  }) {
+    const sessions = await prisma.deviceSession.findMany({
+      where: {
+        userId: input.userId,
+        revokedAt: null,
+      },
+    });
+
+    for (const session of sessions) {
+      await this.revokeSession({
+        session,
+        actorUserId: input.actorUserId,
+        subjectUserId: input.userId,
+        auditAction: input.auditAction,
+        revokedReason: input.revokedReason,
+      });
+    }
+
+    return sessions.length;
+  }
+
   async revokeSessionAsPlatformAdmin(input: {
     sessionId: string;
     actorUserId: string;

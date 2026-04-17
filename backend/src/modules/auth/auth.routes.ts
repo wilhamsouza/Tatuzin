@@ -7,8 +7,10 @@ import { validateBody } from '../../shared/http/validate';
 import { CompaniesService } from '../companies/companies.service';
 import { AuthService } from './auth.service';
 import {
+  forgotPasswordSchema,
   loginSchema,
   registerSchema,
+  resetPasswordSchema,
   refreshSchema,
   registerInitialSchema,
 } from './auth.schemas';
@@ -59,6 +61,24 @@ const registerRateLimit = createRateLimit({
   code: 'AUTH_REGISTER_RATE_LIMITED',
 });
 
+const forgotPasswordRateLimit = createRateLimit({
+  name: 'auth_forgot_password',
+  windowMs: 10 * 60_000,
+  max: 5,
+  message:
+    'Muitas tentativas de recuperacao de senha em pouco tempo. Aguarde um instante e tente novamente.',
+  code: 'AUTH_FORGOT_PASSWORD_RATE_LIMITED',
+});
+
+const resetPasswordRateLimit = createRateLimit({
+  name: 'auth_reset_password',
+  windowMs: 10 * 60_000,
+  max: 10,
+  message:
+    'Muitas tentativas de redefinicao de senha em pouco tempo. Aguarde um instante e tente novamente.',
+  code: 'AUTH_RESET_PASSWORD_RATE_LIMITED',
+});
+
 authRouter.get('/health', (_request, response) => {
   response.json({
     ok: true,
@@ -102,6 +122,26 @@ authRouter.post(
   validateBody(refreshSchema),
   asyncHandler(async (request, response) => {
     const payload = await authService.refresh(request.body);
+    response.json(payload);
+  }),
+);
+
+authRouter.post(
+  '/forgot-password',
+  forgotPasswordRateLimit,
+  validateBody(forgotPasswordSchema),
+  asyncHandler(async (request, response) => {
+    const payload = await authService.forgotPassword(request.body);
+    response.json(payload);
+  }),
+);
+
+authRouter.post(
+  '/reset-password',
+  resetPasswordRateLimit,
+  validateBody(resetPasswordSchema),
+  asyncHandler(async (request, response) => {
+    const payload = await authService.resetPassword(request.body);
     response.json(payload);
   }),
 );

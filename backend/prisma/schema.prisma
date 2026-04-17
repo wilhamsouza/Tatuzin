@@ -38,6 +38,7 @@ model User {
   memberships             Membership[]
   adminAuditLogs          AdminAuditLog[]   @relation("AdminAuditActor")
   deviceSessions          DeviceSession[]
+  passwordResetTokens     PasswordResetToken[]
   sessionAuditActorLogs   SessionAuditLog[] @relation("SessionAuditActor")
   sessionAuditSubjectLogs SessionAuditLog[] @relation("SessionAuditSubject")
 }
@@ -147,6 +148,19 @@ model DeviceSession {
   @@index([userId, companyId, revokedAt])
   @@index([refreshTokenExpiresAt])
   @@index([lastSeenAt])
+}
+
+model PasswordResetToken {
+  id         String   @id @default(uuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
 }
 
 model SessionAuditLog {
