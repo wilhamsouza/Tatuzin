@@ -114,7 +114,7 @@ abstract final class SupplyInventorySupport {
     return affectedSupplyIds;
   }
 
-  static Future<Set<int>> recordSaleConsumption(
+  static Future<SupplySaleConsumptionResult> recordSaleConsumption(
     DatabaseExecutor txn, {
     required String saleUuid,
     String? saleRemoteId,
@@ -126,13 +126,14 @@ abstract final class SupplyInventorySupport {
       sourceType: SupplyInventorySourceType.saleCancel,
       sourceLocalUuid: saleUuid,
     )) {
-      return const <int>{};
+      return const SupplySaleConsumptionResult.empty();
     }
 
     final groupedEntries = await _groupSaleConsumption(txn, items: items);
-    if (groupedEntries.isEmpty) {
-      return const <int>{};
-    }
+    final summaryLines = await _buildSaleConsumptionSummaryLines(
+      txn,
+      items: items,
+    );
 
     for (final entry in groupedEntries.values) {
       await txn.insert(
@@ -155,12 +156,17 @@ abstract final class SupplyInventorySupport {
       );
     }
 
-    await rebuildSupplyStockCache(
-      txn,
-      supplyIds: groupedEntries.keys,
-      changedAt: occurredAt,
+    if (groupedEntries.isNotEmpty) {
+      await rebuildSupplyStockCache(
+        txn,
+        supplyIds: groupedEntries.keys,
+        changedAt: occurredAt,
+      );
+    }
+    return SupplySaleConsumptionResult(
+      lines: summaryLines,
+      affectedSupplyIds: groupedEntries.keys.toList(growable: false),
     );
-    return groupedEntries.keys.toSet();
   }
 
   static Future<Set<int>> reverseSaleConsumption(
@@ -682,6 +688,45 @@ abstract final class SupplyInventorySupport {
 
     grouped.removeWhere((_, value) => value.quantityDeltaMil == 0);
     return grouped;
+  }
+
+  static Future<List<SupplySaleConsumptionLine>>
+  _buildSaleConsumptionSummaryLines(
+    DatabaseExecutor txn, {
+    required Iterable<CartItem> items,
+  }) async {
+    final normalizedItems = items.toList(growable: false);
+    if (normalizedItems.isEmpty) {
+      return const <SupplySaleConsumptionLine>[];
+    }
+
+    final productIds = normalizedItems
+        .map((item) => item.productId)
+        .toSet()
+        .toList(growable: false);
+    final placeholders = List.filled(productIds.length, '?').join(',');
+    final recipeRows = await txn.rawQuery('''
+      SELECT DISTINCT product_id
+      FROM ${TableNames.productRecipeItems}
+      WHERE product_id IN ($placeholders)
+      ''', productIds);
+    final recipeProductIds = recipeRows
+        .map((row) => row['product_id'])
+        .whereType<int>()
+        .toSet();
+
+    return normalizedItems
+        .map(
+          (item) => SupplySaleConsumptionLine(
+            productId: item.productId,
+            productName: item.productName,
+            quantityMil: item.quantityMil,
+            status: recipeProductIds.contains(item.productId)
+                ? SupplySaleConsumptionLineStatus.appliedFromRecipe
+                : SupplySaleConsumptionLineStatus.skippedWithoutRecipe,
+          ),
+        )
+        .toList(growable: false);
   }
 
   static Future<Map<int, _SupplyInventoryInfo>> _loadSupplyInfo(
