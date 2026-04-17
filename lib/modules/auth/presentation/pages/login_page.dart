@@ -204,6 +204,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                             alignment: Alignment.centerLeft,
                             child: TextButton.icon(
                               onPressed: canAttemptRemoteLogin && !isBusy
+                                  ? () => context.goNamed(
+                                      AppRouteNames.forgotPassword,
+                                    )
+                                  : null,
+                              icon: const Icon(Icons.lock_reset_rounded),
+                              label: const Text('Esqueci minha senha'),
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton.icon(
+                              onPressed: canAttemptRemoteLogin && !isBusy
                                   ? () => _handleRestoreSession(context)
                                   : null,
                               icon: const Icon(Icons.refresh_rounded),

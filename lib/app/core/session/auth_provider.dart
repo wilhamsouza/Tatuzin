@@ -164,6 +164,51 @@ class AuthController extends AsyncNotifier<void> {
     }
   }
 
+  Future<String> forgotPasswordRemote({required String email}) async {
+    final environment = ref.read(appEnvironmentProvider);
+    if (!environment.authEnabled || !environment.endpointConfig.isConfigured) {
+      throw const ValidationException(
+        'Ative um modo com backend configurado para recuperar a senha remota.',
+      );
+    }
+
+    state = const AsyncLoading();
+    try {
+      final message = await ref
+          .read(remoteAuthGatewayProvider)
+          .requestPasswordReset(email: email);
+      state = const AsyncData(null);
+      return message;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+
+  Future<String> resetPasswordRemote({
+    required String token,
+    required String newPassword,
+  }) async {
+    final environment = ref.read(appEnvironmentProvider);
+    if (!environment.authEnabled || !environment.endpointConfig.isConfigured) {
+      throw const ValidationException(
+        'Ative um modo com backend configurado para redefinir a senha remota.',
+      );
+    }
+
+    state = const AsyncLoading();
+    try {
+      final message = await ref
+          .read(remoteAuthGatewayProvider)
+          .resetPassword(token: token, newPassword: newPassword);
+      state = const AsyncData(null);
+      return message;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+
   Future<void> signOutCurrentSession() async {
     state = const AsyncLoading();
     try {
@@ -185,6 +230,10 @@ class AuthController extends AsyncNotifier<void> {
   Future<void> signOutMock() => signOutCurrentSession();
 
   Future<void> signOutRemote() => signOutCurrentSession();
+
+  void resetStatus() {
+    state = const AsyncData(null);
+  }
 
   void _applySession(AppSession session) {
     ref

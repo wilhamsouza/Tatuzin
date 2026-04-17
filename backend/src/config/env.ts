@@ -7,6 +7,23 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16),
   ACCESS_TOKEN_TTL: z.string().min(2).default('12h'),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).default(30),
+  PASSWORD_RESET_TOKEN_TTL_MINUTES: z.coerce
+    .number()
+    .int()
+    .min(5)
+    .max(120)
+    .default(30),
+  PASSWORD_RESET_DEBUG_LOG_TOKEN: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value == 'true'),
+  PASSWORD_RESET_APP_BASE_URL: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) =>
+      value == null || value.length === 0 ? null : value,
+    ),
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
   APP_ENV: z.string().trim().min(1).default('local-development'),
   PLATFORM_JOB_SWEEP_INTERVAL_MS: z.coerce

@@ -41,6 +41,19 @@ class FakeAuthGateway implements AuthGateway {
   }
 
   @override
+  Future<String> requestPasswordReset({required String email}) async {
+    return 'Se existir uma conta com este e-mail, enviaremos as instrucoes para redefinir sua senha.';
+  }
+
+  @override
+  Future<String> resetPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    return 'Sua senha foi redefinida com sucesso. Entre novamente para continuar.';
+  }
+
+  @override
   Future<void> signOut() async {}
 
   AppSession _buildMockSession({

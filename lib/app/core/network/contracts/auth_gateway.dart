@@ -16,6 +16,13 @@ abstract interface class AuthGateway {
     required String password,
   });
 
+  Future<String> requestPasswordReset({required String email});
+
+  Future<String> resetPassword({
+    required String token,
+    required String newPassword,
+  });
+
   Future<AppSession> refreshSession();
 
   Future<void> signOut();

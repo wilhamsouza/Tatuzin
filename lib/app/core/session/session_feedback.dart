@@ -44,6 +44,31 @@ String friendlySessionFeedbackMessage(
     return 'Muitas tentativas de cadastro em pouco tempo. Aguarde um pouco e tente novamente.';
   }
 
+  if (normalized.contains('auth_forgot_password_rate_limited') ||
+      normalized.contains('muitas tentativas de recuperacao de senha')) {
+    return 'Muitas tentativas de recuperacao de senha em pouco tempo. Aguarde um pouco e tente novamente.';
+  }
+
+  if (normalized.contains('auth_reset_password_rate_limited') ||
+      normalized.contains('muitas tentativas de redefinicao de senha')) {
+    return 'Muitas tentativas de redefinicao de senha em pouco tempo. Aguarde um pouco e tente novamente.';
+  }
+
+  if (normalized.contains('password_reset_token_invalid') ||
+      normalized.contains('token de redefinicao de senha e invalido')) {
+    return 'O token de recuperacao informado nao e valido.';
+  }
+
+  if (normalized.contains('password_reset_token_expired') ||
+      normalized.contains('token de redefinicao de senha expirou')) {
+    return 'O token de recuperacao expirou. Solicite um novo token para continuar.';
+  }
+
+  if (normalized.contains('password_reset_token_already_used') ||
+      normalized.contains('token de redefinicao de senha ja foi utilizado')) {
+    return 'Esse token ja foi usado. Solicite um novo token para redefinir a senha.';
+  }
+
   if (normalized.contains('validation_error') ||
       normalized.contains('dados invalidos enviados para a api')) {
     return 'Revise os dados informados e tente novamente.';

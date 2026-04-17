@@ -95,6 +95,10 @@ export const registerInitialSchema = z.object({
   appVersion: optionalClientString(40),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: normalizedRegisterEmailSchema,
+});
+
 export const refreshSchema = z.object({
   refreshToken: z.string().trim().min(24).max(512),
   clientType: sessionClientTypeSchema.optional(),
@@ -104,8 +108,18 @@ export const refreshSchema = z.object({
   appVersion: optionalClientString(40),
 });
 
+export const resetPasswordSchema = z.object({
+  token: z.string().trim().min(24).max(512),
+  newPassword: z
+    .string()
+    .min(8, 'A nova senha precisa ter pelo menos 8 caracteres.')
+    .max(72),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type RefreshInput = z.infer<typeof refreshSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type RegisterInitialInput = z.infer<typeof registerInitialSchema>;
 export type SessionClientInput = z.infer<typeof sessionClientSchema>;
