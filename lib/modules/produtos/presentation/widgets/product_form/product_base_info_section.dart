@@ -8,7 +8,6 @@ import '../../../../../app/core/widgets/app_section_card.dart';
 import '../../../../../app/theme/app_design_tokens.dart';
 import '../../../../categorias/domain/entities/category.dart';
 import '../../../domain/entities/base_product.dart';
-import '../../../domain/entities/product.dart';
 
 class ProductBaseInfoSection extends StatelessWidget {
   const ProductBaseInfoSection({
@@ -66,9 +65,6 @@ class ProductBaseInfoSection extends StatelessWidget {
   final ValueChanged<String> onUnitMeasureChanged;
   final ValueChanged<bool> onActiveChanged;
 
-  bool get _isVariantCatalog =>
-      selectedCatalogType == ProductCatalogTypes.variant;
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -76,91 +72,28 @@ class ProductBaseInfoSection extends StatelessWidget {
     final layout = context.appLayout;
 
     return AppSectionCard(
-      title: 'Dados base',
+      title: 'Informacoes do produto',
       subtitle:
-          'Cadastre as informacoes principais do produto. A estrutura operacional aparece nas proximas secoes.',
+          'Preencha o essencial para cadastrar seu produto.',
       tone: AppCardTone.standard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (_isVariantCatalog) ...[
-            _ResponsiveFieldRow(
-              children: [
-                TextFormField(
-                  controller: modelNameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Modelo',
-                    hintText: 'Ex.: Camiseta, Burger',
-                  ),
-                  textCapitalization: TextCapitalization.sentences,
-                  validator: (value) {
-                    if (!_isVariantCatalog) {
-                      return null;
-                    }
-                    if ((value ?? '').trim().isEmpty) {
-                      return 'Informe o modelo';
-                    }
-                    return null;
-                  },
-                ),
-                TextFormField(
-                  controller: variantLabelController,
-                  decoration: const InputDecoration(
-                    labelText: 'Variacao comercial',
-                    hintText: 'Ex.: Linha basica, Duplo, Verao',
-                  ),
-                  textCapitalization: TextCapitalization.sentences,
-                  validator: (value) {
-                    if (!_isVariantCatalog) {
-                      return null;
-                    }
-                    if ((value ?? '').trim().isEmpty) {
-                      return 'Informe a variacao';
-                    }
-                    return null;
-                  },
-                ),
-              ],
+          // ── Always show simple name field ──
+          TextFormField(
+            controller: nameController,
+            decoration: const InputDecoration(
+              labelText: 'Nome do produto',
+              hintText: 'Ex.: Coxinha de frango',
             ),
-            SizedBox(height: layout.sectionGap),
-            DropdownButtonFormField<int?>(
-              initialValue: baseProductId,
-              decoration: const InputDecoration(
-                labelText: 'Produto base',
-                helperText: 'Opcional. Use para agrupar SKUs relacionados.',
-              ),
-              items: [
-                const DropdownMenuItem<int?>(
-                  value: null,
-                  child: Text('Usar base automatica'),
-                ),
-                for (final baseProduct in baseProducts)
-                  DropdownMenuItem<int?>(
-                    value: baseProduct.id,
-                    child: Text(baseProduct.name),
-                  ),
-              ],
-              onChanged: isBaseProductLoading ? null : onBaseProductChanged,
-            ),
-          ] else ...[
-            TextFormField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Nome do produto',
-                hintText: 'Ex.: Coxinha de frango',
-              ),
-              textCapitalization: TextCapitalization.sentences,
-              validator: (value) {
-                if (_isVariantCatalog) {
-                  return null;
-                }
-                if ((value ?? '').trim().isEmpty) {
-                  return 'Informe o nome do produto';
-                }
-                return null;
-              },
-            ),
-          ],
+            textCapitalization: TextCapitalization.sentences,
+            validator: (value) {
+              if ((value ?? '').trim().isEmpty) {
+                return 'Informe o nome do produto';
+              }
+              return null;
+            },
+          ),
           SizedBox(height: layout.sectionGap),
           TextFormField(
             controller: descriptionController,
@@ -194,7 +127,7 @@ class ProductBaseInfoSection extends StatelessWidget {
               TextFormField(
                 controller: barcodeController,
                 decoration: const InputDecoration(
-                  labelText: 'Codigo/SKU base',
+                  labelText: 'Codigo do produto',
                   hintText: 'Opcional',
                 ),
               ),
@@ -225,9 +158,9 @@ class ProductBaseInfoSection extends StatelessWidget {
               SwitchListTile.adaptive(
                 value: isActive,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                title: const Text('Produto ativo'),
+                title: const Text('Disponivel para venda'),
                 subtitle: Text(
-                  isActive ? 'Disponivel para venda.' : 'Oculto da operacao.',
+                  isActive ? 'Produto visivel na operacao.' : 'Oculto da operacao.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
@@ -235,6 +168,17 @@ class ProductBaseInfoSection extends StatelessWidget {
                 onChanged: onActiveChanged,
               ),
             ],
+          ),
+
+          // ── Visual divider: Preço e estoque ──
+          SizedBox(height: layout.sectionGap),
+          Divider(color: colorScheme.outlineVariant),
+          SizedBox(height: layout.sectionGap),
+          Text(
+            'Preco e estoque',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
           SizedBox(height: layout.sectionGap),
           _ResponsiveFieldRow(
@@ -245,7 +189,7 @@ class ProductBaseInfoSection extends StatelessWidget {
                   decimal: true,
                 ),
                 decoration: const InputDecoration(
-                  labelText: 'Custo base',
+                  labelText: 'Custo',
                   helperText: 'Valor interno',
                   prefixText: 'R\$ ',
                 ),
@@ -256,8 +200,8 @@ class ProductBaseInfoSection extends StatelessWidget {
                   decimal: true,
                 ),
                 decoration: const InputDecoration(
-                  labelText: 'Preco base',
-                  helperText: 'Valor cobrado',
+                  labelText: 'Preco de venda',
+                  helperText: 'Valor cobrado do cliente',
                   prefixText: 'R\$ ',
                 ),
                 validator: (value) {
@@ -273,13 +217,13 @@ class ProductBaseInfoSection extends StatelessWidget {
           SizedBox(height: layout.sectionGap),
           if (usesVariantStock)
             AppSummaryBlock(
-              label: 'Estoque por grade',
+              label: 'Estoque por variacoes',
               value: activeVariantCount > 0
-                  ? '$activeVariantCount variantes ativas'
+                  ? '$activeVariantCount variacoes ativas'
                   : 'Grade ainda nao configurada',
               caption: activeVariantCount > 0
                   ? 'O estoque total sera calculado automaticamente pela grade.'
-                  : 'Preencha tamanhos e cores para liberar o estoque automatico por SKU.',
+                  : 'Preencha tamanhos e cores para liberar o estoque automatico.',
               icon: Icons.grid_view_rounded,
               palette: context.appColors.info,
               compact: true,

@@ -32,10 +32,10 @@ class ProductNicheDetailsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppSectionCard(
-      title: _isFoodNiche ? 'Detalhes de alimentacao' : 'Detalhes de moda',
+      title: 'Informacoes extras',
       subtitle: _isFoodNiche
-          ? 'Campos de apoio para operacao, preparo e atendimento.'
-          : 'Campos de apoio para contexto textil e organizacao da colecao.',
+          ? 'Detalhes opcionais de preparo e atendimento.'
+          : 'Detalhes opcionais da colecao e composicao.',
       child: Column(
         children: [
           if (_isFoodNiche) ...[
@@ -44,7 +44,7 @@ class ProductNicheDetailsSection extends StatelessWidget {
               decoration: const InputDecoration(
                 labelText: 'Alergenos',
                 hintText: 'Ex.: leite, gluten, castanhas',
-                helperText: 'Separe por virgulas para reabrir e editar melhor.',
+                helperText: 'Separe por virgulas.',
               ),
               textCapitalization: TextCapitalization.sentences,
             ),
@@ -72,7 +72,7 @@ class ProductNicheDetailsSection extends StatelessWidget {
             TextFormField(
               controller: foodOperationalAvailabilityController,
               decoration: const InputDecoration(
-                labelText: 'Disponibilidade operacional',
+                labelText: 'Disponibilidade',
                 hintText: 'Ex.: almoco, jantar, fim de semana',
               ),
               textCapitalization: TextCapitalization.sentences,
@@ -132,15 +132,15 @@ class ProductNicheDetailsSection extends StatelessWidget {
           ExpansionTile(
             tilePadding: EdgeInsets.zero,
             childrenPadding: const EdgeInsets.only(top: 12),
-            title: const Text('Atributos extras'),
+            title: const Text('Campos avancados'),
             subtitle: const Text(
-              'Opcional. Use apenas quando precisar registrar chaves tecnicas.',
+              'Opcional. Informacoes tecnicas adicionais.',
             ),
             children: [
               TextFormField(
                 controller: extraAttributesController,
                 decoration: const InputDecoration(
-                  labelText: 'Chave=valor',
+                  labelText: 'Informacao tecnica',
                   hintText: 'Uma linha por atributo',
                   helperText: 'Ex.: colecao=outono',
                 ),

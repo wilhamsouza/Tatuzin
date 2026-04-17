@@ -27,15 +27,15 @@ class ProductNicheSelectorSection extends StatelessWidget {
     final layout = context.appLayout;
 
     return AppSectionCard(
-      title: 'Estrutura do cadastro',
+      title: 'Tipo de produto',
       subtitle:
-          'Defina primeiro o nicho e o tipo de cadastro. O restante da tela se ajusta ao fluxo certo.',
+          'Escolha o segmento e como deseja organizar este produto.',
       tone: AppCardTone.muted,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Nicho',
+            'Segmento',
             style: Theme.of(
               context,
             ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
@@ -45,14 +45,14 @@ class ProductNicheSelectorSection extends StatelessWidget {
             children: [
               _SelectorOptionCard(
                 title: 'Alimentacao',
-                subtitle: 'Lanches, pratos, bebidas e complementos.',
+                subtitle: 'Lanches, pratos, bebidas e mais.',
                 icon: Icons.restaurant_menu_rounded,
                 selected: selectedNiche == ProductNiches.food,
                 onTap: () => onNicheChanged(ProductNiches.food),
               ),
               _SelectorOptionCard(
                 title: 'Moda',
-                subtitle: 'Pecas com grade, cores, tamanhos e estoque por SKU.',
+                subtitle: 'Roupas, calcados e acessorios com grade.',
                 icon: Icons.checkroom_rounded,
                 selected: selectedNiche == ProductNiches.fashion,
                 onTap: () => onNicheChanged(ProductNiches.fashion),
@@ -61,7 +61,7 @@ class ProductNicheSelectorSection extends StatelessWidget {
           ),
           SizedBox(height: layout.sectionGap),
           Text(
-            'Tipo do cadastro',
+            'Como organizar',
             style: Theme.of(
               context,
             ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
@@ -71,14 +71,14 @@ class ProductNicheSelectorSection extends StatelessWidget {
             children: [
               _SelectorOptionCard(
                 title: 'Produto simples',
-                subtitle: 'Cadastro direto, sem estrutura adicional de nome.',
+                subtitle: 'Cadastro direto, sem variacao de nome.',
                 icon: Icons.inventory_2_outlined,
                 selected: selectedCatalogType == ProductCatalogTypes.simple,
                 onTap: () => onCatalogTypeChanged(ProductCatalogTypes.simple),
               ),
               _SelectorOptionCard(
-                title: 'Com variacao',
-                subtitle: 'Modelo + variacao para organizar SKUs relacionados.',
+                title: 'Com variacoes',
+                subtitle: 'Modelo + variacao para agrupar produtos.',
                 icon: Icons.layers_outlined,
                 selected: selectedCatalogType == ProductCatalogTypes.variant,
                 onTap: () => onCatalogTypeChanged(ProductCatalogTypes.variant),
@@ -87,10 +87,10 @@ class ProductNicheSelectorSection extends StatelessWidget {
           ),
           SizedBox(height: layout.sectionGap),
           AppSummaryBlock(
-            label: 'Preview comercial',
+            label: 'Como vai aparecer',
             value: previewLabel,
             caption:
-                'Esse nome guia como o produto aparece no catalogo e nas proximas secoes.',
+                'Nome que aparece no catalogo e na venda.',
             icon: Icons.label_outline_rounded,
             palette: context.appColors.brand,
             compact: true,

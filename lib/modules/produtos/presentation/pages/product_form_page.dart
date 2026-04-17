@@ -24,7 +24,6 @@ import '../widgets/product_form/product_form_models.dart';
 import '../widgets/product_form/product_profitability_section.dart';
 import '../widgets/product_form/product_recipe_section.dart';
 import '../widgets/product_form/product_niche_details_section.dart';
-import '../widgets/product_form/product_niche_selector_section.dart';
 import '../widgets/product_form/product_photos_section.dart';
 
 class ProductFormPage extends ConsumerStatefulWidget {
@@ -63,12 +62,16 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   int? _selectedCategoryId;
   int? _selectedBaseProductId;
   late String _selectedUnitMeasure;
-  late String _selectedNiche;
-  late String _selectedCatalogType;
 
   bool _isLoadingAdvancedData = false;
   bool _isPickingPhoto = false;
   bool _isSaving = false;
+
+  // ── Toggle flags for optional sections ──
+  bool _showGrid = false;
+  bool _showRecipe = false;
+  bool _showModifiers = false;
+  bool _showExtras = false;
 
   List<EditableProductPhoto> _photos = const <EditableProductPhoto>[];
   List<EditableModifierGroup> _foodModifierGroups =
@@ -78,11 +81,19 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   FashionGridDraft _fashionGridDraft = const FashionGridDraft();
 
   bool get _isEditing => widget.initialProduct != null;
-  bool get _isVariantCatalog =>
-      _selectedCatalogType == ProductCatalogTypes.variant;
+
+  // ── Inferred niche and catalog type ──
+  String get _selectedNiche =>
+      _showGrid ? ProductNiches.fashion : ProductNiches.food;
+  String get _selectedCatalogType =>
+      _showGrid ? ProductCatalogTypes.variant : ProductCatalogTypes.simple;
+
   bool get _isFoodNiche => _selectedNiche == ProductNiches.food;
   bool get _isFashionNiche => _selectedNiche == ProductNiches.fashion;
+  bool get _isVariantCatalog =>
+      _selectedCatalogType == ProductCatalogTypes.variant;
   bool get _usesVariantStock => _isFashionNiche;
+
   ProductCostSummary get _recipeCostSummary => ProductCostCalculator.calculate(
     salePriceCents: MoneyParser.parseToCents(_priceController.text),
     items: _recipeItems
@@ -94,29 +105,18 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   void initState() {
     super.initState();
     final product = widget.initialProduct;
-    final structuredVariant =
-        product != null &&
-        product.catalogType == ProductCatalogTypes.variant &&
-        (product.modelName?.trim().isNotEmpty ?? false) &&
-        (product.variantLabel?.trim().isNotEmpty ?? false);
 
-    _selectedCatalogType = structuredVariant
-        ? ProductCatalogTypes.variant
-        : ProductCatalogTypes.simple;
-    _selectedNiche = ProductNiches.normalize(product?.niche);
     _selectedCategoryId = product?.categoryId;
     _selectedBaseProductId = product?.baseProductId;
     _selectedUnitMeasure = product?.unitMeasure ?? 'un';
     _isActive = product?.isActive ?? true;
 
-    _nameController = TextEditingController(
-      text: structuredVariant ? '' : product?.name ?? '',
-    );
+    _nameController = TextEditingController(text: product?.name ?? '');
     _modelNameController = TextEditingController(
-      text: structuredVariant ? product.modelName ?? '' : '',
+      text: product?.modelName ?? '',
     );
     _variantLabelController = TextEditingController(
-      text: structuredVariant ? product.variantLabel ?? '' : '',
+      text: product?.variantLabel ?? '',
     );
     _extraAttributesController = TextEditingController(
       text: _buildInitialExtraAttributes(product),
@@ -183,8 +183,33 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       variants: product?.variants ?? const <ProductVariant>[],
     );
 
+    // ── Auto-open sections based on existing data when editing ──
+    if (product != null) {
+      final normalizedNiche = ProductNiches.normalize(product.niche);
+      if (normalizedNiche == ProductNiches.fashion ||
+          _fashionGridDraft.hasDimensions) {
+        _showGrid = true;
+      }
+      if (_foodModifierGroups.isNotEmpty) {
+        _showModifiers = true;
+      }
+      if (_hasNicheDetails(product)) {
+        _showExtras = true;
+      }
+      // Recipe is loaded async, will be opened in _loadAdvancedData
+    }
+
     _priceController.addListener(_handleLivePreviewChanged);
     _loadAdvancedData();
+  }
+
+  bool _hasNicheDetails(Product product) {
+    return product.variantAttributes.any(
+      (attr) =>
+          attr.key.startsWith('food_') ||
+          attr.key.startsWith('fashion_') ||
+          (attr.key != 'model' && attr.key != 'variant'),
+    );
   }
 
   @override
@@ -291,6 +316,17 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
           ),
           variants: productVariants,
         );
+
+        // Auto-open sections if data was loaded
+        if (_recipeItems.isNotEmpty) {
+          _showRecipe = true;
+        }
+        if (_foodModifierGroups.isNotEmpty) {
+          _showModifiers = true;
+        }
+        if (_fashionGridDraft.hasDimensions) {
+          _showGrid = true;
+        }
       });
     } finally {
       if (mounted) {
@@ -331,22 +367,16 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
           ),
           children: [
             AppPageHeader(
-              title: _isEditing ? 'Ajuste o cadastro' : 'Monte o cadastro',
+              title: _isEditing ? 'Editar produto' : 'Novo produto',
               subtitle:
-                  'Organize identidade, fotos, preco, estoque e variacoes por secoes com a mesma linguagem visual do restante do app.',
+                  'Preencha o essencial e use os botoes abaixo para adicionar mais detalhes.',
               badgeLabel: _isEditing ? 'Edicao' : 'Cadastro',
               badgeIcon: Icons.inventory_2_rounded,
               emphasized: true,
             ),
             SizedBox(height: layout.sectionGap),
-            ProductNicheSelectorSection(
-              selectedNiche: _selectedNiche,
-              selectedCatalogType: _selectedCatalogType,
-              previewLabel: _previewLabel,
-              onNicheChanged: (value) => setState(() => _selectedNiche = value),
-              onCatalogTypeChanged: _changeCatalogType,
-            ),
-            SizedBox(height: layout.sectionGap),
+
+            // ── 1. Informações do produto + Preço e estoque ──
             ProductBaseInfoSection(
               isEditing: _isEditing,
               selectedNiche: _selectedNiche,
@@ -378,6 +408,8 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
               onActiveChanged: (value) => setState(() => _isActive = value),
             ),
             SizedBox(height: layout.sectionGap),
+
+            // ── 2. Fotos ──
             ProductPhotosSection(
               photos: _photos,
               maxPhotos: _maxPhotos,
@@ -386,89 +418,117 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
               onRemovePhoto: _removePhoto,
             ),
             SizedBox(height: layout.sectionGap),
-            ProductNicheDetailsSection(
-              selectedNiche: _selectedNiche,
-              foodAllergensController: _foodAllergensController,
-              foodPrepTimeController: _foodPrepTimeController,
-              foodOperationalAvailabilityController:
-                  _foodOperationalAvailabilityController,
-              fashionBrandController: _fashionBrandController,
-              fashionCompositionController: _fashionCompositionController,
-              fashionWeightController: _fashionWeightController,
-              fashionTagsController: _fashionTagsController,
-              extraAttributesController: _extraAttributesController,
-            ),
-            SizedBox(height: layout.sectionGap),
-            ProductRecipeSection(
-              items: _recipeItems,
-              summary: _recipeCostSummary,
-              isLoadingRecipe: _isLoadingAdvancedData,
-              isLoadingSupplies: suppliesAsync.isLoading,
-              onAddItem: () => _openRecipeItemEditor(supplies),
-              onEditItem: (index) =>
-                  _openRecipeItemEditor(supplies, index: index),
-              onRemoveItem: (index) =>
-                  setState(() => _recipeItems.removeAt(index)),
-            ),
-            SizedBox(height: layout.sectionGap),
-            ProductProfitabilitySection(
-              summary: _recipeCostSummary,
-              salePriceCents: MoneyParser.parseToCents(_priceController.text),
-              manualCostCents: MoneyParser.parseToCents(_costController.text),
-            ),
-            SizedBox(height: layout.sectionGap),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              switchInCurve: Curves.easeOut,
-              switchOutCurve: Curves.easeIn,
-              child: _isFashionNiche
-                  ? FashionGridSection(
-                      key: const ValueKey('fashion-grid'),
-                      isLoading: _isLoadingAdvancedData,
-                      skuSeed: _variantSkuSeed,
-                      draft: _fashionGridDraft,
-                      onChanged: (draft) =>
-                          setState(() => _fashionGridDraft = draft),
-                    )
-                  : ModifierGroupsSection(
-                      key: const ValueKey('modifier-groups'),
-                      groups: _foodModifierGroups,
-                      isLoading: _isLoadingAdvancedData,
-                      onChanged: (groups) =>
-                          setState(() => _foodModifierGroups = groups),
-                    ),
-            ),
+
+            // ── 3. Optional sections (toggled by + buttons) ──
+            _buildToggleChips(layout),
+
+            // ── 3a. Grade de tamanhos/cores ──
+            if (_showGrid) ...[
+              SizedBox(height: layout.sectionGap),
+              FashionGridSection(
+                key: const ValueKey('fashion-grid'),
+                isLoading: _isLoadingAdvancedData,
+                skuSeed: _variantSkuSeed,
+                draft: _fashionGridDraft,
+                onChanged: (draft) =>
+                    setState(() => _fashionGridDraft = draft),
+              ),
+            ],
+
+            // ── 3b. Ficha técnica (insumos) ──
+            if (_showRecipe) ...[
+              SizedBox(height: layout.sectionGap),
+              ProductRecipeSection(
+                items: _recipeItems,
+                summary: _recipeCostSummary,
+                isLoadingRecipe: _isLoadingAdvancedData,
+                isLoadingSupplies: suppliesAsync.isLoading,
+                onAddItem: () => _openRecipeItemEditor(supplies),
+                onEditItem: (index) =>
+                    _openRecipeItemEditor(supplies, index: index),
+                onRemoveItem: (index) =>
+                    setState(() => _recipeItems.removeAt(index)),
+              ),
+              SizedBox(height: layout.sectionGap),
+              ProductProfitabilitySection(
+                summary: _recipeCostSummary,
+                salePriceCents: MoneyParser.parseToCents(_priceController.text),
+                manualCostCents: MoneyParser.parseToCents(_costController.text),
+              ),
+            ],
+
+            // ── 3c. Adicionais (complementos) ──
+            if (_showModifiers) ...[
+              SizedBox(height: layout.sectionGap),
+              ModifierGroupsSection(
+                key: const ValueKey('modifier-groups'),
+                groups: _foodModifierGroups,
+                isLoading: _isLoadingAdvancedData,
+                onChanged: (groups) =>
+                    setState(() => _foodModifierGroups = groups),
+              ),
+            ],
+
+            // ── 3d. Informações extras ──
+            if (_showExtras) ...[
+              SizedBox(height: layout.sectionGap),
+              ProductNicheDetailsSection(
+                selectedNiche: _selectedNiche,
+                foodAllergensController: _foodAllergensController,
+                foodPrepTimeController: _foodPrepTimeController,
+                foodOperationalAvailabilityController:
+                    _foodOperationalAvailabilityController,
+                fashionBrandController: _fashionBrandController,
+                fashionCompositionController: _fashionCompositionController,
+                fashionWeightController: _fashionWeightController,
+                fashionTagsController: _fashionTagsController,
+                extraAttributesController: _extraAttributesController,
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  String get _previewLabel {
-    if (_isVariantCatalog) {
-      return _variantPreviewLabel;
-    }
+  // ── Toggle chip bar ──
+  Widget _buildToggleChips(dynamic layout) {
 
-    final name = _nameController.text.trim();
-    if (name.isEmpty) {
-      return 'Ex.: Coxinha de frango';
-    }
-    return name;
-  }
-
-  String get _variantPreviewLabel {
-    final model = _modelNameController.text.trim();
-    final variation = _variantLabelController.text.trim();
-    if (model.isEmpty && variation.isEmpty) {
-      return 'Ex.: Camiseta - Linha basica';
-    }
-    if (model.isEmpty) {
-      return variation;
-    }
-    if (variation.isEmpty) {
-      return model;
-    }
-    return _buildVariantDisplayName(model, variation);
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _ToggleActionChip(
+          label: 'Grade de tamanhos',
+          icon: Icons.grid_view_rounded,
+          isActive: _showGrid,
+          onToggle: () => setState(() {
+            _showGrid = !_showGrid;
+            if (!_showGrid) {
+              _fashionGridDraft = const FashionGridDraft();
+            }
+          }),
+        ),
+        _ToggleActionChip(
+          label: 'Ficha tecnica',
+          icon: Icons.receipt_long_rounded,
+          isActive: _showRecipe,
+          onToggle: () => setState(() => _showRecipe = !_showRecipe),
+        ),
+        _ToggleActionChip(
+          label: 'Adicionais',
+          icon: Icons.playlist_add_rounded,
+          isActive: _showModifiers,
+          onToggle: () => setState(() => _showModifiers = !_showModifiers),
+        ),
+        _ToggleActionChip(
+          label: 'Informacoes extras',
+          icon: Icons.tune_rounded,
+          isActive: _showExtras,
+          onToggle: () => setState(() => _showExtras = !_showExtras),
+        ),
+      ],
+    );
   }
 
   String get _variantSkuSeed =>
@@ -477,39 +537,22 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       'PRODUTO';
 
   String get _footerContextLabel {
-    if (_isFashionNiche) {
+    if (_showGrid) {
       if (_fashionGridDraft.hasDimensions) {
-        return 'Moda • ${_fashionGridDraft.activeVariantCount} variantes ativas • estoque ${AppFormatters.quantityFromMil(_fashionGridDraft.totalStockMil)}';
+        return '${_fashionGridDraft.activeVariantCount} variacoes ativas • estoque ${AppFormatters.quantityFromMil(_fashionGridDraft.totalStockMil)}';
       }
-      return 'Moda • configure tamanhos e cores para gerar os SKUs vendaveis.';
+      return 'Configure tamanhos e cores para gerar as variacoes.';
     }
 
     if (_foodModifierGroups.isNotEmpty) {
-      final options = _foodModifierGroups.fold<int>(
+      final items = _foodModifierGroups.fold<int>(
         0,
         (total, group) => total + group.options.length,
       );
-      return 'Alimentacao • ${_foodModifierGroups.length} grupos • $options opcoes';
+      return '${_foodModifierGroups.length} grupos • $items itens';
     }
 
-    return 'Cadastro base pronto para salvar.';
-  }
-
-  void _changeCatalogType(String nextValue) {
-    setState(() {
-      if (nextValue == ProductCatalogTypes.variant) {
-        if (_modelNameController.text.trim().isEmpty &&
-            _nameController.text.trim().isNotEmpty) {
-          _modelNameController.text = _nameController.text.trim();
-        }
-      } else if (_nameController.text.trim().isEmpty) {
-        final fallbackName = _buildSimpleFallbackName();
-        if (fallbackName.isNotEmpty) {
-          _nameController.text = fallbackName;
-        }
-      }
-      _selectedCatalogType = nextValue;
-    });
+    return 'Pronto para salvar.';
   }
 
   Future<void> _promptPhotoSource() async {
@@ -673,7 +716,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       return;
     }
 
-    if (_isFashionNiche && !_fashionGridDraft.hasDimensions) {
+    if (_showGrid && !_fashionGridDraft.hasDimensions) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -697,12 +740,10 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         modelName: modelName,
         variantLabel: variantLabel,
       );
-      final modifierGroups = _isFoodNiche
+      final modifierGroups = _showModifiers
           ? _buildFoodModifierGroupsInput()
           : null;
-      final resolvedName = _isVariantCatalog
-          ? _buildVariantDisplayName(modelName!, variantLabel!)
-          : _nameController.text.trim();
+      final resolvedName = _nameController.text.trim();
 
       final input = ProductInput(
         name: resolvedName,
@@ -769,10 +810,6 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   }
 
   List<ProductModifierGroupInput>? _buildFoodModifierGroupsInput() {
-    if (!_isFoodNiche) {
-      return null;
-    }
-
     final groups = <ProductModifierGroupInput>[];
     for (final group in _foodModifierGroups) {
       final name = group.name.trim();
@@ -924,24 +961,55 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     return key.startsWith('food_') || key.startsWith('fashion_');
   }
 
-  String _buildVariantDisplayName(String modelName, String variantLabel) {
-    return '${modelName.trim()} - ${variantLabel.trim()}';
-  }
-
-  String _buildSimpleFallbackName() {
-    final model = _modelNameController.text.trim();
-    final variant = _variantLabelController.text.trim();
-    if (model.isNotEmpty && variant.isNotEmpty) {
-      return _buildVariantDisplayName(model, variant);
-    }
-    if (model.isNotEmpty) {
-      return model;
-    }
-    return widget.initialProduct?.name ?? '';
-  }
 
   String? _cleanNullable(String? value) {
     final trimmed = value?.trim();
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+}
+
+// ── Toggle chip widget ──
+class _ToggleActionChip extends StatelessWidget {
+  const _ToggleActionChip({
+    required this.label,
+    required this.icon,
+    required this.isActive,
+    required this.onToggle,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool isActive;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final tokens = context.appColors;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+      child: FilterChip(
+        selected: isActive,
+        showCheckmark: false,
+        avatar: Icon(
+          isActive ? Icons.check_rounded : icon,
+          size: 18,
+          color: isActive ? tokens.brand.base : colorScheme.onSurfaceVariant,
+        ),
+        label: Text(label),
+        labelStyle: theme.textTheme.labelLarge?.copyWith(
+          fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+          color: isActive ? tokens.brand.onSurface : colorScheme.onSurface,
+        ),
+        selectedColor: tokens.brand.surface,
+        side: BorderSide(
+          color: isActive ? tokens.brand.border : colorScheme.outlineVariant,
+        ),
+        onSelected: (_) => onToggle(),
+      ),
+    );
   }
 }
