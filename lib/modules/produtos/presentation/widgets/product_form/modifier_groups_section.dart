@@ -39,7 +39,11 @@ class _ModifierGroupsSectionState extends State<ModifierGroupsSection> {
         return StatefulBuilder(
           builder: (context, setLocalState) {
             return AlertDialog(
-              title: Text(index == null ? 'Novo grupo' : 'Editar grupo'),
+              title: Text(
+                index == null
+                    ? 'Novo grupo de adicionais'
+                    : 'Editar grupo',
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -54,7 +58,7 @@ class _ModifierGroupsSectionState extends State<ModifierGroupsSection> {
                     SwitchListTile.adaptive(
                       value: isRequired,
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Obrigatorio'),
+                      title: const Text('Cliente precisa escolher'),
                       onChanged: (value) {
                         setLocalState(() => isRequired = value);
                       },
@@ -64,7 +68,7 @@ class _ModifierGroupsSectionState extends State<ModifierGroupsSection> {
                       controller: minController,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
-                        labelText: 'Minimo de selecoes',
+                        labelText: 'Escolha minima',
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -72,7 +76,7 @@ class _ModifierGroupsSectionState extends State<ModifierGroupsSection> {
                       controller: maxController,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
-                        labelText: 'Maximo de selecoes',
+                        labelText: 'Escolha maxima',
                         hintText: 'Opcional',
                       ),
                     ),
@@ -150,7 +154,9 @@ class _ModifierGroupsSectionState extends State<ModifierGroupsSection> {
         return StatefulBuilder(
           builder: (context, setLocalState) {
             return AlertDialog(
-              title: Text(optionIndex == null ? 'Nova opcao' : 'Editar opcao'),
+              title: Text(
+                optionIndex == null ? 'Adicionar item' : 'Editar item',
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -158,7 +164,7 @@ class _ModifierGroupsSectionState extends State<ModifierGroupsSection> {
                     TextField(
                       controller: nameController,
                       decoration: const InputDecoration(
-                        labelText: 'Nome da opcao',
+                        labelText: 'Nome do item',
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -264,13 +270,13 @@ class _ModifierGroupsSectionState extends State<ModifierGroupsSection> {
     );
 
     return AppSectionCard(
-      title: 'Complementos e modificadores',
+      title: 'Adicionais',
       subtitle:
-          'Organize grupos de selecao para adicionais, sabores e trocas sem poluir o cadastro base.',
+          'Monte grupos de opcoes para o cliente personalizar o pedido.',
       trailing: FilledButton.tonalIcon(
         onPressed: () => _openGroupEditor(),
         icon: const Icon(Icons.add_rounded),
-        label: const Text('Novo grupo'),
+        label: const Text('Novo grupo de adicionais'),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -285,7 +291,7 @@ class _ModifierGroupsSectionState extends State<ModifierGroupsSection> {
             child: Text(
               widget.groups.isEmpty
                   ? 'Nenhum grupo cadastrado ainda.'
-                  : '${widget.groups.length} grupos • $optionCount opcoes',
+                  : '${widget.groups.length} grupos • $optionCount itens',
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
@@ -304,7 +310,7 @@ class _ModifierGroupsSectionState extends State<ModifierGroupsSection> {
                 border: Border.all(color: colorScheme.outlineVariant),
               ),
               child: Text(
-                'Adicione grupos estruturados para deixar os complementos prontos para a venda.',
+                'Adicione grupos para organizar os adicionais do produto.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                   height: 1.35,
@@ -410,7 +416,7 @@ class _ModifierGroupCard extends StatelessWidget {
           const SizedBox(height: 10),
           if (group.options.isEmpty)
             Text(
-              'Nenhuma opcao cadastrada.',
+              'Nenhum item cadastrado.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
@@ -434,12 +440,12 @@ class _ModifierGroupCard extends StatelessWidget {
                       IconButton(
                         onPressed: () => onEditOption(index),
                         icon: const Icon(Icons.edit_outlined),
-                        tooltip: 'Editar opcao',
+                        tooltip: 'Editar item',
                       ),
                       IconButton(
                         onPressed: () => onDeleteOption(index),
                         icon: const Icon(Icons.delete_outline_rounded),
-                        tooltip: 'Remover opcao',
+                        tooltip: 'Remover item',
                       ),
                     ],
                   ),
@@ -450,7 +456,7 @@ class _ModifierGroupCard extends StatelessWidget {
           OutlinedButton.icon(
             onPressed: onAddOption,
             icon: const Icon(Icons.add_rounded),
-            label: const Text('Adicionar opcao'),
+            label: const Text('Adicionar item'),
           ),
         ],
       ),
