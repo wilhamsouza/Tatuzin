@@ -390,7 +390,7 @@ void main() {
         unitType: 'g',
       );
 
-      await SupplyInventorySupport.recordSaleConsumption(
+      final result = await SupplyInventorySupport.recordSaleConsumption(
         database,
         saleUuid: 'sale-1',
         items: const [
@@ -411,6 +411,10 @@ void main() {
       );
 
       final movements = await _movementRows(database);
+      expect(result.affectedSupplyIds, [supplyId]);
+      expect(result.appliedLines, hasLength(1));
+      expect(result.appliedLines.single.productId, 10);
+      expect(result.skippedWithoutRecipeLines, isEmpty);
       expect(movements, hasLength(2));
       expect(movements.last['movement_type'], 'out');
       expect(movements.last['source_type'], 'sale');
@@ -419,7 +423,7 @@ void main() {
     });
 
     test('venda de produto sem ficha nao gera consumo', () async {
-      await SupplyInventorySupport.recordSaleConsumption(
+      final result = await SupplyInventorySupport.recordSaleConsumption(
         database,
         saleUuid: 'sale-1',
         items: const [
@@ -439,7 +443,75 @@ void main() {
         occurredAt: _now,
       );
 
+      expect(result.affectedSupplyIds, isEmpty);
+      expect(result.appliedLines, isEmpty);
+      expect(result.hasSkippedWithoutRecipeLines, isTrue);
+      expect(result.skippedWithoutRecipeLines, hasLength(1));
+      expect(result.skippedWithoutRecipeLines.single.productId, 11);
       expect(await _movementRows(database), isEmpty);
+    });
+
+    test('venda mista resume itens com e sem ficha tecnica', () async {
+      final supplyId = await _insertSupply(
+        database,
+        name: 'Molho especial',
+        unitType: 'ml',
+        purchaseUnitType: 'l',
+        conversionFactor: 1000,
+        currentStockMil: 1000000,
+      );
+      await _insertSeedMovement(
+        database,
+        supplyId: supplyId,
+        quantityDeltaMil: 1000000,
+      );
+      await _insertRecipeItem(
+        database,
+        productId: 10,
+        supplyId: supplyId,
+        quantityUsedMil: 25000,
+        unitType: 'ml',
+      );
+
+      final result = await SupplyInventorySupport.recordSaleConsumption(
+        database,
+        saleUuid: 'sale-1',
+        items: const [
+          CartItem(
+            id: 'cart-1',
+            productId: 10,
+            productName: 'Burger especial',
+            baseProductId: null,
+            baseProductName: null,
+            quantityMil: 1000,
+            availableStockMil: 1000,
+            unitPriceCents: 3200,
+            unitMeasure: 'un',
+            productType: 'unidade',
+          ),
+          CartItem(
+            id: 'cart-2',
+            productId: 11,
+            productName: 'Suco',
+            baseProductId: null,
+            baseProductName: null,
+            quantityMil: 1000,
+            availableStockMil: 1000,
+            unitPriceCents: 900,
+            unitMeasure: 'un',
+            productType: 'unidade',
+          ),
+        ],
+        occurredAt: _now,
+      );
+
+      expect(result.lines, hasLength(2));
+      expect(result.appliedLines, hasLength(1));
+      expect(result.appliedLines.single.productName, 'Burger especial');
+      expect(result.skippedWithoutRecipeLines, hasLength(1));
+      expect(result.skippedWithoutRecipeLines.single.productName, 'Suco');
+      expect(result.affectedSupplyIds, [supplyId]);
+      expect(await _currentStock(database, supplyId), 975000);
     });
 
     test(

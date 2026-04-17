@@ -10,6 +10,7 @@ import 'package:erp_pdv_app/modules/carrinho/domain/entities/cart_item.dart';
 import 'package:erp_pdv_app/modules/clientes/domain/entities/customer_credit_transaction.dart';
 import 'package:erp_pdv_app/modules/historico_vendas/data/sqlite_sale_return_repository.dart';
 import 'package:erp_pdv_app/modules/historico_vendas/domain/entities/sale_return.dart';
+import 'package:erp_pdv_app/modules/insumos/domain/entities/supply_inventory.dart';
 import 'package:erp_pdv_app/modules/vendas/data/sqlite_sale_repository.dart';
 import 'package:erp_pdv_app/modules/vendas/domain/entities/checkout_input.dart';
 import 'package:erp_pdv_app/modules/vendas/domain/entities/completed_sale.dart';
@@ -223,6 +224,7 @@ class _FakeSaleRepository implements SqliteSaleRepository {
       soldAt: DateTime.parse(soldAt),
       saleType: SaleType.cash,
       paymentMethod: input.paymentMethod,
+      supplyConsumption: const SupplySaleConsumptionResult.empty(),
       clientId: input.clientId,
     );
   }

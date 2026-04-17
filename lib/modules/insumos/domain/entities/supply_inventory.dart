@@ -136,6 +136,66 @@ class SupplyInventoryBaselineSeedResult {
   bool get created => status == SupplyInventoryBaselineSeedStatus.created;
 }
 
+enum SupplySaleConsumptionLineStatus { appliedFromRecipe, skippedWithoutRecipe }
+
+extension SupplySaleConsumptionLineStatusX on SupplySaleConsumptionLineStatus {
+  String get label {
+    return switch (this) {
+      SupplySaleConsumptionLineStatus.appliedFromRecipe =>
+        'Baixa aplicada pela ficha tecnica',
+      SupplySaleConsumptionLineStatus.skippedWithoutRecipe =>
+        'Sem ficha tecnica, sem baixa automatica',
+    };
+  }
+}
+
+class SupplySaleConsumptionLine {
+  const SupplySaleConsumptionLine({
+    required this.productId,
+    required this.productName,
+    required this.quantityMil,
+    required this.status,
+  });
+
+  final int productId;
+  final String productName;
+  final int quantityMil;
+  final SupplySaleConsumptionLineStatus status;
+
+  bool get appliedFromRecipe =>
+      status == SupplySaleConsumptionLineStatus.appliedFromRecipe;
+
+  bool get skippedWithoutRecipe =>
+      status == SupplySaleConsumptionLineStatus.skippedWithoutRecipe;
+}
+
+class SupplySaleConsumptionResult {
+  const SupplySaleConsumptionResult({
+    required this.lines,
+    required this.affectedSupplyIds,
+  });
+
+  const SupplySaleConsumptionResult.empty()
+    : lines = const <SupplySaleConsumptionLine>[],
+      affectedSupplyIds = const <int>[];
+
+  final List<SupplySaleConsumptionLine> lines;
+  final List<int> affectedSupplyIds;
+
+  int get affectedSupplyCount => affectedSupplyIds.length;
+
+  bool get hasAppliedConsumption => affectedSupplyIds.isNotEmpty;
+
+  bool get hasSkippedWithoutRecipeLines =>
+      lines.any((line) => line.skippedWithoutRecipe);
+
+  List<SupplySaleConsumptionLine> get appliedLines =>
+      lines.where((line) => line.appliedFromRecipe).toList(growable: false);
+
+  List<SupplySaleConsumptionLine> get skippedWithoutRecipeLines =>
+      lines.where((line) => line.skippedWithoutRecipe).toList(growable: false);
+}
+
 class SupplyInventoryConsistencyIssue {
   const SupplyInventoryConsistencyIssue({
     required this.supplyId,

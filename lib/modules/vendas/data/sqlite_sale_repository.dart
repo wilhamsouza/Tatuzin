@@ -438,7 +438,7 @@ class SqliteSaleRepository implements SaleRepository {
       items: input.items,
       snapshots: productSnapshots,
     );
-    final affectedSupplyIds =
+    final supplyConsumption =
         await SupplyInventorySupport.recordSaleConsumption(
           txn,
           saleUuid: saleUuid,
@@ -447,7 +447,7 @@ class SqliteSaleRepository implements SaleRepository {
         );
     await SupplySyncMutationSupport.markSuppliesForSync(
       txn,
-      supplyIds: affectedSupplyIds,
+      supplyIds: supplyConsumption.affectedSupplyIds,
       changedAt: now,
       syncMetadataRepository: _syncMetadataRepository,
       syncQueueRepository: _syncQueueRepository,
@@ -553,6 +553,7 @@ class SqliteSaleRepository implements SaleRepository {
       soldAt: now,
       saleType: saleType,
       paymentMethod: input.paymentMethod,
+      supplyConsumption: supplyConsumption,
       clientId: input.clientId,
       fiadoId: fiadoId,
     );
