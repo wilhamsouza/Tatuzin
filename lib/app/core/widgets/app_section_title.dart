@@ -67,7 +67,12 @@ class AppSectionTitle extends StatelessWidget {
             Expanded(child: header),
             if (trailing != null) ...[
               SizedBox(width: layout.blockGap),
-              trailing!,
+              Flexible(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: trailing!,
+                ),
+              ),
             ],
           ],
         );

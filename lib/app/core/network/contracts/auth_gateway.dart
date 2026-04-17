@@ -8,6 +8,14 @@ abstract interface class AuthGateway {
     required String password,
   });
 
+  Future<AppSession> signUp({
+    required String companyName,
+    required String companySlug,
+    required String userName,
+    required String email,
+    required String password,
+  });
+
   Future<AppSession> refreshSession();
 
   Future<void> signOut();

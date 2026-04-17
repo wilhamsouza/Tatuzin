@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../modules/account/presentation/pages/account_cloud_page.dart';
 import '../../modules/auth/presentation/pages/login_page.dart';
+import '../../modules/auth/presentation/pages/register_page.dart';
 import '../../modules/admin/presentation/pages/admin_page.dart';
 import '../../modules/backup/presentation/pages/backup_restore_page.dart';
 import '../../modules/carrinho/presentation/pages/cart_page.dart';
@@ -58,6 +59,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutePaths.login,
         name: AppRouteNames.login,
         builder: (context, state) => const LoginPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.register,
+        name: AppRouteNames.register,
+        builder: (context, state) => const RegisterPage(),
       ),
       GoRoute(
         path: AppRoutePaths.dashboard,

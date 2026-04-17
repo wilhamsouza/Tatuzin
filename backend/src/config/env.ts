@@ -21,7 +21,7 @@ const envSchema = z.object({
     .default(30),
   ALLOW_INITIAL_BOOTSTRAP: z
     .enum(['true', 'false'])
-    .default('true')
+    .default('false')
     .transform((value) => value == 'true'),
 });
 
