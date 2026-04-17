@@ -71,8 +71,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(DashboardPage), findsOneWidget);
-    expect(find.text('Tatuzin'), findsAtLeastNWidgets(1));
-    expect(find.text('Nova venda'), findsOneWidget);
+    expect(find.text('Painel do dia'), findsOneWidget);
+    expect(find.text('Nova venda'), findsAtLeastNWidgets(1));
     expect(find.text('Vendido hoje'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.menu).first);

@@ -23,11 +23,33 @@ class FakeAuthGateway implements AuthGateway {
   }
 
   @override
+  Future<AppSession> signUp({
+    required String companyName,
+    required String companySlug,
+    required String userName,
+    required String email,
+    required String password,
+  }) async {
+    return _buildMockSession(
+      identifier: email,
+      passwordHint: password,
+      displayName: userName,
+      companyName: companyName,
+      isPlatformAdmin: false,
+      roleLabel: 'Proprietario',
+    );
+  }
+
+  @override
   Future<void> signOut() async {}
 
   AppSession _buildMockSession({
     String identifier = 'mock.operator@simples.local',
     String passwordHint = '123456',
+    String displayName = 'Operador SaaS Mock',
+    String companyName = 'Empresa Demo SaaS',
+    bool isPlatformAdmin = true,
+    String roleLabel = 'Administrador mock',
   }) {
     final sanitizedIdentifier = identifier.trim().isEmpty
         ? 'mock.operator@simples.local'
@@ -38,17 +60,17 @@ class FakeAuthGateway implements AuthGateway {
       user: AppUser(
         localId: null,
         remoteId: 'usr_mock_operator_001',
-        displayName: 'Operador SaaS Mock',
+        displayName: displayName,
         email: sanitizedIdentifier,
-        roleLabel: 'Administrador mock',
+        roleLabel: roleLabel,
         kind: AppUserKind.mockAuthenticated,
-        isPlatformAdmin: true,
+        isPlatformAdmin: isPlatformAdmin,
       ),
-      company: const CompanyContext(
+      company: CompanyContext(
         localId: null,
         remoteId: 'cmp_mock_demo_001',
-        displayName: 'Empresa Demo SaaS',
-        legalName: 'Empresa Demo SaaS LTDA',
+        displayName: companyName,
+        legalName: '$companyName LTDA',
         documentNumber: '00.000.000/0001-00',
         licensePlan: 'demo',
         licenseStatus: 'active',

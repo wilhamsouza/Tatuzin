@@ -8,6 +8,7 @@ import '../../session/auth_token_storage.dart';
 import '../../session/company_context.dart';
 import '../contracts/api_client_contract.dart';
 import '../contracts/auth_gateway.dart';
+import 'remote_sign_up_request.dart';
 
 class RemoteAuthGateway implements AuthGateway {
   const RemoteAuthGateway({
@@ -69,35 +70,42 @@ class RemoteAuthGateway implements AuthGateway {
           ...clientContext.toApiPayload(),
         },
       );
+      return _buildAuthenticatedSession(response.data);
+    } catch (error) {
+      await _tokenStorage.clear();
+      rethrow;
+    }
+  }
 
-      final accessToken = _readString(
-        response.data,
-        'accessToken',
-        fallbackMessage: 'A API nao retornou um token de acesso valido.',
-      );
-      final refreshToken = _readString(
-        response.data,
-        'refreshToken',
-        fallbackMessage: 'A API nao retornou um refresh token valido.',
-      );
+  @override
+  Future<AppSession> signUp({
+    required String companyName,
+    required String companySlug,
+    required String userName,
+    required String email,
+    required String password,
+  }) async {
+    final clientContext = await _tokenStorage.ensureClientContext(
+      clientType: 'mobile_app',
+      deviceLabel: _deviceLabel,
+      platform: _platformLabel,
+      appVersion: AppConstants.appVersion,
+    );
 
-      await _tokenStorage.saveTokens(
-        accessToken: accessToken,
-        refreshToken: refreshToken,
-      );
+    final request = RemoteSignUpRequest(
+      companyName: companyName,
+      companySlug: companySlug,
+      userName: userName,
+      email: email,
+      password: password,
+    );
 
-      final companyResponse = await _apiClient.getJson(
-        '/companies/current',
-        options: _authorized(accessToken),
+    try {
+      final response = await _apiClient.postJson(
+        '/auth/register',
+        body: request.toApiPayload(clientContext),
       );
-
-      return _buildSession(
-        _AuthIdentityPayload.fromApi(
-          response.data,
-          companyOverride:
-              companyResponse.data['company'] as Map<String, dynamic>?,
-        ),
-      );
+      return _buildAuthenticatedSession(response.data);
     } catch (error) {
       await _tokenStorage.clear();
       rethrow;
@@ -139,6 +147,39 @@ class RemoteAuthGateway implements AuthGateway {
   ApiRequestOptions _authorized(String token) {
     return ApiRequestOptions(
       headers: <String, String>{'Authorization': 'Bearer $token'},
+    );
+  }
+
+  Future<AppSession> _buildAuthenticatedSession(
+    Map<String, dynamic> authPayload,
+  ) async {
+    final accessToken = _readString(
+      authPayload,
+      'accessToken',
+      fallbackMessage: 'A API nao retornou um token de acesso valido.',
+    );
+    final refreshToken = _readString(
+      authPayload,
+      'refreshToken',
+      fallbackMessage: 'A API nao retornou um refresh token valido.',
+    );
+
+    await _tokenStorage.saveTokens(
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+    );
+
+    final companyResponse = await _apiClient.getJson(
+      '/companies/current',
+      options: _authorized(accessToken),
+    );
+
+    return _buildSession(
+      _AuthIdentityPayload.fromApi(
+        authPayload,
+        companyOverride:
+            companyResponse.data['company'] as Map<String, dynamic>?,
+      ),
     );
   }
 

@@ -1,5 +1,6 @@
 abstract final class AppRouteNames {
   static const login = 'login';
+  static const register = 'register';
   static const dashboard = 'dashboard';
   static const accountCloud = 'account-cloud';
   static const categories = 'categories';
@@ -45,6 +46,7 @@ abstract final class AppRouteNames {
 
 abstract final class AppRoutePaths {
   static const login = '/login';
+  static const register = '/cadastro';
   static const dashboard = '/';
   static const accountCloud = '/conta';
   static const categories = '/categorias';

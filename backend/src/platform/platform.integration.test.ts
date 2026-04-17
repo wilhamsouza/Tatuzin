@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import type { Server } from 'http';
 
 import { createApp } from '../app';
+import { env } from '../config/env';
 import { prisma } from '../database/prisma';
 import { resetRateLimitStore } from '../shared/http/rate-limit';
 import { platformJobsService } from '../shared/platform/platform-jobs';
@@ -21,6 +22,9 @@ const adminPassword = 'StrongPass123!';
 const rateLimitPassword = 'AnotherStrongPass123!';
 const adminEmail = `${runId}.admin@tatuzin.test`;
 const rateLimitEmail = `${runId}.ratelimit@tatuzin.test`;
+const registerEmail = `${runId}.register@tatuzin.test`;
+const duplicateSlugEmail = `${runId}.duplicate-slug@tatuzin.test`;
+const bootstrapEmail = `${runId}.bootstrap@tatuzin.test`;
 const baseClientPayload = {
   clientType: 'admin_web',
   clientInstanceId: `${runId}-web`,
@@ -155,6 +159,211 @@ describe('platform backend hardening', () => {
       (afterLogout.data as { code?: string }).code,
       'SESSION_REVOKED',
     );
+  });
+
+  it('registers a company owner through the public self-serve flow', async () => {
+    const registeredSlug = `${runId}-public-signup`;
+    const response = await requestJson('POST', '/auth/register', {
+      body: {
+        companyName: '  Tatuzin Cadastro Publico  ',
+        companySlug: `  ${registeredSlug.toUpperCase()}  `,
+        userName: '  Owner Self Serve  ',
+        email: `  ${registerEmail.toUpperCase()}  `,
+        password: 'OwnerPass123!',
+        ...baseClientPayload,
+        clientInstanceId: `${runId}-register-web`,
+      },
+    });
+
+    assert.equal(response.status, 201);
+    const payload = response.data as {
+      accessToken: string;
+      refreshToken: string;
+      session: {
+        clientType: string;
+        clientInstanceId: string;
+        deviceLabel: string | null;
+      };
+      user: { email: string; name: string; isPlatformAdmin: boolean };
+      company: {
+        name: string;
+        slug: string;
+        license: {
+          status: string;
+          syncEnabled: boolean;
+          expiresAt: string | null;
+        } | null;
+      };
+      membership: { role: string; isDefault: boolean };
+    };
+    assert.ok(payload.accessToken.length > 20);
+    assert.ok(payload.refreshToken.length > 20);
+    assert.equal(payload.user.email, registerEmail);
+    assert.equal(payload.user.name, 'Owner Self Serve');
+    assert.equal(payload.user.isPlatformAdmin, false);
+    assert.equal(payload.company.name, 'Tatuzin Cadastro Publico');
+    assert.equal(payload.company.slug, registeredSlug);
+    assert.equal(payload.company.license?.status, 'TRIAL');
+    assert.equal(payload.company.license?.syncEnabled, true);
+    assert.ok(payload.company.license?.expiresAt);
+    assert.equal(payload.membership.role, 'OWNER');
+    assert.equal(payload.membership.isDefault, true);
+    assert.equal(payload.session.clientType, baseClientPayload.clientType);
+    assert.equal(
+      payload.session.clientInstanceId,
+      `${runId}-register-web`,
+    );
+    assert.equal(payload.session.deviceLabel, baseClientPayload.deviceLabel);
+
+    const me = await requestJson('GET', '/auth/me', {
+      token: payload.accessToken,
+    });
+    assert.equal(me.status, 200);
+
+    const currentCompany = await requestJson('GET', '/companies/current', {
+      token: payload.accessToken,
+    });
+    assert.equal(currentCompany.status, 200);
+    assert.equal(
+      (
+        currentCompany.data as {
+          company?: {
+            license?: { status?: string; syncEnabled?: boolean } | null;
+          };
+        }
+      ).company?.license?.status,
+      'TRIAL',
+    );
+
+    const categories = await requestJson('GET', '/categories', {
+      token: payload.accessToken,
+    });
+    assert.equal(categories.status, 200);
+    assert.equal(
+      (categories.data as { count?: number }).count,
+      0,
+    );
+
+    const refresh = await requestJson('POST', '/auth/refresh', {
+      body: {
+        refreshToken: payload.refreshToken,
+        ...baseClientPayload,
+        clientInstanceId: `${runId}-register-web`,
+      },
+    });
+    assert.equal(refresh.status, 200);
+    const refreshedPayload = refresh.data as {
+      accessToken: string;
+      refreshToken: string;
+    };
+    assert.ok(refreshedPayload.accessToken.length > 20);
+    assert.notEqual(refreshedPayload.refreshToken, payload.refreshToken);
+
+    const logout = await requestJson('POST', '/auth/logout', {
+      token: refreshedPayload.accessToken,
+    });
+    assert.equal(logout.status, 204);
+
+    const afterLogout = await requestJson('GET', '/auth/me', {
+      token: refreshedPayload.accessToken,
+    });
+    assert.equal(afterLogout.status, 401);
+    assert.equal(
+      (afterLogout.data as { code?: string }).code,
+      'SESSION_REVOKED',
+    );
+  });
+
+  it('rejects duplicated e-mail during self-serve registration', async () => {
+    const response = await requestJson('POST', '/auth/register', {
+      body: {
+        companyName: 'Tatuzin Cadastro Email Duplicado',
+        companySlug: `${runId}-duplicate-email`,
+        userName: 'Email Duplicado',
+        email: adminEmail,
+        password: 'OwnerPass123!',
+        ...baseClientPayload,
+        clientInstanceId: `${runId}-duplicate-email-web`,
+      },
+    });
+
+    assert.equal(response.status, 409);
+    assert.equal(
+      (response.data as { code?: string }).code,
+      'EMAIL_ALREADY_IN_USE',
+    );
+  });
+
+  it('rejects duplicated company slug during self-serve registration', async () => {
+    const response = await requestJson('POST', '/auth/register', {
+      body: {
+        companyName: 'Tatuzin Cadastro Slug Duplicado',
+        companySlug: `${runId}-company-1`,
+        userName: 'Slug Duplicado',
+        email: duplicateSlugEmail,
+        password: 'OwnerPass123!',
+        ...baseClientPayload,
+        clientInstanceId: `${runId}-duplicate-slug-web`,
+      },
+    });
+
+    assert.equal(response.status, 409);
+    assert.equal(
+      (response.data as { code?: string }).code,
+      'COMPANY_SLUG_ALREADY_IN_USE',
+    );
+  });
+
+  it('keeps bootstrap initial blocked when disabled by environment', async () => {
+    const previousAllowInitialBootstrap = env.ALLOW_INITIAL_BOOTSTRAP;
+    env.ALLOW_INITIAL_BOOTSTRAP = false;
+
+    try {
+      const response = await requestJson('POST', '/auth/register-initial', {
+        body: {
+          companyName: 'Bootstrap Bloqueado',
+          companySlug: `${runId}-bootstrap-disabled`,
+          userName: 'Bootstrap Disabled',
+          email: bootstrapEmail,
+          password: 'OwnerPass123!',
+          ...baseClientPayload,
+          clientInstanceId: `${runId}-bootstrap-web`,
+        },
+      });
+
+      assert.equal(response.status, 403);
+      assert.equal(
+        (response.data as { code?: string }).code,
+        'BOOTSTRAP_DISABLED',
+      );
+    } finally {
+      env.ALLOW_INITIAL_BOOTSTRAP = previousAllowInitialBootstrap;
+    }
+  });
+
+  it('applies rate limiting to repeated public registration attempts', async () => {
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      const response = await requestJson('POST', '/auth/register', {
+        body: {},
+      });
+
+      assert.equal(response.status, 422);
+      assert.equal(
+        (response.data as { code?: string }).code,
+        'VALIDATION_ERROR',
+      );
+    }
+
+    const blocked = await requestJson('POST', '/auth/register', {
+      body: {},
+    });
+
+    assert.equal(blocked.status, 429);
+    assert.equal(
+      (blocked.data as { code?: string }).code,
+      'AUTH_REGISTER_RATE_LIMITED',
+    );
+    assert.ok(blocked.headers.get('retry-after'));
   });
 
   it('keeps companies contract stable for pagination, filters, ordering and shape', async () => {
@@ -840,7 +1049,7 @@ async function cleanupFixtures() {
   const users = await prisma.user.findMany({
     where: {
       email: {
-        in: [adminEmail, rateLimitEmail],
+        startsWith: runId,
       },
     },
     select: {
@@ -892,7 +1101,7 @@ async function cleanupFixtures() {
   await prisma.user.deleteMany({
     where: {
       email: {
-        in: [adminEmail, rateLimitEmail],
+        startsWith: runId,
       },
     },
   });
@@ -900,7 +1109,7 @@ async function cleanupFixtures() {
   await prisma.company.deleteMany({
     where: {
       slug: {
-        startsWith: `${runId}-company-`,
+        startsWith: `${runId}-`,
       },
     },
   });

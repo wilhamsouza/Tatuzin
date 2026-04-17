@@ -89,7 +89,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           Text(
                             canAttemptRemoteLogin
                                 ? 'Entre para conectar sua empresa na nuvem ou siga operando normalmente no modo local.'
-                                : 'Você pode seguir no modo local e conectar a conta quando a nuvem estiver disponível.',
+                                : 'Voce pode seguir no modo local e conectar a conta quando a nuvem estiver disponivel.',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                             ),
@@ -112,7 +112,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               ),
                               AppStatusBadge(
                                 label: canAttemptRemoteLogin
-                                    ? 'Nuvem disponível'
+                                    ? 'Nuvem disponivel'
                                     : 'Uso local',
                                 tone: canAttemptRemoteLogin
                                     ? AppStatusTone.info
@@ -207,7 +207,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                   ? () => _handleRestoreSession(context)
                                   : null,
                               icon: const Icon(Icons.refresh_rounded),
-                              label: const Text('Restaurar sessão'),
+                              label: const Text('Restaurar sessao'),
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton.icon(
+                              onPressed: canAttemptRemoteLogin && !isBusy
+                                  ? () =>
+                                        context.goNamed(AppRouteNames.register)
+                                  : null,
+                              icon: const Icon(Icons.app_registration_rounded),
+                              label: const Text('Criar conta'),
                             ),
                           ),
                         ],
@@ -231,13 +242,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Seu negócio continua com você',
+                                    'Seu negocio continua com voce',
                                     style: theme.textTheme.titleMedium
                                         ?.copyWith(fontWeight: FontWeight.w800),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'O Tatuzin foi pensado para apoiar o pequeno negócio com operação simples e confiável.',
+                                    'O Tatuzin foi pensado para apoiar o pequeno negocio com operacao simples e confiavel.',
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       color: colorScheme.onSurfaceVariant,
                                     ),
@@ -249,7 +260,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Mesmo sem entrar na nuvem, o app continua pronto para vendas, caixa, compras e operação offline-first.',
+                          'Mesmo sem entrar na nuvem, o app continua pronto para vendas, caixa, compras e operacao offline-first.',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                           ),
@@ -317,7 +328,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           content: Text(
             friendlySessionFeedbackMessage(
               error,
-              fallback: 'Não foi possível concluir o acesso agora.',
+              fallback: 'Nao foi possivel concluir o acesso agora.',
             ),
           ),
         ),
@@ -352,7 +363,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           content: Text(
             friendlySessionFeedbackMessage(
               error,
-              fallback: 'Não foi possível restaurar sua sessão agora.',
+              fallback: 'Nao foi possivel restaurar sua sessao agora.',
             ),
           ),
         ),
@@ -368,7 +379,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   String _errorMessage(Object? error) {
     return friendlySessionFeedbackMessage(
       error,
-      fallback: 'Não foi possível concluir o acesso agora.',
+      fallback: 'Nao foi possivel concluir o acesso agora.',
     );
   }
 }

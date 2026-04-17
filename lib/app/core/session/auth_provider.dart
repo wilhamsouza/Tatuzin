@@ -113,6 +113,40 @@ class AuthController extends AsyncNotifier<void> {
     }
   }
 
+  Future<AppSession> signUpRemote({
+    required String companyName,
+    required String companySlug,
+    required String userName,
+    required String email,
+    required String password,
+  }) async {
+    final environment = ref.read(appEnvironmentProvider);
+    if (!environment.authEnabled || !environment.endpointConfig.isConfigured) {
+      throw const ValidationException(
+        'Ative um modo com backend configurado para usar cadastro remoto.',
+      );
+    }
+
+    state = const AsyncLoading();
+    try {
+      final session = await ref
+          .read(remoteAuthGatewayProvider)
+          .signUp(
+            companyName: companyName,
+            companySlug: companySlug,
+            userName: userName,
+            email: email,
+            password: password,
+          );
+      _applySession(session);
+      state = const AsyncData(null);
+      return session;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+
   Future<AppSession?> restoreRemoteSession() async {
     state = const AsyncLoading();
     try {

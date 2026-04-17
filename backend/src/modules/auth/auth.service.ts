@@ -1,4 +1,4 @@
-import { MembershipRole, type Membership } from '@prisma/client';
+import { MembershipRole, Prisma, type Membership } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 import { env } from '../../config/env';
@@ -12,6 +12,7 @@ import {
 import type {
   LoginInput,
   RefreshInput,
+  RegisterInput,
   RegisterInitialInput,
   SessionClientInput,
 } from './auth.schemas';
@@ -50,8 +51,46 @@ type MembershipWithRelations = Membership & {
   };
 };
 
+const INITIAL_TRIAL_DURATION_DAYS = 15;
+
 export class AuthService {
   constructor(private readonly sessionService = new AuthSessionService()) {}
+
+  async register(input: RegisterInput) {
+    await this.ensureRegistrationAvailable({
+      email: input.email,
+      companySlug: input.companySlug,
+    });
+
+    const passwordHash = await bcrypt.hash(input.password, 10);
+    const result = await this.createOwnerAccount({
+      companyName: input.companyName,
+      companySlug: input.companySlug,
+      userName: input.userName,
+      email: input.email,
+      passwordHash,
+      isPlatformAdmin: false,
+    });
+
+    const sessionTokens = await this.sessionService.createSession({
+      userId: result.user.id,
+      userEmail: result.user.email,
+      userIsPlatformAdmin: result.user.isPlatformAdmin,
+      companyId: result.company.id,
+      membershipId: result.id,
+      membershipRole: result.role,
+      licenseMaxDevices: result.company.license?.maxDevices ?? null,
+      clientInput: this.toSessionClientInput(input),
+    });
+
+    logger.info('auth.register.completed', {
+      userId: result.user.id,
+      companyId: result.company.id,
+      sessionId: sessionTokens.session.id,
+    });
+
+    return this.buildAuthPayload(result, sessionTokens);
+  }
 
   async login(input: LoginInput) {
     const membership = await this.findDefaultMembershipByEmail(input.email);
@@ -158,53 +197,13 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(input.password, 10);
-
-    const result = await prisma.$transaction(async (transaction) => {
-      const company = await transaction.company.create({
-        data: {
-          name: input.companyName.trim(),
-          legalName: input.companyName.trim(),
-          slug: input.companySlug.trim(),
-        },
-      });
-
-      const user = await transaction.user.create({
-        data: {
-          email: input.email.toLowerCase().trim(),
-          name: input.userName.trim(),
-          passwordHash,
-          isPlatformAdmin: true,
-        },
-      });
-
-      await transaction.license.create({
-        data: {
-          companyId: company.id,
-          plan: 'trial',
-          status: 'TRIAL',
-          startsAt: new Date(),
-          syncEnabled: true,
-        },
-      });
-
-      const membership = await transaction.membership.create({
-        data: {
-          userId: user.id,
-          companyId: company.id,
-          role: MembershipRole.OWNER,
-          isDefault: true,
-        },
-        include: {
-          user: true,
-          company: {
-            include: {
-              license: true,
-            },
-          },
-        },
-      });
-
-      return membership;
+    const result = await this.createOwnerAccount({
+      companyName: input.companyName,
+      companySlug: input.companySlug,
+      userName: input.userName,
+      email: input.email,
+      passwordHash,
+      isPlatformAdmin: true,
     });
 
     const sessionTokens = await this.sessionService.createSession({
@@ -332,9 +331,10 @@ export class AuthService {
   }
 
   private toSessionClientInput(
-    input:
+      input:
       | LoginInput
       | RefreshInput
+      | RegisterInput
       | RegisterInitialInput,
   ): SessionClientInput {
     return {
@@ -343,6 +343,149 @@ export class AuthService {
       deviceLabel: input.deviceLabel,
       platform: input.platform,
       appVersion: input.appVersion,
+    };
+  }
+
+  private async ensureRegistrationAvailable(input: {
+    email: string;
+    companySlug: string;
+  }) {
+    const normalizedEmail = input.email.toLowerCase().trim();
+    const normalizedCompanySlug = input.companySlug.toLowerCase().trim();
+
+    const [existingUser, existingCompany] = await prisma.$transaction([
+      prisma.user.findUnique({
+        where: { email: normalizedEmail },
+        select: { id: true },
+      }),
+      prisma.company.findUnique({
+        where: { slug: normalizedCompanySlug },
+        select: { id: true },
+      }),
+    ]);
+
+    if (existingUser) {
+      throw new AppError(
+        'Ja existe uma conta cadastrada com este e-mail.',
+        409,
+        'EMAIL_ALREADY_IN_USE',
+      );
+    }
+
+    if (existingCompany) {
+      throw new AppError(
+        'Este identificador de empresa ja esta em uso.',
+        409,
+        'COMPANY_SLUG_ALREADY_IN_USE',
+      );
+    }
+  }
+
+  private async createOwnerAccount(input: {
+    companyName: string;
+    companySlug: string;
+    userName: string;
+    email: string;
+    passwordHash: string;
+    isPlatformAdmin: boolean;
+  }): Promise<MembershipWithRelations> {
+    try {
+      return await prisma.$transaction(async (transaction) => {
+        const trialWindow = this.buildInitialTrialWindow();
+        const company = await transaction.company.create({
+          data: {
+            name: input.companyName.trim(),
+            legalName: input.companyName.trim(),
+            slug: input.companySlug.toLowerCase().trim(),
+          },
+        });
+
+        const user = await transaction.user.create({
+          data: {
+            email: input.email.toLowerCase().trim(),
+            name: input.userName.trim(),
+            passwordHash: input.passwordHash,
+            isPlatformAdmin: input.isPlatformAdmin,
+          },
+        });
+
+        await transaction.license.create({
+          data: {
+            companyId: company.id,
+            plan: 'trial',
+            status: 'TRIAL',
+            startsAt: trialWindow.startsAt,
+            expiresAt: trialWindow.expiresAt,
+            syncEnabled: true,
+          },
+        });
+
+        return transaction.membership.create({
+          data: {
+            userId: user.id,
+            companyId: company.id,
+            role: MembershipRole.OWNER,
+            isDefault: true,
+          },
+          include: {
+            user: true,
+            company: {
+              include: {
+                license: true,
+              },
+            },
+          },
+        });
+      });
+    } catch (error) {
+      this.rethrowRegistrationConstraintError(error);
+      throw error;
+    }
+  }
+
+  private rethrowRegistrationConstraintError(error: unknown): never | void {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      const target = Array.isArray(error.meta?.target)
+        ? error.meta.target.join(',')
+        : `${error.meta?.target ?? ''}`;
+
+      if (target.includes('email')) {
+        throw new AppError(
+          'Ja existe uma conta cadastrada com este e-mail.',
+          409,
+          'EMAIL_ALREADY_IN_USE',
+        );
+      }
+
+      if (target.includes('slug')) {
+        throw new AppError(
+          'Este identificador de empresa ja esta em uso.',
+          409,
+          'COMPANY_SLUG_ALREADY_IN_USE',
+        );
+      }
+
+      throw new AppError(
+        'Nao foi possivel concluir o cadastro porque os dados informados ja estao em uso.',
+        409,
+        'REGISTRATION_CONFLICT',
+      );
+    }
+  }
+
+  private buildInitialTrialWindow() {
+    const startsAt = new Date();
+    const expiresAt = new Date(
+      startsAt.getTime() +
+        INITIAL_TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000,
+    );
+
+    return {
+      startsAt,
+      expiresAt,
     };
   }
 }

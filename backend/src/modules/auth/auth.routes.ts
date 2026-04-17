@@ -8,6 +8,7 @@ import { CompaniesService } from '../companies/companies.service';
 import { AuthService } from './auth.service';
 import {
   loginSchema,
+  registerSchema,
   refreshSchema,
   registerInitialSchema,
 } from './auth.schemas';
@@ -49,6 +50,15 @@ const refreshRateLimit = createRateLimit({
   },
 });
 
+const registerRateLimit = createRateLimit({
+  name: 'auth_register',
+  windowMs: 10 * 60_000,
+  max: 8,
+  message:
+    'Muitas tentativas de cadastro em pouco tempo. Aguarde um instante e tente novamente.',
+  code: 'AUTH_REGISTER_RATE_LIMITED',
+});
+
 authRouter.get('/health', (_request, response) => {
   response.json({
     ok: true,
@@ -56,6 +66,16 @@ authRouter.get('/health', (_request, response) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+authRouter.post(
+  '/register',
+  registerRateLimit,
+  validateBody(registerSchema),
+  asyncHandler(async (request, response) => {
+    const payload = await authService.register(request.body);
+    response.status(201).json(payload);
+  }),
+);
 
 authRouter.post(
   '/register-initial',

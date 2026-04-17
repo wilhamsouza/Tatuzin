@@ -7,7 +7,10 @@ String friendlySessionFeedbackMessage(
     return fallback;
   }
 
-  final normalized = raw.toLowerCase();
+  final sanitized = raw
+      .replaceFirst(RegExp(r'^Falha ao chamar [^:]+:\s*'), '')
+      .trim();
+  final normalized = sanitized.toLowerCase();
   if (normalized.contains('session_revoked') ||
       normalized.contains('sessao revogada') ||
       normalized.contains('sessao foi encerrada')) {
@@ -26,6 +29,26 @@ String friendlySessionFeedbackMessage(
     return 'Sua licenca atingiu o limite de dispositivos conectados.';
   }
 
+  if (normalized.contains('email_already_in_use') ||
+      normalized.contains('ja existe uma conta cadastrada com este e-mail')) {
+    return 'Ja existe uma conta cadastrada com este e-mail.';
+  }
+
+  if (normalized.contains('company_slug_already_in_use') ||
+      normalized.contains('identificador de empresa ja esta em uso')) {
+    return 'Este identificador de empresa ja esta em uso.';
+  }
+
+  if (normalized.contains('auth_register_rate_limited') ||
+      normalized.contains('muitas tentativas de cadastro')) {
+    return 'Muitas tentativas de cadastro em pouco tempo. Aguarde um pouco e tente novamente.';
+  }
+
+  if (normalized.contains('validation_error') ||
+      normalized.contains('dados invalidos enviados para a api')) {
+    return 'Revise os dados informados e tente novamente.';
+  }
+
   if (normalized.contains('cloud_sync_disabled') ||
       normalized.contains('nuvem indisponivel') ||
       normalized.contains('cloud disabled')) {
@@ -40,5 +63,5 @@ String friendlySessionFeedbackMessage(
     return 'Nao foi possivel falar com a nuvem agora. Tente novamente quando a internet estiver estavel.';
   }
 
-  return raw;
+  return sanitized;
 }
