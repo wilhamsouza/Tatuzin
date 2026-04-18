@@ -52,6 +52,12 @@ import '../../modules/produtos/presentation/pages/product_form_page.dart';
 import '../../modules/produtos/presentation/pages/product_profitability_page.dart';
 import '../../modules/produtos/presentation/pages/products_page.dart';
 import '../../modules/relatorios/presentation/pages/reports_page.dart';
+import '../../modules/relatorios/presentation/pages/cash_reports_page.dart';
+import '../../modules/relatorios/presentation/pages/customer_reports_page.dart';
+import '../../modules/relatorios/presentation/pages/inventory_reports_page.dart';
+import '../../modules/relatorios/presentation/pages/profitability_reports_page.dart';
+import '../../modules/relatorios/presentation/pages/purchase_reports_page.dart';
+import '../../modules/relatorios/presentation/pages/sales_reports_page.dart';
 import '../../modules/system/presentation/pages/system_page.dart';
 import '../../modules/vendas/presentation/pages/sales_page.dart';
 import '../core/widgets/app_async_value_view.dart';
@@ -394,6 +400,36 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutePaths.reports,
         name: AppRouteNames.reports,
         builder: (context, state) => const ReportsPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.salesReports,
+        name: AppRouteNames.salesReports,
+        builder: (context, state) => const SalesReportsPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.cashReports,
+        name: AppRouteNames.cashReports,
+        builder: (context, state) => const CashReportsPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.inventoryReports,
+        name: AppRouteNames.inventoryReports,
+        builder: (context, state) => const InventoryReportsPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.customerReports,
+        name: AppRouteNames.customerReports,
+        builder: (context, state) => const CustomerReportsPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.purchaseReports,
+        name: AppRouteNames.purchaseReports,
+        builder: (context, state) => const PurchaseReportsPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.profitabilityReports,
+        name: AppRouteNames.profitabilityReports,
+        builder: (context, state) => const ProfitabilityReportsPage(),
       ),
     ],
     errorBuilder: (context, state) {

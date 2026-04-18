@@ -67,6 +67,9 @@ void main() {
         'status': 'ativa',
         'tipo_venda': 'vista',
         'forma_pagamento': 'pix',
+        'desconto_centavos': 0,
+        'acrescimo_centavos': 0,
+        'valor_total_centavos': 15000,
         'valor_final_centavos': 15000,
         'data_venda': nowIso,
         'cancelada_em': null,
@@ -159,6 +162,9 @@ Future<void> _createSchema(Database db) async {
       status TEXT NOT NULL,
       tipo_venda TEXT NOT NULL,
       forma_pagamento TEXT,
+      desconto_centavos INTEGER NOT NULL DEFAULT 0,
+      acrescimo_centavos INTEGER NOT NULL DEFAULT 0,
+      valor_total_centavos INTEGER NOT NULL DEFAULT 0,
       valor_final_centavos INTEGER NOT NULL,
       data_venda TEXT NOT NULL,
       cancelada_em TEXT
@@ -234,6 +240,7 @@ Future<void> _createSchema(Database db) async {
   await db.execute('''
     CREATE TABLE ${TableNames.compraPagamentos} (
       id INTEGER PRIMARY KEY,
+      compra_id INTEGER,
       valor_centavos INTEGER NOT NULL,
       data_hora TEXT NOT NULL
     )
