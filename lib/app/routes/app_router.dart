@@ -25,6 +25,11 @@ import '../../modules/compras/presentation/pages/purchase_form_page.dart';
 import '../../modules/compras/presentation/pages/purchases_page.dart';
 import '../../modules/comprovantes/presentation/pages/receipt_preview_page.dart';
 import '../../modules/dashboard/presentation/pages/dashboard_page.dart';
+import '../../modules/estoque/presentation/pages/inventory_adjustment_page.dart';
+import '../../modules/estoque/presentation/pages/inventory_count_page.dart';
+import '../../modules/estoque/presentation/pages/inventory_count_session_detail_page.dart';
+import '../../modules/estoque/presentation/pages/inventory_movements_page.dart';
+import '../../modules/estoque/presentation/pages/inventory_page.dart';
 import '../../modules/pedidos/presentation/pages/order_detail_page.dart';
 import '../../modules/pedidos/presentation/pages/kitchen_order_view_page.dart';
 import '../../modules/pedidos/presentation/pages/orders_page.dart';
@@ -114,6 +119,34 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutePaths.productProfitability,
         name: AppRouteNames.productProfitability,
         builder: (context, state) => const ProductProfitabilityPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.inventory,
+        name: AppRouteNames.inventory,
+        builder: (context, state) => const InventoryPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.inventoryCounts,
+        name: AppRouteNames.inventoryCounts,
+        builder: (context, state) => const InventoryCountPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.inventoryCountSessionDetail,
+        name: AppRouteNames.inventoryCountSessionDetail,
+        builder: (context, state) {
+          final sessionId = int.parse(state.pathParameters['sessionId']!);
+          return InventoryCountSessionDetailPage(sessionId: sessionId);
+        },
+      ),
+      GoRoute(
+        path: AppRoutePaths.inventoryMovements,
+        name: AppRouteNames.inventoryMovements,
+        builder: (context, state) => const InventoryMovementsPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.inventoryAdjustment,
+        name: AppRouteNames.inventoryAdjustment,
+        builder: (context, state) => const InventoryAdjustmentPage(),
       ),
       GoRoute(
         path: AppRoutePaths.supplies,

@@ -179,6 +179,29 @@ class AppMainDrawer extends ConsumerWidget {
                         ),
                       ),
                       _DrawerItem(
+                        label: 'Estoque',
+                        icon: Icons.inventory_2_outlined,
+                        isSelected: currentPath == AppRoutePaths.inventory,
+                        onTap: () => _navigateTo(
+                          context,
+                          currentPath: currentPath,
+                          path: AppRoutePaths.inventory,
+                          routeName: AppRouteNames.inventory,
+                        ),
+                      ),
+                      _DrawerItem(
+                        label: 'Inventario fisico',
+                        icon: Icons.fact_check_rounded,
+                        isSelected:
+                            currentPath == AppRoutePaths.inventoryCounts,
+                        onTap: () => _navigateTo(
+                          context,
+                          currentPath: currentPath,
+                          path: AppRoutePaths.inventoryCounts,
+                          routeName: AppRouteNames.inventoryCounts,
+                        ),
+                      ),
+                      _DrawerItem(
                         label: 'Insumos',
                         icon: Icons.scale_rounded,
                         isSelected: currentPath == AppRoutePaths.supplies,

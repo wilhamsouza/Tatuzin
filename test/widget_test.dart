@@ -3,72 +3,24 @@ import 'package:erp_pdv_app/app/core/database/app_database.dart';
 import 'package:erp_pdv_app/modules/dashboard/domain/entities/dashboard_metrics.dart';
 import 'package:erp_pdv_app/modules/dashboard/presentation/pages/dashboard_page.dart';
 import 'package:erp_pdv_app/modules/dashboard/presentation/providers/dashboard_providers.dart';
+import 'package:erp_pdv_app/modules/estoque/domain/entities/inventory_count_session.dart';
+import 'package:erp_pdv_app/modules/estoque/domain/entities/inventory_item.dart';
+import 'package:erp_pdv_app/modules/estoque/presentation/providers/inventory_providers.dart';
 import 'package:erp_pdv_app/modules/system/presentation/providers/system_providers.dart';
 import 'package:erp_pdv_app/app/routes/route_names.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
+
   testWidgets('app starts on login and allows offline entry', (tester) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          appStartupProvider.overrideWith((ref) async {}),
-          dashboardMetricsProvider.overrideWith(
-            (ref) async => const DashboardMetrics(
-              soldTodayCents: 152340,
-              currentCashCents: 81300,
-              pendingFiadoCount: 4,
-              pendingFiadoCents: 92750,
-              realizedProfitTodayCents: 48210,
-            ),
-          ),
-          backendConnectionStatusProvider.overrideWith(
-            (ref) async => BackendConnectionStatus(
-              isConfigured: false,
-              isReachable: false,
-              companyLookupSucceeded: false,
-              endpointLabel: 'Uso local',
-              message: 'Modo local ativo.',
-              checkedAt: DateTime(2026, 4, 5, 10),
-            ),
-          ),
-          syncHealthOverviewProvider.overrideWith(
-            (ref) => const SyncHealthOverview(
-              totalPending: 0,
-              totalProcessing: 0,
-              totalSynced: 0,
-              totalErrors: 0,
-              totalBlocked: 0,
-              totalConflicts: 0,
-              totalAttempts: 0,
-              lastProcessedAt: null,
-              lastErrorAt: null,
-              nextRetryAt: null,
-            ),
-          ),
-        ],
-        child: const ErpPdvApp(),
-      ),
-    );
-
-    await tester.pumpAndSettle();
-
-    expect(find.text('Tatuzin'), findsAtLeastNWidgets(1));
-    expect(find.text('Continuar offline'), findsOneWidget);
-
-    final continueOfflineButton = find.widgetWithText(
-      OutlinedButton,
-      'Continuar offline',
-    );
-
-    await tester.ensureVisible(continueOfflineButton);
-    await tester.pumpAndSettle();
-    await tester.tap(continueOfflineButton);
-    await tester.pump();
-    await tester.pumpAndSettle();
+    await _pumpOfflineApp(tester);
 
     expect(find.byType(DashboardPage), findsOneWidget);
     expect(find.text('Painel do dia'), findsOneWidget);
@@ -84,6 +36,15 @@ void main() {
       of: find.byType(Drawer),
       matching: find.byType(Scrollable),
     );
+
+    await tester.scrollUntilVisible(
+      find.text('Estoque'),
+      120,
+      scrollable: drawerScrollable,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Estoque'), findsOneWidget);
 
     await tester.scrollUntilVisible(
       find.text('Conta e nuvem'),
@@ -128,4 +89,138 @@ void main() {
     expect(find.text('Ferramentas internas'), findsNothing);
     expect(find.text('Painel cloud interno'), findsNothing);
   });
+
+  testWidgets('abre a tela de estoque pelo drawer', (tester) async {
+    await _pumpOfflineApp(
+      tester,
+      additionalOverrides: [
+        inventoryItemsProvider.overrideWith(
+          (ref) async => const <InventoryItem>[],
+        ),
+      ],
+    );
+
+    expect(find.byType(DashboardPage), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.menu).first);
+    await tester.pumpAndSettle();
+
+    final drawerScrollable = find.descendant(
+      of: find.byType(Drawer),
+      matching: find.byType(Scrollable),
+    );
+
+    await tester.scrollUntilVisible(
+      find.text('Estoque'),
+      120,
+      scrollable: drawerScrollable,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Estoque'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Drawer), findsNothing);
+    expect(find.text('Estoque atual'), findsOneWidget);
+    expect(find.text('Ver movimentacoes'), findsOneWidget);
+    expect(find.text('Novo ajuste'), findsOneWidget);
+    expect(find.text('Inventario fisico'), findsOneWidget);
+  });
+
+  testWidgets('abre o inventario fisico pelo drawer', (tester) async {
+    await _pumpOfflineApp(
+      tester,
+      additionalOverrides: [
+        inventoryCountSessionsProvider.overrideWith(
+          (ref) async => const <InventoryCountSession>[],
+        ),
+      ],
+    );
+
+    await tester.tap(find.byIcon(Icons.menu).first);
+    await tester.pumpAndSettle();
+
+    final drawerScrollable = find.descendant(
+      of: find.byType(Drawer),
+      matching: find.byType(Scrollable),
+    );
+
+    await tester.scrollUntilVisible(
+      find.text('Inventario fisico'),
+      120,
+      scrollable: drawerScrollable,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Inventario fisico'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Drawer), findsNothing);
+    expect(find.text('Nova sessao'), findsAtLeastNWidgets(1));
+    expect(find.text('Em andamento'), findsOneWidget);
+  });
+}
+
+Future<void> _pumpOfflineApp(
+  WidgetTester tester, {
+  List<Override> additionalOverrides = const [],
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        appStartupProvider.overrideWith((ref) async {}),
+        dashboardMetricsProvider.overrideWith(
+          (ref) async => const DashboardMetrics(
+            soldTodayCents: 152340,
+            currentCashCents: 81300,
+            pendingFiadoCount: 4,
+            pendingFiadoCents: 92750,
+            realizedProfitTodayCents: 48210,
+          ),
+        ),
+        backendConnectionStatusProvider.overrideWith(
+          (ref) async => BackendConnectionStatus(
+            isConfigured: false,
+            isReachable: false,
+            companyLookupSucceeded: false,
+            endpointLabel: 'Uso local',
+            message: 'Modo local ativo.',
+            checkedAt: DateTime(2026, 4, 5, 10),
+          ),
+        ),
+        syncHealthOverviewProvider.overrideWith(
+          (ref) => const SyncHealthOverview(
+            totalPending: 0,
+            totalProcessing: 0,
+            totalSynced: 0,
+            totalErrors: 0,
+            totalBlocked: 0,
+            totalConflicts: 0,
+            totalAttempts: 0,
+            lastProcessedAt: null,
+            lastErrorAt: null,
+            nextRetryAt: null,
+          ),
+        ),
+        ...additionalOverrides,
+      ],
+      child: const ErpPdvApp(),
+    ),
+  );
+
+  await tester.pumpAndSettle();
+
+  expect(find.text('Tatuzin'), findsAtLeastNWidgets(1));
+  expect(find.text('Continuar offline'), findsOneWidget);
+
+  final continueOfflineButton = find.widgetWithText(
+    OutlinedButton,
+    'Continuar offline',
+  );
+
+  await tester.ensureVisible(continueOfflineButton);
+  await tester.pumpAndSettle();
+  await tester.tap(continueOfflineButton);
+  await tester.pump();
+  await tester.pumpAndSettle();
 }

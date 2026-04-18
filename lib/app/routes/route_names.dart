@@ -10,6 +10,11 @@ abstract final class AppRouteNames {
   static const products = 'products';
   static const productForm = 'product-form';
   static const productProfitability = 'product-profitability';
+  static const inventory = 'inventory';
+  static const inventoryCounts = 'inventory-counts';
+  static const inventoryCountSessionDetail = 'inventory-count-session-detail';
+  static const inventoryMovements = 'inventory-movements';
+  static const inventoryAdjustment = 'inventory-adjustment';
   static const supplies = 'supplies';
   static const supplyForm = 'supply-form';
   static const supplyInventory = 'supply-inventory';
@@ -58,6 +63,11 @@ abstract final class AppRoutePaths {
   static const products = '/produtos';
   static const productForm = '/produtos/form';
   static const productProfitability = '/produtos/lucratividade';
+  static const inventory = '/estoque';
+  static const inventoryCounts = '/estoque/inventarios';
+  static const inventoryCountSessionDetail = '/estoque/inventarios/:sessionId';
+  static const inventoryMovements = '/estoque/movimentacoes';
+  static const inventoryAdjustment = '/estoque/ajustes';
   static const supplies = '/insumos';
   static const supplyForm = '/insumos/form';
   static const supplyInventory = '/insumos/estoque';

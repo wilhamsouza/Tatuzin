@@ -44,6 +44,9 @@ abstract final class AppMigrations {
     const MigrationStep(version: 28, up: _createVersion28Schema),
     const MigrationStep(version: 29, up: _createVersion29Schema),
     const MigrationStep(version: 30, up: _createVersion30Schema),
+    const MigrationStep(version: 31, up: _createVersion31Schema),
+    const MigrationStep(version: 32, up: _createVersion32Schema),
+    const MigrationStep(version: 33, up: _createVersion33Schema),
   ];
 
   static Future<void> runCreate(DatabaseExecutor db, int version) async {
@@ -3471,5 +3474,132 @@ abstract final class AppMigrations {
       CREATE INDEX IF NOT EXISTS idx_sale_return_items_sale_item
       ON ${TableNames.saleReturnItems}(sale_item_id)
     ''');
+  }
+
+  static Future<void> _createVersion31Schema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.inventoryMovements} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        product_id INTEGER NOT NULL,
+        product_variant_id INTEGER,
+        movement_type TEXT NOT NULL,
+        quantity_delta_mil INTEGER NOT NULL,
+        stock_before_mil INTEGER NOT NULL,
+        stock_after_mil INTEGER NOT NULL,
+        reference_type TEXT NOT NULL,
+        reference_id INTEGER,
+        reason TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (product_id) REFERENCES ${TableNames.produtos}(id) ON DELETE RESTRICT,
+        FOREIGN KEY (product_variant_id) REFERENCES ${TableNames.produtoVariantes}(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.inventorySettings} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL,
+        product_variant_id INTEGER,
+        minimum_stock_mil INTEGER NOT NULL DEFAULT 0,
+        reorder_point_mil INTEGER,
+        allow_negative_stock INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (product_id) REFERENCES ${TableNames.produtos}(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_variant_id) REFERENCES ${TableNames.produtoVariantes}(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_inventory_movements_product
+      ON ${TableNames.inventoryMovements}(product_id)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_inventory_movements_variant
+      ON ${TableNames.inventoryMovements}(product_variant_id)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_inventory_movements_type_created_at
+      ON ${TableNames.inventoryMovements}(movement_type, created_at)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_inventory_settings_product_variant
+      ON ${TableNames.inventorySettings}(product_id, product_variant_id)
+    ''');
+  }
+
+  static Future<void> _createVersion32Schema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.inventoryCountSessions} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (
+          status IN ('open', 'counting', 'reviewed', 'applied', 'canceled')
+        ),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        applied_at TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.inventoryCountItems} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        count_session_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        product_variant_id INTEGER,
+        system_stock_mil INTEGER NOT NULL,
+        counted_stock_mil INTEGER NOT NULL,
+        difference_mil INTEGER NOT NULL,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (count_session_id) REFERENCES ${TableNames.inventoryCountSessions}(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES ${TableNames.produtos}(id) ON DELETE RESTRICT,
+        FOREIGN KEY (product_variant_id) REFERENCES ${TableNames.produtoVariantes}(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_inventory_count_sessions_status_updated
+      ON ${TableNames.inventoryCountSessions}(status, updated_at DESC, id DESC)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_inventory_count_items_session
+      ON ${TableNames.inventoryCountItems}(count_session_id, id DESC)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_inventory_count_items_product_variant
+      ON ${TableNames.inventoryCountItems}(product_id, product_variant_id)
+    ''');
+  }
+
+  static Future<void> _createVersion33Schema(DatabaseExecutor db) async {
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.inventoryCountItems,
+      columnName: 'stale_override',
+      columnDefinition: 'INTEGER NOT NULL DEFAULT 0',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.inventoryCountItems,
+      columnName: 'applied_from_system_stock_mil',
+      columnDefinition: 'INTEGER',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.inventoryCountItems,
+      columnName: 'stale_at_apply',
+      columnDefinition: 'INTEGER NOT NULL DEFAULT 0',
+    );
   }
 }

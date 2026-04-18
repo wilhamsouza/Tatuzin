@@ -5,7 +5,7 @@ abstract final class AppConstants {
       'ERP/PDV offline-first para o pequeno negocio brasileiro';
   static const appVersion = '1.0.0';
   static const databaseName = 'simples_erp_pdv.db';
-  static const databaseVersion = 30;
+  static const databaseVersion = 33;
   static const defaultLocalOperatorName = 'Operador local';
   static const defaultLocalCompanyName = 'Empresa local';
 }
