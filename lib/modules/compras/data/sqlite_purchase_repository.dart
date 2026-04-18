@@ -106,6 +106,8 @@ class SqlitePurchaseRepository implements PurchaseRepository {
         txn,
         prepared.items,
         factor: 1,
+        referenceId: purchaseId,
+        occurredAt: now,
       );
       await SupplyInventorySupport.replacePurchaseEntries(
         txn,
@@ -201,6 +203,8 @@ class SqlitePurchaseRepository implements PurchaseRepository {
         txn,
         previousItems,
         factor: -1,
+        referenceId: id,
+        occurredAt: now,
       );
       await txn.delete(
         TableNames.itensCompra,
@@ -253,6 +257,8 @@ class SqlitePurchaseRepository implements PurchaseRepository {
         txn,
         prepared.items,
         factor: 1,
+        referenceId: id,
+        occurredAt: now,
       );
       await SupplyInventorySupport.replacePurchaseEntries(
         txn,
@@ -310,9 +316,15 @@ class SqlitePurchaseRepository implements PurchaseRepository {
 
       final items = await _fetchItemModels(txn, purchaseId);
       await PurchaseStockSupport.validateStockReversal(txn, items);
-      await PurchaseStockSupport.applyStockEntries(txn, items, factor: -1);
-
       final now = DateTime.now();
+      await PurchaseStockSupport.applyStockEntries(
+        txn,
+        items,
+        factor: -1,
+        referenceId: purchaseId,
+        occurredAt: now,
+      );
+
       final nowIso = now.toIso8601String();
       await SupplyInventorySupport.cancelPurchaseEntries(
         txn,

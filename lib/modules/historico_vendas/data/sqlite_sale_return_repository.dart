@@ -9,6 +9,9 @@ import '../../../app/core/errors/app_exceptions.dart';
 import '../../../app/core/utils/id_generator.dart';
 import '../../carrinho/domain/entities/cart_item.dart';
 import '../../clientes/data/customer_credit_database_support.dart';
+import '../../estoque/data/support/inventory_balance_support.dart';
+import '../../estoque/data/support/inventory_movement_writer.dart';
+import '../../estoque/domain/entities/inventory_movement.dart';
 import '../../vendas/data/sqlite_sale_repository.dart';
 import '../../vendas/data/support/sale_cash_effects_support.dart';
 import '../../vendas/domain/entities/checkout_input.dart';
@@ -182,9 +185,26 @@ class SqliteSaleReturnRepository {
       final nowIso = now.toIso8601String();
       final receiptNumber = saleRow['numero_cupom'] as String? ?? '';
       final clientId = saleRow['cliente_id'] as int?;
+      final cleanedReason = _cleanNullable(input.reason);
       final resolvedItems = <_ResolvedSaleReturnItem>[];
-      final touchedProductIds = <int>{};
+      final returnChanges = <InventoryBalanceMutation>[];
       var totalReturnedCents = 0;
+
+      _validateReplacementItems(input.replacementItems);
+
+      final saleReturnId = await txn.insert(TableNames.saleReturns, {
+        'uuid': IdGenerator.next(),
+        'sale_id': input.saleId,
+        'client_id': clientId,
+        'exchange_mode': input.mode.storageValue,
+        'reason': cleanedReason,
+        'refund_amount_cents': 0,
+        'credited_amount_cents': 0,
+        'applied_discount_cents': 0,
+        'replacement_sale_id': null,
+        'created_at': nowIso,
+        'updated_at': nowIso,
+      });
 
       for (final returnedItem in normalizedReturnedItems) {
         final itemRow = saleItemsById[returnedItem.saleItemId];
@@ -215,22 +235,24 @@ class SqliteSaleReturnRepository {
           );
         }
 
-        if (variantId != null) {
-          await _restockVariant(
-            txn,
-            variantId: variantId,
-            quantityMil: quantityMil,
-            updatedAtIso: nowIso,
-          );
-        } else {
-          await _restockSimpleProduct(
-            txn,
-            productId: itemRow['produto_id'] as int,
-            quantityMil: quantityMil,
-            updatedAtIso: nowIso,
-          );
-        }
-        touchedProductIds.add(itemRow['produto_id'] as int);
+        final itemLabel = _buildSaleItemLabel(itemRow);
+        final change = await InventoryBalanceSupport.applyStockDelta(
+          txn,
+          productId: itemRow['produto_id'] as int,
+          productVariantId: variantId,
+          quantityDeltaMil: quantityMil,
+          allowNegativeStock: false,
+          productNotFoundMessage:
+              'Produto original nao foi encontrado para recompor o estoque: $itemLabel.',
+          variantNotFoundMessage:
+              'Variante original nao foi encontrada para recompor o estoque: $itemLabel.',
+          insufficientProductStockMessage:
+              'Nao foi possivel recompor o estoque de $itemLabel.',
+          insufficientVariantStockMessage:
+              'Nao foi possivel recompor o estoque de $itemLabel.',
+          changedAt: now,
+        );
+        returnChanges.add(change);
 
         final subtotalCents = _calculateReturnedSubtotal(
           itemRow,
@@ -251,20 +273,18 @@ class SqliteSaleReturnRepository {
             quantityMil: quantityMil,
             unitPriceCents: itemRow['valor_unitario_centavos'] as int? ?? 0,
             subtotalCents: subtotalCents,
-            reason:
-                _cleanNullable(returnedItem.reason) ??
-                _cleanNullable(input.reason),
+            reason: _cleanNullable(returnedItem.reason) ?? cleanedReason,
           ),
         );
       }
 
-      await _rebuildParentStocks(
+      await InventoryMovementWriter.writeReturnIn(
         txn,
-        productIds: touchedProductIds,
-        updatedAtIso: nowIso,
+        changes: returnChanges,
+        referenceId: saleReturnId,
+        notes: cleanedReason,
+        createdAt: now,
       );
-
-      _validateReplacementItems(input.replacementItems);
 
       var refundAmountCents = 0;
       var creditedAmountCents = 0;
@@ -301,8 +321,7 @@ class SqliteSaleReturnRepository {
               amountCents: refundAmountCents,
               receiptNumber: receiptNumber,
               reason:
-                  _cleanNullable(input.reason) ??
-                  'Troca com diferenca devolvida ao cliente.',
+                  cleanedReason ?? 'Troca com diferenca devolvida ao cliente.',
               paymentMethod: _paymentMethodFromStorage(
                 saleRow['forma_pagamento'] as String?,
               ),
@@ -324,6 +343,13 @@ class SqliteSaleReturnRepository {
                   reason: input.reason,
                 ),
                 discountCents: appliedDiscountCents,
+              ),
+              inventoryMovementType: InventoryMovementType.exchangeOut,
+              inventoryReferenceType: 'sale_return',
+              inventoryReferenceId: saleReturnId,
+              inventoryNotes: _buildReplacementSaleNote(
+                receiptNumber: receiptNumber,
+                reason: input.reason,
               ),
             );
         await txn.update(
@@ -350,8 +376,7 @@ class SqliteSaleReturnRepository {
             saleId: input.saleId,
             amountCents: refundAmountCents,
             receiptNumber: receiptNumber,
-            reason:
-                _cleanNullable(input.reason) ?? 'Devolucao simples da venda.',
+            reason: cleanedReason ?? 'Devolucao simples da venda.',
             paymentMethod: _paymentMethodFromStorage(
               saleRow['forma_pagamento'] as String?,
             ),
@@ -360,19 +385,18 @@ class SqliteSaleReturnRepository {
         }
       }
 
-      final saleReturnId = await txn.insert(TableNames.saleReturns, {
-        'uuid': IdGenerator.next(),
-        'sale_id': input.saleId,
-        'client_id': clientId,
-        'exchange_mode': input.mode.storageValue,
-        'reason': _cleanNullable(input.reason),
-        'refund_amount_cents': refundAmountCents,
-        'credited_amount_cents': creditedAmountCents,
-        'applied_discount_cents': appliedDiscountCents,
-        'replacement_sale_id': replacementSale?.saleId,
-        'created_at': nowIso,
-        'updated_at': nowIso,
-      });
+      await txn.update(
+        TableNames.saleReturns,
+        {
+          'refund_amount_cents': refundAmountCents,
+          'credited_amount_cents': creditedAmountCents,
+          'applied_discount_cents': appliedDiscountCents,
+          'replacement_sale_id': replacementSale?.saleId,
+          'updated_at': nowIso,
+        },
+        where: 'id = ?',
+        whereArgs: [saleReturnId],
+      );
 
       for (final item in resolvedItems) {
         await txn.insert(TableNames.saleReturnItems, {
@@ -442,90 +466,25 @@ class SqliteSaleReturnRepository {
     return rows.first['total'] as int? ?? 0;
   }
 
-  Future<void> _restockVariant(
-    DatabaseExecutor txn, {
-    required int variantId,
-    required int quantityMil,
-    required String updatedAtIso,
-  }) async {
-    final rows = await txn.query(
-      TableNames.produtoVariantes,
-      columns: ['estoque_mil'],
-      where: 'id = ?',
-      whereArgs: [variantId],
-      limit: 1,
-    );
-    if (rows.isEmpty) {
-      throw const ValidationException(
-        'A variante original nao foi encontrada para recompor o estoque.',
-      );
+  String _buildSaleItemLabel(Map<String, Object?> itemRow) {
+    final productName =
+        (itemRow['nome_produto_snapshot'] as String?)?.trim().isNotEmpty == true
+        ? (itemRow['nome_produto_snapshot'] as String).trim()
+        : 'Produto';
+    final variantParts = <String>[
+      if ((itemRow['cor_variante_snapshot'] as String?)?.trim().isNotEmpty ==
+          true)
+        (itemRow['cor_variante_snapshot'] as String).trim(),
+      if ((itemRow['tamanho_variante_snapshot'] as String?)
+              ?.trim()
+              .isNotEmpty ==
+          true)
+        (itemRow['tamanho_variante_snapshot'] as String).trim(),
+    ];
+    if (variantParts.isEmpty) {
+      return productName;
     }
-
-    final currentStockMil = rows.first['estoque_mil'] as int? ?? 0;
-    await txn.update(
-      TableNames.produtoVariantes,
-      {
-        'estoque_mil': currentStockMil + quantityMil,
-        'atualizado_em': updatedAtIso,
-      },
-      where: 'id = ?',
-      whereArgs: [variantId],
-    );
-  }
-
-  Future<void> _rebuildParentStocks(
-    DatabaseExecutor txn, {
-    required Set<int> productIds,
-    required String updatedAtIso,
-  }) async {
-    for (final productId in productIds) {
-      final rows = await txn.rawQuery(
-        '''
-        SELECT COALESCE(SUM(CASE WHEN ativo = 1 THEN estoque_mil ELSE 0 END), 0) AS total
-        FROM ${TableNames.produtoVariantes}
-        WHERE produto_id = ?
-      ''',
-        [productId],
-      );
-      final totalStockMil = rows.first['total'] as int? ?? 0;
-      await txn.update(
-        TableNames.produtos,
-        {'estoque_mil': totalStockMil, 'atualizado_em': updatedAtIso},
-        where: 'id = ?',
-        whereArgs: [productId],
-      );
-    }
-  }
-
-  Future<void> _restockSimpleProduct(
-    DatabaseExecutor txn, {
-    required int productId,
-    required int quantityMil,
-    required String updatedAtIso,
-  }) async {
-    final rows = await txn.query(
-      TableNames.produtos,
-      columns: ['estoque_mil'],
-      where: 'id = ?',
-      whereArgs: [productId],
-      limit: 1,
-    );
-    if (rows.isEmpty) {
-      throw const ValidationException(
-        'O produto original nao foi encontrado para recompor o estoque.',
-      );
-    }
-
-    final currentStockMil = rows.first['estoque_mil'] as int? ?? 0;
-    await txn.update(
-      TableNames.produtos,
-      {
-        'estoque_mil': currentStockMil + quantityMil,
-        'atualizado_em': updatedAtIso,
-      },
-      where: 'id = ?',
-      whereArgs: [productId],
-    );
+    return '$productName (${variantParts.join(' / ')})';
   }
 
   int _calculateReturnedSubtotal(

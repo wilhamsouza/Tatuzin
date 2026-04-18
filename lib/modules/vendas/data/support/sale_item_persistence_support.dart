@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../../app/core/database/table_names.dart';
 import '../../../../app/core/errors/app_exceptions.dart';
+import '../../../estoque/data/support/inventory_balance_support.dart';
 import '../../../../app/core/utils/id_generator.dart';
 import '../../../carrinho/domain/entities/cart_item.dart';
 import 'sale_validation_support.dart';
@@ -14,6 +15,7 @@ class SaleItemPersistenceSupport {
     List<CartItem> items,
   ) async {
     final snapshots = <String, SaleProductSnapshot>{};
+    final reservedQuantityByKey = <String, int>{};
 
     for (final item in items) {
       final productRows = await txn.query(
@@ -59,13 +61,22 @@ class SaleItemPersistenceSupport {
         currentStockMil = variantRows.first['estoque_mil'] as int? ?? 0;
       }
 
+      final snapshotKey = _snapshotKey(item);
+      final reservedQuantityMil =
+          (reservedQuantityByKey[snapshotKey] ?? 0) + item.quantityMil;
       if (currentStockMil < item.quantityMil) {
         throw StockConflictException(
-          'Estoque insuficiente para ${item.productName}. Disponivel: ${currentStockMil ~/ 1000}',
+          'Estoque insuficiente para ${_buildItemLabel(item)}. Disponivel: ${currentStockMil ~/ 1000}',
+        );
+      }
+      if (currentStockMil < reservedQuantityMil) {
+        throw StockConflictException(
+          'Estoque insuficiente para ${_buildItemLabel(item)}. Disponivel: ${currentStockMil ~/ 1000}',
         );
       }
 
-      snapshots[_snapshotKey(item)] = SaleProductSnapshot(
+      reservedQuantityByKey[snapshotKey] = reservedQuantityMil;
+      snapshots[snapshotKey] = SaleProductSnapshot(
         productId: item.productId,
         productVariantId: item.productVariantId,
         stockMil: currentStockMil,
@@ -78,46 +89,35 @@ class SaleItemPersistenceSupport {
     return snapshots;
   }
 
-  static Future<void> persistItemsAndDecreaseStock(
+  static Future<List<InventoryBalanceMutation>> persistItemsAndDecreaseStock(
     DatabaseExecutor txn, {
     required String soldAtIso,
     required int saleId,
     required List<CartItem> items,
     required Map<String, SaleProductSnapshot> snapshots,
   }) async {
+    final stockChanges = <InventoryBalanceMutation>[];
+
     for (final item in items) {
       final snapshot = snapshots[_snapshotKey(item)]!;
-      final newStockMil = snapshot.stockMil - item.quantityMil;
-
-      if (snapshot.productVariantId != null) {
-        await txn.update(
-          TableNames.produtoVariantes,
-          {'estoque_mil': newStockMil, 'atualizado_em': soldAtIso},
-          where: 'id = ?',
-          whereArgs: [snapshot.productVariantId],
-        );
-
-        await txn.rawUpdate(
-          '''
-          UPDATE ${TableNames.produtos}
-          SET estoque_mil = COALESCE((
-            SELECT SUM(CASE WHEN ativo = 1 THEN estoque_mil ELSE 0 END)
-            FROM ${TableNames.produtoVariantes}
-            WHERE produto_id = ?
-          ), 0),
-          atualizado_em = ?
-          WHERE id = ?
-          ''',
-          [item.productId, soldAtIso, item.productId],
-        );
-      } else {
-        await txn.update(
-          TableNames.produtos,
-          {'estoque_mil': newStockMil, 'atualizado_em': soldAtIso},
-          where: 'id = ?',
-          whereArgs: [item.productId],
-        );
-      }
+      final changedAt = DateTime.parse(soldAtIso);
+      final change = await InventoryBalanceSupport.applyStockDelta(
+        txn,
+        productId: item.productId,
+        productVariantId: snapshot.productVariantId,
+        quantityDeltaMil: -item.quantityMil,
+        allowNegativeStock: false,
+        productNotFoundMessage:
+            'Produto nao encontrado durante a baixa da venda: ${item.productName}.',
+        variantNotFoundMessage:
+            'Variante nao encontrada durante a baixa da venda: ${_buildItemLabel(item)}.',
+        insufficientProductStockMessage:
+            'Estoque insuficiente para ${_buildItemLabel(item)}.',
+        insufficientVariantStockMessage:
+            'Estoque insuficiente para ${_buildItemLabel(item)}.',
+        changedAt: changedAt,
+      );
+      stockChanges.add(change);
 
       final quantityUnits = item.quantityMil ~/ 1000;
       final costTotalCents = snapshot.costCents * quantityUnits;
@@ -156,6 +156,8 @@ class SaleItemPersistenceSupport {
         nowIso: soldAtIso,
       );
     }
+
+    return stockChanges;
   }
 
   static Future<void> _persistSaleItemModifiers(
@@ -189,6 +191,19 @@ class SaleItemPersistenceSupport {
 
   static String _snapshotKey(CartItem item) {
     return '${item.productId}:${item.productVariantId ?? 0}';
+  }
+
+  static String _buildItemLabel(CartItem item) {
+    final variantParts = <String>[
+      if ((item.variantColorLabel ?? '').trim().isNotEmpty)
+        item.variantColorLabel!.trim(),
+      if ((item.variantSizeLabel ?? '').trim().isNotEmpty)
+        item.variantSizeLabel!.trim(),
+    ];
+    if (variantParts.isEmpty) {
+      return item.productName;
+    }
+    return '${item.productName} (${variantParts.join(' / ')})';
   }
 }
 

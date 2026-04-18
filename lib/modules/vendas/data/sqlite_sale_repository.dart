@@ -12,6 +12,9 @@ import '../../../app/core/sync/sync_queue_operation.dart';
 import '../../../app/core/utils/id_generator.dart';
 import '../../clientes/data/customer_credit_database_support.dart';
 import '../../clientes/domain/entities/customer_credit_transaction.dart';
+import '../../estoque/data/support/inventory_balance_support.dart';
+import '../../estoque/data/support/inventory_movement_writer.dart';
+import '../../estoque/domain/entities/inventory_movement.dart';
 import '../../insumos/data/support/supply_inventory_support.dart';
 import '../../insumos/data/support/supply_sync_mutation_support.dart';
 import '../domain/entities/checkout_input.dart';
@@ -28,9 +31,37 @@ import 'support/sale_sync_state_support.dart';
 import 'support/sale_validation_support.dart';
 
 class SqliteSaleRepository implements SaleRepository {
-  SqliteSaleRepository(this._appDatabase, this._operationalContext)
-    : _syncMetadataRepository = SqliteSyncMetadataRepository(_appDatabase),
-      _syncQueueRepository = SqliteSyncQueueRepository(_appDatabase) {
+  SqliteSaleRepository(
+    AppDatabase appDatabase,
+    AppOperationalContext operationalContext,
+  ) : this._internal(
+        databaseLoader: () => appDatabase.database,
+        operationalContext: operationalContext,
+        syncMetadataRepository: SqliteSyncMetadataRepository(appDatabase),
+        syncQueueRepository: SqliteSyncQueueRepository(appDatabase),
+      );
+
+  SqliteSaleRepository.forDatabase({
+    required Future<Database> Function() databaseLoader,
+    required AppOperationalContext operationalContext,
+    required SqliteSyncMetadataRepository syncMetadataRepository,
+    required SqliteSyncQueueRepository syncQueueRepository,
+  }) : this._internal(
+         databaseLoader: databaseLoader,
+         operationalContext: operationalContext,
+         syncMetadataRepository: syncMetadataRepository,
+         syncQueueRepository: syncQueueRepository,
+       );
+
+  SqliteSaleRepository._internal({
+    required Future<Database> Function() databaseLoader,
+    required AppOperationalContext operationalContext,
+    required SqliteSyncMetadataRepository syncMetadataRepository,
+    required SqliteSyncQueueRepository syncQueueRepository,
+  }) : _databaseLoader = databaseLoader,
+       _operationalContext = operationalContext,
+       _syncMetadataRepository = syncMetadataRepository,
+       _syncQueueRepository = syncQueueRepository {
     _syncStateSupport = SaleSyncStateSupport(
       syncMetadataRepository: _syncMetadataRepository,
       syncQueueRepository: _syncQueueRepository,
@@ -47,7 +78,7 @@ class SqliteSaleRepository implements SaleRepository {
   static const String financialEventFeatureKey =
       SyncFeatureKeys.financialEvents;
 
-  final AppDatabase _appDatabase;
+  final Future<Database> Function() _databaseLoader;
   final AppOperationalContext _operationalContext;
   final SqliteSyncMetadataRepository _syncMetadataRepository;
   final SqliteSyncQueueRepository _syncQueueRepository;
@@ -55,7 +86,7 @@ class SqliteSaleRepository implements SaleRepository {
 
   @override
   Future<CompletedSale> completeCashSale({required CheckoutInput input}) async {
-    final database = await _appDatabase.database;
+    final database = await _databaseLoader();
 
     return database.transaction<CompletedSale>((txn) async {
       return completeCashSaleWithinTransaction(txn, input: input);
@@ -66,18 +97,36 @@ class SqliteSaleRepository implements SaleRepository {
   Future<CompletedSale> completeCreditSale({
     required CheckoutInput input,
   }) async {
-    final database = await _appDatabase.database;
+    final database = await _databaseLoader();
 
     return database.transaction<CompletedSale>((txn) async {
-      return _completeSale(txn, input: input, saleType: SaleType.fiado);
+      return _completeSale(
+        txn,
+        input: input,
+        saleType: SaleType.fiado,
+        inventoryMovementType: InventoryMovementType.saleOut,
+        inventoryReferenceType: 'sale',
+      );
     });
   }
 
   Future<CompletedSale> completeCashSaleWithinTransaction(
     DatabaseExecutor txn, {
     required CheckoutInput input,
+    InventoryMovementType inventoryMovementType = InventoryMovementType.saleOut,
+    String inventoryReferenceType = 'sale',
+    int? inventoryReferenceId,
+    String? inventoryNotes,
   }) {
-    return _completeSale(txn, input: input, saleType: SaleType.cash);
+    return _completeSale(
+      txn,
+      input: input,
+      saleType: SaleType.cash,
+      inventoryMovementType: inventoryMovementType,
+      inventoryReferenceType: inventoryReferenceType,
+      inventoryReferenceId: inventoryReferenceId,
+      inventoryNotes: inventoryNotes,
+    );
   }
 
   Future<void> registerCashEventForSyncWithinTransaction(
@@ -96,7 +145,7 @@ class SqliteSaleRepository implements SaleRepository {
 
   @override
   Future<void> cancelSale({required int saleId, required String reason}) async {
-    final database = await _appDatabase.database;
+    final database = await _databaseLoader();
 
     await database.transaction((txn) async {
       final saleRows = await txn.rawQuery(
@@ -149,70 +198,38 @@ class SqliteSaleRepository implements SaleRepository {
         syncQueueRepository: _syncQueueRepository,
       );
 
+      final stockChanges = <InventoryBalanceMutation>[];
       for (final itemRow in soldItems) {
         final productId = itemRow['produto_id'] as int;
         final variantId = itemRow['produto_variante_id'] as int?;
         final quantityMil = itemRow['quantidade_mil'] as int;
-        if (variantId != null) {
-          final variantRows = await txn.query(
-            TableNames.produtoVariantes,
-            columns: ['estoque_mil'],
-            where: 'id = ?',
-            whereArgs: [variantId],
-            limit: 1,
-          );
-          if (variantRows.isNotEmpty) {
-            final currentVariantStockMil =
-                variantRows.first['estoque_mil'] as int? ?? 0;
-            await txn.update(
-              TableNames.produtoVariantes,
-              {
-                'estoque_mil': currentVariantStockMil + quantityMil,
-                'atualizado_em': nowIso,
-              },
-              where: 'id = ?',
-              whereArgs: [variantId],
-            );
-
-            await txn.rawUpdate(
-              '''
-              UPDATE ${TableNames.produtos}
-              SET estoque_mil = COALESCE((
-                SELECT SUM(CASE WHEN ativo = 1 THEN estoque_mil ELSE 0 END)
-                FROM ${TableNames.produtoVariantes}
-                WHERE produto_id = ?
-              ), 0),
-              atualizado_em = ?
-              WHERE id = ?
-              ''',
-              [productId, nowIso, productId],
-            );
-          }
-          continue;
-        }
-
-        final productRows = await txn.query(
-          TableNames.produtos,
-          columns: ['estoque_mil'],
-          where: 'id = ?',
-          whereArgs: [productId],
-          limit: 1,
+        final itemLabel = _buildSoldItemLabel(itemRow);
+        final change = await InventoryBalanceSupport.applyStockDelta(
+          txn,
+          productId: productId,
+          productVariantId: variantId,
+          quantityDeltaMil: quantityMil,
+          allowNegativeStock: false,
+          productNotFoundMessage:
+              'Produto da venda cancelada nao foi encontrado: $itemLabel.',
+          variantNotFoundMessage:
+              'Variante da venda cancelada nao foi encontrada: $itemLabel.',
+          insufficientProductStockMessage:
+              'Nao foi possivel recompor o estoque de $itemLabel.',
+          insufficientVariantStockMessage:
+              'Nao foi possivel recompor o estoque de $itemLabel.',
+          changedAt: now,
         );
-        if (productRows.isEmpty) {
-          continue;
-        }
-
-        final currentStockMil = productRows.first['estoque_mil'] as int? ?? 0;
-        await txn.update(
-          TableNames.produtos,
-          {
-            'estoque_mil': currentStockMil + quantityMil,
-            'atualizado_em': nowIso,
-          },
-          where: 'id = ?',
-          whereArgs: [productId],
-        );
+        stockChanges.add(change);
       }
+
+      await InventoryMovementWriter.writeSaleCancelIn(
+        txn,
+        changes: stockChanges,
+        referenceId: saleId,
+        notes: SaleValidationSupport.cleanNullable(reason),
+        createdAt: now,
+      );
 
       final saleType = SaleTypeX.fromDb(saleRow['tipo_venda'] as String);
       final paymentMethod = PaymentMethodX.fromDb(
@@ -380,6 +397,10 @@ class SqliteSaleRepository implements SaleRepository {
     DatabaseExecutor txn, {
     required CheckoutInput input,
     required SaleType saleType,
+    required InventoryMovementType inventoryMovementType,
+    required String inventoryReferenceType,
+    int? inventoryReferenceId,
+    String? inventoryNotes,
   }) async {
     final now = DateTime.now();
     final nowIso = now.toIso8601String();
@@ -431,12 +452,22 @@ class SqliteSaleRepository implements SaleRepository {
       'venda_origem_id': null,
     });
 
-    await SaleItemPersistenceSupport.persistItemsAndDecreaseStock(
+    final stockChanges =
+        await SaleItemPersistenceSupport.persistItemsAndDecreaseStock(
+          txn,
+          soldAtIso: nowIso,
+          saleId: saleId,
+          items: input.items,
+          snapshots: productSnapshots,
+        );
+    await _recordSaleInventoryMovement(
       txn,
-      soldAtIso: nowIso,
-      saleId: saleId,
-      items: input.items,
-      snapshots: productSnapshots,
+      changes: stockChanges,
+      movementType: inventoryMovementType,
+      referenceType: inventoryReferenceType,
+      referenceId: inventoryReferenceId ?? saleId,
+      notes: inventoryNotes ?? SaleValidationSupport.cleanNullable(input.notes),
+      createdAt: now,
     );
     final supplyConsumption =
         await SupplyInventorySupport.recordSaleConsumption(
@@ -596,7 +627,7 @@ class SqliteSaleRepository implements SaleRepository {
   }
 
   Future<SaleSyncPayload?> findSaleForSync(int saleId) async {
-    final database = await _appDatabase.database;
+    final database = await _databaseLoader();
     return SaleSyncPayloadLoader.loadSale(
       database,
       saleId: saleId,
@@ -607,7 +638,7 @@ class SqliteSaleRepository implements SaleRepository {
   Future<SaleCancellationSyncPayload?> findSaleCancellationForSync(
     int saleId,
   ) async {
-    final database = await _appDatabase.database;
+    final database = await _databaseLoader();
     return SaleSyncPayloadLoader.loadCancellation(
       database,
       saleId: saleId,
@@ -621,7 +652,7 @@ class SqliteSaleRepository implements SaleRepository {
     required String remoteId,
     required DateTime syncedAt,
   }) async {
-    final database = await _appDatabase.database;
+    final database = await _databaseLoader();
 
     await database.transaction((txn) async {
       await _syncStateSupport.markSynced(
@@ -638,7 +669,7 @@ class SqliteSaleRepository implements SaleRepository {
     required String message,
     required SyncErrorType errorType,
   }) async {
-    final database = await _appDatabase.database;
+    final database = await _databaseLoader();
     final now = DateTime.now();
 
     await database.transaction((txn) async {
@@ -657,7 +688,7 @@ class SqliteSaleRepository implements SaleRepository {
     required String message,
     required DateTime detectedAt,
   }) async {
-    final database = await _appDatabase.database;
+    final database = await _databaseLoader();
 
     await database.transaction((txn) async {
       await _syncStateSupport.markConflict(
@@ -674,7 +705,7 @@ class SqliteSaleRepository implements SaleRepository {
     required String remoteId,
     required DateTime syncedAt,
   }) async {
-    final database = await _appDatabase.database;
+    final database = await _databaseLoader();
 
     await database.transaction((txn) async {
       await _syncStateSupport.markCancellationSynced(
@@ -691,7 +722,7 @@ class SqliteSaleRepository implements SaleRepository {
     required String message,
     required DateTime detectedAt,
   }) async {
-    final database = await _appDatabase.database;
+    final database = await _databaseLoader();
 
     await database.transaction((txn) async {
       await _syncStateSupport.markCancellationConflict(
@@ -715,6 +746,68 @@ class SqliteSaleRepository implements SaleRepository {
       movementUuid: movementUuid,
       createdAt: createdAt,
     );
+  }
+
+  Future<void> _recordSaleInventoryMovement(
+    DatabaseExecutor txn, {
+    required Iterable<InventoryBalanceMutation> changes,
+    required InventoryMovementType movementType,
+    required String referenceType,
+    required int referenceId,
+    required DateTime createdAt,
+    String? notes,
+  }) {
+    switch (movementType) {
+      case InventoryMovementType.saleOut:
+        return InventoryMovementWriter.writeSaleOut(
+          txn,
+          changes: changes,
+          referenceId: referenceId,
+          referenceType: referenceType,
+          notes: notes,
+          createdAt: createdAt,
+        );
+      case InventoryMovementType.exchangeOut:
+        return InventoryMovementWriter.writeExchangeOut(
+          txn,
+          changes: changes,
+          referenceId: referenceId,
+          referenceType: referenceType,
+          notes: notes,
+          createdAt: createdAt,
+        );
+      default:
+        return InventoryMovementWriter.recordChanges(
+          txn,
+          changes: changes,
+          movementType: movementType,
+          referenceType: referenceType,
+          referenceId: referenceId,
+          notes: notes,
+          createdAt: createdAt,
+        );
+    }
+  }
+
+  String _buildSoldItemLabel(Map<String, Object?> itemRow) {
+    final productName =
+        (itemRow['nome_produto_snapshot'] as String?)?.trim().isNotEmpty == true
+        ? (itemRow['nome_produto_snapshot'] as String).trim()
+        : 'Produto';
+    final variantParts = <String>[
+      if ((itemRow['cor_variante_snapshot'] as String?)?.trim().isNotEmpty ==
+          true)
+        (itemRow['cor_variante_snapshot'] as String).trim(),
+      if ((itemRow['tamanho_variante_snapshot'] as String?)
+              ?.trim()
+              .isNotEmpty ==
+          true)
+        (itemRow['tamanho_variante_snapshot'] as String).trim(),
+    ];
+    if (variantParts.isEmpty) {
+      return productName;
+    }
+    return '$productName (${variantParts.join(' / ')})';
   }
 
   Future<void> _updateClientDebt(
