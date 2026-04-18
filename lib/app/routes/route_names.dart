@@ -45,6 +45,12 @@ abstract final class AppRouteNames {
   static const fiadoPaymentReceipt = 'fiado-payment-receipt';
   static const customerCreditReceipt = 'customer-credit-receipt';
   static const reports = 'reports';
+  static const salesReports = 'sales-reports';
+  static const cashReports = 'cash-reports';
+  static const inventoryReports = 'inventory-reports';
+  static const customerReports = 'customer-reports';
+  static const purchaseReports = 'purchase-reports';
+  static const profitabilityReports = 'profitability-reports';
   static const backup = 'backup';
   static const system = 'system';
   static const technicalSystem = 'technical-system';
@@ -99,6 +105,12 @@ abstract final class AppRoutePaths {
       '/comprovantes/fiado/:fiadoId/pagamentos/:entryId';
   static const customerCreditReceipt = '/comprovantes/haver/:transactionId';
   static const reports = '/relatorios';
+  static const salesReports = '/relatorios/vendas';
+  static const cashReports = '/relatorios/caixa';
+  static const inventoryReports = '/relatorios/estoque';
+  static const customerReports = '/relatorios/clientes';
+  static const purchaseReports = '/relatorios/compras';
+  static const profitabilityReports = '/relatorios/lucratividade';
   static const backup = '/backup';
   static const system = '/sistema';
   static const technicalSystem = '/interno/sistema';

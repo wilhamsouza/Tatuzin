@@ -1,3 +1,5 @@
+import '../../data/support/report_date_range_support.dart';
+
 class ReportDateRange {
   const ReportDateRange({required this.start, required this.endExclusive});
 
@@ -22,32 +24,15 @@ extension ReportPeriodX on ReportPeriod {
   }
 
   ReportDateRange resolveRange(DateTime reference) {
-    final base = DateTime(reference.year, reference.month, reference.day);
-
     switch (this) {
       case ReportPeriod.daily:
-        return ReportDateRange(
-          start: base,
-          endExclusive: base.add(const Duration(days: 1)),
-        );
+        return ReportDateRangeSupport.daily(reference);
       case ReportPeriod.weekly:
-        final weekdayOffset = base.weekday - DateTime.monday;
-        final start = base.subtract(Duration(days: weekdayOffset));
-        return ReportDateRange(
-          start: start,
-          endExclusive: start.add(const Duration(days: 7)),
-        );
+        return ReportDateRangeSupport.weekly(reference);
       case ReportPeriod.monthly:
-        final start = DateTime(reference.year, reference.month);
-        final end = reference.month == DateTime.december
-            ? DateTime(reference.year + 1)
-            : DateTime(reference.year, reference.month + 1);
-        return ReportDateRange(start: start, endExclusive: end);
+        return ReportDateRangeSupport.monthly(reference);
       case ReportPeriod.yearly:
-        return ReportDateRange(
-          start: DateTime(reference.year),
-          endExclusive: DateTime(reference.year + 1),
-        );
+        return ReportDateRangeSupport.yearly(reference);
     }
   }
 }
