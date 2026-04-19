@@ -44,7 +44,11 @@ class _ProductSalesSummaryWidgetState extends State<ProductSalesSummaryWidget> {
             )
           : Column(
               children: [
-                for (var index = 0; index < visibleProducts.length; index++) ...[
+                for (
+                  var index = 0;
+                  index < visibleProducts.length;
+                  index++
+                ) ...[
                   _ProductSalesRow(
                     summary: visibleProducts[index],
                     onTap: widget.onProductTap == null

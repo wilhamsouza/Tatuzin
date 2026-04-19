@@ -20,9 +20,9 @@ class ReportFilterChip extends StatelessWidget {
       label: Text(label),
       onDeleted: onRemoved,
       deleteIcon: const Icon(Icons.close_rounded, size: 18),
-      labelStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
-        fontWeight: FontWeight.w700,
-      ),
+      labelStyle: Theme.of(
+        context,
+      ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
       side: BorderSide(color: colors.outlineSoft),
       backgroundColor: colors.sectionBackground,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,

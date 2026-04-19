@@ -17,7 +17,6 @@ import '../providers/report_providers.dart';
 import '../widgets/report_empty_state.dart';
 import '../widgets/report_filter_toolbar.dart';
 import '../widgets/report_kpi_grid.dart';
-import '../widgets/report_period_bar.dart';
 
 class CustomerReportsPage extends ConsumerWidget {
   const CustomerReportsPage({super.key});
@@ -69,8 +68,6 @@ class CustomerReportsPage extends ConsumerWidget {
               badgeIcon: Icons.people_alt_outlined,
               emphasized: true,
             ),
-            SizedBox(height: layout.sectionGap),
-            const ReportPeriodBar(),
             SizedBox(height: layout.sectionGap),
             ReportFilterToolbar(
               page: ReportPageKey.customers,
@@ -300,15 +297,15 @@ class CustomerReportsPage extends ConsumerWidget {
                           onTap: highestPending == null
                               ? null
                               : () => applyDrilldown(
-                                    nextFilter: filter.copyWith(
-                                      customerId: highestPending.customerId,
-                                      focus: ReportFocus.customersPending,
-                                    ),
-                                    sourceLabel:
-                                        'Maior saldo pendente: ${highestPending.customerName}',
-                                    message:
-                                        'A leitura foi filtrada para o cliente com maior saldo pendente no recorte atual.',
+                                  nextFilter: filter.copyWith(
+                                    customerId: highestPending.customerId,
+                                    focus: ReportFocus.customersPending,
                                   ),
+                                  sourceLabel:
+                                      'Maior saldo pendente: ${highestPending.customerName}',
+                                  message:
+                                      'A leitura foi filtrada para o cliente com maior saldo pendente no recorte atual.',
+                                ),
                         ),
                       ],
                     ),
@@ -403,7 +400,9 @@ class _CustomerSection extends StatelessWidget {
               children: [
                 for (var index = 0; index < rows.length; index++) ...[
                   InkWell(
-                    onTap: onRowTap == null ? null : () => onRowTap!(rows[index]),
+                    onTap: onRowTap == null
+                        ? null
+                        : () => onRowTap!(rows[index]),
                     borderRadius: BorderRadius.circular(12),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -440,9 +439,9 @@ class _CustomerSection extends StatelessWidget {
                             Icon(
                               Icons.chevron_right_rounded,
                               size: 18,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                           ],
                         ],

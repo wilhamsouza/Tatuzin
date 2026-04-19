@@ -7,10 +7,7 @@ import '../providers/report_providers.dart';
 import 'report_context_badge.dart';
 
 class ReportDrilldownBanner extends ConsumerWidget {
-  const ReportDrilldownBanner({
-    super.key,
-    required this.page,
-  });
+  const ReportDrilldownBanner({super.key, required this.page});
 
   final ReportPageKey page;
 

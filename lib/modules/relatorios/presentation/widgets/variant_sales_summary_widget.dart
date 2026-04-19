@@ -44,7 +44,11 @@ class _VariantSalesSummaryWidgetState extends State<VariantSalesSummaryWidget> {
             )
           : Column(
               children: [
-                for (var index = 0; index < visibleVariants.length; index++) ...[
+                for (
+                  var index = 0;
+                  index < visibleVariants.length;
+                  index++
+                ) ...[
                   _VariantSalesRow(
                     summary: visibleVariants[index],
                     onTap: widget.onVariantTap == null

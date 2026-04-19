@@ -53,7 +53,8 @@ class ReportFilterToolbar extends ConsumerWidget {
 
     return AppSectionCard(
       title: 'Filtros avancados',
-      subtitle: 'Refine o recorte, veja o que esta ativo e exporte o resultado.',
+      subtitle:
+          'Periodo ativo, filtros, presets e exportacao ficam concentrados aqui.',
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -63,8 +64,7 @@ class ReportFilterToolbar extends ConsumerWidget {
             runSpacing: 10,
             children: [
               OutlinedButton.icon(
-                onPressed: () =>
-                    showReportFilterSheet(context, page: page),
+                onPressed: () => showReportFilterSheet(context, page: page),
                 icon: const Icon(Icons.tune_rounded),
                 label: const Text('Ajustar filtros'),
               ),
@@ -95,7 +95,11 @@ class ReportFilterToolbar extends ConsumerWidget {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  for (var index = 0; index < config.presets.length; index++) ...[
+                  for (
+                    var index = 0;
+                    index < config.presets.length;
+                    index++
+                  ) ...[
                     AppSelectorChip(
                       label: config.presets[index].label,
                       selected: config.presets[index].matches(filter),
@@ -144,10 +148,10 @@ class ReportFilterToolbar extends ConsumerWidget {
           ReportDrilldownBanner(page: page),
           if (focusHint != null) ...[
             if (ref.watch(
-                  reportPageSessionProvider.select(
-                    (state) => state.drilldownFor(page) != null,
-                  ),
-                ))
+              reportPageSessionProvider.select(
+                (state) => state.drilldownFor(page) != null,
+              ),
+            ))
               const SizedBox(height: 10),
             ReportFocusHint(hint: focusHint),
           ],

@@ -22,7 +22,6 @@ import '../widgets/report_donut_chart_card.dart';
 import '../widgets/report_empty_state.dart';
 import '../widgets/report_filter_toolbar.dart';
 import '../widgets/report_kpi_grid.dart';
-import '../widgets/report_period_bar.dart';
 
 class InventoryReportsPage extends ConsumerWidget {
   const InventoryReportsPage({super.key});
@@ -74,8 +73,6 @@ class InventoryReportsPage extends ConsumerWidget {
               badgeIcon: Icons.inventory_2_outlined,
               emphasized: true,
             ),
-            SizedBox(height: layout.sectionGap),
-            const ReportPeriodBar(),
             SizedBox(height: layout.sectionGap),
             ReportFilterToolbar(
               page: ReportPageKey.inventory,
@@ -215,26 +212,29 @@ class InventoryReportsPage extends ConsumerWidget {
                               ) ...[
                                 _MovementItemRow(
                                   row: summary.mostMovedItems[index],
-                                  onTap: summary.mostMovedItems[index].primaryId == null
+                                  onTap:
+                                      summary.mostMovedItems[index].primaryId ==
+                                          null
                                       ? null
                                       : () => applyDrilldown(
-                                            nextFilter: filter.copyWith(
-                                              productId: summary
-                                                  .mostMovedItems[index]
-                                                  .primaryId,
-                                              variantId: summary
-                                                  .mostMovedItems[index]
-                                                  .secondaryId,
-                                              clearVariantId: summary
-                                                      .mostMovedItems[index]
-                                                      .secondaryId ==
-                                                  null,
-                                            ),
-                                            sourceLabel:
-                                                'Item movimentado: ${summary.mostMovedItems[index].label}',
-                                            message:
-                                                'A leitura foi filtrada para o item mais movimentado escolhido.',
+                                          nextFilter: filter.copyWith(
+                                            productId: summary
+                                                .mostMovedItems[index]
+                                                .primaryId,
+                                            variantId: summary
+                                                .mostMovedItems[index]
+                                                .secondaryId,
+                                            clearVariantId:
+                                                summary
+                                                    .mostMovedItems[index]
+                                                    .secondaryId ==
+                                                null,
                                           ),
+                                          sourceLabel:
+                                              'Item movimentado: ${summary.mostMovedItems[index].label}',
+                                          message:
+                                              'A leitura foi filtrada para o item mais movimentado escolhido.',
+                                        ),
                                 ),
                                 if (index < summary.mostMovedItems.length - 1)
                                   const Divider(height: 18),
@@ -263,12 +263,14 @@ class InventoryReportsPage extends ConsumerWidget {
                                 ListTile(
                                   onTap: () => applyDrilldown(
                                     nextFilter: filter.copyWith(
-                                      productId:
-                                          summary.recentMovements[index].productId,
+                                      productId: summary
+                                          .recentMovements[index]
+                                          .productId,
                                       variantId: summary
                                           .recentMovements[index]
                                           .productVariantId,
-                                      clearVariantId: summary
+                                      clearVariantId:
+                                          summary
                                               .recentMovements[index]
                                               .productVariantId ==
                                           null,
@@ -425,9 +427,10 @@ class InventoryReportsPage extends ConsumerWidget {
     applyDrilldown,
   ) {
     final visibleItems = switch (filter.focus) {
-      ReportFocus.inventoryZeroed => summary.criticalItems
-          .where((item) => item.isZeroed)
-          .toList(growable: false),
+      ReportFocus.inventoryZeroed =>
+        summary.criticalItems
+            .where((item) => item.isZeroed)
+            .toList(growable: false),
       _ => summary.criticalItems,
     };
     final subtitle = switch (filter.focus) {
