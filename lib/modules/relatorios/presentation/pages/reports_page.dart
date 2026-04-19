@@ -14,6 +14,7 @@ import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../data/support/report_donut_support.dart';
 import '../../data/support/report_filter_preset_support.dart';
 import '../../domain/entities/report_donut_slice.dart';
+import '../../domain/entities/report_filter.dart';
 import '../../domain/entities/report_inventory_health_summary.dart';
 import '../../domain/entities/report_payment_summary.dart';
 import '../providers/report_providers.dart';
@@ -30,11 +31,32 @@ class ReportsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final filter = ref.watch(reportFilterProvider);
     final overviewAsync = ref.watch(reportOverviewProvider);
     final previousOverviewAsync = ref.watch(reportPreviousOverviewProvider);
     final topProductsAsync = ref.watch(topProductsReportProvider);
     final inventoryAsync = ref.watch(inventoryHealthReportProvider);
     final layout = context.appLayout;
+    final controller = ref.read(reportFilterProvider.notifier);
+
+    void openDrilldown({
+      required ReportPageKey page,
+      required String routeName,
+      required ReportFilter nextFilter,
+      required String sourceLabel,
+      required String message,
+      bool isFocusOnly = false,
+    }) {
+      controller.applyDrilldown(
+        page: page,
+        nextFilter: nextFilter,
+        sourcePage: ReportPageKey.overview,
+        sourceLabel: sourceLabel,
+        message: message,
+        isFocusOnly: isFocusOnly,
+      );
+      context.pushNamed(routeName);
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Relatorios')),
@@ -79,6 +101,17 @@ class ReportsPage extends ConsumerWidget {
                         caption: '${overview.salesCount} venda(s) no periodo',
                         icon: Icons.point_of_sale_rounded,
                         accentColor: context.appColors.sales.base,
+                        onTap: () => openDrilldown(
+                          page: ReportPageKey.sales,
+                          routeName: AppRouteNames.salesReports,
+                          nextFilter: filter.copyWith(
+                            onlyCanceled: false,
+                            clearFocus: true,
+                          ),
+                          sourceLabel: 'KPI Vendas liquidas',
+                          message:
+                              'A pagina de vendas abriu com o mesmo periodo do hub para aprofundar faturamento, tendencia e itens vendidos.',
+                        ),
                       ),
                       ReportKpiItem(
                         label: 'Total recebido',
@@ -88,6 +121,19 @@ class ReportsPage extends ConsumerWidget {
                         caption: 'Entradas liquidas do caixa',
                         icon: Icons.account_balance_wallet_rounded,
                         accentColor: context.appColors.cashflowPositive.base,
+                        onTap: () => openDrilldown(
+                          page: ReportPageKey.cash,
+                          routeName: AppRouteNames.cashReports,
+                          nextFilter: filter.copyWith(
+                            focus: ReportFocus.cashEntries,
+                            clearPaymentMethod: true,
+                            onlyCanceled: false,
+                          ),
+                          sourceLabel: 'KPI Total recebido',
+                          message:
+                              'O relatorio de caixa abriu com foco nas entradas do periodo, sem trocar a base do caixa real.',
+                          isFocusOnly: true,
+                        ),
                       ),
                       ReportKpiItem(
                         label: 'Lucro realizado',
@@ -97,6 +143,19 @@ class ReportsPage extends ConsumerWidget {
                         caption: 'Lucro reconhecido no periodo',
                         icon: Icons.trending_up_rounded,
                         accentColor: context.appColors.success.base,
+                        onTap: () => openDrilldown(
+                          page: ReportPageKey.profitability,
+                          routeName: AppRouteNames.profitabilityReports,
+                          nextFilter: filter.copyWith(
+                            grouping: ReportGrouping.product,
+                            focus: ReportFocus.profitabilityTop,
+                            onlyCanceled: false,
+                          ),
+                          sourceLabel: 'KPI Lucro realizado',
+                          message:
+                              'A lucratividade abriu destacando os itens com maior lucro dentro da mesma semantica atual de receita, custo e margem.',
+                          isFocusOnly: true,
+                        ),
                       ),
                       ReportKpiItem(
                         label: 'Fiado pendente',
@@ -107,6 +166,18 @@ class ReportsPage extends ConsumerWidget {
                             '${overview.pendingFiadoCount} nota(s) em aberto',
                         icon: Icons.receipt_long_rounded,
                         accentColor: context.appColors.warning.base,
+                        onTap: () => openDrilldown(
+                          page: ReportPageKey.customers,
+                          routeName: AppRouteNames.customerReports,
+                          nextFilter: filter.copyWith(
+                            focus: ReportFocus.customersPending,
+                            onlyCanceled: false,
+                          ),
+                          sourceLabel: 'KPI Fiado pendente',
+                          message:
+                              'A leitura de clientes abriu priorizando pendencias em aberto para facilitar cobranca e acompanhamento.',
+                          isFocusOnly: true,
+                        ),
                       ),
                     ],
                   ),
@@ -236,6 +307,26 @@ class ReportsPage extends ConsumerWidget {
                               overview.paymentSummaries,
                             ),
                           ),
+                          onSliceTap: (slice) {
+                            final method = _paymentMethodFromLabel(slice.label);
+                            if (method == null) {
+                              return;
+                            }
+                            openDrilldown(
+                              page: ReportPageKey.sales,
+                              routeName: AppRouteNames.salesReports,
+                              nextFilter: filter.copyWith(
+                                paymentMethod: method,
+                                focus: ReportFocus.salesPaymentMethods,
+                                onlyCanceled: false,
+                              ),
+                              sourceLabel:
+                                  'Recebimentos por forma: ${slice.label}',
+                              message:
+                                  'A pagina de vendas abriu com a forma ${slice.label} em destaque para aprofundar o recebimento ligado as vendas.',
+                              isFocusOnly: true,
+                            );
+                          },
                           emptyTitle: 'Sem recebimentos',
                           emptyMessage:
                               'As formas de pagamento vao aparecer aqui quando houver movimento.',
@@ -257,6 +348,29 @@ class ReportsPage extends ConsumerWidget {
                               totalLabel: 'Itens monitorados',
                               totalValue: '${summary.totalItemsCount}',
                               insight: _buildInventoryInsight(summary),
+                              onSliceTap: (slice) {
+                                final nextFocus = _inventoryFocusFromSlice(
+                                  slice.label,
+                                );
+                                openDrilldown(
+                                  page: ReportPageKey.inventory,
+                                  routeName: AppRouteNames.inventoryReports,
+                                  nextFilter: nextFocus == null
+                                      ? filter.copyWith(
+                                          clearFocus: true,
+                                          onlyCanceled: false,
+                                        )
+                                      : filter.copyWith(
+                                          focus: nextFocus,
+                                          onlyCanceled: false,
+                                        ),
+                                  sourceLabel:
+                                      'Saude do estoque: ${slice.label}',
+                                  message:
+                                      'O relatorio de estoque abriu priorizando ${slice.label.toLowerCase()} para facilitar a proxima acao.',
+                                  isFocusOnly: true,
+                                );
+                              },
                               emptyTitle: 'Sem estoque monitorado',
                               emptyMessage:
                                   'Os indicadores de estoque vao aparecer aqui quando houver itens cadastrados.',
@@ -280,8 +394,28 @@ class ReportsPage extends ConsumerWidget {
                   ),
                   SizedBox(height: layout.sectionGap),
                   topProductsAsync.when(
-                    data: (products) =>
-                        ProductSalesSummaryWidget(soldProducts: products),
+                    data: (products) => ProductSalesSummaryWidget(
+                      soldProducts: products,
+                      onProductTap: (product) {
+                        if (product.productId == null) {
+                          return;
+                        }
+                        openDrilldown(
+                          page: ReportPageKey.sales,
+                          routeName: AppRouteNames.salesReports,
+                          nextFilter: filter.copyWith(
+                            productId: product.productId,
+                            clearVariantId: true,
+                            focus: ReportFocus.salesProducts,
+                            onlyCanceled: false,
+                          ),
+                          sourceLabel:
+                              'Top produto: ${product.productName}',
+                          message:
+                              'A pagina de vendas abriu filtrada para ${product.productName}, mantendo o mesmo periodo do hub.',
+                        );
+                      },
+                    ),
                     loading: () => const AppStateCard(
                       title: 'Carregando top produtos',
                       message: 'Consolidando os itens com mais receita.',
@@ -427,6 +561,28 @@ class ReportsPage extends ConsumerWidget {
         return colors.info.base;
       case PaymentMethod.fiado:
         return colors.warning.base;
+    }
+  }
+
+  PaymentMethod? _paymentMethodFromLabel(String label) {
+    for (final method in PaymentMethod.values) {
+      if (method.label == label) {
+        return method;
+      }
+    }
+    return null;
+  }
+
+  ReportFocus? _inventoryFocusFromSlice(String label) {
+    switch (label) {
+      case 'Zerado':
+        return ReportFocus.inventoryZeroed;
+      case 'Abaixo do minimo':
+        return ReportFocus.inventoryCritical;
+      case 'Saudavel':
+        return null;
+      default:
+        return ReportFocus.inventoryAlerts;
     }
   }
 }

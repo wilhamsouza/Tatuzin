@@ -11,17 +11,19 @@ class ProfitabilityTable extends StatelessWidget {
     required this.rows,
     this.title = 'Lucratividade',
     this.subtitle = 'Receita, custo e margem por item.',
+    this.onRowTap,
   });
 
   final List<ReportProfitabilityRow> rows;
   final String title;
   final String subtitle;
+  final ValueChanged<ReportProfitabilityRow>? onRowTap;
 
   @override
   Widget build(BuildContext context) {
     return AppSectionCard(
       title: title,
-      subtitle: subtitle,
+      subtitle: '$subtitle Toque em uma linha para aprofundar o detalhe.',
       padding: const EdgeInsets.all(14),
       child: rows.isEmpty
           ? const ReportEmptyState(
@@ -34,7 +36,10 @@ class ProfitabilityTable extends StatelessWidget {
                 const _HeaderRow(),
                 const Divider(height: 20),
                 for (var index = 0; index < rows.length; index++) ...[
-                  _ProfitabilityRowTile(row: rows[index]),
+                  _ProfitabilityRowTile(
+                    row: rows[index],
+                    onTap: onRowTap == null ? null : () => onRowTap!(rows[index]),
+                  ),
                   if (index < rows.length - 1) const Divider(height: 20),
                 ],
               ],
@@ -64,64 +69,92 @@ class _HeaderRow extends StatelessWidget {
 }
 
 class _ProfitabilityRowTile extends StatelessWidget {
-  const _ProfitabilityRowTile({required this.row});
+  const _ProfitabilityRowTile({required this.row, this.onTap});
 
   final ReportProfitabilityRow row;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          flex: 4,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Tooltip(
+      message: onTap == null
+          ? 'Linha de lucratividade'
+          : 'Toque para aprofundar este agrupamento',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
             children: [
-              Text(
-                row.label,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              if ((row.description ?? '').trim().isNotEmpty)
-                Text(
-                  '${row.description} • ${AppFormatters.quantityFromMil(row.quantityMil)}',
-                  style: Theme.of(context).textTheme.bodySmall,
+              Expanded(
+                flex: 4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      row.label,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if ((row.description ?? '').trim().isNotEmpty)
+                      Text(
+                        '${row.description} | ${AppFormatters.quantityFromMil(row.quantityMil)}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                  ],
                 ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(AppFormatters.currencyFromCents(row.revenueCents)),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(AppFormatters.currencyFromCents(row.costCents)),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  AppFormatters.currencyFromCents(row.profitCents),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: row.profitCents < 0
+                        ? Theme.of(context).colorScheme.error
+                        : null,
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 1,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        '${row.marginPercent.toStringAsFixed(1)}%',
+                        textAlign: TextAlign.right,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    if (onTap != null) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ],
           ),
         ),
-        Expanded(
-          flex: 2,
-          child: Text(AppFormatters.currencyFromCents(row.revenueCents)),
-        ),
-        Expanded(
-          flex: 2,
-          child: Text(AppFormatters.currencyFromCents(row.costCents)),
-        ),
-        Expanded(
-          flex: 2,
-          child: Text(
-            AppFormatters.currencyFromCents(row.profitCents),
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: row.profitCents < 0
-                  ? Theme.of(context).colorScheme.error
-                  : null,
-            ),
-          ),
-        ),
-        Expanded(
-          flex: 1,
-          child: Text(
-            '${row.marginPercent.toStringAsFixed(1)}%',
-            textAlign: TextAlign.right,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

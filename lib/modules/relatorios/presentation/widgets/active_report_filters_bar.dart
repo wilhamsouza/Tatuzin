@@ -57,6 +57,7 @@ class ActiveReportFiltersBar extends ConsumerWidget {
             const ReportFilterOptionLabels()
         : const ReportFilterOptionLabels();
     final controller = ref.read(reportFilterProvider.notifier);
+    final sessionController = ref.read(reportPageSessionProvider.notifier);
     final descriptors = ReportFilterPresetSupport.activeFiltersForPage(
       page: page,
       filter: filter,
@@ -70,6 +71,7 @@ class ActiveReportFiltersBar extends ConsumerWidget {
             ReportFilterChip(
               label: descriptor.displayLabel,
               onRemoved: () {
+                sessionController.clearDrilldown(page);
                 controller.replace(
                   ReportFilterPresetSupport.removeField(
                     page,

@@ -5,9 +5,14 @@ import '../../../../app/core/widgets/app_section_card.dart';
 import '../../domain/entities/report_variant_summary.dart';
 
 class VariantSalesSummaryWidget extends StatefulWidget {
-  const VariantSalesSummaryWidget({super.key, required this.variants});
+  const VariantSalesSummaryWidget({
+    super.key,
+    required this.variants,
+    this.onVariantTap,
+  });
 
   final List<ReportVariantSummary> variants;
+  final ValueChanged<ReportVariantSummary>? onVariantTap;
 
   @override
   State<VariantSalesSummaryWidget> createState() =>
@@ -27,7 +32,8 @@ class _VariantSalesSummaryWidgetState extends State<VariantSalesSummaryWidget> {
 
     return AppSectionCard(
       title: 'Giro por variante',
-      subtitle: 'SKU, cor, tamanho, compra e venda no periodo.',
+      subtitle:
+          'SKU, grade e receita no periodo. Toque em uma linha para aprofundar o recorte.',
       padding: const EdgeInsets.all(14),
       child: widget.variants.isEmpty
           ? Text(
@@ -38,12 +44,13 @@ class _VariantSalesSummaryWidgetState extends State<VariantSalesSummaryWidget> {
             )
           : Column(
               children: [
-                for (
-                  var index = 0;
-                  index < visibleVariants.length;
-                  index++
-                ) ...[
-                  _VariantSalesRow(summary: visibleVariants[index]),
+                for (var index = 0; index < visibleVariants.length; index++) ...[
+                  _VariantSalesRow(
+                    summary: visibleVariants[index],
+                    onTap: widget.onVariantTap == null
+                        ? null
+                        : () => widget.onVariantTap!(visibleVariants[index]),
+                  ),
                   if (index < visibleVariants.length - 1)
                     const Divider(height: 18),
                 ],
@@ -70,131 +77,121 @@ class _VariantSalesSummaryWidgetState extends State<VariantSalesSummaryWidget> {
 }
 
 class _VariantSalesRow extends StatelessWidget {
-  const _VariantSalesRow({required this.summary});
+  const _VariantSalesRow({required this.summary, this.onTap});
 
   final ReportVariantSummary summary;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: colorScheme.secondaryContainer.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          alignment: Alignment.center,
-          child: Icon(
-            Icons.straighten_rounded,
-            size: 18,
-            color: colorScheme.secondary,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
+    return Tooltip(
+      message: onTap == null
+          ? 'Variante em destaque'
+          : 'Toque para abrir esta variante no relatorio de vendas',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                summary.modelName,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: colorScheme.secondaryContainer.withValues(alpha: 0.72),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.straighten_rounded,
+                  size: 18,
+                  color: colorScheme.secondary,
                 ),
               ),
-              const SizedBox(height: 3),
-              Text(
-                summary.variantSummary,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      summary.modelName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      summary.variantSummary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        if ((summary.variantSku ?? '').trim().isNotEmpty)
+                          _VariantMetricChip(
+                            label: 'SKU ${summary.variantSku!.trim()}',
+                          ),
+                        _VariantMetricChip(
+                          label:
+                              'Estoque ${AppFormatters.quantityFromMil(summary.currentStockMil)}',
+                        ),
+                        _VariantMetricChip(
+                          label:
+                              'Vendeu ${AppFormatters.quantityFromMil(summary.soldQuantityMil)}',
+                        ),
+                        _VariantMetricChip(
+                          label:
+                              'Receita ${AppFormatters.currencyFromCents(summary.grossRevenueCents)}',
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (onTap != null) ...[
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
                   color: colorScheme.onSurfaceVariant,
                 ),
-              ),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  if ((summary.variantSku ?? '').trim().isNotEmpty)
-                    _VariantMetricChip(
-                      label: 'SKU ${summary.variantSku!.trim()}',
-                    ),
-                  _VariantMetricChip(
-                    label:
-                        'Estoque ${AppFormatters.quantityFromMil(summary.currentStockMil)}',
-                  ),
-                  _VariantMetricChip(
-                    label:
-                        'Vendidas ${AppFormatters.quantityFromMil(summary.soldQuantityMil)}',
-                    emphasize: summary.hasSales,
-                  ),
-                  _VariantMetricChip(
-                    label:
-                        'Compradas ${AppFormatters.quantityFromMil(summary.purchasedQuantityMil)}',
-                  ),
-                ],
-              ),
+              ],
             ],
           ),
         ),
-        const SizedBox(width: 10),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              AppFormatters.currencyFromCents(summary.grossRevenueCents),
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              'Receita',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ],
+      ),
     );
   }
 }
 
 class _VariantMetricChip extends StatelessWidget {
-  const _VariantMetricChip({required this.label, this.emphasize = false});
+  const _VariantMetricChip({required this.label});
 
   final String label;
-  final bool emphasize;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
+    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: emphasize
-            ? colorScheme.primaryContainer.withValues(alpha: 0.58)
-            : colorScheme.surfaceContainerLow,
+        color: theme.colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: colorScheme.outlineVariant),
       ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          fontWeight: emphasize ? FontWeight.w700 : FontWeight.w600,
-          color: emphasize ? colorScheme.primary : colorScheme.onSurface,
-        ),
-      ),
+      child: Text(label, style: theme.textTheme.labelSmall),
     );
   }
 }

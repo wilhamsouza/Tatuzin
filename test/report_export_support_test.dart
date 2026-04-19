@@ -123,6 +123,27 @@ void main() {
       expect(detailedDocument.mode, ReportExportMode.detailed);
     });
 
+    test('export metadata keeps the active drill-down context', () {
+      final document = ReportExportMapper.sales(
+        businessName: 'Tatuzin',
+        generatedAt: DateTime(2026, 4, 18, 10, 30),
+        mode: ReportExportMode.summary,
+        filter: salesFilter,
+        labels: labels,
+        overview: _overview(salesFilter),
+        trend: _salesTrend(),
+        topProducts: _topProducts(),
+        topVariants: _topVariants(),
+        navigationSummary: 'Drill-down: Vendas -> Cafe Especial',
+      );
+
+      final csv = ReportExportCsvSupport().buildCsv(document);
+
+      expect(document.navigationSummary, 'Drill-down: Vendas -> Cafe Especial');
+      expect(csv, contains('Drill-down'));
+      expect(csv, contains('Cafe Especial'));
+    });
+
     test('pdf export builds bytes with unicode font support', () async {
       final filter = ReportFilter(
         start: DateTime(2026, 4, 1),

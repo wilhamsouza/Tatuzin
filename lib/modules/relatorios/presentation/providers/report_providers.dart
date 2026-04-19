@@ -12,6 +12,7 @@ import '../../../produtos/domain/entities/product.dart';
 import '../../../produtos/presentation/providers/product_providers.dart';
 import '../../data/sqlite_report_repository.dart';
 import '../../data/support/report_date_range_support.dart';
+import '../../data/support/report_drilldown_support.dart';
 import '../../data/support/report_export_csv_support.dart';
 import '../../data/support/report_export_pdf_support.dart';
 import '../../data/support/report_filter_preset_support.dart';
@@ -45,6 +46,11 @@ final reportExportPdfSupportProvider = Provider<ReportExportPdfSupport>((ref) {
 final reportFilterProvider =
     NotifierProvider<ReportFilterController, ReportFilter>(
       ReportFilterController.new,
+    );
+
+final reportPageSessionProvider =
+    NotifierProvider<ReportPageSessionController, ReportPageSessionState>(
+      ReportPageSessionController.new,
     );
 
 final reportPeriodProvider = Provider<ReportPeriod>((ref) {
@@ -278,6 +284,36 @@ class ReportFilterController extends Notifier<ReportFilter> {
     state = next;
   }
 
+  void applyDrilldown({
+    required ReportPageKey page,
+    required ReportFilter nextFilter,
+    required ReportPageKey sourcePage,
+    required String sourceLabel,
+    required String message,
+    bool isFocusOnly = false,
+  }) {
+    ref.read(reportPageSessionProvider.notifier).setDrilldown(
+      ReportDrilldownContext(
+        page: page,
+        sourcePage: sourcePage,
+        sourceLabel: sourceLabel,
+        message: message,
+        baselineFilter: state,
+        isFocusOnly: isFocusOnly,
+      ),
+    );
+    state = nextFilter;
+  }
+
+  void clearDrilldown(ReportPageKey page) {
+    final context = ref.read(reportPageSessionProvider).drilldownFor(page);
+    if (context == null) {
+      return;
+    }
+    ref.read(reportPageSessionProvider.notifier).clearDrilldown(page);
+    state = context.baselineFilter;
+  }
+
   void applyPeriod(ReportPeriod period, {DateTime? reference}) {
     final nextRange = period.resolveRange(reference ?? DateTime.now());
     state = state.copyWith(
@@ -363,5 +399,40 @@ class ReportFilterController extends Notifier<ReportFilter> {
   ReportPeriod reportPeriodFromCurrentState() {
     return ReportDateRangeSupport.matchPeriod(state.range) ??
         ReportPeriod.daily;
+  }
+}
+
+class ReportPageSessionController extends Notifier<ReportPageSessionState> {
+  @override
+  ReportPageSessionState build() {
+    return const ReportPageSessionState();
+  }
+
+  void setDrilldown(ReportDrilldownContext context) {
+    state = state.copyWith(
+      drilldowns: {
+        ...state.drilldowns,
+        context.page: context,
+      },
+    );
+  }
+
+  void clearDrilldown(ReportPageKey page) {
+    if (!state.drilldowns.containsKey(page)) {
+      return;
+    }
+    final next = Map<ReportPageKey, ReportDrilldownContext>.from(
+      state.drilldowns,
+    )..remove(page);
+    state = state.copyWith(drilldowns: next);
+  }
+
+  void rememberPreset(ReportPageKey page, String presetId) {
+    state = state.copyWith(
+      lastPresetIds: {
+        ...state.lastPresetIds,
+        page: presetId,
+      },
+    );
   }
 }

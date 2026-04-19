@@ -32,6 +32,23 @@ class ProfitabilityReportsPage extends ConsumerWidget {
       profitabilityCategoryReportProvider,
     );
     final layout = context.appLayout;
+    final controller = ref.read(reportFilterProvider.notifier);
+
+    void applyDrilldown({
+      required ReportFilter nextFilter,
+      required String sourceLabel,
+      required String message,
+      bool isFocusOnly = false,
+    }) {
+      controller.applyDrilldown(
+        page: ReportPageKey.profitability,
+        nextFilter: nextFilter,
+        sourcePage: ReportPageKey.profitability,
+        sourceLabel: sourceLabel,
+        message: message,
+        isFocusOnly: isFocusOnly,
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Relatorio de lucratividade')),
@@ -91,6 +108,12 @@ class ProfitabilityReportsPage extends ConsumerWidget {
                           caption: 'Total vendido no agrupamento atual',
                           icon: Icons.sell_outlined,
                           accentColor: context.appColors.sales.base,
+                          onTap: () => applyDrilldown(
+                            nextFilter: filter.copyWith(clearFocus: true),
+                            sourceLabel: 'KPI Receita',
+                            message:
+                                'A leitura volta para a visao principal da lucratividade no agrupamento atual.',
+                          ),
                         ),
                         ReportKpiItem(
                           label: 'Custo',
@@ -100,6 +123,12 @@ class ProfitabilityReportsPage extends ConsumerWidget {
                           caption: 'Custo somado dos itens vendidos',
                           icon: Icons.payments_outlined,
                           accentColor: context.appColors.info.base,
+                          onTap: () => applyDrilldown(
+                            nextFilter: filter.copyWith(clearFocus: true),
+                            sourceLabel: 'KPI Custo',
+                            message:
+                                'A leitura volta para a visao principal de custo no agrupamento atual.',
+                          ),
                         ),
                         ReportKpiItem(
                           label: 'Lucro',
@@ -111,6 +140,16 @@ class ProfitabilityReportsPage extends ConsumerWidget {
                           accentColor: metrics.profitCents < 0
                               ? context.appColors.cashflowNegative.base
                               : context.appColors.success.base,
+                          onTap: () => applyDrilldown(
+                            nextFilter: filter.copyWith(
+                              grouping: ReportGrouping.product,
+                              focus: ReportFocus.profitabilityTop,
+                            ),
+                            sourceLabel: 'KPI Lucro',
+                            message:
+                                'A leitura passa a destacar os itens mais lucrativos na mesma base atual.',
+                            isFocusOnly: true,
+                          ),
                         ),
                         ReportKpiItem(
                           label: 'Margem media',
@@ -118,6 +157,12 @@ class ProfitabilityReportsPage extends ConsumerWidget {
                           caption: 'Media ponderada pela receita',
                           icon: Icons.percent_rounded,
                           accentColor: context.appColors.interactive.base,
+                          onTap: () => applyDrilldown(
+                            nextFilter: filter.copyWith(clearFocus: true),
+                            sourceLabel: 'KPI Margem media',
+                            message:
+                                'A leitura volta para a visao principal de margem no agrupamento atual.',
+                          ),
                         ),
                         ReportKpiItem(
                           label: 'Quantidade vendida',
@@ -127,6 +172,12 @@ class ProfitabilityReportsPage extends ConsumerWidget {
                           caption: 'Volume vendido no periodo',
                           icon: Icons.inventory_2_outlined,
                           accentColor: context.appColors.warning.base,
+                          onTap: () => applyDrilldown(
+                            nextFilter: filter.copyWith(clearFocus: true),
+                            sourceLabel: 'KPI Quantidade vendida',
+                            message:
+                                'A leitura continua no mesmo agrupamento para comparar volume e resultado.',
+                          ),
                         ),
                       ],
                     ),
@@ -140,7 +191,7 @@ class ProfitabilityReportsPage extends ConsumerWidget {
                         return ReportDonutChartCard(
                           title: 'Lucro por categoria',
                           subtitle:
-                              'Participacao das categorias com lucro positivo.',
+                              'Participacao das categorias com lucro positivo. Toque na legenda para abrir a categoria.',
                           slices: slices,
                           totalLabel: 'Lucro positivo',
                           totalValue: AppFormatters.currencyFromCents(
@@ -150,6 +201,35 @@ class ProfitabilityReportsPage extends ConsumerWidget {
                             ),
                           ),
                           insight: _buildCategoryInsight(slices),
+                          onSliceTap: (slice) {
+                            final match = categoryRows.firstWhere(
+                              (row) => row.label == slice.label,
+                              orElse: () => const ReportProfitabilityRow(
+                                grouping: ReportGrouping.category,
+                                label: '',
+                                quantityMil: 0,
+                                revenueCents: 0,
+                                costCents: 0,
+                                profitCents: 0,
+                                marginBasisPoints: 0,
+                              ),
+                            );
+                            if (match.categoryId == null) {
+                              return;
+                            }
+                            applyDrilldown(
+                              nextFilter: filter.copyWith(
+                                categoryId: match.categoryId,
+                                clearProductId: true,
+                                clearVariantId: true,
+                                grouping: ReportGrouping.product,
+                                clearFocus: true,
+                              ),
+                              sourceLabel: 'Categoria: ${slice.label}',
+                              message:
+                                  'A leitura foi filtrada para a categoria ${slice.label} e abriu o detalhamento por produto.',
+                            );
+                          },
                           emptyTitle: 'Sem lucro positivo por categoria',
                           emptyMessage:
                               'Quando houver lucro positivo no periodo, a distribuicao por categoria aparece aqui.',
@@ -172,6 +252,65 @@ class ProfitabilityReportsPage extends ConsumerWidget {
                       subtitle: filter.focus == ReportFocus.profitabilityTop
                           ? 'Top itens por lucro com a mesma base da tela.'
                           : 'Receita, custo e margem por item.',
+                      onRowTap: (row) {
+                        switch (row.grouping) {
+                          case ReportGrouping.category:
+                            if (row.categoryId == null) {
+                              return;
+                            }
+                            applyDrilldown(
+                              nextFilter: filter.copyWith(
+                                categoryId: row.categoryId,
+                                clearProductId: true,
+                                clearVariantId: true,
+                                grouping: ReportGrouping.product,
+                                clearFocus: true,
+                              ),
+                              sourceLabel: 'Categoria: ${row.label}',
+                              message:
+                                  'A leitura foi filtrada para a categoria ${row.label} e abriu o detalhamento por produto.',
+                            );
+                            return;
+                          case ReportGrouping.product:
+                            if (row.productId == null) {
+                              return;
+                            }
+                            applyDrilldown(
+                              nextFilter: filter.copyWith(
+                                productId: row.productId,
+                                clearVariantId: true,
+                                grouping: ReportGrouping.variant,
+                                clearFocus: true,
+                              ),
+                              sourceLabel: 'Produto: ${row.label}',
+                              message:
+                                  'A leitura foi filtrada para ${row.label} e abriu o detalhamento por variante.',
+                            );
+                            return;
+                          case ReportGrouping.variant:
+                            if (row.variantId == null) {
+                              return;
+                            }
+                            applyDrilldown(
+                              nextFilter: filter.copyWith(
+                                productId: row.productId,
+                                variantId: row.variantId,
+                                grouping: ReportGrouping.variant,
+                                clearFocus: true,
+                              ),
+                              sourceLabel: 'Variante: ${row.label}',
+                              message:
+                                  'A leitura foi filtrada para a variante escolhida no mesmo recorte.',
+                            );
+                            return;
+                          case ReportGrouping.day:
+                          case ReportGrouping.week:
+                          case ReportGrouping.month:
+                          case ReportGrouping.customer:
+                          case ReportGrouping.supplier:
+                            return;
+                        }
+                      },
                     ),
                   ],
                 );
@@ -221,6 +360,10 @@ class ProfitabilityReportsPage extends ConsumerWidget {
       filter: filter,
       labels: labels,
       rows: rows,
+      navigationSummary: ref
+          .read(reportPageSessionProvider)
+          .drilldownFor(ReportPageKey.profitability)
+          ?.exportLabel,
     );
   }
 

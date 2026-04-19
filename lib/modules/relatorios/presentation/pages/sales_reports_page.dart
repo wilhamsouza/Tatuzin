@@ -43,6 +43,23 @@ class SalesReportsPage extends ConsumerWidget {
         ? const AsyncData<List<ReportVariantSummary>>(<ReportVariantSummary>[])
         : ref.watch(topVariantsReportProvider);
     final layout = context.appLayout;
+    final controller = ref.read(reportFilterProvider.notifier);
+
+    void applyDrilldown({
+      required ReportFilter nextFilter,
+      required String sourceLabel,
+      required String message,
+      bool isFocusOnly = false,
+    }) {
+      controller.applyDrilldown(
+        page: ReportPageKey.sales,
+        nextFilter: nextFilter,
+        sourcePage: ReportPageKey.sales,
+        sourceLabel: sourceLabel,
+        message: message,
+        isFocusOnly: isFocusOnly,
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Relatorio de vendas')),
@@ -96,6 +113,15 @@ class SalesReportsPage extends ConsumerWidget {
                     caption: 'Antes de descontos e acrescimos',
                     icon: Icons.sell_outlined,
                     accentColor: context.appColors.sales.base,
+                    onTap: () => applyDrilldown(
+                      nextFilter: filter.copyWith(
+                        clearFocus: true,
+                        onlyCanceled: false,
+                      ),
+                      sourceLabel: 'KPI Vendas brutas',
+                      message:
+                          'A leitura volta para a visao geral de vendas com o mesmo periodo atual.',
+                    ),
                   ),
                   ReportKpiItem(
                     label: 'Vendas liquidas',
@@ -105,6 +131,15 @@ class SalesReportsPage extends ConsumerWidget {
                     caption: '${overview.salesCount} venda(s) ativas',
                     icon: Icons.point_of_sale_rounded,
                     accentColor: context.appColors.cashflowPositive.base,
+                    onTap: () => applyDrilldown(
+                      nextFilter: filter.copyWith(
+                        clearFocus: true,
+                        onlyCanceled: false,
+                      ),
+                      sourceLabel: 'KPI Vendas liquidas',
+                      message:
+                          'A leitura volta para a visao principal de vendas do periodo.',
+                    ),
                   ),
                   ReportKpiItem(
                     label: 'Ticket medio',
@@ -114,6 +149,18 @@ class SalesReportsPage extends ConsumerWidget {
                     caption: 'Media por venda ativa',
                     icon: Icons.shopping_cart_checkout_rounded,
                     accentColor: context.appColors.info.base,
+                    onTap: () => applyDrilldown(
+                      nextFilter: filter.copyWith(
+                        clearFocus: true,
+                        clearProductId: true,
+                        clearVariantId: true,
+                        clearPaymentMethod: true,
+                        onlyCanceled: false,
+                      ),
+                      sourceLabel: 'KPI Ticket medio',
+                      message:
+                          'A leitura volta para o recorte geral para comparar o ticket medio com a pagina inteira.',
+                    ),
                   ),
                   ReportKpiItem(
                     label: 'Cancelamentos',
@@ -123,6 +170,17 @@ class SalesReportsPage extends ConsumerWidget {
                     ),
                     icon: Icons.undo_rounded,
                     accentColor: context.appColors.warning.base,
+                    onTap: () => applyDrilldown(
+                      nextFilter: filter.copyWith(
+                        includeCanceled: true,
+                        onlyCanceled: true,
+                        clearFocus: true,
+                      ),
+                      sourceLabel: 'KPI Cancelamentos',
+                      message:
+                          'Este atalho destaca cancelamentos sem recalcular rankings por item fora da base atual.',
+                      isFocusOnly: true,
+                    ),
                   ),
                   ReportKpiItem(
                     label: 'Descontos',
@@ -132,6 +190,15 @@ class SalesReportsPage extends ConsumerWidget {
                     caption: 'Descontos aplicados nas vendas',
                     icon: Icons.percent_rounded,
                     accentColor: context.appColors.interactive.base,
+                    onTap: () => applyDrilldown(
+                      nextFilter: filter.copyWith(
+                        clearFocus: true,
+                        onlyCanceled: false,
+                      ),
+                      sourceLabel: 'KPI Descontos',
+                      message:
+                          'Os descontos continuam no mesmo recorte para comparacao com o restante do resultado.',
+                    ),
                   ),
                 ],
               ),
@@ -180,8 +247,25 @@ class SalesReportsPage extends ConsumerWidget {
                 !filter.onlyCanceled) ...[
               SizedBox(height: layout.sectionGap),
               topProductsAsync.when(
-                data: (products) =>
-                    ProductSalesSummaryWidget(soldProducts: products),
+                data: (products) => ProductSalesSummaryWidget(
+                  soldProducts: products,
+                  onProductTap: (product) {
+                    if (product.productId == null) {
+                      return;
+                    }
+                    applyDrilldown(
+                      nextFilter: filter.copyWith(
+                        productId: product.productId,
+                        clearVariantId: true,
+                        focus: ReportFocus.salesProducts,
+                        onlyCanceled: false,
+                      ),
+                      sourceLabel: 'Produto: ${product.productName}',
+                      message:
+                          'A leitura foi filtrada para ${product.productName} usando a mesma base de vendas da pagina.',
+                    );
+                  },
+                ),
                 loading: () => const AppStateCard(
                   title: 'Carregando top produtos',
                   message: 'Buscando os itens com mais receita.',
@@ -197,7 +281,23 @@ class SalesReportsPage extends ConsumerWidget {
               ),
               SizedBox(height: layout.sectionGap),
               topVariantsAsync.when(
-                data: (variants) => VariantSalesSummaryWidget(variants: variants),
+                data: (variants) => VariantSalesSummaryWidget(
+                  variants: variants,
+                  onVariantTap: (variant) {
+                    applyDrilldown(
+                      nextFilter: filter.copyWith(
+                        productId: variant.productId,
+                        variantId: variant.variantId,
+                        focus: ReportFocus.salesProducts,
+                        onlyCanceled: false,
+                      ),
+                      sourceLabel:
+                          'Variante: ${variant.modelName} - ${variant.variantSummary}',
+                      message:
+                          'A leitura foi filtrada para a variante escolhida mantendo o periodo atual.',
+                    );
+                  },
+                ),
                 loading: () => const AppStateCard(
                   title: 'Carregando variantes',
                   message: 'Consolidando os detalhes por grade.',
@@ -222,13 +322,31 @@ class SalesReportsPage extends ConsumerWidget {
                   );
                   return ReportDonutChartCard(
                     title: 'Vendas por forma de pagamento',
-                    subtitle: 'Distribuicao dos recebimentos ligados as vendas.',
+                    subtitle:
+                        'Distribuicao dos recebimentos ligados as vendas. Toque na legenda para aprofundar a forma.',
                     slices: paymentSlices,
                     totalLabel: 'Total recebido',
                     totalValue: AppFormatters.currencyFromCents(
                       overview.totalReceivedCents,
                     ),
                     insight: _buildPaymentInsight(paymentSlices),
+                    onSliceTap: (slice) {
+                      final method = _paymentMethodFromLabel(slice.label);
+                      if (method == null) {
+                        return;
+                      }
+                      applyDrilldown(
+                        nextFilter: filter.copyWith(
+                          paymentMethod: method,
+                          focus: ReportFocus.salesPaymentMethods,
+                          onlyCanceled: false,
+                        ),
+                        sourceLabel: 'Forma de pagamento: ${slice.label}',
+                        message:
+                            'As vendas continuam no mesmo periodo, com destaque para a forma ${slice.label}.',
+                        isFocusOnly: true,
+                      );
+                    },
                     emptyTitle: 'Sem pagamentos no periodo',
                     emptyMessage:
                         'As formas usadas nas vendas vao aparecer aqui quando houver movimento.',
@@ -249,8 +367,25 @@ class SalesReportsPage extends ConsumerWidget {
             ] else if (filter.focus != ReportFocus.salesProducts) ...[
               SizedBox(height: layout.sectionGap),
               topProductsAsync.when(
-                data: (products) =>
-                    ProductSalesSummaryWidget(soldProducts: products),
+                data: (products) => ProductSalesSummaryWidget(
+                  soldProducts: products,
+                  onProductTap: (product) {
+                    if (product.productId == null) {
+                      return;
+                    }
+                    applyDrilldown(
+                      nextFilter: filter.copyWith(
+                        productId: product.productId,
+                        clearVariantId: true,
+                        focus: ReportFocus.salesProducts,
+                        onlyCanceled: false,
+                      ),
+                      sourceLabel: 'Produto: ${product.productName}',
+                      message:
+                          'A leitura foi filtrada para ${product.productName} usando a mesma base de vendas da pagina.',
+                    );
+                  },
+                ),
                 loading: () => const AppStateCard(
                   title: 'Carregando top produtos',
                   message: 'Buscando os itens com mais receita.',
@@ -266,7 +401,23 @@ class SalesReportsPage extends ConsumerWidget {
               ),
               SizedBox(height: layout.sectionGap),
               topVariantsAsync.when(
-                data: (variants) => VariantSalesSummaryWidget(variants: variants),
+                data: (variants) => VariantSalesSummaryWidget(
+                  variants: variants,
+                  onVariantTap: (variant) {
+                    applyDrilldown(
+                      nextFilter: filter.copyWith(
+                        productId: variant.productId,
+                        variantId: variant.variantId,
+                        focus: ReportFocus.salesProducts,
+                        onlyCanceled: false,
+                      ),
+                      sourceLabel:
+                          'Variante: ${variant.modelName} - ${variant.variantSummary}',
+                      message:
+                          'A leitura foi filtrada para a variante escolhida mantendo o periodo atual.',
+                    );
+                  },
+                ),
                 loading: () => const AppStateCard(
                   title: 'Carregando variantes',
                   message: 'Consolidando os detalhes por grade.',
@@ -323,6 +474,10 @@ class SalesReportsPage extends ConsumerWidget {
       trend: trend,
       topProducts: topProducts,
       topVariants: topVariants,
+      navigationSummary: ref
+          .read(reportPageSessionProvider)
+          .drilldownFor(ReportPageKey.sales)
+          ?.exportLabel,
     );
   }
 
@@ -373,5 +528,14 @@ class SalesReportsPage extends ConsumerWidget {
       case PaymentMethod.fiado:
         return colors.warning.base;
     }
+  }
+
+  PaymentMethod? _paymentMethodFromLabel(String label) {
+    for (final method in PaymentMethod.values) {
+      if (method.label == label) {
+        return method;
+      }
+    }
+    return null;
   }
 }

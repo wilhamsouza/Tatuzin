@@ -170,8 +170,10 @@ class ReportExportPdfSupport {
           _metaLine('Gerado em', AppFormatters.shortDateTime(document.generatedAt)),
           _metaLine('Modo', document.mode.label),
           _metaLine('Periodo', document.periodLabel),
+          if ((document.navigationSummary ?? '').trim().isNotEmpty)
+            _metaLine('Drill-down', document.navigationSummary!.trim()),
           _metaLine(
-            'Filtros',
+            'Filtros e contexto',
             document.filterSummary.isEmpty
                 ? 'Sem filtros adicionais.'
                 : document.filterSummary.join(' | '),

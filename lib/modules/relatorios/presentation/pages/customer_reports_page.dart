@@ -27,6 +27,23 @@ class CustomerReportsPage extends ConsumerWidget {
     final customersAsync = ref.watch(customerRankingReportProvider);
     final filter = ref.watch(reportFilterProvider);
     final layout = context.appLayout;
+    final controller = ref.read(reportFilterProvider.notifier);
+
+    void applyDrilldown({
+      required ReportFilter nextFilter,
+      required String sourceLabel,
+      required String message,
+      bool isFocusOnly = false,
+    }) {
+      controller.applyDrilldown(
+        page: ReportPageKey.customers,
+        nextFilter: nextFilter,
+        sourcePage: ReportPageKey.customers,
+        sourceLabel: sourceLabel,
+        message: message,
+        isFocusOnly: isFocusOnly,
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Relatorio de clientes')),
@@ -113,38 +130,66 @@ class CustomerReportsPage extends ConsumerWidget {
                     : openFiado.first;
                 final topSection = _CustomerSection(
                   title: 'Top clientes por compra',
-                  subtitle: 'Quem mais puxou faturamento no periodo.',
+                  subtitle:
+                      'Quem mais puxou faturamento no periodo. Toque em um cliente para abrir o detalhe.',
                   rows: topCustomers.take(10).toList(growable: false),
                   amountBuilder: (row) => row.totalPurchasedCents,
                   emptyTitle: 'Sem compras no periodo',
                   emptyMessage: 'Os clientes com compras vao aparecer aqui.',
+                  onRowTap: (row) => applyDrilldown(
+                    nextFilter: filter.copyWith(customerId: row.customerId),
+                    sourceLabel: 'Cliente: ${row.customerName}',
+                    message:
+                        'A leitura foi filtrada para ${row.customerName} mantendo o mesmo recorte atual.',
+                  ),
                 );
                 final fiadoSection = _CustomerSection(
                   title: 'Clientes com fiado aberto',
-                  subtitle: 'Prioridade para cobranca e acompanhamento.',
+                  subtitle:
+                      'Prioridade para cobranca e acompanhamento. Toque em um cliente para abrir o detalhe.',
                   rows: openFiado.take(10).toList(growable: false),
                   amountBuilder: (row) => row.pendingFiadoCents,
                   emptyTitle: 'Nenhum fiado aberto',
                   emptyMessage:
                       'Os saldos pendentes vao aparecer aqui quando existirem.',
+                  onRowTap: (row) => applyDrilldown(
+                    nextFilter: filter.copyWith(customerId: row.customerId),
+                    sourceLabel: 'Cliente com fiado: ${row.customerName}',
+                    message:
+                        'A leitura foi filtrada para ${row.customerName} e seu saldo pendente no periodo.',
+                  ),
                 );
                 final creditSection = _CustomerSection(
                   title: 'Clientes com haver',
-                  subtitle: 'Saldo positivo que ainda pode voltar em venda.',
+                  subtitle:
+                      'Saldo positivo que ainda pode voltar em venda. Toque em um cliente para abrir o detalhe.',
                   rows: withCredit.take(10).toList(growable: false),
                   amountBuilder: (row) => row.creditBalanceCents,
                   emptyTitle: 'Sem haver em aberto',
                   emptyMessage:
                       'Os clientes com saldo positivo vao aparecer aqui.',
+                  onRowTap: (row) => applyDrilldown(
+                    nextFilter: filter.copyWith(customerId: row.customerId),
+                    sourceLabel: 'Cliente com haver: ${row.customerName}',
+                    message:
+                        'A leitura foi filtrada para ${row.customerName} e seu saldo positivo atual.',
+                  ),
                 );
                 final inactiveSection = _CustomerSection(
                   title: 'Clientes inativos',
-                  subtitle: 'Quem esta sumido do periodo atual.',
+                  subtitle:
+                      'Quem esta sumido do periodo atual. Toque em um cliente para abrir o detalhe.',
                   rows: inactive.take(10).toList(growable: false),
                   amountBuilder: (row) => row.totalPurchasedCents,
                   emptyTitle: 'Sem clientes inativos',
                   emptyMessage:
                       'Os clientes sem compra recente vao aparecer aqui.',
+                  onRowTap: (row) => applyDrilldown(
+                    nextFilter: filter.copyWith(customerId: row.customerId),
+                    sourceLabel: 'Cliente inativo: ${row.customerName}',
+                    message:
+                        'A leitura foi filtrada para ${row.customerName} dentro do mesmo periodo.',
+                  ),
                 );
                 final sections = switch (filter.focus) {
                   ReportFocus.customersWithFiado ||
@@ -185,6 +230,15 @@ class CustomerReportsPage extends ConsumerWidget {
                           caption: 'Clientes com compras no recorte',
                           icon: Icons.star_border_rounded,
                           accentColor: context.appColors.info.base,
+                          onTap: () => applyDrilldown(
+                            nextFilter: filter.copyWith(
+                              focus: ReportFocus.customersTopPurchases,
+                            ),
+                            sourceLabel: 'KPI Top clientes ativos',
+                            message:
+                                'A leitura passa a destacar quem mais comprou no recorte atual.',
+                            isFocusOnly: true,
+                          ),
                         ),
                         ReportKpiItem(
                           label: 'Com fiado aberto',
@@ -192,6 +246,15 @@ class CustomerReportsPage extends ConsumerWidget {
                           caption: 'Clientes com saldo pendente',
                           icon: Icons.receipt_long_outlined,
                           accentColor: context.appColors.warning.base,
+                          onTap: () => applyDrilldown(
+                            nextFilter: filter.copyWith(
+                              focus: ReportFocus.customersWithFiado,
+                            ),
+                            sourceLabel: 'KPI Com fiado aberto',
+                            message:
+                                'A leitura passa a priorizar os clientes com saldo pendente.',
+                            isFocusOnly: true,
+                          ),
                         ),
                         ReportKpiItem(
                           label: 'Com haver',
@@ -199,6 +262,15 @@ class CustomerReportsPage extends ConsumerWidget {
                           caption: 'Clientes com saldo positivo',
                           icon: Icons.account_balance_wallet_outlined,
                           accentColor: context.appColors.cashflowPositive.base,
+                          onTap: () => applyDrilldown(
+                            nextFilter: filter.copyWith(
+                              focus: ReportFocus.customersWithCredit,
+                            ),
+                            sourceLabel: 'KPI Com haver',
+                            message:
+                                'A leitura passa a destacar clientes com saldo positivo.',
+                            isFocusOnly: true,
+                          ),
                         ),
                         ReportKpiItem(
                           label: 'Inativos',
@@ -206,6 +278,12 @@ class CustomerReportsPage extends ConsumerWidget {
                           caption: 'Sem compra recente no recorte',
                           icon: Icons.person_off_outlined,
                           accentColor: context.appColors.interactive.base,
+                          onTap: () => applyDrilldown(
+                            nextFilter: filter.copyWith(clearFocus: true),
+                            sourceLabel: 'KPI Inativos',
+                            message:
+                                'A leitura permanece no mesmo periodo para revisar clientes sem compra recente.',
+                          ),
                         ),
                         ReportKpiItem(
                           label: 'Maior saldo pendente',
@@ -219,6 +297,18 @@ class CustomerReportsPage extends ConsumerWidget {
                               'Nenhum cliente pendente',
                           icon: Icons.warning_amber_rounded,
                           accentColor: context.appColors.cashflowNegative.base,
+                          onTap: highestPending == null
+                              ? null
+                              : () => applyDrilldown(
+                                    nextFilter: filter.copyWith(
+                                      customerId: highestPending.customerId,
+                                      focus: ReportFocus.customersPending,
+                                    ),
+                                    sourceLabel:
+                                        'Maior saldo pendente: ${highestPending.customerName}',
+                                    message:
+                                        'A leitura foi filtrada para o cliente com maior saldo pendente no recorte atual.',
+                                  ),
                         ),
                       ],
                     ),
@@ -274,6 +364,10 @@ class CustomerReportsPage extends ConsumerWidget {
       filter: filter,
       labels: labels,
       rows: rows,
+      navigationSummary: ref
+          .read(reportPageSessionProvider)
+          .drilldownFor(ReportPageKey.customers)
+          ?.exportLabel,
     );
   }
 }
@@ -286,6 +380,7 @@ class _CustomerSection extends StatelessWidget {
     required this.amountBuilder,
     required this.emptyTitle,
     required this.emptyMessage,
+    this.onRowTap,
   });
 
   final String title;
@@ -294,6 +389,7 @@ class _CustomerSection extends StatelessWidget {
   final int Function(ReportCustomerRankingRow row) amountBuilder;
   final String emptyTitle;
   final String emptyMessage;
+  final ValueChanged<ReportCustomerRankingRow>? onRowTap;
 
   @override
   Widget build(BuildContext context) {
@@ -306,36 +402,52 @@ class _CustomerSection extends StatelessWidget {
           : Column(
               children: [
                 for (var index = 0; index < rows.length; index++) ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              rows[index].customerName,
-                              style: Theme.of(context).textTheme.titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.w700),
+                  InkWell(
+                    onTap: onRowTap == null ? null : () => onRowTap!(rows[index]),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  rows[index].customerName,
+                                  style: Theme.of(context).textTheme.titleSmall
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                Text(
+                                  rows[index].lastPurchaseAt == null
+                                      ? 'Sem compra recente'
+                                      : 'Ultima compra ${AppFormatters.shortDate(rows[index].lastPurchaseAt!)}',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
                             ),
-                            Text(
-                              rows[index].lastPurchaseAt == null
-                                  ? 'Sem compra recente'
-                                  : 'Ultima compra ${AppFormatters.shortDate(rows[index].lastPurchaseAt!)}',
-                              style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            AppFormatters.currencyFromCents(
+                              amountBuilder(rows[index]),
+                            ),
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          if (onRowTap != null) ...[
+                            const SizedBox(width: 6),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              size: 18,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                             ),
                           ],
-                        ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Text(
-                        AppFormatters.currencyFromCents(
-                          amountBuilder(rows[index]),
-                        ),
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                   if (index < rows.length - 1) const Divider(height: 18),
                 ],

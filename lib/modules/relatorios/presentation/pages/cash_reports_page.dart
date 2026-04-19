@@ -32,6 +32,23 @@ class CashReportsPage extends ConsumerWidget {
     final filter = ref.watch(reportFilterProvider);
     final cashflowAsync = ref.watch(cashflowReportProvider);
     final layout = context.appLayout;
+    final controller = ref.read(reportFilterProvider.notifier);
+
+    void applyDrilldown({
+      required ReportFilter nextFilter,
+      required String sourceLabel,
+      required String message,
+      bool isFocusOnly = false,
+    }) {
+      controller.applyDrilldown(
+        page: ReportPageKey.cash,
+        nextFilter: nextFilter,
+        sourcePage: ReportPageKey.cash,
+        sourceLabel: sourceLabel,
+        message: message,
+        isFocusOnly: isFocusOnly,
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Relatorio de caixa')),
@@ -86,6 +103,15 @@ class CashReportsPage extends ConsumerWidget {
                         caption: 'Vendas e fiado recebido',
                         icon: Icons.arrow_downward_rounded,
                         accentColor: context.appColors.cashflowPositive.base,
+                        onTap: () => applyDrilldown(
+                          nextFilter: filter.copyWith(
+                            focus: ReportFocus.cashEntries,
+                          ),
+                          sourceLabel: 'KPI Total recebido',
+                          message:
+                              'A leitura destaca as entradas do caixa sem trocar a base do periodo.',
+                          isFocusOnly: true,
+                        ),
                       ),
                       ReportKpiItem(
                         label: 'Fiado recebido',
@@ -95,6 +121,15 @@ class CashReportsPage extends ConsumerWidget {
                         caption: 'Recebimentos de notas a prazo',
                         icon: Icons.receipt_long_outlined,
                         accentColor: context.appColors.info.base,
+                        onTap: () => applyDrilldown(
+                          nextFilter: filter.copyWith(
+                            focus: ReportFocus.cashFiadoReceipts,
+                          ),
+                          sourceLabel: 'KPI Fiado recebido',
+                          message:
+                              'A leitura destaca o que voltou do fiado dentro do mesmo caixa do periodo.',
+                          isFocusOnly: true,
+                        ),
                       ),
                       ReportKpiItem(
                         label: 'Entradas manuais',
@@ -104,6 +139,15 @@ class CashReportsPage extends ConsumerWidget {
                         caption: 'Suprimentos e ajustes positivos',
                         icon: Icons.add_circle_outline,
                         accentColor: context.appColors.interactive.base,
+                        onTap: () => applyDrilldown(
+                          nextFilter: filter.copyWith(
+                            focus: ReportFocus.cashManualEntries,
+                          ),
+                          sourceLabel: 'KPI Entradas manuais',
+                          message:
+                              'A leitura destaca suprimentos e ajustes positivos sem mexer na base do caixa.',
+                          isFocusOnly: true,
+                        ),
                       ),
                       ReportKpiItem(
                         label: 'Saidas',
@@ -113,6 +157,15 @@ class CashReportsPage extends ConsumerWidget {
                         caption: 'Tudo que saiu do caixa',
                         icon: Icons.arrow_upward_rounded,
                         accentColor: context.appColors.cashflowNegative.base,
+                        onTap: () => applyDrilldown(
+                          nextFilter: filter.copyWith(
+                            focus: ReportFocus.cashNetFlow,
+                          ),
+                          sourceLabel: 'KPI Saidas',
+                          message:
+                              'A linha do tempo passa a frente para facilitar a leitura do saldo liquido.',
+                          isFocusOnly: true,
+                        ),
                       ),
                       ReportKpiItem(
                         label: 'Retiradas',
@@ -122,6 +175,15 @@ class CashReportsPage extends ConsumerWidget {
                         caption: 'Sangrias registradas',
                         icon: Icons.remove_circle_outline,
                         accentColor: context.appColors.warning.base,
+                        onTap: () => applyDrilldown(
+                          nextFilter: filter.copyWith(
+                            focus: ReportFocus.cashNetFlow,
+                          ),
+                          sourceLabel: 'KPI Retiradas',
+                          message:
+                              'A leitura passa a destacar o fluxo liquido para comparar retiradas com o saldo do periodo.',
+                          isFocusOnly: true,
+                        ),
                       ),
                       ReportKpiItem(
                         label: 'Fluxo liquido',
@@ -133,23 +195,60 @@ class CashReportsPage extends ConsumerWidget {
                         accentColor: cashflow.netFlowCents < 0
                             ? context.appColors.cashflowNegative.base
                             : context.appColors.success.base,
+                        onTap: () => applyDrilldown(
+                          nextFilter: filter.copyWith(
+                            focus: ReportFocus.cashNetFlow,
+                          ),
+                          sourceLabel: 'KPI Fluxo liquido',
+                          message:
+                              'A linha do tempo do caixa fica em primeiro plano para aprofundar o saldo do periodo.',
+                          isFocusOnly: true,
+                        ),
                       ),
                     ],
                   ),
                   SizedBox(height: layout.sectionGap),
                   if (filter.focus == ReportFocus.cashNetFlow) ...[
-                    _CashTimelineCard(points: cashflow.timeline),
+                    _CashTimelineCard(
+                      points: cashflow.timeline,
+                      onPointTap: (point) {
+                        applyDrilldown(
+                          nextFilter: filter.copyWith(
+                            start: point.bucketStart,
+                            endExclusive: point.bucketEndExclusive,
+                            focus: ReportFocus.cashNetFlow,
+                          ),
+                          sourceLabel: 'Faixa ${point.label}',
+                          message:
+                              'O periodo foi reduzido para a faixa ${point.label} para detalhar entradas, saidas e saldo.',
+                        );
+                      },
+                    ),
                     SizedBox(height: layout.sectionGap),
                   ],
                   ReportDonutChartCard(
                     title: 'Entradas por origem',
-                    subtitle: 'De onde veio o caixa positivo no periodo.',
+                    subtitle:
+                        'De onde veio o caixa positivo no periodo. Toque na legenda para aprofundar a origem.',
                     slices: _buildEntryOriginSlices(context, cashflow),
                     totalLabel: 'Entradas',
                     totalValue: AppFormatters.currencyFromCents(
                       cashflow.totalReceivedCents + cashflow.manualEntriesCents,
                     ),
                     insight: _buildEntryOriginInsight(cashflow),
+                    onSliceTap: (slice) {
+                      final nextFocus = _focusFromEntryLabel(slice.label);
+                      if (nextFocus == null) {
+                        return;
+                      }
+                      applyDrilldown(
+                        nextFilter: filter.copyWith(focus: nextFocus),
+                        sourceLabel: 'Origem: ${slice.label}',
+                        message:
+                            'A leitura do caixa agora destaca ${slice.label.toLowerCase()} sem trocar a base do periodo.',
+                        isFocusOnly: true,
+                      );
+                    },
                     emptyTitle: 'Sem entradas no periodo',
                     emptyMessage:
                         'As origens de entrada vao aparecer aqui quando houver movimento.',
@@ -174,6 +273,24 @@ class CashReportsPage extends ConsumerWidget {
                               ) ...[
                                 _BreakdownRowTile(
                                   row: cashflow.movementRows[index],
+                                  onTap: () {
+                                    final nextFocus = _focusFromMovementRow(
+                                      cashflow.movementRows[index],
+                                    );
+                                    if (nextFocus == null) {
+                                      return;
+                                    }
+                                    applyDrilldown(
+                                      nextFilter: filter.copyWith(
+                                        focus: nextFocus,
+                                      ),
+                                      sourceLabel:
+                                          'Movimento: ${cashflow.movementRows[index].label}',
+                                      message:
+                                          'A leitura do caixa passou a destacar ${cashflow.movementRows[index].label.toLowerCase()} com o mesmo recorte atual.',
+                                      isFocusOnly: true,
+                                    );
+                                  },
                                 ),
                                 if (index < cashflow.movementRows.length - 1)
                                   const Divider(height: 18),
@@ -183,7 +300,21 @@ class CashReportsPage extends ConsumerWidget {
                   ),
                   if (filter.focus != ReportFocus.cashNetFlow) ...[
                     SizedBox(height: layout.sectionGap),
-                    _CashTimelineCard(points: cashflow.timeline),
+                    _CashTimelineCard(
+                      points: cashflow.timeline,
+                      onPointTap: (point) {
+                        applyDrilldown(
+                          nextFilter: filter.copyWith(
+                            start: point.bucketStart,
+                            endExclusive: point.bucketEndExclusive,
+                            focus: ReportFocus.cashNetFlow,
+                          ),
+                          sourceLabel: 'Faixa ${point.label}',
+                          message:
+                              'O periodo foi reduzido para a faixa ${point.label} para detalhar entradas, saidas e saldo.',
+                        );
+                      },
+                    ),
                   ],
                 ],
               ),
@@ -232,6 +363,10 @@ class CashReportsPage extends ConsumerWidget {
       filter: filter,
       labels: labels,
       cashflow: cashflow,
+      navigationSummary: ref
+          .read(reportPageSessionProvider)
+          .drilldownFor(ReportPageKey.cash)
+          ?.exportLabel,
     );
   }
 
@@ -304,49 +439,94 @@ class CashReportsPage extends ConsumerWidget {
     }
     return 'O recebimento de fiado tem peso relevante nas entradas do caixa.';
   }
+
+  ReportFocus? _focusFromEntryLabel(String label) {
+    switch (label) {
+      case 'Vendas':
+        return ReportFocus.cashEntries;
+      case 'Recebimento de fiado':
+        return ReportFocus.cashFiadoReceipts;
+      case 'Entradas manuais':
+        return ReportFocus.cashManualEntries;
+      default:
+        return null;
+    }
+  }
+
+  ReportFocus? _focusFromMovementRow(ReportBreakdownRow row) {
+    final label = row.label.toLowerCase();
+    if (label.contains('fiado')) {
+      return ReportFocus.cashFiadoReceipts;
+    }
+    if (label.contains('supr') || label.contains('ajuste')) {
+      return ReportFocus.cashManualEntries;
+    }
+    if (label.contains('venda')) {
+      return ReportFocus.cashEntries;
+    }
+    return ReportFocus.cashNetFlow;
+  }
 }
 
 class _BreakdownRowTile extends StatelessWidget {
-  const _BreakdownRowTile({required this.row});
+  const _BreakdownRowTile({required this.row, this.onTap});
 
   final ReportBreakdownRow row;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            row.label,
-            style: Theme.of(
-              context,
-            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                row.label,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text('${row.count} mov.'),
+            const SizedBox(width: 12),
+            Text(
+              AppFormatters.currencyFromCents(row.amountCents),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            if (onTap != null) ...[
+              const SizedBox(width: 6),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ],
         ),
-        const SizedBox(width: 12),
-        Text('${row.count} mov.'),
-        const SizedBox(width: 12),
-        Text(
-          AppFormatters.currencyFromCents(row.amountCents),
-          style: Theme.of(
-            context,
-          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-        ),
-      ],
+      ),
     );
   }
 }
 
 class _CashTimelineCard extends StatelessWidget {
-  const _CashTimelineCard({required this.points});
+  const _CashTimelineCard({required this.points, this.onPointTap});
 
   final List<ReportCashflowPoint> points;
+  final ValueChanged<ReportCashflowPoint>? onPointTap;
 
   @override
   Widget build(BuildContext context) {
     return AppSectionCard(
       title: 'Linha do tempo do caixa',
-      subtitle: 'Entradas, saidas e saldo por faixa do periodo.',
+      subtitle:
+          'Entradas, saidas e saldo por faixa do periodo. Toque em uma faixa para reduzir o recorte.',
       padding: const EdgeInsets.all(14),
       child: points.isEmpty
           ? const ReportEmptyState(
@@ -357,7 +537,12 @@ class _CashTimelineCard extends StatelessWidget {
           : Column(
               children: [
                 for (var index = 0; index < points.length; index++) ...[
-                  _CashTimelineRow(point: points[index]),
+                  _CashTimelineRow(
+                    point: points[index],
+                    onTap: onPointTap == null
+                        ? null
+                        : () => onPointTap!(points[index]),
+                  ),
                   if (index < points.length - 1) const Divider(height: 18),
                 ],
               ],
@@ -367,40 +552,56 @@ class _CashTimelineCard extends StatelessWidget {
 }
 
 class _CashTimelineRow extends StatelessWidget {
-  const _CashTimelineRow({required this.point});
+  const _CashTimelineRow({required this.point, this.onTap});
 
   final ReportCashflowPoint point;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 96,
-          child: Text(
-            point.label,
-            style: Theme.of(
-              context,
-            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 96,
+              child: Text(
+                point.label,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                'Entradas ${AppFormatters.currencyFromCents(point.inflowCents)} - Saidas ${AppFormatters.currencyFromCents(point.outflowCents)}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              AppFormatters.currencyFromCents(point.netCents),
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: point.netCents < 0
+                    ? Theme.of(context).colorScheme.error
+                    : null,
+              ),
+            ),
+            if (onTap != null) ...[
+              const SizedBox(width: 6),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ],
         ),
-        Expanded(
-          child: Text(
-            'Entradas ${AppFormatters.currencyFromCents(point.inflowCents)} - Saidas ${AppFormatters.currencyFromCents(point.outflowCents)}',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          AppFormatters.currencyFromCents(point.netCents),
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w800,
-            color: point.netCents < 0
-                ? Theme.of(context).colorScheme.error
-                : null,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
