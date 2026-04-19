@@ -29,10 +29,7 @@ Future<void> showReportFilterSheet(
 }
 
 class ReportFilterSheet extends ConsumerStatefulWidget {
-  const ReportFilterSheet({
-    super.key,
-    required this.page,
-  });
+  const ReportFilterSheet({super.key, required this.page});
 
   final ReportPageKey page;
 
@@ -65,7 +62,8 @@ class _ReportFilterSheetState extends ConsumerState<ReportFilterSheet> {
         ref.watch(reportCategoryOptionsProvider).valueOrNull ??
         const <Category>[];
     final products =
-        ref.watch(reportProductOptionsProvider).valueOrNull ?? const <Product>[];
+        ref.watch(reportProductOptionsProvider).valueOrNull ??
+        const <Product>[];
     final variants =
         ref.watch(reportVariantOptionsProvider).valueOrNull ??
         const <ReportVariantFilterOption>[];
@@ -75,8 +73,8 @@ class _ReportFilterSheetState extends ConsumerState<ReportFilterSheet> {
     final matchingVariants = _draft.productId == null
         ? variants
         : variants
-            .where((variant) => variant.productId == _draft.productId)
-            .toList(growable: false);
+              .where((variant) => variant.productId == _draft.productId)
+              .toList(growable: false);
     final maxHeight = MediaQuery.sizeOf(context).height * 0.88;
 
     return Padding(
@@ -165,9 +163,7 @@ class _ReportFilterSheetState extends ConsumerState<ReportFilterSheet> {
                     child: DropdownButtonFormField<int?>(
                       key: ValueKey<int?>(_draft.customerId),
                       initialValue: _draft.customerId,
-                      decoration: const InputDecoration(
-                        labelText: 'Cliente',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Cliente'),
                       items: [
                         const DropdownMenuItem<int?>(
                           value: null,
@@ -197,9 +193,7 @@ class _ReportFilterSheetState extends ConsumerState<ReportFilterSheet> {
                     child: DropdownButtonFormField<int?>(
                       key: ValueKey<int?>(_draft.categoryId),
                       initialValue: _draft.categoryId,
-                      decoration: const InputDecoration(
-                        labelText: 'Categoria',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Categoria'),
                       items: [
                         const DropdownMenuItem<int?>(
                           value: null,
@@ -231,9 +225,7 @@ class _ReportFilterSheetState extends ConsumerState<ReportFilterSheet> {
                     child: DropdownButtonFormField<int?>(
                       key: ValueKey<int?>(_draft.productId),
                       initialValue: _draft.productId,
-                      decoration: const InputDecoration(
-                        labelText: 'Produto',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Produto'),
                       items: [
                         const DropdownMenuItem<int?>(
                           value: null,
@@ -264,9 +256,7 @@ class _ReportFilterSheetState extends ConsumerState<ReportFilterSheet> {
                     child: DropdownButtonFormField<int?>(
                       key: ValueKey<int?>(_draft.variantId),
                       initialValue: _draft.variantId,
-                      decoration: const InputDecoration(
-                        labelText: 'Variante',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Variante'),
                       items: [
                         const DropdownMenuItem<int?>(
                           value: null,
@@ -289,7 +279,8 @@ class _ReportFilterSheetState extends ConsumerState<ReportFilterSheet> {
                         setState(() {
                           _draft = _draft.copyWith(
                             productId: selectedVariant?.productId,
-                            clearProductId: value == null && _draft.productId == null,
+                            clearProductId:
+                                value == null && _draft.productId == null,
                             variantId: value,
                             clearVariantId: value == null,
                           );
@@ -305,9 +296,7 @@ class _ReportFilterSheetState extends ConsumerState<ReportFilterSheet> {
                     child: DropdownButtonFormField<PaymentMethod?>(
                       key: ValueKey<PaymentMethod?>(_draft.paymentMethod),
                       initialValue: _draft.paymentMethod,
-                      decoration: const InputDecoration(
-                        labelText: 'Forma',
-                      ),
+                      decoration: const InputDecoration(labelText: 'Forma'),
                       items: [
                         const DropdownMenuItem<PaymentMethod?>(
                           value: null,

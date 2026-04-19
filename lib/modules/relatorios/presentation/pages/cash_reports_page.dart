@@ -22,7 +22,6 @@ import '../widgets/report_donut_chart_card.dart';
 import '../widgets/report_empty_state.dart';
 import '../widgets/report_filter_toolbar.dart';
 import '../widgets/report_kpi_grid.dart';
-import '../widgets/report_period_bar.dart';
 
 class CashReportsPage extends ConsumerWidget {
   const CashReportsPage({super.key});
@@ -73,15 +72,6 @@ class CashReportsPage extends ConsumerWidget {
               badgeLabel: 'Caixa',
               badgeIcon: Icons.payments_outlined,
               emphasized: true,
-            ),
-            SizedBox(height: layout.sectionGap),
-            const ReportPeriodBar(
-              showGrouping: true,
-              groupingOptions: [
-                ReportGrouping.day,
-                ReportGrouping.week,
-                ReportGrouping.month,
-              ],
             ),
             SizedBox(height: layout.sectionGap),
             ReportFilterToolbar(

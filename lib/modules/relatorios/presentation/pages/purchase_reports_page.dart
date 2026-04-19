@@ -18,7 +18,6 @@ import '../providers/report_providers.dart';
 import '../widgets/report_empty_state.dart';
 import '../widgets/report_filter_toolbar.dart';
 import '../widgets/report_kpi_grid.dart';
-import '../widgets/report_period_bar.dart';
 
 class PurchaseReportsPage extends ConsumerWidget {
   const PurchaseReportsPage({super.key});
@@ -70,8 +69,6 @@ class PurchaseReportsPage extends ConsumerWidget {
               badgeIcon: Icons.local_shipping_outlined,
               emphasized: true,
             ),
-            SizedBox(height: layout.sectionGap),
-            const ReportPeriodBar(),
             SizedBox(height: layout.sectionGap),
             ReportFilterToolbar(
               page: ReportPageKey.purchases,
@@ -195,10 +192,9 @@ class PurchaseReportsPage extends ConsumerWidget {
                 focus: ReportFocus.purchasesSuppliers,
               ),
         sourceLabel: 'Fornecedor: ${row.label}',
-        message:
-            row.primaryId == null
-                ? 'A leitura destaca fornecedores sem criar um filtro adicional fora da base atual.'
-                : 'A leitura foi filtrada para o fornecedor ${row.label} no mesmo periodo.',
+        message: row.primaryId == null
+            ? 'A leitura destaca fornecedores sem criar um filtro adicional fora da base atual.'
+            : 'A leitura foi filtrada para o fornecedor ${row.label} no mesmo periodo.',
         isFocusOnly: row.primaryId == null,
       ),
     );
@@ -219,10 +215,9 @@ class PurchaseReportsPage extends ConsumerWidget {
                 focus: ReportFocus.purchasesItems,
               ),
         sourceLabel: 'Item comprado: ${row.label}',
-        message:
-            row.primaryId == null
-                ? 'A leitura destaca itens comprados sem criar um filtro adicional fora da base atual.'
-                : 'A leitura foi filtrada para ${row.label} no mesmo periodo de compras.',
+        message: row.primaryId == null
+            ? 'A leitura destaca itens comprados sem criar um filtro adicional fora da base atual.'
+            : 'A leitura foi filtrada para ${row.label} no mesmo periodo de compras.',
         isFocusOnly: row.primaryId == null,
       ),
     );
@@ -244,10 +239,9 @@ class PurchaseReportsPage extends ConsumerWidget {
                 focus: ReportFocus.purchasesReplenishment,
               ),
         sourceLabel: 'Reposicao: ${row.label}',
-        message:
-            row.primaryId == null
-                ? 'A leitura destaca reposicao sem criar um filtro adicional fora da base atual.'
-                : 'A leitura foi filtrada para a reposicao escolhida no mesmo periodo.',
+        message: row.primaryId == null
+            ? 'A leitura destaca reposicao sem criar um filtro adicional fora da base atual.'
+            : 'A leitura foi filtrada para a reposicao escolhida no mesmo periodo.',
         isFocusOnly: row.primaryId == null,
       ),
     );
@@ -262,11 +256,7 @@ class PurchaseReportsPage extends ConsumerWidget {
         supplierSection,
         itemsSection,
       ],
-      _ => <Widget>[
-        supplierSection,
-        itemsSection,
-        replenishmentSection,
-      ],
+      _ => <Widget>[supplierSection, itemsSection, replenishmentSection],
     };
 
     return [
@@ -342,7 +332,9 @@ class _BreakdownSection extends StatelessWidget {
               children: [
                 for (var index = 0; index < rows.length; index++) ...[
                   InkWell(
-                    onTap: onRowTap == null ? null : () => onRowTap!(rows[index]),
+                    onTap: onRowTap == null
+                        ? null
+                        : () => onRowTap!(rows[index]),
                     borderRadius: BorderRadius.circular(12),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -360,12 +352,16 @@ class _BreakdownSection extends StatelessWidget {
                                 if (showQuantity)
                                   Text(
                                     'Quantidade ${AppFormatters.quantityFromMil(rows[index].quantityMil)}',
-                                    style: Theme.of(context).textTheme.bodySmall,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
                                   )
                                 else
                                   Text(
                                     '${rows[index].count} registro(s)',
-                                    style: Theme.of(context).textTheme.bodySmall,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
                                   ),
                               ],
                             ),
@@ -383,9 +379,9 @@ class _BreakdownSection extends StatelessWidget {
                             Icon(
                               Icons.chevron_right_rounded,
                               size: 18,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                           ],
                         ],

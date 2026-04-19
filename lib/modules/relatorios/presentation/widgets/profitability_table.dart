@@ -38,7 +38,9 @@ class ProfitabilityTable extends StatelessWidget {
                 for (var index = 0; index < rows.length; index++) ...[
                   _ProfitabilityRowTile(
                     row: rows[index],
-                    onTap: onRowTap == null ? null : () => onRowTap!(rows[index]),
+                    onTap: onRowTap == null
+                        ? null
+                        : () => onRowTap!(rows[index]),
                   ),
                   if (index < rows.length - 1) const Divider(height: 20),
                 ],

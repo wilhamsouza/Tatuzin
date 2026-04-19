@@ -22,7 +22,6 @@ import '../widgets/product_sales_summary_widget.dart';
 import '../widgets/report_donut_chart_card.dart';
 import '../widgets/report_filter_toolbar.dart';
 import '../widgets/report_kpi_grid.dart';
-import '../widgets/report_period_bar.dart';
 import '../widgets/sales_trend_chart_card.dart';
 import '../widgets/variant_sales_summary_widget.dart';
 
@@ -84,16 +83,6 @@ class SalesReportsPage extends ConsumerWidget {
               badgeLabel: 'Vendas',
               badgeIcon: Icons.shopping_bag_outlined,
               emphasized: true,
-            ),
-            SizedBox(height: layout.sectionGap),
-            const ReportPeriodBar(
-              showGrouping: true,
-              showIncludeCanceled: true,
-              groupingOptions: [
-                ReportGrouping.day,
-                ReportGrouping.week,
-                ReportGrouping.month,
-              ],
             ),
             SizedBox(height: layout.sectionGap),
             ReportFilterToolbar(

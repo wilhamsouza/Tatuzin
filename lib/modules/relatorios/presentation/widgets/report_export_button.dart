@@ -55,7 +55,9 @@ class _ReportExportButtonState extends State<ReportExportButton> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Nao foi possivel exportar o relatorio: $error')),
+        SnackBar(
+          content: Text('Nao foi possivel exportar o relatorio: $error'),
+        ),
       );
     } finally {
       if (mounted) {

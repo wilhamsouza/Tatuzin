@@ -19,7 +19,6 @@ import '../widgets/profitability_table.dart';
 import '../widgets/report_donut_chart_card.dart';
 import '../widgets/report_filter_toolbar.dart';
 import '../widgets/report_kpi_grid.dart';
-import '../widgets/report_period_bar.dart';
 
 class ProfitabilityReportsPage extends ConsumerWidget {
   const ProfitabilityReportsPage({super.key});
@@ -73,15 +72,6 @@ class ProfitabilityReportsPage extends ConsumerWidget {
               badgeLabel: 'Lucratividade',
               badgeIcon: Icons.show_chart_rounded,
               emphasized: true,
-            ),
-            SizedBox(height: layout.sectionGap),
-            const ReportPeriodBar(
-              showGrouping: true,
-              groupingOptions: [
-                ReportGrouping.product,
-                ReportGrouping.variant,
-                ReportGrouping.category,
-              ],
             ),
             SizedBox(height: layout.sectionGap),
             ReportFilterToolbar(

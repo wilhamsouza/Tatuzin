@@ -5,10 +5,7 @@ import '../../data/support/report_export_mapper.dart';
 enum ReportExportFormat { pdf, csv }
 
 class ReportExportSelection {
-  const ReportExportSelection({
-    required this.format,
-    required this.mode,
-  });
+  const ReportExportSelection({required this.format, required this.mode});
 
   final ReportExportFormat format;
   final ReportExportMode mode;

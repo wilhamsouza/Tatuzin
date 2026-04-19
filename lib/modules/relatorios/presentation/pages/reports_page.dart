@@ -23,7 +23,6 @@ import '../widgets/report_comparison_card.dart';
 import '../widgets/report_donut_chart_card.dart';
 import '../widgets/report_filter_toolbar.dart';
 import '../widgets/report_kpi_grid.dart';
-import '../widgets/report_period_bar.dart';
 import '../widgets/report_shortcut_card.dart';
 
 class ReportsPage extends ConsumerWidget {
@@ -82,9 +81,6 @@ class ReportsPage extends ConsumerWidget {
               badgeIcon: Icons.insights_rounded,
               emphasized: true,
             ),
-            SizedBox(height: layout.sectionGap),
-            const ReportPeriodBar(),
-            SizedBox(height: layout.sectionGap),
             const ReportFilterToolbar(page: ReportPageKey.overview),
             SizedBox(height: layout.sectionGap),
             overviewAsync.when(
@@ -409,8 +405,7 @@ class ReportsPage extends ConsumerWidget {
                             focus: ReportFocus.salesProducts,
                             onlyCanceled: false,
                           ),
-                          sourceLabel:
-                              'Top produto: ${product.productName}',
+                          sourceLabel: 'Top produto: ${product.productName}',
                           message:
                               'A pagina de vendas abriu filtrada para ${product.productName}, mantendo o mesmo periodo do hub.',
                         );

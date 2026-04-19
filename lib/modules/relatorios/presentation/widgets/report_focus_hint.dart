@@ -5,10 +5,7 @@ import '../../data/support/report_drilldown_support.dart';
 import 'report_context_badge.dart';
 
 class ReportFocusHint extends StatelessWidget {
-  const ReportFocusHint({
-    super.key,
-    required this.hint,
-  });
+  const ReportFocusHint({super.key, required this.hint});
 
   final ReportFocusHintData hint;
 
