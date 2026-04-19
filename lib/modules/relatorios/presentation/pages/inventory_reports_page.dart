@@ -32,6 +32,23 @@ class InventoryReportsPage extends ConsumerWidget {
     final filter = ref.watch(reportFilterProvider);
     final inventoryAsync = ref.watch(inventoryHealthReportProvider);
     final layout = context.appLayout;
+    final controller = ref.read(reportFilterProvider.notifier);
+
+    void applyDrilldown({
+      required ReportFilter nextFilter,
+      required String sourceLabel,
+      required String message,
+      bool isFocusOnly = false,
+    }) {
+      controller.applyDrilldown(
+        page: ReportPageKey.inventory,
+        nextFilter: nextFilter,
+        sourcePage: ReportPageKey.inventory,
+        sourceLabel: sourceLabel,
+        message: message,
+        isFocusOnly: isFocusOnly,
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Relatorio de estoque')),
@@ -77,6 +94,15 @@ class InventoryReportsPage extends ConsumerWidget {
                         caption: 'Sem saldo no momento',
                         icon: Icons.remove_shopping_cart_outlined,
                         accentColor: context.appColors.cashflowNegative.base,
+                        onTap: () => applyDrilldown(
+                          nextFilter: filter.copyWith(
+                            focus: ReportFocus.inventoryZeroed,
+                          ),
+                          sourceLabel: 'KPI Itens zerados',
+                          message:
+                              'A leitura do estoque passa a destacar os itens sem saldo neste momento.',
+                          isFocusOnly: true,
+                        ),
                       ),
                       ReportKpiItem(
                         label: 'Abaixo do minimo',
@@ -84,6 +110,15 @@ class InventoryReportsPage extends ConsumerWidget {
                         caption: 'Pedem reposicao',
                         icon: Icons.priority_high_rounded,
                         accentColor: context.appColors.warning.base,
+                        onTap: () => applyDrilldown(
+                          nextFilter: filter.copyWith(
+                            focus: ReportFocus.inventoryCritical,
+                          ),
+                          sourceLabel: 'KPI Abaixo do minimo',
+                          message:
+                              'A leitura do estoque passa a destacar os itens que pedem reposicao.',
+                          isFocusOnly: true,
+                        ),
                       ),
                       ReportKpiItem(
                         label: 'Valor a custo',
@@ -93,6 +128,12 @@ class InventoryReportsPage extends ConsumerWidget {
                         caption: 'Estimativa pelo custo cadastrado',
                         icon: Icons.payments_outlined,
                         accentColor: context.appColors.info.base,
+                        onTap: () => applyDrilldown(
+                          nextFilter: filter.copyWith(clearFocus: true),
+                          sourceLabel: 'KPI Valor a custo',
+                          message:
+                              'A leitura volta para a visao geral de estoque no recorte atual.',
+                        ),
                       ),
                       ReportKpiItem(
                         label: 'Valor a venda',
@@ -102,6 +143,12 @@ class InventoryReportsPage extends ConsumerWidget {
                         caption: 'Potencial bruto em estoque',
                         icon: Icons.local_offer_outlined,
                         accentColor: context.appColors.sales.base,
+                        onTap: () => applyDrilldown(
+                          nextFilter: filter.copyWith(clearFocus: true),
+                          sourceLabel: 'KPI Valor a venda',
+                          message:
+                              'A leitura volta para a visao geral do estoque no periodo atual.',
+                        ),
                       ),
                       ReportKpiItem(
                         label: 'Divergencias',
@@ -109,6 +156,15 @@ class InventoryReportsPage extends ConsumerWidget {
                         caption: 'Diferencas em inventario fisico',
                         icon: Icons.fact_check_outlined,
                         accentColor: context.appColors.interactive.base,
+                        onTap: () => applyDrilldown(
+                          nextFilter: filter.copyWith(
+                            focus: ReportFocus.inventoryDivergence,
+                          ),
+                          sourceLabel: 'KPI Divergencias',
+                          message:
+                              'A leitura passa a destacar divergencias ja registradas no inventario.',
+                          isFocusOnly: true,
+                        ),
                       ),
                     ],
                   ),
@@ -116,17 +172,29 @@ class InventoryReportsPage extends ConsumerWidget {
                   ReportDonutChartCard(
                     title: 'Saude do estoque',
                     subtitle:
-                        'Leitura visual entre itens saudaveis e pontos de atencao.',
+                        'Leitura visual entre itens saudaveis e pontos de atencao. Toque na legenda para abrir o foco correspondente.',
                     slices: _buildHealthSlices(context, summary),
                     totalLabel: 'Itens monitorados',
                     totalValue: '${summary.totalItemsCount}',
                     insight: _buildHealthInsight(summary),
+                    onSliceTap: (slice) {
+                      final nextFocus = _focusFromHealthSlice(slice.label);
+                      applyDrilldown(
+                        nextFilter: nextFocus == null
+                            ? filter.copyWith(clearFocus: true)
+                            : filter.copyWith(focus: nextFocus),
+                        sourceLabel: 'Saude do estoque: ${slice.label}',
+                        message:
+                            'A leitura passa a destacar ${slice.label.toLowerCase()} no estoque atual.',
+                        isFocusOnly: true,
+                      );
+                    },
                     emptyTitle: 'Sem estoque monitorado',
                     emptyMessage:
                         'Os indicadores de saude vao aparecer aqui quando houver itens cadastrados.',
                   ),
                   SizedBox(height: layout.sectionGap),
-                  _buildHealthCard(summary, filter),
+                  _buildHealthCard(summary, filter, applyDrilldown),
                   SizedBox(height: layout.sectionGap),
                   AppSectionCard(
                     title: 'Itens mais movimentados',
@@ -147,6 +215,26 @@ class InventoryReportsPage extends ConsumerWidget {
                               ) ...[
                                 _MovementItemRow(
                                   row: summary.mostMovedItems[index],
+                                  onTap: summary.mostMovedItems[index].primaryId == null
+                                      ? null
+                                      : () => applyDrilldown(
+                                            nextFilter: filter.copyWith(
+                                              productId: summary
+                                                  .mostMovedItems[index]
+                                                  .primaryId,
+                                              variantId: summary
+                                                  .mostMovedItems[index]
+                                                  .secondaryId,
+                                              clearVariantId: summary
+                                                      .mostMovedItems[index]
+                                                      .secondaryId ==
+                                                  null,
+                                            ),
+                                            sourceLabel:
+                                                'Item movimentado: ${summary.mostMovedItems[index].label}',
+                                            message:
+                                                'A leitura foi filtrada para o item mais movimentado escolhido.',
+                                          ),
                                 ),
                                 if (index < summary.mostMovedItems.length - 1)
                                   const Divider(height: 18),
@@ -173,6 +261,23 @@ class InventoryReportsPage extends ConsumerWidget {
                                 index++
                               ) ...[
                                 ListTile(
+                                  onTap: () => applyDrilldown(
+                                    nextFilter: filter.copyWith(
+                                      productId:
+                                          summary.recentMovements[index].productId,
+                                      variantId: summary
+                                          .recentMovements[index]
+                                          .productVariantId,
+                                      clearVariantId: summary
+                                              .recentMovements[index]
+                                              .productVariantId ==
+                                          null,
+                                    ),
+                                    sourceLabel:
+                                        'Movimentacao: ${summary.recentMovements[index].displayName}',
+                                    message:
+                                        'A leitura foi filtrada para o item da movimentacao selecionada.',
+                                  ),
                                   contentPadding: EdgeInsets.zero,
                                   title: Text(
                                     summary.recentMovements[index].displayName,
@@ -246,6 +351,10 @@ class InventoryReportsPage extends ConsumerWidget {
       filter: filter,
       labels: labels,
       summary: summary,
+      navigationSummary: ref
+          .read(reportPageSessionProvider)
+          .drilldownFor(ReportPageKey.inventory)
+          ?.exportLabel,
     );
   }
 
@@ -307,6 +416,13 @@ class InventoryReportsPage extends ConsumerWidget {
   InventoryHealthCard _buildHealthCard(
     ReportInventoryHealthSummary summary,
     ReportFilter filter,
+    void Function({
+      required ReportFilter nextFilter,
+      required String sourceLabel,
+      required String message,
+      bool isFocusOnly,
+    })
+    applyDrilldown,
   ) {
     final visibleItems = switch (filter.focus) {
       ReportFocus.inventoryZeroed => summary.criticalItems
@@ -327,32 +443,92 @@ class InventoryReportsPage extends ConsumerWidget {
       summary: summary,
       visibleCriticalItems: visibleItems,
       subtitle: subtitle,
+      onZeroedTap: () => applyDrilldown(
+        nextFilter: filter.copyWith(focus: ReportFocus.inventoryZeroed),
+        sourceLabel: 'Quadro rapido: Zerados',
+        message:
+            'A leitura passa a destacar os itens zerados sem trocar a base atual do estoque.',
+        isFocusOnly: true,
+      ),
+      onBelowMinimumTap: () => applyDrilldown(
+        nextFilter: filter.copyWith(focus: ReportFocus.inventoryCritical),
+        sourceLabel: 'Quadro rapido: Abaixo do minimo',
+        message:
+            'A leitura passa a destacar os itens que pedem reposicao no estoque atual.',
+        isFocusOnly: true,
+      ),
+      onDivergenceTap: () => applyDrilldown(
+        nextFilter: filter.copyWith(focus: ReportFocus.inventoryDivergence),
+        sourceLabel: 'Quadro rapido: Divergencia',
+        message:
+            'A leitura passa a destacar divergencias ja registradas no inventario.',
+        isFocusOnly: true,
+      ),
+      onItemTap: (item) => applyDrilldown(
+        nextFilter: filter.copyWith(
+          productId: item.productId,
+          variantId: item.productVariantId,
+          clearVariantId: item.productVariantId == null,
+        ),
+        sourceLabel: 'Item critico: ${item.displayName}',
+        message:
+            'A leitura foi filtrada para o item critico escolhido no estoque.',
+      ),
     );
+  }
+
+  ReportFocus? _focusFromHealthSlice(String label) {
+    switch (label) {
+      case 'Zerado':
+        return ReportFocus.inventoryZeroed;
+      case 'Abaixo do minimo':
+        return ReportFocus.inventoryCritical;
+      case 'Saudavel':
+        return null;
+      default:
+        return ReportFocus.inventoryAlerts;
+    }
   }
 }
 
 class _MovementItemRow extends StatelessWidget {
-  const _MovementItemRow({required this.row});
+  const _MovementItemRow({required this.row, this.onTap});
 
   final dynamic row;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            row.label as String,
-            style: Theme.of(
-              context,
-            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                row.label as String,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+            Text(
+              '${AppFormatters.quantityFromMil(row.quantityMil as int)} mov.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            if (onTap != null) ...[
+              const SizedBox(width: 6),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ],
         ),
-        Text(
-          '${AppFormatters.quantityFromMil(row.quantityMil as int)} mov.',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ],
+      ),
     );
   }
 }

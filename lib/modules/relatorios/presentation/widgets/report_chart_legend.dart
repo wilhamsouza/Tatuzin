@@ -10,11 +10,13 @@ class ReportChartLegend extends StatelessWidget {
     required this.slices,
     this.activeIndex,
     this.onSelect,
+    this.onSliceTap,
   });
 
   final List<ReportDonutSlice> slices;
   final int? activeIndex;
   final ValueChanged<int>? onSelect;
+  final ValueChanged<int>? onSliceTap;
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +28,13 @@ class ReportChartLegend extends StatelessWidget {
           _LegendRow(
             slice: slices[index],
             isActive: activeIndex == index,
-            onTap: onSelect == null ? null : () => onSelect!(index),
+            onTap: onSelect == null && onSliceTap == null
+                ? null
+                : () {
+                    onSelect?.call(index);
+                    onSliceTap?.call(index);
+                  },
+            isInteractive: onSliceTap != null,
           ),
           if (index < slices.length - 1) SizedBox(height: layout.space4),
         ],
@@ -36,10 +44,16 @@ class ReportChartLegend extends StatelessWidget {
 }
 
 class _LegendRow extends StatelessWidget {
-  const _LegendRow({required this.slice, required this.isActive, this.onTap});
+  const _LegendRow({
+    required this.slice,
+    required this.isActive,
+    required this.isInteractive,
+    this.onTap,
+  });
 
   final ReportDonutSlice slice;
   final bool isActive;
+  final bool isInteractive;
   final VoidCallback? onTap;
 
   @override
@@ -111,6 +125,14 @@ class _LegendRow extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                 ),
               ),
+              if (isInteractive) ...[
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ],
             ],
           ),
         ),

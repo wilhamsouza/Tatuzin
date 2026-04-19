@@ -511,6 +511,29 @@ abstract final class ReportFilterPresetSupport {
     return defaultFilterForPage(page, reference: reference);
   }
 
+  static ReportFilterPreset? activePresetForPage(
+    ReportPageKey page,
+    ReportFilter filter,
+  ) {
+    final presets = configFor(page).presets;
+    for (final preset in presets) {
+      if (preset.matches(filter)) {
+        return preset;
+      }
+    }
+    return null;
+  }
+
+  static ReportFilterPreset? presetById(ReportPageKey page, String id) {
+    final presets = configFor(page).presets;
+    for (final preset in presets) {
+      if (preset.id == id) {
+        return preset;
+      }
+    }
+    return null;
+  }
+
   static ReportFilter removeField(
     ReportPageKey page,
     ReportFilter current,

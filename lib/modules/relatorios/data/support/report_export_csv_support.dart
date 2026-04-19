@@ -56,6 +56,9 @@ class ReportExportCsvSupport {
     writeRow(['Modo', document.mode.label]);
     writeRow(['Periodo', document.periodLabel]);
     writeRow(['Gerado em', AppFormatters.shortDateTime(document.generatedAt)]);
+    if ((document.navigationSummary ?? '').trim().isNotEmpty) {
+      writeRow(['Drill-down', document.navigationSummary!.trim()]);
+    }
     writeRow(['Filtros', document.filterSummary.join(' | ')]);
     buffer.writeln();
     writeRow(document.csvHeaders);

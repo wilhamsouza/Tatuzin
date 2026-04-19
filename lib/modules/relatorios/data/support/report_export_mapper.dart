@@ -74,6 +74,7 @@ class ReportExportDocument {
     required this.generatedAt,
     required this.periodLabel,
     required this.filterSummary,
+    this.navigationSummary,
     required this.metrics,
     required this.tables,
     required this.csvHeaders,
@@ -88,6 +89,7 @@ class ReportExportDocument {
   final DateTime generatedAt;
   final String periodLabel;
   final List<String> filterSummary;
+  final String? navigationSummary;
   final List<ReportExportMetric> metrics;
   final List<ReportExportTable> tables;
   final List<String> csvHeaders;
@@ -105,6 +107,7 @@ abstract final class ReportExportMapper {
     required List<ReportSalesTrendPoint> trend,
     required List<ReportSoldProductSummary> topProducts,
     required List<ReportVariantSummary> topVariants,
+    String? navigationSummary,
   }) {
     final paymentRows = overview.paymentSummaries
         .map(
@@ -258,6 +261,7 @@ abstract final class ReportExportMapper {
         filter: filter,
         labels: labels,
       ),
+      navigationSummary: navigationSummary,
       metrics: [
         ReportExportMetric(
           label: 'Vendas brutas',
@@ -308,6 +312,7 @@ abstract final class ReportExportMapper {
     required ReportFilter filter,
     required ReportFilterOptionLabels labels,
     required ReportCashflowSummary cashflow,
+    String? navigationSummary,
   }) {
     final entryOriginRows = _cashEntryOriginRows(cashflow);
     final entryOriginsTable = ReportExportTable(
@@ -395,6 +400,7 @@ abstract final class ReportExportMapper {
         filter: filter,
         labels: labels,
       ),
+      navigationSummary: navigationSummary,
       metrics: [
         ReportExportMetric(
           label: 'Total recebido',
@@ -443,6 +449,7 @@ abstract final class ReportExportMapper {
     required ReportFilter filter,
     required ReportFilterOptionLabels labels,
     required ReportInventoryHealthSummary summary,
+    String? navigationSummary,
   }) {
     final healthRows = [
       ['Saudavel', '${summary.healthyItemsCount}'],
@@ -546,6 +553,7 @@ abstract final class ReportExportMapper {
         filter: filter,
         labels: labels,
       ),
+      navigationSummary: navigationSummary,
       metrics: [
         ReportExportMetric(
           label: 'Itens zerados',
@@ -594,6 +602,7 @@ abstract final class ReportExportMapper {
     required ReportFilter filter,
     required ReportFilterOptionLabels labels,
     required List<ReportCustomerRankingRow> rows,
+    String? navigationSummary,
   }) {
     final topCustomers = [...rows]
       ..sort((a, b) => b.totalPurchasedCents.compareTo(a.totalPurchasedCents));
@@ -747,6 +756,7 @@ abstract final class ReportExportMapper {
         filter: filter,
         labels: labels,
       ),
+      navigationSummary: navigationSummary,
       metrics: [
         ReportExportMetric(
           label: 'Top clientes ativos',
@@ -791,6 +801,7 @@ abstract final class ReportExportMapper {
     required ReportFilter filter,
     required ReportFilterOptionLabels labels,
     required ReportPurchaseSummary summary,
+    String? navigationSummary,
   }) {
     final supplierTable = ReportExportTable(
       title: 'Compras por fornecedor',
@@ -895,6 +906,7 @@ abstract final class ReportExportMapper {
         filter: filter,
         labels: labels,
       ),
+      navigationSummary: navigationSummary,
       metrics: [
         ReportExportMetric(
           label: 'Total comprado',
@@ -930,6 +942,7 @@ abstract final class ReportExportMapper {
     required ReportFilter filter,
     required ReportFilterOptionLabels labels,
     required List<ReportProfitabilityRow> rows,
+    String? navigationSummary,
   }) {
     final revenueCents = rows.fold<int>(
       0,
@@ -990,6 +1003,7 @@ abstract final class ReportExportMapper {
         filter: filter,
         labels: labels,
       ),
+      navigationSummary: navigationSummary,
       metrics: [
         ReportExportMetric(
           label: 'Receita',

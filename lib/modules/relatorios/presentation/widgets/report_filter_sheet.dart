@@ -372,6 +372,9 @@ class _ReportFilterSheetState extends ConsumerState<ReportFilterSheet> {
                     Expanded(
                       child: OutlinedButton(
                         onPressed: () {
+                          ref
+                              .read(reportPageSessionProvider.notifier)
+                              .clearDrilldown(widget.page);
                           setState(() {
                             _draft = ReportFilterPresetSupport.clearForPage(
                               widget.page,
@@ -475,6 +478,7 @@ class _ReportFilterSheetState extends ConsumerState<ReportFilterSheet> {
   }
 
   void _apply() {
+    ref.read(reportPageSessionProvider.notifier).clearDrilldown(widget.page);
     ref.read(reportFilterProvider.notifier).replace(_draft);
     Navigator.of(context).pop();
   }

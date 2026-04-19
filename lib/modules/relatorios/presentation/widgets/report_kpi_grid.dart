@@ -9,6 +9,7 @@ class ReportKpiItem {
     required this.caption,
     required this.icon,
     this.accentColor,
+    this.onTap,
   });
 
   final String label;
@@ -16,6 +17,7 @@ class ReportKpiItem {
   final String caption;
   final IconData icon;
   final Color? accentColor;
+  final VoidCallback? onTap;
 }
 
 class ReportKpiGrid extends StatelessWidget {
@@ -50,6 +52,7 @@ class ReportKpiGrid extends StatelessWidget {
           caption: item.caption,
           icon: item.icon,
           accentColor: item.accentColor,
+          onTap: item.onTap,
         );
       },
     );

@@ -24,6 +24,7 @@ class ReportDonutChartCard extends StatefulWidget {
     this.emptyTitle = 'Sem dados suficientes',
     this.emptyMessage =
         'Quando houver movimento no periodo, a distribuicao aparece aqui.',
+    this.onSliceTap,
   });
 
   final String title;
@@ -34,6 +35,7 @@ class ReportDonutChartCard extends StatefulWidget {
   final String? insight;
   final String emptyTitle;
   final String emptyMessage;
+  final ValueChanged<ReportDonutSlice>? onSliceTap;
 
   @override
   State<ReportDonutChartCard> createState() => _ReportDonutChartCardState();
@@ -201,6 +203,9 @@ class _ReportDonutChartCardState extends State<ReportDonutChartCard> {
           _tooltipOffset = null;
         });
       },
+      onSliceTap: widget.onSliceTap == null
+          ? null
+          : (index) => widget.onSliceTap!(widget.slices[index]),
     );
   }
 }
