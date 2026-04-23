@@ -4,6 +4,7 @@ import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/network/contracts/api_client_contract.dart';
 import '../../../../app/core/network/endpoint_config.dart';
+import '../../../../app/core/network/paginated_remote_fetch.dart';
 import '../../../../app/core/network/remote_feature_diagnostic.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 import '../datasources/sales_remote_datasource.dart';
@@ -167,25 +168,27 @@ class RealSalesRemoteDatasource implements SalesRemoteDatasource {
 
   @override
   Future<List<RemoteSaleRecord>> listAll() async {
-    final response = await _apiClient.getJson(
-      '/sales',
-      options: await _authorizedOptions(),
+    return fetchAllPaginatedItems(
+      fetchPage: ({required page, required pageSize}) async {
+        return _apiClient.getJson(
+          '/sales',
+          options: await _authorizedOptions(
+            queryParameters: <String, Object?>{
+              'page': page,
+              'pageSize': pageSize,
+            },
+          ),
+        );
+      },
+      fromJson: RemoteSaleRecord.fromJson,
+      invalidItemsMessage:
+          'A API nao retornou a lista de vendas em formato valido.',
     );
-
-    final items = response.data['items'];
-    if (items is! List) {
-      throw const NetworkRequestException(
-        'A API nao retornou a lista de vendas em formato valido.',
-      );
-    }
-
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map(RemoteSaleRecord.fromJson)
-        .toList();
   }
 
-  Future<ApiRequestOptions> _authorizedOptions() async {
+  Future<ApiRequestOptions> _authorizedOptions({
+    Map<String, Object?> queryParameters = const <String, Object?>{},
+  }) async {
     final token = await _tokenStorage.readAccessToken();
     if (token == null || token.trim().isEmpty) {
       throw const AuthenticationException(
@@ -195,6 +198,7 @@ class RealSalesRemoteDatasource implements SalesRemoteDatasource {
 
     return ApiRequestOptions(
       headers: <String, String>{'Authorization': 'Bearer $token'},
+      queryParameters: queryParameters,
     );
   }
 }

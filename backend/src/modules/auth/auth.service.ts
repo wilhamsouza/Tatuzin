@@ -21,7 +21,7 @@ import type {
   SessionClientInput,
 } from './auth.schemas';
 import {
-  LoggingPasswordResetDeliveryService,
+  ResendPasswordResetDeliveryService,
   type PasswordResetDeliveryService,
 } from './password-reset-delivery.service';
 
@@ -67,7 +67,7 @@ export class AuthService {
   constructor(
     private readonly sessionService = new AuthSessionService(),
     private readonly passwordResetDelivery: PasswordResetDeliveryService =
-      new LoggingPasswordResetDeliveryService(),
+      new ResendPasswordResetDeliveryService(),
   ) {}
 
   async register(input: RegisterInput) {

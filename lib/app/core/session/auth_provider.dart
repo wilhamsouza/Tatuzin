@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/app_environment.dart';
+import '../database/app_database.dart';
 import '../errors/app_exceptions.dart';
 import '../network/contracts/auth_gateway.dart';
 import '../network/fakes/fake_auth_gateway.dart';
 import '../network/real/remote_auth_gateway.dart';
 import '../network/network_providers.dart';
+import '../sync/sync_providers.dart';
 import 'app_session.dart';
 import 'auth_token_storage.dart';
 import 'session_provider.dart';
@@ -63,7 +65,7 @@ class AuthController extends AsyncNotifier<void> {
           .read(remoteAuthGatewayProvider)
           .restoreSession();
       if (session != null) {
-        _applySession(session);
+        await _applySession(session);
       }
     } on AppException {
       ref.read(appSessionProvider.notifier).signOutToLocalMode();
@@ -79,7 +81,7 @@ class AuthController extends AsyncNotifier<void> {
             identifier: 'mock.operator@simples.local',
             password: '123456',
           );
-      _applySession(session);
+      await _applySession(session);
       state = const AsyncData(null);
       return session;
     } catch (error, stackTrace) {
@@ -104,7 +106,7 @@ class AuthController extends AsyncNotifier<void> {
       final session = await ref
           .read(remoteAuthGatewayProvider)
           .signIn(identifier: email, password: password);
-      _applySession(session);
+      await _applySession(session);
       state = const AsyncData(null);
       return session;
     } catch (error, stackTrace) {
@@ -138,7 +140,7 @@ class AuthController extends AsyncNotifier<void> {
             email: email,
             password: password,
           );
-      _applySession(session);
+      await _applySession(session);
       state = const AsyncData(null);
       return session;
     } catch (error, stackTrace) {
@@ -154,7 +156,11 @@ class AuthController extends AsyncNotifier<void> {
           .read(remoteAuthGatewayProvider)
           .restoreSession();
       if (session != null) {
-        _applySession(session);
+        await _applySession(session);
+      } else {
+        ref.read(autoSyncCoordinatorProvider).cancelPending();
+        ref.read(appSessionProvider.notifier).signOutToLocalMode();
+        await ref.read(appStartupProvider.future);
       }
       state = const AsyncData(null);
       return session;
@@ -213,13 +219,16 @@ class AuthController extends AsyncNotifier<void> {
     state = const AsyncLoading();
     try {
       final session = ref.read(appSessionProvider);
+      ref.read(autoSyncCoordinatorProvider).cancelPending();
+      ref.read(appSessionProvider.notifier).signOutToLocalMode();
+      await ref.read(appStartupProvider.future);
+
       if (session.isRemoteAuthenticated) {
         await ref.read(remoteAuthGatewayProvider).signOut();
       } else if (session.isMockAuthenticated) {
         await ref.read(mockAuthGatewayProvider).signOut();
       }
 
-      ref.read(appSessionProvider.notifier).signOutToLocalMode();
       state = const AsyncData(null);
     } catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);
@@ -235,7 +244,8 @@ class AuthController extends AsyncNotifier<void> {
     state = const AsyncData(null);
   }
 
-  void _applySession(AppSession session) {
+  Future<void> _applySession(AppSession session) async {
+    ref.read(autoSyncCoordinatorProvider).cancelPending();
     ref
         .read(appSessionProvider.notifier)
         .setAuthenticatedSession(
@@ -244,6 +254,12 @@ class AuthController extends AsyncNotifier<void> {
           company: session.company,
           isOfflineFallback: session.isOfflineFallback,
         );
+
+    await ref.read(appStartupProvider.future);
+
+    if (session.isRemoteAuthenticated) {
+      ref.read(autoSyncCoordinatorProvider).onRemoteSessionAvailable();
+    }
   }
 }
 

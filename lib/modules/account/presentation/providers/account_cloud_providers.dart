@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/session/auth_provider.dart';
 import '../../../../app/core/session/session_provider.dart';
+import '../../../../app/core/sync/auto_sync_coordinator.dart';
+import '../../../../app/core/sync/sync_display_state.dart';
+import '../../../../app/core/sync/sync_providers.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../system/presentation/providers/system_providers.dart';
 
@@ -14,8 +17,11 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
   final company = ref.watch(currentCompanyContextProvider);
   final connectionAsync = ref.watch(backendConnectionStatusProvider);
   final syncOverview = ref.watch(syncHealthOverviewProvider);
+  final autoSyncSnapshot = ref.watch(autoSyncSnapshotProvider);
   final connection = connectionAsync.valueOrNull;
   final hasRecentSync = syncOverview.lastProcessedAt != null;
+  final pendingCount = syncOverview.totalPendingForDisplay;
+  final syncingNowCount = syncOverview.totalActiveProcessing;
 
   if (!authStatus.isRemoteAuthenticated || session.isLocalDefault) {
     return AccountCloudStatusSnapshot(
@@ -30,11 +36,18 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
       supportingValue: hasRecentSync
           ? AppFormatters.shortDateTime(syncOverview.lastProcessedAt!)
           : null,
+      syncingNowCount: 0,
+      pendingCount: pendingCount,
+      errorCount: syncOverview.totalErrors,
+      blockedCount: syncOverview.totalBlocked,
+      conflictCount: syncOverview.totalConflicts,
+      lastSyncedAt: syncOverview.lastProcessedAt,
+      nextRetryAt: syncOverview.nextRetryAt,
     );
   }
 
   if (!company.hasCloudLicense) {
-    return const AccountCloudStatusSnapshot(
+    return AccountCloudStatusSnapshot(
       statusLabel: 'Precisa de atencao',
       statusMessage:
           'Sua empresa ainda nao tem uma licenca de nuvem pronta para sincronizar. O uso local continua disponivel.',
@@ -42,11 +55,18 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
       icon: Icons.info_outline_rounded,
       accountModeLabel: 'Conta conectada',
       cloudAvailabilityLabel: 'Nuvem indisponivel',
+      syncingNowCount: syncingNowCount,
+      pendingCount: pendingCount,
+      errorCount: syncOverview.totalErrors,
+      blockedCount: syncOverview.totalBlocked,
+      conflictCount: syncOverview.totalConflicts,
+      lastSyncedAt: syncOverview.lastProcessedAt,
+      nextRetryAt: syncOverview.nextRetryAt,
     );
   }
 
   if (company.isSuspendedLicense) {
-    return const AccountCloudStatusSnapshot(
+    return AccountCloudStatusSnapshot(
       statusLabel: 'Precisa de atencao',
       statusMessage:
           'Sua licenca de nuvem esta suspensa. O app continua funcionando no modo local.',
@@ -54,11 +74,18 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
       icon: Icons.pause_circle_outline_rounded,
       accountModeLabel: 'Conta conectada',
       cloudAvailabilityLabel: 'Nuvem indisponivel',
+      syncingNowCount: syncingNowCount,
+      pendingCount: pendingCount,
+      errorCount: syncOverview.totalErrors,
+      blockedCount: syncOverview.totalBlocked,
+      conflictCount: syncOverview.totalConflicts,
+      lastSyncedAt: syncOverview.lastProcessedAt,
+      nextRetryAt: syncOverview.nextRetryAt,
     );
   }
 
   if (company.isExpiredLicense) {
-    return const AccountCloudStatusSnapshot(
+    return AccountCloudStatusSnapshot(
       statusLabel: 'Precisa de atencao',
       statusMessage:
           'Sua licenca de nuvem venceu. O uso local continua disponivel enquanto a conta precisa de atencao.',
@@ -66,11 +93,18 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
       icon: Icons.event_busy_rounded,
       accountModeLabel: 'Conta conectada',
       cloudAvailabilityLabel: 'Nuvem indisponivel',
+      syncingNowCount: syncingNowCount,
+      pendingCount: pendingCount,
+      errorCount: syncOverview.totalErrors,
+      blockedCount: syncOverview.totalBlocked,
+      conflictCount: syncOverview.totalConflicts,
+      lastSyncedAt: syncOverview.lastProcessedAt,
+      nextRetryAt: syncOverview.nextRetryAt,
     );
   }
 
   if (!company.syncEnabled) {
-    return const AccountCloudStatusSnapshot(
+    return AccountCloudStatusSnapshot(
       statusLabel: 'Precisa de atencao',
       statusMessage:
           'A nuvem desta empresa esta desativada no momento. O uso local continua liberado.',
@@ -78,17 +112,31 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
       icon: Icons.cloud_off_rounded,
       accountModeLabel: 'Conta conectada',
       cloudAvailabilityLabel: 'Nuvem indisponivel',
+      syncingNowCount: syncingNowCount,
+      pendingCount: pendingCount,
+      errorCount: syncOverview.totalErrors,
+      blockedCount: syncOverview.totalBlocked,
+      conflictCount: syncOverview.totalConflicts,
+      lastSyncedAt: syncOverview.lastProcessedAt,
+      nextRetryAt: syncOverview.nextRetryAt,
     );
   }
 
   if (connectionAsync.isLoading && connection == null) {
-    return const AccountCloudStatusSnapshot(
+    return AccountCloudStatusSnapshot(
       statusLabel: 'Sincronizando',
       statusMessage: 'Estamos verificando sua conexao com a nuvem.',
       tone: AppStatusTone.info,
       icon: Icons.sync_rounded,
       accountModeLabel: 'Conta conectada',
       cloudAvailabilityLabel: 'Verificando a nuvem',
+      syncingNowCount: syncingNowCount,
+      pendingCount: pendingCount,
+      errorCount: syncOverview.totalErrors,
+      blockedCount: syncOverview.totalBlocked,
+      conflictCount: syncOverview.totalConflicts,
+      lastSyncedAt: syncOverview.lastProcessedAt,
+      nextRetryAt: syncOverview.nextRetryAt,
     );
   }
 
@@ -109,43 +157,99 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
           : AppFormatters.shortDateTime(
               connection?.checkedAt ?? DateTime.now(),
             ),
+      syncingNowCount: syncingNowCount,
+      pendingCount: pendingCount,
+      errorCount: syncOverview.totalErrors,
+      blockedCount: syncOverview.totalBlocked,
+      conflictCount: syncOverview.totalConflicts,
+      lastSyncedAt: syncOverview.lastProcessedAt,
+      nextRetryAt: syncOverview.nextRetryAt,
     );
   }
 
-  if (syncOverview.totalErrors > 0 ||
-      syncOverview.totalBlocked > 0 ||
-      syncOverview.totalConflicts > 0) {
-    return AccountCloudStatusSnapshot(
-      statusLabel: 'Precisa de atencao',
-      statusMessage:
-          'Sua conta esta conectada, mas a nuvem precisa de atencao para voltar ao ritmo normal.',
-      tone: AppStatusTone.warning,
-      icon: Icons.error_outline_rounded,
-      accountModeLabel: 'Conta conectada',
-      cloudAvailabilityLabel: 'Precisa de atencao',
-      supportingLabel: hasRecentSync
-          ? 'Ultima sincronizacao'
-          : 'Ultima verificacao',
-      supportingValue: hasRecentSync
-          ? AppFormatters.shortDateTime(syncOverview.lastProcessedAt!)
-          : AppFormatters.shortDateTime(connection.checkedAt),
-    );
-  }
-
-  if (syncOverview.totalPending > 0 || syncOverview.totalProcessing > 0) {
-    return AccountCloudStatusSnapshot(
-      statusLabel: 'Sincronizando',
-      statusMessage:
-          'Suas atualizacoes estao sendo enviadas para a nuvem em segundo plano.',
-      tone: AppStatusTone.info,
-      icon: Icons.sync_rounded,
-      accountModeLabel: 'Conta conectada',
-      cloudAvailabilityLabel: 'Nuvem disponivel',
-      supportingLabel: hasRecentSync ? 'Ultima sincronizacao' : null,
-      supportingValue: hasRecentSync
-          ? AppFormatters.shortDateTime(syncOverview.lastProcessedAt!)
-          : null,
-    );
+  switch (syncOverview.displayState) {
+    case SyncDisplayState.attention:
+      return AccountCloudStatusSnapshot(
+        statusLabel: 'Precisa de atencao',
+        statusMessage: _buildAttentionMessage(
+          syncOverview,
+          autoSyncSnapshot: autoSyncSnapshot,
+        ),
+        tone: AppStatusTone.warning,
+        icon: Icons.error_outline_rounded,
+        accountModeLabel: 'Conta conectada',
+        cloudAvailabilityLabel: 'Requer revisao',
+        supportingLabel: hasRecentSync
+            ? 'Ultima sincronizacao'
+            : 'Ultima verificacao',
+        supportingValue: hasRecentSync
+            ? AppFormatters.shortDateTime(syncOverview.lastProcessedAt!)
+            : AppFormatters.shortDateTime(connection.checkedAt),
+        syncingNowCount: syncingNowCount,
+        pendingCount: pendingCount,
+        errorCount: syncOverview.totalErrors,
+        blockedCount: syncOverview.totalBlocked,
+        conflictCount: syncOverview.totalConflicts,
+        lastSyncedAt: syncOverview.lastProcessedAt,
+        nextRetryAt: _nextOperatorAttemptAt(
+          syncOverview: syncOverview,
+          autoSyncSnapshot: autoSyncSnapshot,
+        ),
+      );
+    case SyncDisplayState.syncing:
+      return AccountCloudStatusSnapshot(
+        statusLabel: 'Sincronizando',
+        statusMessage: _buildSyncingMessage(
+          syncOverview,
+          autoSyncSnapshot: autoSyncSnapshot,
+        ),
+        tone: AppStatusTone.info,
+        icon: Icons.sync_rounded,
+        accountModeLabel: 'Conta conectada',
+        cloudAvailabilityLabel: 'Envio em andamento',
+        supportingLabel: hasRecentSync ? 'Ultima sincronizacao' : null,
+        supportingValue: hasRecentSync
+            ? AppFormatters.shortDateTime(syncOverview.lastProcessedAt!)
+            : null,
+        syncingNowCount: syncingNowCount,
+        pendingCount: pendingCount,
+        errorCount: syncOverview.totalErrors,
+        blockedCount: syncOverview.totalBlocked,
+        conflictCount: syncOverview.totalConflicts,
+        lastSyncedAt: syncOverview.lastProcessedAt,
+        nextRetryAt: _nextOperatorAttemptAt(
+          syncOverview: syncOverview,
+          autoSyncSnapshot: autoSyncSnapshot,
+        ),
+      );
+    case SyncDisplayState.pending:
+      return AccountCloudStatusSnapshot(
+        statusLabel: 'Pendencias para sincronizar',
+        statusMessage: _buildPendingMessage(
+          syncOverview,
+          autoSyncSnapshot: autoSyncSnapshot,
+        ),
+        tone: AppStatusTone.neutral,
+        icon: Icons.schedule_send_rounded,
+        accountModeLabel: 'Conta conectada',
+        cloudAvailabilityLabel: 'Pendencias aguardando envio',
+        supportingLabel: hasRecentSync ? 'Ultima sincronizacao' : null,
+        supportingValue: hasRecentSync
+            ? AppFormatters.shortDateTime(syncOverview.lastProcessedAt!)
+            : null,
+        syncingNowCount: syncingNowCount,
+        pendingCount: pendingCount,
+        errorCount: syncOverview.totalErrors,
+        blockedCount: syncOverview.totalBlocked,
+        conflictCount: syncOverview.totalConflicts,
+        lastSyncedAt: syncOverview.lastProcessedAt,
+        nextRetryAt: _nextOperatorAttemptAt(
+          syncOverview: syncOverview,
+          autoSyncSnapshot: autoSyncSnapshot,
+        ),
+      );
+    case SyncDisplayState.synced:
+      break;
   }
 
   return AccountCloudStatusSnapshot(
@@ -164,8 +268,152 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
     supportingValue: hasRecentSync
         ? AppFormatters.shortDateTime(syncOverview.lastProcessedAt!)
         : connection.remoteCompanyName ?? authStatus.companyLabel,
+    syncingNowCount: syncingNowCount,
+    pendingCount: pendingCount,
+    errorCount: syncOverview.totalErrors,
+    blockedCount: syncOverview.totalBlocked,
+    conflictCount: syncOverview.totalConflicts,
+    lastSyncedAt: syncOverview.lastProcessedAt,
+    nextRetryAt: _nextOperatorAttemptAt(
+      syncOverview: syncOverview,
+      autoSyncSnapshot: autoSyncSnapshot,
+    ),
   );
 });
+
+String _buildSyncingMessage(
+  SyncHealthOverview syncOverview, {
+  required AutoSyncCoordinatorSnapshot autoSyncSnapshot,
+}) {
+  final parts = <String>[
+    _countLabel(
+      syncOverview.totalActiveProcessing,
+      'item esta sendo enviado agora',
+      'itens estao sendo enviados agora',
+    ),
+  ];
+
+  if (syncOverview.totalPendingForDisplay > 0) {
+    parts.add(
+      _countLabel(
+        syncOverview.totalPendingForDisplay,
+        'item ainda aguarda na fila local',
+        'itens ainda aguardam na fila local',
+      ),
+    );
+  }
+
+  if (autoSyncSnapshot.followUpQueued) {
+    parts.add(
+      'Novas mudancas entraram na fila e um lote complementar ja foi reservado',
+    );
+  }
+
+  return '${parts.join('. ')}.';
+}
+
+String _buildPendingMessage(
+  SyncHealthOverview syncOverview, {
+  required AutoSyncCoordinatorSnapshot autoSyncSnapshot,
+}) {
+  final parts = <String>[
+    _countLabel(
+      syncOverview.totalPendingForDisplay,
+      'pendencia aguarda envio automatico',
+      'pendencias aguardam envio automatico',
+    ),
+  ];
+
+  if (syncOverview.totalStaleProcessing > 0) {
+    parts.add(
+      _countLabel(
+        syncOverview.totalStaleProcessing,
+        'item preso em processing antigo voltou para nova tentativa',
+        'itens presos em processing antigo voltaram para nova tentativa',
+      ),
+    );
+  }
+
+  final nextAttemptAt = _nextOperatorAttemptAt(
+    syncOverview: syncOverview,
+    autoSyncSnapshot: autoSyncSnapshot,
+  );
+  if (nextAttemptAt != null) {
+    parts.add(
+      'A proxima tentativa automatica esta prevista para ${AppFormatters.shortDateTime(nextAttemptAt)}',
+    );
+  }
+
+  return '${parts.join('. ')}.';
+}
+
+String _buildAttentionMessage(
+  SyncHealthOverview syncOverview, {
+  required AutoSyncCoordinatorSnapshot autoSyncSnapshot,
+}) {
+  final parts = <String>[];
+
+  if (syncOverview.totalErrors > 0) {
+    parts.add(
+      _countLabel(syncOverview.totalErrors, 'item com erro', 'itens com erro'),
+    );
+  }
+
+  if (syncOverview.totalBlocked > 0) {
+    parts.add(
+      _countLabel(
+        syncOverview.totalBlocked,
+        'item bloqueado',
+        'itens bloqueados',
+      ),
+    );
+  }
+
+  if (syncOverview.totalConflicts > 0) {
+    parts.add(
+      _countLabel(
+        syncOverview.totalConflicts,
+        'conflito pendente',
+        'conflitos pendentes',
+      ),
+    );
+  }
+
+  final nextAttemptAt = _nextOperatorAttemptAt(
+    syncOverview: syncOverview,
+    autoSyncSnapshot: autoSyncSnapshot,
+  );
+  if (nextAttemptAt != null) {
+    parts.add(
+      'A proxima tentativa automatica elegivel esta prevista para ${AppFormatters.shortDateTime(nextAttemptAt)}',
+    );
+  }
+
+  if (parts.isEmpty) {
+    return 'Sua conta esta conectada, mas a nuvem precisa de atencao para voltar ao ritmo normal.';
+  }
+
+  return 'Sua conta esta conectada, mas a nuvem precisa de atencao: ${parts.join(', ')}.';
+}
+
+String _countLabel(int count, String singular, String plural) {
+  return '$count ${count == 1 ? singular : plural}';
+}
+
+DateTime? _nextOperatorAttemptAt({
+  required SyncHealthOverview syncOverview,
+  required AutoSyncCoordinatorSnapshot autoSyncSnapshot,
+}) {
+  final scheduledAt = autoSyncSnapshot.nextScheduledAt;
+  final retryAt = syncOverview.nextRetryAt;
+  if (scheduledAt == null) {
+    return retryAt;
+  }
+  if (retryAt == null) {
+    return scheduledAt;
+  }
+  return scheduledAt.isBefore(retryAt) ? scheduledAt : retryAt;
+}
 
 final internalMobileSurfaceAccessProvider =
     Provider<InternalMobileSurfaceAccess>((ref) {
@@ -188,6 +436,13 @@ class AccountCloudStatusSnapshot {
     required this.icon,
     required this.accountModeLabel,
     required this.cloudAvailabilityLabel,
+    required this.syncingNowCount,
+    required this.pendingCount,
+    required this.errorCount,
+    required this.blockedCount,
+    required this.conflictCount,
+    required this.lastSyncedAt,
+    required this.nextRetryAt,
     this.supportingLabel,
     this.supportingValue,
   });
@@ -198,6 +453,13 @@ class AccountCloudStatusSnapshot {
   final IconData icon;
   final String accountModeLabel;
   final String cloudAvailabilityLabel;
+  final int syncingNowCount;
+  final int pendingCount;
+  final int errorCount;
+  final int blockedCount;
+  final int conflictCount;
+  final DateTime? lastSyncedAt;
+  final DateTime? nextRetryAt;
   final String? supportingLabel;
   final String? supportingValue;
 }

@@ -8,15 +8,31 @@ async function bootstrap() {
   await prisma.$connect();
 
   const app = createApp();
+  const listenHost = env.HOST;
 
-  const server = app.listen(env.PORT, () => {
+  const server = app.listen(env.PORT, listenHost, () => {
     platformJobsService.start();
     logger.info('backend.started', {
+      host: listenHost,
       port: env.PORT,
       environment: env.APP_ENV,
-      healthUrl: `http://localhost:${env.PORT}/api/health`,
-      readinessUrl: `http://localhost:${env.PORT}/api/readiness`,
+      trustProxy: env.TRUST_PROXY ?? 'false',
+      healthPath: '/api/health',
+      readinessPath: '/api/readiness',
     });
+  });
+
+  server.on('error', (error) => {
+    void (async () => {
+      logger.error('backend.server.error', {
+        error,
+        host: listenHost,
+        port: env.PORT,
+      });
+      platformJobsService.stop();
+      await prisma.$disconnect().catch(() => undefined);
+      process.exit(1);
+    })();
   });
 
   const shutdown = async (signal: string) => {

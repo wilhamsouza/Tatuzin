@@ -1,9 +1,14 @@
 import { Router } from 'express';
 
 import { requireCloudLicense } from '../../shared/http/auth-middleware';
+import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { asyncHandler } from '../../shared/http/async-handler';
-import { validateBody } from '../../shared/http/validate';
-import { categoryUpsertSchema } from './categories.schemas';
+import { validateBody, validateQuery } from '../../shared/http/validate';
+import {
+  categoryListQuerySchema,
+  type CategoryListQueryInput,
+  categoryUpsertSchema,
+} from './categories.schemas';
 import { CategoriesService } from './categories.service';
 
 const categoriesService = new CategoriesService();
@@ -22,16 +27,21 @@ categoriesRouter.use(requireCloudLicense);
 
 categoriesRouter.get(
   '/',
+  validateQuery(categoryListQuerySchema),
   asyncHandler(async (request, response) => {
-    const includeDeleted = request.query.includeDeleted === 'true';
-    const items = await categoriesService.listForCompany(
+    const query = request.query as CategoryListQueryInput;
+    const result = await categoriesService.listForCompany(
       request.auth!.companyId,
-      includeDeleted,
+      query,
     );
-    response.json({
-      items,
-      count: items.length,
-    });
+    response.json(
+      buildPaginatedResponse({
+        items: result.items,
+        page: query.page,
+        pageSize: query.pageSize,
+        total: result.total,
+      }),
+    );
   }),
 );
 

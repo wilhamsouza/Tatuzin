@@ -9,6 +9,7 @@ import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
 import '../../data/datasources/supplies_remote_datasource.dart';
 import '../../data/real/real_supplies_remote_datasource.dart';
@@ -20,7 +21,7 @@ import '../../domain/entities/supply_inventory.dart';
 import '../../domain/repositories/supply_repository.dart';
 
 final localSupplyRepositoryProvider = Provider<SqliteSupplyRepository>((ref) {
-  return SqliteSupplyRepository(ref.read(appDatabaseProvider));
+  return SqliteSupplyRepository(ref.watch(appDatabaseProvider));
 });
 
 final suppliesRemoteDatasourceProvider = Provider<SuppliesRemoteDatasource>((
@@ -50,12 +51,14 @@ final supplyRepositoryProvider = Provider<SupplyRepository>((ref) {
 final supplySearchQueryProvider = StateProvider<String>((ref) => '');
 
 final supplyListProvider = FutureProvider<List<Supply>>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(supplySearchQueryProvider);
   return ref.watch(supplyRepositoryProvider).search(query: query);
 });
 
 final activeSupplyOptionsProvider = FutureProvider<List<Supply>>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(supplyRepositoryProvider).search(activeOnly: true);
 });
@@ -64,12 +67,14 @@ final supplyDetailProvider = FutureProvider.family<Supply?, int>((
   ref,
   supplyId,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(supplyRepositoryProvider).findById(supplyId);
 });
 
 final supplyInventoryOverviewProvider =
     FutureProvider<List<SupplyInventoryOverview>>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       final query = ref.watch(supplySearchQueryProvider);
       return ref
@@ -87,6 +92,7 @@ final reorderSuggestionsFilterProvider = StateProvider<SupplyReorderFilter>(
 
 final supplyReorderSuggestionsProvider =
     FutureProvider<List<SupplyReorderSuggestion>>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       final query = ref.watch(reorderSuggestionsSearchQueryProvider);
       final filter = ref.watch(reorderSuggestionsFilterProvider);
@@ -100,6 +106,7 @@ final supplyInventoryMovementsProvider =
       List<SupplyInventoryMovement>,
       SupplyInventoryMovementQuery
     >((ref, query) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       return ref
           .watch(supplyRepositoryProvider)
@@ -117,6 +124,7 @@ final supplyCostHistoryProvider =
       ref,
       supplyId,
     ) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       return ref
           .watch(supplyRepositoryProvider)

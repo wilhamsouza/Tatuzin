@@ -9,6 +9,7 @@ import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../data/cash_event_sync_processor.dart';
 import '../../data/datasources/cash_remote_datasource.dart';
 import '../../data/real/real_cash_remote_datasource.dart';
@@ -24,7 +25,7 @@ import '../../domain/usecases/open_cash_session_use_case.dart';
 
 final localCashRepositoryProvider = Provider<SqliteCashRepository>((ref) {
   return SqliteCashRepository(
-    ref.read(appDatabaseProvider),
+    ref.watch(appDatabaseProvider),
     ref.watch(appOperationalContextProvider),
   );
 });
@@ -56,6 +57,7 @@ final currentCashOperatorNameProvider = Provider<String>((ref) {
 });
 
 final currentCashSessionProvider = FutureProvider<CashSession?>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(cashRepositoryProvider).getCurrentSession();
 });
@@ -63,6 +65,7 @@ final currentCashSessionProvider = FutureProvider<CashSession?>((ref) async {
 final currentCashMovementsProvider = FutureProvider<List<CashMovement>>((
   ref,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(cashRepositoryProvider).listCurrentSessionMovements();
 });
@@ -70,12 +73,14 @@ final currentCashMovementsProvider = FutureProvider<List<CashMovement>>((
 final cashSessionHistoryProvider = FutureProvider<List<CashSession>>((
   ref,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(cashRepositoryProvider).listSessions();
 });
 
 final cashSessionDetailProvider = FutureProvider.family<CashSessionDetail, int>(
   (ref, sessionId) async {
+    ref.watch(sessionRuntimeKeyProvider);
     ref.watch(appDataRefreshProvider);
     return ref.watch(cashRepositoryProvider).fetchSessionDetail(sessionId);
   },

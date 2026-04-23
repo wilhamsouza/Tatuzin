@@ -312,7 +312,7 @@ class FiadoDetailPage extends ConsumerWidget {
       ref.invalidate(cashSessionHistoryProvider);
       ref.invalidate(saleHistoryListProvider);
       ref.invalidate(saleDetailProvider(detail.account.saleId));
-      ref.invalidate(dashboardMetricsProvider);
+      ref.invalidate(operationalDashboardSnapshotProvider);
 
       if (!context.mounted) {
         return;

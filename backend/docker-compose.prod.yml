@@ -1,0 +1,71 @@
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-tatuzin-backend:local}
+    platform: linux/arm64
+    container_name: tatuzin-backend
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env.production
+    ports:
+      - "127.0.0.1:4000:4000"
+    expose:
+      - "4000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:${PORT:-4000}/api/health >/dev/null 2>&1 || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 45s
+      retries: 3
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - edge
+
+  edge:
+    image: caddy:2-alpine
+    platform: linux/arm64
+    container_name: tatuzin-edge
+    restart: unless-stopped
+    init: true
+    depends_on:
+      backend:
+        condition: service_healthy
+    env_file:
+      - .env.production
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1/healthz >/dev/null 2>&1 || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - edge
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  edge:

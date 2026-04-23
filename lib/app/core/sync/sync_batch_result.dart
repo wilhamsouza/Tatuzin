@@ -19,9 +19,16 @@ class SyncBatchResult {
   final DateTime startedAt;
   final DateTime finishedAt;
 
+  Duration get duration => finishedAt.difference(startedAt);
+
+  bool get hasAttention =>
+      failedCount > 0 || blockedCount > 0 || conflictCount > 0;
+
+  bool get isClean => !hasAttention;
+
   String get message {
     final scope = reprocessedOnly ? 'pendencias' : 'fila';
-    if (failedCount == 0 && blockedCount == 0 && conflictCount == 0) {
+    if (isClean) {
       return 'Processamento de $scope concluido com sucesso.';
     }
 

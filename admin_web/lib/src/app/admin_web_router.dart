@@ -10,6 +10,11 @@ import '../features/companies/presentation/companies_page.dart';
 import '../features/companies/presentation/company_detail_page.dart';
 import '../features/dashboard/presentation/dashboard_page.dart';
 import '../features/licenses/presentation/licenses_page.dart';
+import '../features/management/crm/presentation/crm_customer_detail_page.dart';
+import '../features/management/crm/presentation/crm_customers_page.dart';
+import '../features/management/dashboard/presentation/management_dashboard_page.dart';
+import '../features/management/governance/presentation/hybrid_governance_page.dart';
+import '../features/management/reports/presentation/management_reports_page.dart';
 import '../features/sync_health/presentation/sync_health_page.dart';
 
 final adminRouterProvider = Provider<GoRouter>((ref) {
@@ -70,10 +75,7 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
     },
     routes: <RouteBase>[
       GoRoute(path: '/', redirect: (_, __) => '/dashboard'),
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginPage(),
-      ),
+      GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
       ShellRoute(
         builder: (context, state, child) {
           return AdminShellScaffold(
@@ -86,6 +88,36 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/dashboard',
             builder: (context, state) => const DashboardPage(),
+          ),
+          GoRoute(
+            path: '/management/dashboard',
+            builder: (context, state) => const ManagementDashboardPage(),
+          ),
+          GoRoute(
+            path: '/management/reports',
+            builder: (context, state) => const ManagementReportsPage(),
+          ),
+          GoRoute(
+            path: '/management/governance',
+            builder: (context, state) => const HybridGovernancePage(),
+          ),
+          GoRoute(
+            path: '/management/crm/customers',
+            builder: (context, state) => CrmCustomersPage(
+              initialCompanyId: state.uri.queryParameters['companyId'],
+              initialSearch: state.uri.queryParameters['search'],
+              initialTag: state.uri.queryParameters['tag'],
+            ),
+          ),
+          GoRoute(
+            path: '/management/crm/customers/:customerId',
+            builder: (context, state) {
+              final customerId = state.pathParameters['customerId'] ?? '';
+              return CrmCustomerDetailPage(
+                customerId: customerId,
+                initialCompanyId: state.uri.queryParameters['companyId'],
+              );
+            },
           ),
           GoRoute(
             path: '/companies',
@@ -120,6 +152,21 @@ String _titleForLocation(String location) {
   if (location.startsWith('/companies/')) {
     return 'Detalhe da empresa';
   }
+  if (location.startsWith('/management/dashboard')) {
+    return 'Dashboard Gerencial';
+  }
+  if (location.startsWith('/management/reports')) {
+    return 'Relatorios Gerenciais';
+  }
+  if (location.startsWith('/management/governance')) {
+    return 'Governanca Hibrida';
+  }
+  if (location.startsWith('/management/crm/customers/')) {
+    return 'Cliente CRM';
+  }
+  if (location.startsWith('/management/crm/customers')) {
+    return 'CRM Gerencial';
+  }
   if (location.startsWith('/companies')) {
     return 'Empresas';
   }
@@ -132,5 +179,5 @@ String _titleForLocation(String location) {
   if (location.startsWith('/audit')) {
     return 'Auditoria';
   }
-  return 'Dashboard Admin';
+  return 'Dashboard da Plataforma';
 }

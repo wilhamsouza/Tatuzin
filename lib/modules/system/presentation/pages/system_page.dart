@@ -11,6 +11,7 @@ import '../../../../app/core/network/remote_feature_diagnostic.dart';
 import '../../../../app/core/session/auth_provider.dart';
 import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_feature_summary.dart';
+import '../../../../app/core/sync/sync_providers.dart';
 import '../../../../app/core/sync/sync_queue_feature_summary.dart';
 import '../../../../app/core/sync/sync_reconciliation_result.dart';
 import '../../../../app/core/sync/sync_repair_action.dart';
@@ -27,6 +28,7 @@ import '../helpers/system_page_helpers.dart';
 import '../providers/system_providers.dart';
 import '../widgets/system_backend_status_section.dart';
 import '../widgets/system_financial_events_section.dart';
+import '../widgets/system_hybrid_governance_section.dart';
 import '../widgets/system_mock_auth_section.dart';
 import '../widgets/system_reconciliation_section.dart';
 import '../widgets/system_repair_section.dart';
@@ -81,11 +83,16 @@ class _SystemPageState extends ConsumerState<SystemPage> {
     final authState = ref.watch(authControllerProvider);
     final authStatus = ref.watch(authStatusProvider);
     final backendStatusAsync = ref.watch(backendConnectionStatusProvider);
+    final hybridOperationalTruth = ref.watch(
+      hybridOperationalTruthSnapshotProvider,
+    );
     final remoteDiagnosticsAsync = ref.watch(remoteDiagnosticsProvider);
     final syncSummariesAsync = ref.watch(syncReadinessSummaryProvider);
     final queueSummariesAsync = ref.watch(syncQueueFeatureSummariesProvider);
     final syncHealth = ref.watch(syncHealthOverviewProvider);
+    final autoSyncSnapshot = ref.watch(autoSyncSnapshotProvider);
     final batchSyncState = ref.watch(catalogSyncControllerProvider);
+    final isSyncBatchRunning = ref.watch(syncBatchActivityProvider);
     final reconciliationState = ref.watch(syncReconciliationControllerProvider);
     final repairState = ref.watch(syncRepairControllerProvider);
     final repairDecisionsByFeature = ref.watch(
@@ -181,10 +188,7 @@ class _SystemPageState extends ConsumerState<SystemPage> {
             emphasized: true,
           ),
           const SizedBox(height: 18),
-          SystemSessionSection(
-            session: session,
-            authStatus: authStatus,
-          ),
+          SystemSessionSection(session: session, authStatus: authStatus),
           const SizedBox(height: 18),
           AppSectionCard(
             title: 'Modo de dados e endpoint',
@@ -197,6 +201,8 @@ class _SystemPageState extends ConsumerState<SystemPage> {
             ),
             child: _buildDataModeSection(context, environment, guard, theme),
           ),
+          const SizedBox(height: 18),
+          SystemHybridGovernanceSection(snapshot: hybridOperationalTruth),
           const SizedBox(height: 18),
           backendStatusAsync.when(
             data: (status) => SystemBackendStatusSection(
@@ -271,7 +277,8 @@ class _SystemPageState extends ConsumerState<SystemPage> {
           const SizedBox(height: 18),
           SystemSyncHealthSection(
             syncHealth: syncHealth,
-            isLoading: batchSyncState.isLoading,
+            autoSyncSnapshot: autoSyncSnapshot,
+            isLoading: batchSyncState.isLoading || isSyncBatchRunning,
             canRunManualSync: canRunManualSync,
             onSyncAll: () => _handleSyncAll(context),
             onRetryPending: () => _handleRetryPending(context),
@@ -279,7 +286,7 @@ class _SystemPageState extends ConsumerState<SystemPage> {
           const SizedBox(height: 18),
           SystemSyncQueueSection(
             canRunManualSync: canRunManualSync,
-            isLoading: batchSyncState.isLoading,
+            isLoading: batchSyncState.isLoading || isSyncBatchRunning,
             supplierSummary: supplierSummary,
             categorySummary: categorySummary,
             productSummary: productSummary,
@@ -421,8 +428,7 @@ class _SystemPageState extends ConsumerState<SystemPage> {
     SessionGuardSnapshot guard,
     ThemeData theme,
   ) {
-    final defaultEndpointBaseUrl =
-        const EndpointConfig.localDevelopment().baseUrl!;
+    final defaultEndpointBaseUrl = EndpointConfig.remoteDefault().baseUrl!;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -952,7 +958,6 @@ class _SystemPageState extends ConsumerState<SystemPage> {
       }
     }
   }
-
 }
 
 class _RemoteDiagnosticTile extends StatelessWidget {

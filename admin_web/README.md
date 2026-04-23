@@ -65,9 +65,24 @@ flutter run -d chrome --web-port 3000 --dart-define=TATUZIN_ADMIN_API_URL=http:/
 
 ## Como gerar build web
 
+Build local apontando para backend local:
+
 ```powershell
 flutter build web --dart-define=TATUZIN_ADMIN_API_URL=http://localhost:4000/api
 ```
+
+Build de producao para publicar o admin em `https://admin.tatuzin.com.br` consumindo a API em `https://api.tatuzin.com.br`:
+
+```powershell
+flutter build web --release --dart-define=TATUZIN_ADMIN_API_URL=https://api.tatuzin.com.br/api
+```
+
+Observacoes importantes para producao:
+
+- a base URL precisa incluir o prefixo `/api`
+- o build release nao deve mais cair silenciosamente para `localhost`; se `TATUZIN_ADMIN_API_URL` faltar, o painel falha cedo
+- como o projeto usa `usePathUrlStrategy()`, o servidor web precisa servir `index.html` nas rotas profundas
+- para publicar em subdominio raiz como `admin.tatuzin.com.br`, o `<base href="/">` atual ja esta correto
 
 ## Limitacoes atuais importantes
 

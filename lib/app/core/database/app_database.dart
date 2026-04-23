@@ -1,36 +1,93 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 
 import '../constants/app_constants.dart';
 import '../errors/app_exceptions.dart';
+import '../session/session_provider.dart';
 import '../utils/app_logger.dart';
 import 'migrations.dart';
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
-  return AppDatabase.instance;
+  final isolationKey = ref.watch(sessionIsolationKeyProvider);
+  final database = AppDatabase.forIsolationKey(isolationKey);
+  ref.onDispose(() {
+    unawaited(database.close());
+  });
+  return database;
 });
 
 final appStartupProvider = FutureProvider<void>((ref) async {
-  final database = ref.read(appDatabaseProvider);
+  final database = ref.watch(appDatabaseProvider);
   await database.database;
 });
 
 class AppDatabase {
-  AppDatabase._();
+  AppDatabase._({required String databaseName}) : _databaseName = databaseName;
 
-  static final AppDatabase instance = AppDatabase._();
+  factory AppDatabase.forIsolationKey(String isolationKey) {
+    return AppDatabase._(
+      databaseName: databaseNameForIsolationKey(isolationKey),
+    );
+  }
 
+  static final AppDatabase instance = AppDatabase._(
+    databaseName: AppConstants.databaseName,
+  );
+
+  static String databaseNameForIsolationKey(String isolationKey) {
+    if (isolationKey == SessionIsolation.localKey) {
+      return AppConstants.databaseName;
+    }
+
+    final baseName = path.basenameWithoutExtension(AppConstants.databaseName);
+    final extension = path.extension(AppConstants.databaseName);
+    final sanitized = _sanitizeIsolationKey(isolationKey);
+    return '${baseName}_$sanitized$extension';
+  }
+
+  static Future<void> deleteDatabaseForIsolationKeyForTesting(
+    String isolationKey,
+  ) async {
+    final databasesPath = await getDatabasesPath();
+    final databasePath = path.join(
+      databasesPath,
+      databaseNameForIsolationKey(isolationKey),
+    );
+    await databaseFactory.deleteDatabase(databasePath);
+  }
+
+  final String _databaseName;
   Database? _database;
+  Future<Database>? _openingDatabase;
 
   Future<Database> get database async {
     if (_database != null) {
       return _database!;
     }
 
+    final openingDatabase = _openingDatabase;
+    if (openingDatabase != null) {
+      return openingDatabase;
+    }
+
+    final future = _openDatabase();
+    _openingDatabase = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_openingDatabase, future)) {
+        _openingDatabase = null;
+      }
+    }
+  }
+
+  Future<Database> _openDatabase() async {
     try {
       final databasesPath = await getDatabasesPath();
-      final databasePath = path.join(databasesPath, AppConstants.databaseName);
+      final databasePath = path.join(databasesPath, _databaseName);
 
       AppLogger.info('Opening database at $databasePath');
       AppLogger.info('Database bootstrap started');
@@ -115,12 +172,28 @@ class AppDatabase {
   }
 
   Future<void> close() async {
+    final openingDatabase = _openingDatabase;
+    if (_database == null && openingDatabase != null) {
+      try {
+        final database = await openingDatabase;
+        await database.close();
+      } catch (_) {
+        // Ignore close errors during disposal of an abandoned bootstrap.
+      } finally {
+        _openingDatabase = null;
+        _database = null;
+      }
+      AppLogger.info('Database connection closed');
+      return;
+    }
+
     if (_database == null) {
       return;
     }
 
     await _database!.close();
     _database = null;
+    _openingDatabase = null;
     AppLogger.info('Database connection closed');
   }
 
@@ -209,5 +282,16 @@ class AppDatabase {
     }
 
     return firstRow.values.first?.toString();
+  }
+
+  static String _sanitizeIsolationKey(String isolationKey) {
+    final sanitized = isolationKey
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9._-]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+
+    return sanitized.isEmpty ? SessionIsolation.localKey : sanitized;
   }
 }

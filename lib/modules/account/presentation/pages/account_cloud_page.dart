@@ -127,7 +127,44 @@ class AccountCloudPage extends ConsumerWidget {
                   label: 'Status da nuvem',
                   value: accountCloud.cloudAvailabilityLabel,
                 ),
-                if (accountCloud.supportingValue != null)
+                if (authStatus.isRemoteAuthenticated) ...[
+                  _InfoRow(
+                    label: 'Em envio agora',
+                    value: '${accountCloud.syncingNowCount}',
+                  ),
+                  _InfoRow(
+                    label: 'Pendencias',
+                    value: '${accountCloud.pendingCount}',
+                  ),
+                  _InfoRow(
+                    label: 'Com erro',
+                    value: '${accountCloud.errorCount}',
+                  ),
+                  _InfoRow(
+                    label: 'Bloqueados',
+                    value: '${accountCloud.blockedCount}',
+                  ),
+                  if (accountCloud.conflictCount > 0)
+                    _InfoRow(
+                      label: 'Conflitos',
+                      value: '${accountCloud.conflictCount}',
+                    ),
+                  _InfoRow(
+                    label: 'Ultima sincronizacao',
+                    value: accountCloud.lastSyncedAt == null
+                        ? 'Ainda nao concluida'
+                        : AppFormatters.shortDateTime(
+                            accountCloud.lastSyncedAt!,
+                          ),
+                  ),
+                  if (accountCloud.nextRetryAt != null)
+                    _InfoRow(
+                      label: 'Proxima tentativa',
+                      value: AppFormatters.shortDateTime(
+                        accountCloud.nextRetryAt!,
+                      ),
+                    ),
+                ] else if (accountCloud.supportingValue != null)
                   _InfoRow(
                     label: accountCloud.supportingLabel ?? 'Atualizacao',
                     value: accountCloud.supportingValue!,

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../data/inventory_count_repository_impl.dart';
 import '../../data/inventory_repository_impl.dart';
 import '../../data/sqlite_inventory_count_repository.dart';
@@ -21,7 +22,7 @@ import '../../domain/repositories/inventory_repository.dart';
 final localInventoryRepositoryProvider = Provider<SqliteInventoryRepository>((
   ref,
 ) {
-  return SqliteInventoryRepository(ref.read(appDatabaseProvider));
+  return SqliteInventoryRepository(ref.watch(appDatabaseProvider));
 });
 
 final inventoryRepositoryProvider = Provider<InventoryRepository>((ref) {
@@ -32,7 +33,7 @@ final inventoryRepositoryProvider = Provider<InventoryRepository>((ref) {
 
 final localInventoryCountRepositoryProvider =
     Provider<SqliteInventoryCountRepository>((ref) {
-      return SqliteInventoryCountRepository(ref.read(appDatabaseProvider));
+      return SqliteInventoryCountRepository(ref.watch(appDatabaseProvider));
     });
 
 final inventoryCountRepositoryProvider = Provider<InventoryCountRepository>((
@@ -50,6 +51,7 @@ final inventoryFilterProvider = StateProvider<InventoryListFilter>(
 );
 
 final inventoryItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(inventorySearchQueryProvider);
   final filter = ref.watch(inventoryFilterProvider);
@@ -61,6 +63,7 @@ final inventoryItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
 final inventoryItemOptionsProvider = FutureProvider<List<InventoryItem>>((
   ref,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(inventoryRepositoryProvider).listItems();
 });
@@ -68,6 +71,7 @@ final inventoryItemOptionsProvider = FutureProvider<List<InventoryItem>>((
 final inventoryActiveItemOptionsProvider = FutureProvider<List<InventoryItem>>((
   ref,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref
       .watch(inventoryRepositoryProvider)
@@ -79,6 +83,7 @@ final inventoryMovementsProvider =
       ref,
       query,
     ) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       return ref
           .watch(inventoryRepositoryProvider)
@@ -95,6 +100,7 @@ final inventoryMovementsProvider =
 
 final inventoryCountSessionsProvider =
     FutureProvider<List<InventoryCountSession>>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       return ref.watch(inventoryCountRepositoryProvider).listSessions();
     });
@@ -104,6 +110,7 @@ final inventoryCountSessionDetailProvider =
       ref,
       sessionId,
     ) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       return ref
           .watch(inventoryCountRepositoryProvider)

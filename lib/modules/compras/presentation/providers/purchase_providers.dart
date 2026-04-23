@@ -9,6 +9,7 @@ import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
 import '../../data/datasources/purchases_remote_datasource.dart';
 import '../../data/purchases_repository_impl.dart';
@@ -23,7 +24,7 @@ final localPurchaseRepositoryProvider = Provider<SqlitePurchaseRepository>((
   ref,
 ) {
   return SqlitePurchaseRepository(
-    ref.read(appDatabaseProvider),
+    ref.watch(appDatabaseProvider),
     ref.watch(appOperationalContextProvider),
   );
 });
@@ -61,6 +62,7 @@ final purchaseStatusFilterProvider = StateProvider<PurchaseStatus?>(
 final purchaseSupplierFilterProvider = StateProvider<int?>((ref) => null);
 
 final purchaseListProvider = FutureProvider<List<Purchase>>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(purchaseSearchQueryProvider);
   final status = ref.watch(purchaseStatusFilterProvider);
@@ -74,6 +76,7 @@ final purchaseDetailProvider = FutureProvider.family<PurchaseDetail, int>((
   ref,
   purchaseId,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(purchaseRepositoryProvider).fetchDetail(purchaseId);
 });
@@ -82,6 +85,7 @@ final purchasesBySupplierProvider = FutureProvider.family<List<Purchase>, int>((
   ref,
   supplierId,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(purchaseRepositoryProvider).search(supplierId: supplierId);
 });

@@ -8,12 +8,13 @@ Este projeto nao e um backend generico de ERP completo. Hoje ele atua principalm
 
 O backend cobre principalmente:
 
-- autenticacao e refresh token
+- autenticacao, refresh token e redefinicao de senha
 - sessoes por dispositivo
 - companies e memberships
 - licenciamento
 - operacao administrativa da plataforma
-- espelho remoto de dados operacionais
+- espelho remoto de dados operacionais suportados
+- health/readiness e logs estruturados
 
 Modulos atuais em [src/modules](c:/Simples/backend/src/modules):
 
@@ -25,8 +26,10 @@ Modulos atuais em [src/modules](c:/Simples/backend/src/modules):
 - `products`
 - `customers`
 - `suppliers`
+- `supplies`
 - `purchases`
 - `sales`
+- `product-recipes`
 - `financial-events`
 - `cash`
 - `fiado`
@@ -40,7 +43,7 @@ O backend ainda nao deve ser descrito como:
 - plataforma com telemetria profunda de sync
 - substituto da base SQLite local do Tatuzin
 
-Na pratica, ele ja atende autenticacao, sessao, licenciamento e persistencia remota das entidades suportadas, mas a observabilidade de sync ainda e resumida.
+Na pratica, ele atende autenticacao, sessao, licenciamento e persistencia remota das entidades suportadas, mas a observabilidade de sync ainda e resumida.
 
 ## Banco e stack
 
@@ -59,7 +62,38 @@ Copie o exemplo:
 Copy-Item .env.example .env
 ```
 
-Se for usar PostgreSQL isolado em porta alternativa, ajuste `DATABASE_URL` no `.env`.
+Variaveis mais importantes:
+
+- `HOST`: interface de bind HTTP do processo Node
+- `DATABASE_URL`: conexao PostgreSQL
+- `JWT_SECRET`: segredo do JWT, minimo de 16 caracteres
+- `APP_ENV`: `local-development` ou `production`
+- `CORS_ORIGINS`: lista separada por virgula
+- `TRUST_PROXY`: configuracao repassada ao Express para ambientes atras de proxy
+- `RATE_LIMIT_BUCKET_RETENTION_MINUTES`: tempo de retencao da limpeza de buckets de rate limit persistidos
+- `PASSWORD_RESET_APP_BASE_URL`: URL HTTPS ou deep link do app para reset de senha
+- `RESEND_API_KEY`, `MAIL_FROM_AUTH` e `MAIL_REPLY_TO_SUPPORT`: entrega de e-mails
+
+Obrigatorias em producao:
+
+- `APP_ENV=production`
+- `HOST=0.0.0.0`
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `RESEND_API_KEY`
+- `MAIL_FROM_AUTH`
+- `PASSWORD_RESET_APP_BASE_URL`
+
+### Como configurar `TRUST_PROXY`
+
+Use o menor escopo confiavel possivel:
+
+- `TRUST_PROXY=false`: backend exposto diretamente, sem proxy reverso na frente
+- `TRUST_PROXY=1`: um proxy reverso confiavel na frente do app
+- `TRUST_PROXY=2`: dois hops confiaveis
+- `TRUST_PROXY=loopback,linklocal,uniquelocal`: lista explicita de faixas confiaveis
+
+Nao use `true` por padrao em producao sem saber exatamente quantos proxies confiaveis existem na cadeia.
 
 ## Opcao A: PostgreSQL via Docker
 
@@ -113,7 +147,7 @@ npm run seed
 - e-mail: `admin@simples.local`
 - senha: `123456`
 
-## Rodar API
+## Rodar API localmente
 
 ```powershell
 npm run dev
@@ -123,11 +157,111 @@ Base local:
 
 - `http://localhost:4000/api`
 
+## Build e deploy com Docker
+
+O repositorio agora inclui um `Dockerfile` multi-stage e um entrypoint de producao.
+
+Para deploy em Oracle Cloud ARM 1 Flex com Docker, use o guia dedicado em [DEPLOY_ORACLE_ARM.md](/C:/Simples/backend/DEPLOY_ORACLE_ARM.md).
+
+Build da imagem:
+
+```powershell
+docker build -t tatuzin-backend .
+```
+
+Exemplo de execucao local em container apontando para um PostgreSQL do host no Windows:
+
+```powershell
+docker run --rm `
+  -p 4000:4000 `
+  --env-file .env `
+  -e APP_ENV=production `
+  -e DATABASE_URL="postgresql://postgres:postgres@host.docker.internal:5432/simples_erp_dev?schema=public" `
+  -e TRUST_PROXY=1 `
+  -e RUN_DB_MIGRATIONS=true `
+  tatuzin-backend
+```
+
+Detalhes importantes do runtime de producao:
+
+- executa `npm run prisma:deploy` automaticamente no startup quando `RUN_DB_MIGRATIONS=true`
+- backend responde internamente em `4000`
+- `docker-compose.prod.yml` publica `80/443` via Caddy
+- inclui `HEALTHCHECK` em `/api/health`
+- inicia com `NODE_ENV=production`
+
+Em orquestradores como Render, Railway, Fly.io, ECS ou Kubernetes, a configuracao equivalente e:
+
+- imagem gerada por `docker build`
+- `APP_ENV=production`
+- `TRUST_PROXY` ajustado para a cadeia de proxy real
+- `RUN_DB_MIGRATIONS=true` apenas se o deploy puder serializar migracoes com seguranca
+
+## Publicacao HTTPS de producao
+
+O repositório agora inclui uma borda HTTPS minima para producao:
+
+- [docker-compose.prod.yml](/C:/Simples/backend/docker-compose.prod.yml)
+- [Caddyfile](/C:/Simples/backend/Caddyfile)
+
+Topologia esperada:
+
+- `edge` escuta `80/443`
+- `edge` encerra TLS para `api.tatuzin.com.br`
+- `edge` encaminha apenas `/api/*` para `backend:4000`
+- `backend` nao expõe `4000` publicamente no host
+
+- `backend` publica `127.0.0.1:4000` apenas para compatibilidade com um proxy reverso de host ja existente
+
+Variaveis adicionais no `.env.production`:
+
+- `API_DOMAIN=api.tatuzin.com.br`
+- `HOST=0.0.0.0`
+
+Observacao de CORS:
+
+- o app Flutter nativo nao depende de CORS de navegador
+- o `admin_web` precisa estar presente em `CORS_ORIGINS`
+- se surgir um frontend web adicional, adicione sua origin explicitamente em `CORS_ORIGINS`
+
+## Contrato de paginacao das listas operacionais
+
+As listas operacionais suportam `page` e `pageSize` via query string.
+
+Resposta padrao:
+
+```json
+{
+  "items": [],
+  "page": 1,
+  "pageSize": 25,
+  "total": 0,
+  "count": 0,
+  "hasNext": false,
+  "hasPrevious": false
+}
+```
+
+Isso vale para rotas como:
+
+- `GET /api/categories`
+- `GET /api/products`
+- `GET /api/customers`
+- `GET /api/suppliers`
+- `GET /api/supplies`
+- `GET /api/purchases`
+- `GET /api/sales`
+- `GET /api/product-recipes`
+- `GET /api/financial-events`
+
+O conjunto exato de rotas deve ser lido no codigo. Este README serve como mapa funcional, nao como referencia exaustiva de API.
+
 ## Endpoints administrativos e operacionais principais
 
 Exemplos de rotas atualmente expostas:
 
 - `GET /api/health`
+- `GET /api/readiness`
 - `POST /api/auth/login`
 - `GET /api/auth/me`
 - `POST /api/auth/logout`
@@ -142,7 +276,16 @@ Exemplos de rotas atualmente expostas:
 - `GET /api/purchases`
 - `GET /api/sales`
 
-O conjunto exato de rotas deve ser lido no codigo. Este README serve como mapa funcional, nao como referencia exaustiva de API.
+## Checklist minima antes de producao
+
+- `npm test`
+- `npm run build`
+- `npx prisma migrate status`
+- segredos reais em `JWT_SECRET` e `RESEND_API_KEY`
+- `PASSWORD_RESET_APP_BASE_URL` apontando para URL/deep link real
+- `TRUST_PROXY` ajustado ao proxy real
+- banco PostgreSQL com backup e observabilidade basica
+- CORS restrito aos frontends autorizados
 
 ## Reset seguro de dados remotos operacionais
 

@@ -26,49 +26,90 @@ enum SessionClientType {
   UNKNOWN
 }
 
+enum CustomerTaskStatus {
+  OPEN
+  COMPLETED
+  CANCELED
+}
+
+enum CustomerTimelineEventType {
+  NOTE_ADDED
+  TASK_CREATED
+  TAGS_UPDATED
+}
+
+enum HybridPricePolicyMode {
+  ADVISORY
+  GOVERNED
+}
+
+enum HybridCustomerMasterMode {
+  CLOUD_MASTER
+  HYBRID_REVIEW
+}
+
+enum HybridPromotionMode {
+  MANUAL_PREVIEW
+  SCHEDULED_REVIEW
+}
+
 model User {
-  id                      String            @id @default(uuid())
-  email                   String            @unique
+  id                      String               @id @default(uuid())
+  email                   String               @unique
   passwordHash            String
   name                    String
-  isActive                Boolean           @default(true)
-  isPlatformAdmin         Boolean           @default(false)
-  createdAt               DateTime          @default(now())
-  updatedAt               DateTime          @updatedAt
+  isActive                Boolean              @default(true)
+  isPlatformAdmin         Boolean              @default(false)
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
   memberships             Membership[]
-  adminAuditLogs          AdminAuditLog[]   @relation("AdminAuditActor")
+  adminAuditLogs          AdminAuditLog[]      @relation("AdminAuditActor")
   deviceSessions          DeviceSession[]
   passwordResetTokens     PasswordResetToken[]
-  sessionAuditActorLogs   SessionAuditLog[] @relation("SessionAuditActor")
-  sessionAuditSubjectLogs SessionAuditLog[] @relation("SessionAuditSubject")
+  sessionAuditActorLogs   SessionAuditLog[]    @relation("SessionAuditActor")
+  sessionAuditSubjectLogs SessionAuditLog[]    @relation("SessionAuditSubject")
+  customerNotesAuthored   CustomerNote[]       @relation("CustomerNoteAuthor")
+  customerTasksCreated    CustomerTask[]       @relation("CustomerTaskCreator")
+  customerTasksAssigned   CustomerTask[]       @relation("CustomerTaskAssignee")
+  customerTagAssignments  CustomerTagAssignment[] @relation("CustomerTagAssignmentActor")
+  customerTimelineEvents  CustomerTimelineEvent[] @relation("CustomerTimelineActor")
 }
 
 model Company {
-  id               String            @id @default(uuid())
-  name             String
-  legalName        String
-  documentNumber   String?
-  slug             String            @unique
-  isActive         Boolean           @default(true)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  memberships      Membership[]
-  license          License?
-  adminAuditLogs   AdminAuditLog[]   @relation("AdminAuditCompany")
-  deviceSessions   DeviceSession[]
-  sessionAuditLogs SessionAuditLog[] @relation("SessionAuditCompany")
-  suppliers        Supplier[]
-  supplies         Supply[]
-  productRecipeItems ProductRecipeItem[]
-  categories       Category[]
-  products         Product[]
-  customers        Customer[]
-  purchases        Purchase[]
-  sales            Sale[]
-  financialEvents  FinancialEvent[]
-  fiadoPayments    FiadoPayment[]
-  cashEvents       CashEvent[]
-  supplyCostHistory SupplyCostHistory[]
+  id                              String                           @id @default(uuid())
+  name                            String
+  legalName                       String
+  documentNumber                  String?
+  slug                            String                           @unique
+  isActive                        Boolean                          @default(true)
+  createdAt                       DateTime                         @default(now())
+  updatedAt                       DateTime                         @updatedAt
+  memberships                     Membership[]
+  license                         License?
+  adminAuditLogs                  AdminAuditLog[]                  @relation("AdminAuditCompany")
+  deviceSessions                  DeviceSession[]
+  sessionAuditLogs                SessionAuditLog[]                @relation("SessionAuditCompany")
+  suppliers                       Supplier[]
+  supplies                        Supply[]
+  productRecipeItems              ProductRecipeItem[]
+  categories                      Category[]
+  products                        Product[]
+  customers                       Customer[]
+  purchases                       Purchase[]
+  sales                           Sale[]
+  financialEvents                 FinancialEvent[]
+  fiadoPayments                   FiadoPayment[]
+  cashEvents                      CashEvent[]
+  supplyCostHistory               SupplyCostHistory[]
+  analyticsCompanyDailySnapshots  AnalyticsCompanyDailySnapshot[]
+  analyticsProductDailySnapshots  AnalyticsProductDailySnapshot[]
+  analyticsCustomerDailySnapshots AnalyticsCustomerDailySnapshot[]
+  crmCustomerTags                 CustomerTag[]
+  crmCustomerTagAssignments       CustomerTagAssignment[]
+  crmCustomerNotes                CustomerNote[]
+  crmCustomerTasks                CustomerTask[]
+  crmCustomerTimelineEvents       CustomerTimelineEvent[]
+  hybridGovernanceProfile         HybridGovernanceProfile?
 }
 
 model Membership {
@@ -88,17 +129,17 @@ model Membership {
 }
 
 model License {
-  id         String        @id @default(uuid())
-  companyId  String        @unique
-  plan       String
-  status     LicenseStatus @default(TRIAL)
-  startsAt   DateTime
-  expiresAt  DateTime?
-  maxDevices Int?
-  syncEnabled Boolean      @default(true)
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-  company    Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id          String        @id @default(uuid())
+  companyId   String        @unique
+  plan        String
+  status      LicenseStatus @default(TRIAL)
+  startsAt    DateTime
+  expiresAt   DateTime?
+  maxDevices  Int?
+  syncEnabled Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([syncEnabled])
@@ -106,14 +147,14 @@ model License {
 }
 
 model AdminAuditLog {
-  id              String    @id @default(uuid())
+  id              String   @id @default(uuid())
   actorUserId     String
   targetCompanyId String?
   action          String
   details         Json?
-  createdAt       DateTime  @default(now())
-  actorUser       User      @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
-  targetCompany   Company?  @relation("AdminAuditCompany", fields: [targetCompanyId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  actorUser       User     @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  targetCompany   Company? @relation("AdminAuditCompany", fields: [targetCompanyId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([action])
@@ -151,13 +192,13 @@ model DeviceSession {
 }
 
 model PasswordResetToken {
-  id         String   @id @default(uuid())
+  id         String    @id @default(uuid())
   userId     String
-  tokenHash  String   @unique
+  tokenHash  String    @unique
   expiresAt  DateTime
   consumedAt DateTime?
-  createdAt  DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
   @@index([expiresAt])
@@ -185,6 +226,17 @@ model SessionAuditLog {
   @@index([subjectUserId])
 }
 
+model RateLimitBucket {
+  bucketHash   String   @id
+  scope        String
+  requestCount Int
+  resetAt      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([scope, resetAt])
+}
+
 model Category {
   id          String    @id @default(uuid())
   companyId   String
@@ -204,40 +256,40 @@ model Category {
 }
 
 model Product {
-  id             String   @id @default(uuid())
-  companyId      String
-  localUuid      String
-  categoryId     String?
-  name           String
-  description    String?
-  barcode        String?
-  productType    String   @default("unidade")
-  niche          String   @default("alimentacao")
-  catalogType    String   @default("simple")
-  modelName      String?
-  variantLabel   String?
-  unitMeasure    String   @default("un")
-  costPriceCents Int      @default(0)
-  manualCostCents Int     @default(0)
-  costSource     String   @default("manual")
-  variableCostSnapshotCents Int?
-  estimatedGrossMarginCents Int?
+  id                                     String                  @id @default(uuid())
+  companyId                              String
+  localUuid                              String
+  categoryId                             String?
+  name                                   String
+  description                            String?
+  barcode                                String?
+  productType                            String                  @default("unidade")
+  niche                                  String                  @default("alimentacao")
+  catalogType                            String                  @default("simple")
+  modelName                              String?
+  variantLabel                           String?
+  unitMeasure                            String                  @default("un")
+  costPriceCents                         Int                     @default(0)
+  manualCostCents                        Int                     @default(0)
+  costSource                             String                  @default("manual")
+  variableCostSnapshotCents              Int?
+  estimatedGrossMarginCents              Int?
   estimatedGrossMarginPercentBasisPoints Int?
-  lastCostUpdatedAt DateTime?
-  salePriceCents Int
-  stockMil       Int      @default(0)
-  isActive       Boolean  @default(true)
-  deletedAt      DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  category       Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  variants       ProductVariant[]
-  modifierGroups ProductModifierGroup[]
-  linkedModifierOptions ProductModifierOption[] @relation("ProductModifierLinkedProduct")
-  saleItems      SaleItem[]
-  purchaseItems  PurchaseItem[]
-  recipeItems    ProductRecipeItem[]
+  lastCostUpdatedAt                      DateTime?
+  salePriceCents                         Int
+  stockMil                               Int                     @default(0)
+  isActive                               Boolean                 @default(true)
+  deletedAt                              DateTime?
+  createdAt                              DateTime                @default(now())
+  updatedAt                              DateTime                @updatedAt
+  company                                Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category                               Category?               @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  variants                               ProductVariant[]
+  modifierGroups                         ProductModifierGroup[]
+  linkedModifierOptions                  ProductModifierOption[] @relation("ProductModifierLinkedProduct")
+  saleItems                              SaleItem[]
+  purchaseItems                          PurchaseItem[]
+  recipeItems                            ProductRecipeItem[]
 
   @@unique([companyId, localUuid])
   @@index([companyId, updatedAt])
@@ -250,18 +302,18 @@ model Product {
 }
 
 model ProductVariant {
-  id                   String   @id @default(uuid())
+  id                   String         @id @default(uuid())
   productId            String
   sku                  String
   colorLabel           String
   sizeLabel            String
-  priceAdditionalCents Int      @default(0)
-  stockMil             Int      @default(0)
-  sortOrder            Int      @default(0)
-  isActive             Boolean  @default(true)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  product              Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  priceAdditionalCents Int            @default(0)
+  stockMil             Int            @default(0)
+  sortOrder            Int            @default(0)
+  isActive             Boolean        @default(true)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  product              Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
   purchaseItems        PurchaseItem[]
 
   @@index([productId, sortOrder])
@@ -286,62 +338,183 @@ model ProductModifierGroup {
 }
 
 model ProductModifierOption {
-  id                String               @id @default(uuid())
-  modifierGroupId   String
-  name              String
-  adjustmentType    String               @default("add")
-  priceDeltaCents   Int                  @default(0)
-  linkedProductId   String?
-  sortOrder         Int                  @default(0)
-  isActive          Boolean              @default(true)
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  modifierGroup     ProductModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
-  linkedProduct     Product?             @relation("ProductModifierLinkedProduct", fields: [linkedProductId], references: [id], onDelete: SetNull)
+  id              String               @id @default(uuid())
+  modifierGroupId String
+  name            String
+  adjustmentType  String               @default("add")
+  priceDeltaCents Int                  @default(0)
+  linkedProductId String?
+  sortOrder       Int                  @default(0)
+  isActive        Boolean              @default(true)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  modifierGroup   ProductModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+  linkedProduct   Product?             @relation("ProductModifierLinkedProduct", fields: [linkedProductId], references: [id], onDelete: SetNull)
 
   @@index([modifierGroupId, sortOrder])
   @@index([linkedProductId])
 }
 
 model Customer {
-  id        String   @id @default(uuid())
-  companyId String
-  localUuid String
-  name      String
-  phone     String?
-  address   String?
-  notes     String?
-  isActive  Boolean  @default(true)
-  deletedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  sales     Sale[]
+  id                String                  @id @default(uuid())
+  companyId         String
+  localUuid         String
+  name              String
+  phone             String?
+  address           String?
+  notes             String?
+  isActive          Boolean                 @default(true)
+  deletedAt         DateTime?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  company           Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sales             Sale[]
+  crmNotes          CustomerNote[]
+  crmTasks          CustomerTask[]
+  crmTagAssignments CustomerTagAssignment[]
+  crmTimelineEvents CustomerTimelineEvent[]
 
   @@unique([companyId, localUuid])
   @@index([companyId, updatedAt])
   @@index([companyId, name])
 }
 
-model Supplier {
-  id               String     @id @default(uuid())
+model CustomerTag {
+  id              String                 @id @default(uuid())
+  companyId       String
+  label           String
+  normalizedLabel String
+  color           String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  company         Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignments     CustomerTagAssignment[]
+
+  @@unique([companyId, normalizedLabel])
+  @@index([companyId, label])
+}
+
+model CustomerTagAssignment {
+  id               String      @id @default(uuid())
   companyId        String
-  localUuid        String
-  name             String
-  tradeName        String?
-  phone            String?
-  email            String?
-  address          String?
-  document         String?
-  contactPerson    String?
-  notes            String?
-  isActive         Boolean    @default(true)
-  deletedAt        DateTime?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
-  company          Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  purchases        Purchase[]
-  defaultSupplies  Supply[]   @relation("SupplyDefaultSupplier")
+  customerId       String
+  tagId            String
+  assignedByUserId String?
+  createdAt        DateTime    @default(now())
+  company          Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer         Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tag              CustomerTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  assignedByUser   User?       @relation("CustomerTagAssignmentActor", fields: [assignedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([customerId, tagId])
+  @@index([companyId, customerId, createdAt])
+  @@index([companyId, tagId])
+}
+
+model CustomerNote {
+  id           String    @id @default(uuid())
+  companyId    String
+  customerId   String
+  authorUserId String?
+  body         String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  authorUser   User?     @relation("CustomerNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, customerId, createdAt])
+  @@index([authorUserId])
+}
+
+model CustomerTask {
+  id              String             @id @default(uuid())
+  companyId       String
+  customerId      String
+  createdByUserId String?
+  assignedToUserId String?
+  title           String
+  description     String?
+  status          CustomerTaskStatus @default(OPEN)
+  dueAt           DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  company         Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer        Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdByUser   User?              @relation("CustomerTaskCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  assignedToUser  User?              @relation("CustomerTaskAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, customerId, status, dueAt])
+  @@index([assignedToUserId, status])
+}
+
+model CustomerTimelineEvent {
+  id          String                    @id @default(uuid())
+  companyId   String
+  customerId  String
+  actorUserId String?
+  eventType   CustomerTimelineEventType
+  headline    String
+  body        String?
+  metadata    Json?
+  createdAt   DateTime                  @default(now())
+  company     Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer    Customer                  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  actorUser   User?                     @relation("CustomerTimelineActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, customerId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model HybridGovernanceProfile {
+  id                               String                   @id @default(uuid())
+  companyId                        String                   @unique
+  requireCategoryForGovernedCatalog Boolean                 @default(true)
+  requireVariantSku                Boolean                  @default(true)
+  requireRemoteImageForGovernedCatalog Boolean              @default(false)
+  allowOfflinePriceOverride        Boolean                  @default(true)
+  allowLocalCatalogDeactivation    Boolean                  @default(true)
+  minMarginBasisPoints             Int                      @default(0)
+  maxOfflineDiscountBasisPoints    Int                      @default(1500)
+  pricePolicyMode                  HybridPricePolicyMode    @default(ADVISORY)
+  stockDivergenceAlertThresholdMil Int                      @default(5000)
+  allowOfflineStockAdjustments     Boolean                  @default(true)
+  requireStockReconciliationReview Boolean                  @default(false)
+  customerMasterMode               HybridCustomerMasterMode @default(CLOUD_MASTER)
+  allowOperationalCustomerNotes    Boolean                  @default(true)
+  allowOperationalCustomerAddressOverride Boolean           @default(true)
+  requireCustomerConflictReview    Boolean                  @default(false)
+  promotionMode                    HybridPromotionMode      @default(MANUAL_PREVIEW)
+  allowPromotionStacking           Boolean                  @default(false)
+  requireGovernedPriceForPromotion Boolean                  @default(true)
+  alertOnCatalogDrift              Boolean                  @default(true)
+  alertOnStockDivergence           Boolean                  @default(true)
+  alertOnCustomerConflict          Boolean                  @default(true)
+  createdAt                        DateTime                 @default(now())
+  updatedAt                        DateTime                 @updatedAt
+  company                          Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model Supplier {
+  id              String     @id @default(uuid())
+  companyId       String
+  localUuid       String
+  name            String
+  tradeName       String?
+  phone           String?
+  email           String?
+  address         String?
+  document        String?
+  contactPerson   String?
+  notes           String?
+  isActive        Boolean    @default(true)
+  deletedAt       DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  company         Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  purchases       Purchase[]
+  defaultSupplies Supply[]   @relation("SupplyDefaultSupplier")
 
   @@unique([companyId, localUuid])
   @@index([companyId, updatedAt])
@@ -350,28 +523,28 @@ model Supplier {
 }
 
 model Supply {
-  id                       String              @id @default(uuid())
-  companyId                String
-  localUuid                String
-  defaultSupplierId        String?
-  name                     String
-  sku                      String?
-  unitType                 String
-  purchaseUnitType         String
-  conversionFactor         Int
-  lastPurchasePriceCents   Int                 @default(0)
+  id                        String              @id @default(uuid())
+  companyId                 String
+  localUuid                 String
+  defaultSupplierId         String?
+  name                      String
+  sku                       String?
+  unitType                  String
+  purchaseUnitType          String
+  conversionFactor          Int
+  lastPurchasePriceCents    Int                 @default(0)
   averagePurchasePriceCents Int?
-  currentStockMil          Int?
-  minimumStockMil          Int?
-  isActive                 Boolean             @default(true)
-  deletedAt                DateTime?
-  createdAt                DateTime            @default(now())
-  updatedAt                DateTime            @updatedAt
-  company                  Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  defaultSupplier          Supplier?           @relation("SupplyDefaultSupplier", fields: [defaultSupplierId], references: [id], onDelete: SetNull)
-  recipeItems              ProductRecipeItem[]
-  purchaseItems            PurchaseItem[]
-  costHistory              SupplyCostHistory[]
+  currentStockMil           Int?
+  minimumStockMil           Int?
+  isActive                  Boolean             @default(true)
+  deletedAt                 DateTime?
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+  company                   Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  defaultSupplier           Supplier?           @relation("SupplyDefaultSupplier", fields: [defaultSupplierId], references: [id], onDelete: SetNull)
+  recipeItems               ProductRecipeItem[]
+  purchaseItems             PurchaseItem[]
+  costHistory               SupplyCostHistory[]
 
   @@unique([companyId, localUuid])
   @@index([companyId, updatedAt])
@@ -380,20 +553,20 @@ model Supply {
 }
 
 model ProductRecipeItem {
-  id                String   @id @default(uuid())
-  companyId         String
-  localUuid         String
-  productId         String
-  supplyId          String
-  quantityUsedMil   Int
-  unitType          String
-  wasteBasisPoints  Int      @default(0)
-  notes             String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  supply            Supply   @relation(fields: [supplyId], references: [id], onDelete: Restrict)
+  id               String   @id @default(uuid())
+  companyId        String
+  localUuid        String
+  productId        String
+  supplyId         String
+  quantityUsedMil  Int
+  unitType         String
+  wasteBasisPoints Int      @default(0)
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supply           Supply   @relation(fields: [supplyId], references: [id], onDelete: Restrict)
 
   @@unique([companyId, localUuid])
   @@index([companyId, productId])
@@ -403,30 +576,30 @@ model ProductRecipeItem {
 }
 
 model Purchase {
-  id                 String            @id @default(uuid())
-  companyId          String
-  localUuid          String
-  supplierId         String
-  documentNumber     String?
-  notes              String?
-  purchasedAt        DateTime
-  dueDate            DateTime?
-  paymentMethod      String?
-  status             String
-  subtotalCents      Int
-  discountCents      Int               @default(0)
-  surchargeCents     Int               @default(0)
-  freightCents       Int               @default(0)
-  finalAmountCents   Int
-  paidAmountCents    Int               @default(0)
-  pendingAmountCents Int
-  canceledAt         DateTime?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-  company            Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  supplier           Supplier          @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  items              PurchaseItem[]
-  payments           PurchasePayment[]
+  id                       String              @id @default(uuid())
+  companyId                String
+  localUuid                String
+  supplierId               String
+  documentNumber           String?
+  notes                    String?
+  purchasedAt              DateTime
+  dueDate                  DateTime?
+  paymentMethod            String?
+  status                   String
+  subtotalCents            Int
+  discountCents            Int                 @default(0)
+  surchargeCents           Int                 @default(0)
+  freightCents             Int                 @default(0)
+  finalAmountCents         Int
+  paidAmountCents          Int                 @default(0)
+  pendingAmountCents       Int
+  canceledAt               DateTime?
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+  company                  Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  supplier                 Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  items                    PurchaseItem[]
+  payments                 PurchasePayment[]
   supplyCostHistoryEntries SupplyCostHistory[] @relation("SupplyCostHistoryPurchase")
 
   @@unique([companyId, localUuid])
@@ -437,28 +610,28 @@ model Purchase {
 }
 
 model PurchaseItem {
-  id                  String    @id @default(uuid())
-  purchaseId          String
-  localUuid           String
-  itemType            String    @default("product")
-  productId           String?
-  productVariantId    String?
-  supplyId            String?
-  productNameSnapshot String
-  variantSkuSnapshot  String?
+  id                        String              @id @default(uuid())
+  purchaseId                String
+  localUuid                 String
+  itemType                  String              @default("product")
+  productId                 String?
+  productVariantId          String?
+  supplyId                  String?
+  productNameSnapshot       String
+  variantSkuSnapshot        String?
   variantColorLabelSnapshot String?
-  variantSizeLabelSnapshot String?
-  unitMeasureSnapshot String
-  quantityMil         Int
-  unitCostCents       Int
-  subtotalCents       Int
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  purchase            Purchase  @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  product             Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
-  productVariant      ProductVariant? @relation(fields: [productVariantId], references: [id], onDelete: SetNull)
-  supply              Supply?   @relation(fields: [supplyId], references: [id], onDelete: SetNull)
-  supplyCostHistoryEntries SupplyCostHistory[] @relation("SupplyCostHistoryPurchaseItem")
+  variantSizeLabelSnapshot  String?
+  unitMeasureSnapshot       String
+  quantityMil               Int
+  unitCostCents             Int
+  subtotalCents             Int
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+  purchase                  Purchase            @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product                   Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productVariant            ProductVariant?     @relation(fields: [productVariantId], references: [id], onDelete: SetNull)
+  supply                    Supply?             @relation(fields: [supplyId], references: [id], onDelete: SetNull)
+  supplyCostHistoryEntries  SupplyCostHistory[] @relation("SupplyCostHistoryPurchaseItem")
 
   @@unique([purchaseId, localUuid])
   @@index([purchaseId])
@@ -468,39 +641,39 @@ model PurchaseItem {
 }
 
 model PurchasePayment {
-  id            String    @id @default(uuid())
+  id            String   @id @default(uuid())
   purchaseId    String
   localUuid     String
   amountCents   Int
   paymentMethod String
   paidAt        DateTime
   notes         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  purchase      Purchase  @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  purchase      Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
 
   @@unique([purchaseId, localUuid])
   @@index([purchaseId, paidAt])
 }
 
 model Sale {
-  id               String     @id @default(uuid())
+  id               String           @id @default(uuid())
   companyId        String
   localUuid        String
   customerId       String?
   receiptNumber    String?
   paymentType      String
   paymentMethod    String
-  status           String     @default("active")
+  status           String           @default("active")
   totalAmountCents Int
   totalCostCents   Int
   soldAt           DateTime
   canceledAt       DateTime?
   notes            String?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
-  company          Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer         Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer         Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
   items            SaleItem[]
   financialEvents  FinancialEvent[]
   fiadoPayments    FiadoPayment[]
@@ -533,19 +706,19 @@ model SaleItem {
 }
 
 model FinancialEvent {
-  id            String   @id @default(uuid())
-  companyId     String
-  saleId        String?
-  fiadoId       String?
-  eventType     String
-  localUuid     String
-  amountCents   Int
-  paymentType   String?
-  metadata      Json?
-  createdAt     DateTime
-  updatedAt     DateTime @updatedAt
-  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  sale          Sale?    @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  id          String   @id @default(uuid())
+  companyId   String
+  saleId      String?
+  fiadoId     String?
+  eventType   String
+  localUuid   String
+  amountCents Int
+  paymentType String?
+  metadata    Json?
+  createdAt   DateTime
+  updatedAt   DateTime @updatedAt
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sale        Sale?    @relation(fields: [saleId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, localUuid])
   @@index([companyId, createdAt])
@@ -591,30 +764,98 @@ model CashEvent {
 }
 
 model SupplyCostHistory {
-  id                       String      @id @default(uuid())
-  companyId                String
-  localUuid                String
-  supplyId                 String
-  purchaseId               String?
-  purchaseItemId           String?
-  source                   String
-  eventType                String
-  purchaseUnitType         String
-  conversionFactor         Int
-  lastPurchasePriceCents   Int
+  id                        String        @id @default(uuid())
+  companyId                 String
+  localUuid                 String
+  supplyId                  String
+  purchaseId                String?
+  purchaseItemId            String?
+  source                    String
+  eventType                 String
+  purchaseUnitType          String
+  conversionFactor          Int
+  lastPurchasePriceCents    Int
   averagePurchasePriceCents Int?
-  changeSummary            String?
-  notes                    String?
-  occurredAt               DateTime
-  createdAt                DateTime    @default(now())
-  company                  Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  supply                   Supply      @relation(fields: [supplyId], references: [id], onDelete: Cascade)
-  purchase                 Purchase?   @relation("SupplyCostHistoryPurchase", fields: [purchaseId], references: [id], onDelete: SetNull)
-  purchaseItem             PurchaseItem? @relation("SupplyCostHistoryPurchaseItem", fields: [purchaseItemId], references: [id], onDelete: SetNull)
+  changeSummary             String?
+  notes                     String?
+  occurredAt                DateTime
+  createdAt                 DateTime      @default(now())
+  company                   Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  supply                    Supply        @relation(fields: [supplyId], references: [id], onDelete: Cascade)
+  purchase                  Purchase?     @relation("SupplyCostHistoryPurchase", fields: [purchaseId], references: [id], onDelete: SetNull)
+  purchaseItem              PurchaseItem? @relation("SupplyCostHistoryPurchaseItem", fields: [purchaseItemId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, localUuid])
   @@index([companyId, supplyId, occurredAt])
   @@index([companyId, eventType, occurredAt])
   @@index([purchaseId])
   @@index([purchaseItemId])
+}
+
+model AnalyticsCompanyDailySnapshot {
+  id                        String   @id @default(uuid())
+  companyId                 String
+  snapshotDate              DateTime
+  salesCount                Int      @default(0)
+  customersServedCount      Int      @default(0)
+  salesAmountCents          Int      @default(0)
+  salesCostCents            Int      @default(0)
+  salesProfitCents          Int      @default(0)
+  fiadoSalesCount           Int      @default(0)
+  fiadoPaymentsCount        Int      @default(0)
+  fiadoPaymentsAmountCents  Int      @default(0)
+  purchasesCount            Int      @default(0)
+  purchasesAmountCents      Int      @default(0)
+  cashInflowCents           Int      @default(0)
+  cashOutflowCents          Int      @default(0)
+  cashNetCents              Int      @default(0)
+  financialAdjustmentsCents Int      @default(0)
+  materializedAt            DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  company                   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, snapshotDate])
+  @@index([companyId, snapshotDate])
+}
+
+model AnalyticsProductDailySnapshot {
+  id                  String   @id @default(uuid())
+  companyId           String
+  snapshotDate        DateTime
+  productKey          String
+  productId           String?
+  productNameSnapshot String
+  quantityMil         Int      @default(0)
+  salesCount          Int      @default(0)
+  revenueCents        Int      @default(0)
+  costCents           Int      @default(0)
+  profitCents         Int      @default(0)
+  materializedAt      DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, snapshotDate, productKey])
+  @@index([companyId, snapshotDate])
+  @@index([companyId, productId])
+}
+
+model AnalyticsCustomerDailySnapshot {
+  id                   String   @id @default(uuid())
+  companyId            String
+  snapshotDate         DateTime
+  customerKey          String
+  customerId           String?
+  customerNameSnapshot String
+  salesCount           Int      @default(0)
+  revenueCents         Int      @default(0)
+  costCents            Int      @default(0)
+  profitCents          Int      @default(0)
+  fiadoPaymentsCents   Int      @default(0)
+  materializedAt       DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, snapshotDate, customerKey])
+  @@index([companyId, snapshotDate])
+  @@index([companyId, customerId])
 }

@@ -2,7 +2,9 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../database/prisma';
 import { AppError } from '../../shared/http/app-error';
+import { toPaginationParams } from '../../shared/http/pagination';
 import type {
+  SupplyListQueryInput,
   SupplyCostHistoryInput,
   SupplyUpsertInput,
 } from './supplies.schemas';
@@ -33,17 +35,31 @@ type SupplyWithRelations = Prisma.SupplyGetPayload<{
 }>;
 
 export class SuppliesService {
-  async listForCompany(companyId: string, includeDeleted = false) {
-    const supplies = await prisma.supply.findMany({
-      where: {
-        companyId,
-        ...(includeDeleted ? {} : { deletedAt: null }),
-      },
-      include: supplyInclude,
-      orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+  async listForCompany(companyId: string, query: SupplyListQueryInput) {
+    const where = {
+      companyId,
+      ...(query.includeDeleted ? {} : { deletedAt: null }),
+    };
+    const { skip, take } = toPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
     });
 
-    return supplies.map((supply) => this.toSupplyDto(supply));
+    const [total, supplies] = await prisma.$transaction([
+      prisma.supply.count({ where }),
+      prisma.supply.findMany({
+        where,
+        include: supplyInclude,
+        skip,
+        take,
+        orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+      }),
+    ]);
+
+    return {
+      items: supplies.map((supply) => this.toSupplyDto(supply)),
+      total,
+    };
   }
 
   async getById(companyId: string, supplyId: string) {

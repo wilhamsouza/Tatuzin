@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/core/app_context/app_operational_context.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../produtos/domain/entities/product.dart';
 import '../../../produtos/presentation/providers/product_providers.dart';
 import '../../../vendas/domain/entities/sale_detail.dart';
@@ -15,7 +16,7 @@ import '../../domain/entities/sale_return.dart';
 import '../../domain/repositories/sale_history_repository.dart';
 
 final saleHistoryRepositoryProvider = Provider<SaleHistoryRepository>((ref) {
-  return SqliteSaleHistoryRepository(ref.read(appDatabaseProvider));
+  return SqliteSaleHistoryRepository(ref.watch(appDatabaseProvider));
 });
 
 final saleHistorySearchQueryProvider = StateProvider<String>((ref) => '');
@@ -27,6 +28,7 @@ final saleHistoryFromProvider = StateProvider<DateTime?>((ref) => null);
 final saleHistoryToProvider = StateProvider<DateTime?>((ref) => null);
 
 final saleHistoryListProvider = FutureProvider<List<SaleRecord>>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref
       .watch(saleHistoryRepositoryProvider)
@@ -43,26 +45,33 @@ final saleDetailProvider = FutureProvider.family<SaleDetail, int>((
   ref,
   saleId,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(saleHistoryRepositoryProvider).fetchDetail(saleId);
 });
 
-final saleReturnRepositoryProvider = Provider<SqliteSaleReturnRepository>((ref) {
+final saleReturnRepositoryProvider = Provider<SqliteSaleReturnRepository>((
+  ref,
+) {
   return SqliteSaleReturnRepository(
-    ref.read(appDatabaseProvider),
+    ref.watch(appDatabaseProvider),
     ref.watch(appOperationalContextProvider),
     ref.read(localSaleRepositoryProvider),
   );
 });
 
-final saleReturnsProvider =
-    FutureProvider.family<List<SaleReturnRecord>, int>((ref, saleId) async {
-      ref.watch(appDataRefreshProvider);
-      return ref.watch(saleReturnRepositoryProvider).listForSale(saleId);
-    });
+final saleReturnsProvider = FutureProvider.family<List<SaleReturnRecord>, int>((
+  ref,
+  saleId,
+) async {
+  ref.watch(sessionRuntimeKeyProvider);
+  ref.watch(appDataRefreshProvider);
+  return ref.watch(saleReturnRepositoryProvider).listForSale(saleId);
+});
 
 final saleExchangeProductLookupProvider =
     FutureProvider.family<List<Product>, String>((ref, query) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       final products = await ref
           .read(productRepositoryProvider)

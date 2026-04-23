@@ -192,6 +192,8 @@ Future<void> _pumpOfflineApp(
           (ref) => const SyncHealthOverview(
             totalPending: 0,
             totalProcessing: 0,
+            totalActiveProcessing: 0,
+            totalStaleProcessing: 0,
             totalSynced: 0,
             totalErrors: 0,
             totalBlocked: 0,

@@ -2,7 +2,11 @@ import { Prisma, type Product } from '@prisma/client';
 
 import { prisma } from '../../database/prisma';
 import { AppError } from '../../shared/http/app-error';
-import type { ProductUpsertInput } from './products.schemas';
+import { toPaginationParams } from '../../shared/http/pagination';
+import type {
+  ProductListQueryInput,
+  ProductUpsertInput,
+} from './products.schemas';
 
 const productInclude = {
   variants: {
@@ -28,17 +32,31 @@ type ProductCollectionsPayload = Pick<
 >;
 
 export class ProductsService {
-  async listForCompany(companyId: string, includeDeleted = false) {
-    const products = await prisma.product.findMany({
-      where: {
-        companyId,
-        ...(includeDeleted ? {} : { deletedAt: null }),
-      },
-      include: productInclude,
-      orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+  async listForCompany(companyId: string, query: ProductListQueryInput) {
+    const where = {
+      companyId,
+      ...(query.includeDeleted ? {} : { deletedAt: null }),
+    };
+    const { skip, take } = toPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
     });
 
-    return products.map((product) => this.toProductDto(product));
+    const [total, products] = await prisma.$transaction([
+      prisma.product.count({ where }),
+      prisma.product.findMany({
+        where,
+        include: productInclude,
+        skip,
+        take,
+        orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+      }),
+    ]);
+
+    return {
+      items: products.map((product) => this.toProductDto(product)),
+      total,
+    };
   }
 
   async getById(companyId: string, productId: string) {

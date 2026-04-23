@@ -35,6 +35,7 @@ migrate_working_dir/
 **/build/
 .env
 .env.*
+!backend/.env.production.example
 backend/.local-postgres/
 
 # Symbolication related

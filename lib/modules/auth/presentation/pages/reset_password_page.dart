@@ -32,10 +32,16 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
   @override
   void initState() {
     super.initState();
-    final initialToken = widget.initialToken?.trim();
-    if (initialToken != null && initialToken.isNotEmpty) {
-      _tokenController.text = initialToken;
-    }
+    _applyInitialToken(widget.initialToken);
+  }
+
+  @override
+  void didUpdateWidget(covariant ResetPasswordPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _applyInitialToken(
+      widget.initialToken,
+      previousInitialToken: oldWidget.initialToken,
+    );
   }
 
   @override
@@ -208,6 +214,30 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
         ),
       ),
     );
+  }
+
+  void _applyInitialToken(
+    String? rawInitialToken, {
+    String? previousInitialToken,
+  }) {
+    final initialToken = rawInitialToken?.trim() ?? '';
+    if (initialToken.isEmpty) {
+      return;
+    }
+
+    final previousToken = previousInitialToken?.trim() ?? '';
+    final currentToken = _tokenController.text.trim();
+    final shouldReplaceCurrentValue =
+        currentToken.isEmpty ||
+        (previousToken.isNotEmpty && currentToken == previousToken);
+
+    if (!shouldReplaceCurrentValue || currentToken == initialToken) {
+      return;
+    }
+
+    _tokenController
+      ..text = initialToken
+      ..selection = TextSelection.collapsed(offset: initialToken.length);
   }
 
   Future<void> _handleResetPassword(BuildContext context) async {

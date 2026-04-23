@@ -9,6 +9,7 @@ import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
 import '../../../categorias/presentation/providers/category_providers.dart';
 import '../../data/datasources/products_remote_datasource.dart';
@@ -28,8 +29,8 @@ import '../../domain/repositories/product_repository.dart';
 
 final localProductRepositoryProvider = Provider<SqliteProductRepository>((ref) {
   return SqliteProductRepository(
-    ref.read(appDatabaseProvider),
-    categoryRepository: ref.read(localCategoryRepositoryProvider),
+    ref.watch(appDatabaseProvider),
+    categoryRepository: ref.watch(localCategoryRepositoryProvider),
   );
 });
 
@@ -55,7 +56,7 @@ final productRecipesRemoteDatasourceProvider =
     });
 
 final localCatalogRepositoryProvider = Provider<LocalCatalogRepository>((ref) {
-  return SqliteLocalCatalogRepository(ref.read(appDatabaseProvider));
+  return SqliteLocalCatalogRepository(ref.watch(appDatabaseProvider));
 });
 
 final productMediaStorageProvider = Provider<ProductMediaStorage>((ref) {
@@ -65,6 +66,7 @@ final productMediaStorageProvider = Provider<ProductMediaStorage>((ref) {
 final baseProductOptionsProvider = FutureProvider<List<BaseProduct>>((
   ref,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   return ref.read(localCatalogRepositoryProvider).listBaseProducts();
 });
 
@@ -78,15 +80,16 @@ final productHybridRepositoryProvider = Provider<ProductsRepositoryImpl>((ref) {
   );
 });
 
-final productRecipeSyncProcessorProvider =
-    Provider<ProductRecipeSyncProcessor>((ref) {
-      return ProductRecipeSyncProcessor(
-        localRepository: ref.read(localProductRepositoryProvider),
-        remoteDatasource: ref.read(productRecipesRemoteDatasourceProvider),
-        operationalContext: ref.watch(appOperationalContextProvider),
-        dataAccessPolicy: ref.watch(appDataAccessPolicyProvider),
-      );
-    });
+final productRecipeSyncProcessorProvider = Provider<ProductRecipeSyncProcessor>(
+  (ref) {
+    return ProductRecipeSyncProcessor(
+      localRepository: ref.read(localProductRepositoryProvider),
+      remoteDatasource: ref.read(productRecipesRemoteDatasourceProvider),
+      operationalContext: ref.watch(appOperationalContextProvider),
+      dataAccessPolicy: ref.watch(appDataAccessPolicyProvider),
+    );
+  },
+);
 
 final productRepositoryProvider = Provider<ProductRepository>((ref) {
   return ref.watch(productHybridRepositoryProvider);
@@ -95,12 +98,14 @@ final productRepositoryProvider = Provider<ProductRepository>((ref) {
 final productSearchQueryProvider = StateProvider<String>((ref) => '');
 
 final productListProvider = FutureProvider<List<Product>>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(productSearchQueryProvider);
   return ref.watch(productRepositoryProvider).search(query: query);
 });
 
 final productCatalogProvider = FutureProvider<List<Product>>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(productRepositoryProvider).search();
 });
@@ -119,6 +124,7 @@ final productProfitabilitySortProvider =
 
 final productProfitabilityRowsProvider =
     FutureProvider<List<ProductProfitabilityRow>>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       final query = ref.watch(productProfitabilitySearchQueryProvider);
       final filter = ref.watch(productProfitabilityFilterProvider);

@@ -2,8 +2,13 @@ import cors from 'cors';
 import express from 'express';
 
 import { env } from './config/env';
+import { analyticsDashboardRouter } from './modules/analytics/dashboard/analytics-dashboard.routes';
+import { analyticsReportsRouter } from './modules/analytics/reports/analytics-reports.routes';
+import { analyticsSnapshotsRouter } from './modules/analytics/snapshots/analytics-snapshots.routes';
 import { adminRouter } from './modules/admin/admin.routes';
 import { companyRouter, authRouter } from './modules/auth/auth.routes';
+import { crmRouter } from './modules/crm/crm.routes';
+import { hybridGovernanceRouter } from './modules/hybrid-governance/hybrid-governance.routes';
 import { cashEventsRouter } from './modules/cash/cash-events.routes';
 import { categoriesRouter } from './modules/categories/categories.routes';
 import { customersRouter } from './modules/customers/customers.routes';
@@ -35,7 +40,7 @@ export function createApp() {
   const app = express();
 
   app.disable('x-powered-by');
-  app.set('trust proxy', true);
+  app.set('trust proxy', env.trustProxy);
   app.use(requestContextMiddleware);
   app.use((request, response, next) => {
     response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -61,7 +66,7 @@ export function createApp() {
           ),
         );
       },
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
       exposedHeaders: [
         'X-Request-Id',
@@ -99,6 +104,11 @@ export function createApp() {
 
   app.use('/api/auth', authRouter);
   app.use('/api/admin', adminRouter);
+  app.use('/api/admin/analytics/dashboard', analyticsDashboardRouter);
+  app.use('/api/admin/analytics/reports', analyticsReportsRouter);
+  app.use('/api/admin/analytics/snapshots', analyticsSnapshotsRouter);
+  app.use('/api/admin/crm', crmRouter);
+  app.use('/api/admin/hybrid-governance', hybridGovernanceRouter);
   app.use('/api/companies', companyRouter);
   app.use('/api/categories', categoriesRouter);
   app.use('/api/products', productsRouter);

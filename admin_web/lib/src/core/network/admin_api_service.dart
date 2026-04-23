@@ -1,5 +1,8 @@
 import '../auth/admin_auth_storage.dart';
 import '../auth/admin_debug_log.dart';
+import '../models/admin_analytics_models.dart';
+import '../models/admin_crm_models.dart';
+import '../models/admin_hybrid_governance_models.dart';
 import '../models/admin_models.dart';
 import 'admin_api_client.dart';
 
@@ -34,7 +37,8 @@ class AdminApiService {
 
     if (response is! Map<String, dynamic>) {
       throw const AdminApiException(
-        message: 'A API nao retornou a sessao administrativa no formato esperado.',
+        message:
+            'A API nao retornou a sessao administrativa no formato esperado.',
       );
     }
 
@@ -44,7 +48,8 @@ class AdminApiService {
       'hasRefreshToken': response['refreshToken'] is String,
       'tokenType': response['tokenType']?.toString(),
       'isPlatformAdmin': response['user'] is Map<String, dynamic>
-          ? (response['user'] as Map<String, dynamic>)['isPlatformAdmin'] == true
+          ? (response['user'] as Map<String, dynamic>)['isPlatformAdmin'] ==
+                true
           : false,
       'sessionId': response['session'] is Map<String, dynamic>
           ? (response['session'] as Map<String, dynamic>)['id']?.toString()
@@ -63,9 +68,7 @@ class AdminApiService {
   }
 
   Future<AdminSession> restoreSession(String accessToken) async {
-    adminDebugLog('auth.service.restore.request', {
-      'accessToken': accessToken,
-    });
+    adminDebugLog('auth.service.restore.request', {'accessToken': accessToken});
     final response = await _apiClient.getJson(
       '/auth/me',
       accessToken: accessToken,
@@ -141,11 +144,10 @@ class AdminApiService {
       queryParameters: query?.toQueryParameters(),
     );
 
-    final payload = response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
     return AdminPaginatedResult<AdminCompanySummary>(
-      items: readAdminItems(payload)
-          .map(AdminCompanySummary.fromMap)
-          .toList(),
+      items: readAdminItems(payload).map(AdminCompanySummary.fromMap).toList(),
       pagination: AdminPaginationMeta.fromPayload(payload),
       filters: readAdminFilters(payload),
       sort: AdminSortMeta.fromPayload(payload),
@@ -176,11 +178,10 @@ class AdminApiService {
       queryParameters: query?.toQueryParameters(),
     );
 
-    final payload = response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
     return AdminPaginatedResult<AdminLicenseSnapshot>(
-      items: readAdminItems(payload)
-          .map(AdminLicenseSnapshot.fromMap)
-          .toList(),
+      items: readAdminItems(payload).map(AdminLicenseSnapshot.fromMap).toList(),
       pagination: AdminPaginationMeta.fromPayload(payload),
       filters: readAdminFilters(payload),
       sort: AdminSortMeta.fromPayload(payload),
@@ -209,7 +210,8 @@ class AdminApiService {
       },
     );
 
-    final payload = response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
     final license = payload['license'];
     if (license is! Map<String, dynamic>) {
       throw const AdminApiException(
@@ -219,9 +221,7 @@ class AdminApiService {
     return AdminLicenseSnapshot.fromMap(license);
   }
 
-  Future<AdminAuditSummary> fetchAuditSummary({
-    AdminAuditQuery? query,
-  }) async {
+  Future<AdminAuditSummary> fetchAuditSummary({AdminAuditQuery? query}) async {
     final response = await _apiClient.getJson(
       '/admin/audit/summary',
       accessToken: await _readRequiredToken(),
@@ -230,16 +230,15 @@ class AdminApiService {
 
     if (response is! Map<String, dynamic>) {
       throw const AdminApiException(
-        message: 'A API nao retornou a auditoria administrativa no formato esperado.',
+        message:
+            'A API nao retornou a auditoria administrativa no formato esperado.',
       );
     }
 
     return AdminAuditSummary.fromMap(response);
   }
 
-  Future<AdminSyncSummary> fetchSyncSummary({
-    AdminSyncQuery? query,
-  }) async {
+  Future<AdminSyncSummary> fetchSyncSummary({AdminSyncQuery? query}) async {
     final response = await _apiClient.getJson(
       '/admin/sync/summary',
       accessToken: await _readRequiredToken(),
@@ -272,6 +271,308 @@ class AdminApiService {
     }
 
     return AdminSyncOperationalSummary.fromMap(response);
+  }
+
+  Future<AdminManagementDashboardSnapshot> fetchManagementDashboard({
+    required AdminManagementScopeQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/analytics/dashboard',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message:
+            'A API nao retornou o dashboard gerencial no formato esperado.',
+      );
+    }
+
+    return AdminManagementDashboardSnapshot.fromMap(response);
+  }
+
+  Future<AdminSalesByDayReport> fetchSalesByDayReport({
+    required AdminManagementScopeQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/analytics/reports/sales-by-day',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou o relatorio de vendas por dia.',
+      );
+    }
+
+    return AdminSalesByDayReport.fromMap(response);
+  }
+
+  Future<AdminSalesByProductReport> fetchSalesByProductReport({
+    required AdminManagementScopeQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/analytics/reports/sales-by-product',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou o relatorio de vendas por produto.',
+      );
+    }
+
+    return AdminSalesByProductReport.fromMap(response);
+  }
+
+  Future<AdminSalesByCustomerReport> fetchSalesByCustomerReport({
+    required AdminManagementScopeQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/analytics/reports/sales-by-customer',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou o relatorio de vendas por cliente.',
+      );
+    }
+
+    return AdminSalesByCustomerReport.fromMap(response);
+  }
+
+  Future<AdminCashConsolidatedReport> fetchCashConsolidatedReport({
+    required AdminManagementScopeQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/analytics/reports/cash-consolidated',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou o relatorio de caixa consolidado.',
+      );
+    }
+
+    return AdminCashConsolidatedReport.fromMap(response);
+  }
+
+  Future<AdminFinancialSummaryReport> fetchFinancialSummaryReport({
+    required AdminManagementScopeQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/analytics/reports/financial-summary',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message:
+            'A API nao retornou o resumo financeiro consolidado no formato esperado.',
+      );
+    }
+
+    return AdminFinancialSummaryReport.fromMap(response);
+  }
+
+  Future<AdminPaginatedResult<AdminCrmCustomerSummary>> fetchCrmCustomers({
+    required AdminCrmCustomersQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/crm/customers',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return AdminPaginatedResult<AdminCrmCustomerSummary>(
+      items: readAdminItems(
+        payload,
+      ).map(AdminCrmCustomerSummary.fromMap).toList(),
+      pagination: AdminPaginationMeta.fromPayload(payload),
+      filters: readAdminFilters(payload),
+      sort: AdminSortMeta.fromPayload(payload),
+    );
+  }
+
+  Future<AdminCrmCustomerDetail> fetchCrmCustomerDetail({
+    required AdminCrmCustomerKey key,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/crm/customers/${key.customerId}',
+      accessToken: await _readRequiredToken(),
+      queryParameters: key.toQueryParameters(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message:
+            'A API nao retornou o detalhe do cliente CRM no formato esperado.',
+      );
+    }
+
+    return AdminCrmCustomerDetail.fromMap(response);
+  }
+
+  Future<AdminPaginatedResult<AdminCrmTimelineEvent>> fetchCrmCustomerTimeline({
+    required AdminCrmCustomerTimelineQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/crm/customers/${query.customerId}/timeline',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return AdminPaginatedResult<AdminCrmTimelineEvent>(
+      items: readAdminItems(
+        payload,
+      ).map(AdminCrmTimelineEvent.fromMap).toList(),
+      pagination: AdminPaginationMeta.fromPayload(payload),
+      filters: readAdminFilters(payload),
+      sort: AdminSortMeta.fromPayload(payload),
+    );
+  }
+
+  Future<AdminCrmNote> createCrmCustomerNote({
+    required AdminCrmCustomerKey key,
+    required String body,
+  }) async {
+    final response = await _apiClient.postJson(
+      '/admin/crm/customers/${key.customerId}/notes',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{'companyId': key.companyId, 'body': body.trim()},
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    final note = payload['note'];
+    if (note is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou a nota CRM criada no formato esperado.',
+      );
+    }
+
+    return AdminCrmNote.fromMap(note);
+  }
+
+  Future<AdminCrmTask> createCrmCustomerTask({
+    required AdminCrmCustomerKey key,
+    required String title,
+    String? description,
+    DateTime? dueAt,
+    String? assignedToUserId,
+  }) async {
+    final response = await _apiClient.postJson(
+      '/admin/crm/customers/${key.customerId}/tasks',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        'companyId': key.companyId,
+        'title': title.trim(),
+        'description': description?.trim(),
+        'dueAt': dueAt?.toUtc().toIso8601String(),
+        'assignedToUserId': assignedToUserId?.trim(),
+      },
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    final task = payload['task'];
+    if (task is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou a tarefa CRM criada no formato esperado.',
+      );
+    }
+
+    return AdminCrmTask.fromMap(task);
+  }
+
+  Future<List<AdminCrmTag>> applyCrmCustomerTags({
+    required AdminCrmCustomerKey key,
+    required List<String> labels,
+    String mode = 'replace',
+  }) async {
+    final response = await _apiClient.postJson(
+      '/admin/crm/customers/${key.customerId}/tags',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        'companyId': key.companyId,
+        'mode': mode,
+        'tags': labels
+            .map(
+              (label) => <String, dynamic>{
+                'label': label.trim(),
+                'color': null,
+              },
+            )
+            .toList(growable: false),
+      },
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    final tags = payload['tags'];
+    if (tags is! List<dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou as tags CRM no formato esperado.',
+      );
+    }
+
+    return tags
+        .whereType<Map<String, dynamic>>()
+        .map(AdminCrmTag.fromMap)
+        .toList(growable: false);
+  }
+
+  Future<AdminHybridGovernanceOverview> fetchHybridGovernanceOverview({
+    required AdminHybridGovernanceQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/hybrid-governance/overview',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou a governanca hibrida no formato esperado.',
+      );
+    }
+
+    return AdminHybridGovernanceOverview.fromMap(response);
+  }
+
+  Future<AdminHybridGovernanceProfile> updateHybridGovernanceProfile({
+    required String companyId,
+    required AdminHybridGovernanceProfile profile,
+  }) async {
+    final response = await _apiClient.patchJson(
+      '/admin/hybrid-governance/profile',
+      accessToken: await _readRequiredToken(),
+      body: profile.toUpdateBody(companyId),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    final rawProfile = payload['profile'];
+    if (rawProfile is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message:
+            'A API nao retornou o perfil de governanca hibrida no formato esperado.',
+      );
+    }
+
+    return AdminHybridGovernanceProfile.fromMap(rawProfile);
   }
 
   Future<String> _readRequiredToken() async {

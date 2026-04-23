@@ -9,6 +9,7 @@ import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
 import '../../data/datasources/suppliers_remote_datasource.dart';
 import '../../data/real/real_suppliers_remote_datasource.dart';
@@ -20,7 +21,7 @@ import '../../domain/repositories/supplier_repository.dart';
 final localSupplierRepositoryProvider = Provider<SqliteSupplierRepository>((
   ref,
 ) {
-  return SqliteSupplierRepository(ref.read(appDatabaseProvider));
+  return SqliteSupplierRepository(ref.watch(appDatabaseProvider));
 });
 
 final suppliersRemoteDatasourceProvider = Provider<SuppliersRemoteDatasource>((
@@ -52,12 +53,14 @@ final supplierRepositoryProvider = Provider<SupplierRepository>((ref) {
 final supplierSearchQueryProvider = StateProvider<String>((ref) => '');
 
 final supplierListProvider = FutureProvider<List<Supplier>>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(supplierSearchQueryProvider);
   return ref.watch(supplierRepositoryProvider).search(query: query);
 });
 
 final supplierOptionsProvider = FutureProvider<List<Supplier>>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(supplierRepositoryProvider).search();
 });
@@ -66,6 +69,7 @@ final supplierLookupProvider = FutureProvider.family<List<Supplier>, String>((
   ref,
   query,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(supplierRepositoryProvider).search(query: query);
 });
@@ -74,6 +78,7 @@ final supplierDetailProvider = FutureProvider.family<Supplier?, int>((
   ref,
   supplierId,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(supplierRepositoryProvider).findById(supplierId);
 });

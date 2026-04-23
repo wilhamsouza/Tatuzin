@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../carrinho/domain/entities/cart_item.dart';
 import '../../../produtos/domain/entities/product.dart';
 import '../../../produtos/presentation/providers/product_providers.dart';
@@ -21,7 +22,7 @@ import '../../domain/repositories/operational_order_repository.dart';
 
 final operationalOrderRepositoryProvider = Provider<OperationalOrderRepository>(
   (ref) {
-    return SqliteOperationalOrderRepository(ref.read(appDatabaseProvider));
+    return SqliteOperationalOrderRepository(ref.watch(appDatabaseProvider));
   },
 );
 
@@ -51,6 +52,7 @@ class OperationalOrderBoardData {
 
 final operationalOrderBoardProvider = FutureProvider<OperationalOrderBoardData>(
   (ref) async {
+    ref.watch(sessionRuntimeKeyProvider);
     final query = ref.watch(operationalOrderSearchQueryProvider);
     final orders = await ref
         .read(operationalOrderRepositoryProvider)
@@ -61,6 +63,7 @@ final operationalOrderBoardProvider = FutureProvider<OperationalOrderBoardData>(
 
 final operationalOrderDetailProvider =
     FutureProvider.family<OperationalOrderDetail?, int>((ref, orderId) async {
+      ref.watch(sessionRuntimeKeyProvider);
       final repository = ref.read(operationalOrderRepositoryProvider);
       final order = await repository.findById(orderId);
       if (order == null) {
@@ -98,6 +101,7 @@ final orderCatalogProvider = FutureProvider.family<List<Product>, String>((
   ref,
   query,
 ) {
+  ref.watch(sessionRuntimeKeyProvider);
   return ref.read(productRepositoryProvider).searchAvailable(query: query);
 });
 

@@ -1,9 +1,14 @@
 import { Router } from 'express';
 
 import { requireCloudLicense } from '../../shared/http/auth-middleware';
+import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { asyncHandler } from '../../shared/http/async-handler';
-import { validateBody } from '../../shared/http/validate';
-import { purchaseUpsertSchema } from './purchases.schemas';
+import { validateBody, validateQuery } from '../../shared/http/validate';
+import {
+  purchaseListQuerySchema,
+  type PurchaseListQueryInput,
+  purchaseUpsertSchema,
+} from './purchases.schemas';
 import { PurchasesService } from './purchases.service';
 
 const purchasesService = new PurchasesService();
@@ -22,12 +27,21 @@ purchasesRouter.use(requireCloudLicense);
 
 purchasesRouter.get(
   '/',
+  validateQuery(purchaseListQuerySchema),
   asyncHandler(async (request, response) => {
-    const items = await purchasesService.listForCompany(request.auth!.companyId);
-    response.json({
-      items,
-      count: items.length,
-    });
+    const query = request.query as PurchaseListQueryInput;
+    const result = await purchasesService.listForCompany(
+      request.auth!.companyId,
+      query,
+    );
+    response.json(
+      buildPaginatedResponse({
+        items: result.items,
+        page: query.page,
+        pageSize: query.pageSize,
+        total: result.total,
+      }),
+    );
   }),
 );
 

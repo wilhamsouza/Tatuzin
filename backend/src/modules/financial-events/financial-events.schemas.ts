@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { createListQuerySchema } from '../../shared/http/pagination';
+
 const nullableUuid = z
   .union([z.string().uuid(), z.null(), z.undefined()])
   .transform((value) => value ?? null);
@@ -29,6 +31,11 @@ export const financialEventCreateSchema = z.object({
     .transform((value) => value ?? null),
 });
 
+export const financialEventListQuerySchema = createListQuerySchema();
+
 export type FinancialEventCreateInput = z.infer<
   typeof financialEventCreateSchema
+>;
+export type FinancialEventListQueryInput = z.infer<
+  typeof financialEventListQuerySchema
 >;

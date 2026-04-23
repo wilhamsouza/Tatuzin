@@ -32,6 +32,8 @@ abstract interface class SyncQueueRepository {
 
   Future<SyncQueueItem?> lockItem(int queueId, {DateTime? now});
 
+  Future<int> recoverStaleProcessingLocks({DateTime? now});
+
   Future<void> markSynced(
     int queueId, {
     required String? remoteId,
