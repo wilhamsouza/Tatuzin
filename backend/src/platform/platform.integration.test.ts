@@ -49,12 +49,12 @@ before(async () => {
   apiBaseUrl = `http://127.0.0.1:${address.port}/api`;
 });
 
-beforeEach(() => {
-  resetRateLimitStore();
+beforeEach(async () => {
+  await resetRateLimitStore();
 });
 
 after(async () => {
-  resetRateLimitStore();
+  await resetRateLimitStore();
   await new Promise<void>((resolve, reject) => {
     server.close((error) => {
       if (error != null) {
@@ -272,6 +272,69 @@ describe('platform backend hardening', () => {
       (afterLogout.data as { code?: string }).code,
       'SESSION_REVOKED',
     );
+  });
+
+  it('paginates operational category lists without changing item shape', async () => {
+    const registration = await requestJson('POST', '/auth/register', {
+      body: {
+        companyName: 'Tatuzin Paginacao Operacional',
+        companySlug: `${runId}-operational-pagination`,
+        userName: 'Operational Pagination Owner',
+        email: `${runId}.operational-pagination@tatuzin.test`,
+        password: 'OwnerPass123!',
+        ...baseClientPayload,
+        clientInstanceId: `${runId}-operational-pagination-web`,
+      },
+    });
+    assert.equal(registration.status, 201);
+    const token = (registration.data as { accessToken: string }).accessToken;
+
+    for (let index = 1; index <= 5; index += 1) {
+      const createCategory = await requestJson('POST', '/categories', {
+        token,
+        body: {
+          localUuid: `${runId}-operational-category-${index}`,
+          name: `Categoria operacional ${index}`,
+          description: null,
+          isActive: true,
+          deletedAt: null,
+        },
+      });
+      assert.equal(createCategory.status, 201);
+    }
+
+    const response = await requestJson(
+      'GET',
+      '/categories?page=2&pageSize=2&includeDeleted=true',
+      {
+        token,
+      },
+    );
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      items: Array<{
+        id: string;
+        name: string;
+        deletedAt: string | null;
+      }>;
+      page: number;
+      pageSize: number;
+      total: number;
+      count: number;
+      hasPrevious: boolean;
+      hasNext: boolean;
+    };
+
+    assert.equal(payload.page, 2);
+    assert.equal(payload.pageSize, 2);
+    assert.equal(payload.total, 5);
+    assert.equal(payload.count, 2);
+    assert.equal(payload.hasPrevious, true);
+    assert.equal(payload.hasNext, true);
+    assert.equal(payload.items.length, 2);
+    assert.ok(payload.items.every((item) => item.id.length > 0));
+    assert.ok(payload.items.every((item) => item.name.length > 0));
   });
 
   it('rejects duplicated e-mail during self-serve registration', async () => {
@@ -874,6 +937,46 @@ describe('platform backend hardening', () => {
     );
     assert.ok(blocked.headers.get('retry-after'));
   });
+
+  it('does not trust spoofed x-forwarded-for for login rate limiting', async () => {
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      const response = await requestJson('POST', '/auth/login', {
+        body: {
+          email: rateLimitEmail,
+          password: 'wrong-password',
+          ...baseClientPayload,
+          clientInstanceId: `${runId}-spoof-rate-limit`,
+        },
+        headers: {
+          'X-Forwarded-For': `203.0.113.${attempt}`,
+        },
+      });
+
+      assert.equal(response.status, 401);
+      assert.equal(
+        (response.data as { code?: string }).code,
+        'INVALID_CREDENTIALS',
+      );
+    }
+
+    const blocked = await requestJson('POST', '/auth/login', {
+      body: {
+        email: rateLimitEmail,
+        password: 'wrong-password',
+        ...baseClientPayload,
+        clientInstanceId: `${runId}-spoof-rate-limit`,
+      },
+      headers: {
+        'X-Forwarded-For': '198.51.100.10',
+      },
+    });
+
+    assert.equal(blocked.status, 429);
+    assert.equal(
+      (blocked.data as { code?: string }).code,
+      'AUTH_LOGIN_RATE_LIMITED',
+    );
+  });
 });
 
 async function loginAsPlatformAdmin() {
@@ -899,6 +1002,7 @@ async function requestJson(
   options?: {
     token?: string;
     body?: Record<string, unknown>;
+    headers?: Record<string, string>;
   },
 ): Promise<JsonResponse> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
@@ -914,6 +1018,7 @@ async function requestJson(
           : {
               Authorization: `Bearer ${options.token}`,
             }),
+      ...(options?.headers ?? {}),
     },
     body:
       options?.body == null ? undefined : JSON.stringify(options.body),

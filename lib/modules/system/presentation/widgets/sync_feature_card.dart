@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/sync/sync_display_state.dart';
 import '../../../../app/core/sync/sync_error_type.dart';
 import '../../../../app/core/sync/sync_queue_feature_summary.dart';
 
@@ -28,6 +29,7 @@ class SyncFeatureCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final displayState = summary?.displayState;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -38,7 +40,30 @@ class SyncFeatureCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: theme.textTheme.titleMedium),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: Text(title, style: theme.textTheme.titleMedium)),
+              if (displayState != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _statusColor(colorScheme),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    displayState.label,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: _statusOnColor(colorScheme),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(height: 6),
           Text(
             description,
@@ -56,13 +81,20 @@ class SyncFeatureCard extends StatelessWidget {
                 icon: Icons.inventory_2_outlined,
               ),
               _Chip(
-                label: '${summary?.pendingCount ?? 0} pendente',
+                label: '${summary?.pendingForDisplay ?? 0} pendente',
                 icon: Icons.pending_actions_rounded,
               ),
               _Chip(
-                label: '${summary?.processingCount ?? 0} processando',
+                label:
+                    '${summary?.activeProcessingCount ?? 0} processando agora',
                 icon: Icons.sync_rounded,
               ),
+              if ((summary?.staleProcessingCount ?? 0) > 0)
+                _Chip(
+                  label:
+                      '${summary?.staleProcessingCount ?? 0} processing antigo',
+                  icon: Icons.history_toggle_off_rounded,
+                ),
               _Chip(
                 label: '${summary?.syncedCount ?? 0} sync',
                 icon: Icons.cloud_done_outlined,
@@ -152,6 +184,32 @@ class SyncFeatureCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Color _statusColor(ColorScheme colorScheme) {
+    if (summary?.hasAttention == true) {
+      return colorScheme.errorContainer;
+    }
+    if (summary?.hasActiveProcessing == true) {
+      return colorScheme.primaryContainer;
+    }
+    if ((summary?.pendingForDisplay ?? 0) > 0) {
+      return colorScheme.secondaryContainer;
+    }
+    return colorScheme.tertiaryContainer;
+  }
+
+  Color _statusOnColor(ColorScheme colorScheme) {
+    if (summary?.hasAttention == true) {
+      return colorScheme.onErrorContainer;
+    }
+    if (summary?.hasActiveProcessing == true) {
+      return colorScheme.onPrimaryContainer;
+    }
+    if ((summary?.pendingForDisplay ?? 0) > 0) {
+      return colorScheme.onSecondaryContainer;
+    }
+    return colorScheme.onTertiaryContainer;
   }
 }
 

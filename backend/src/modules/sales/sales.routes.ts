@@ -1,9 +1,15 @@
 import { Router } from 'express';
 
 import { requireCloudLicense } from '../../shared/http/auth-middleware';
+import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { asyncHandler } from '../../shared/http/async-handler';
-import { validateBody } from '../../shared/http/validate';
-import { saleCancelSchema, saleCreateSchema } from './sales.schemas';
+import { validateBody, validateQuery } from '../../shared/http/validate';
+import {
+  saleCancelSchema,
+  saleCreateSchema,
+  saleListQuerySchema,
+  type SaleListQueryInput,
+} from './sales.schemas';
 import { SalesService } from './sales.service';
 
 const salesService = new SalesService();
@@ -22,12 +28,21 @@ salesRouter.use(requireCloudLicense);
 
 salesRouter.get(
   '/',
+  validateQuery(saleListQuerySchema),
   asyncHandler(async (request, response) => {
-    const items = await salesService.listForCompany(request.auth!.companyId);
-    response.json({
-      items,
-      count: items.length,
-    });
+    const query = request.query as SaleListQueryInput;
+    const result = await salesService.listForCompany(
+      request.auth!.companyId,
+      query,
+    );
+    response.json(
+      buildPaginatedResponse({
+        items: result.items,
+        page: query.page,
+        pageSize: query.pageSize,
+        total: result.total,
+      }),
+    );
   }),
 );
 

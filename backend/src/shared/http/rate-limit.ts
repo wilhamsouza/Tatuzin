@@ -1,5 +1,9 @@
+import { createHash } from 'crypto';
+
+import { Prisma } from '@prisma/client';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 
+import { prisma } from '../../database/prisma';
 import { AppError } from './app-error';
 
 type RateLimitOptions = {
@@ -12,35 +16,70 @@ type RateLimitOptions = {
   skip?: (request: Request) => boolean;
 };
 
-type RateLimitEntry = {
-  count: number;
-  resetAt: number;
-};
-
-const rateLimitStore = new Map<string, RateLimitEntry>();
-
 function getClientIp(request: Request) {
-  const forwarded = request.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.trim().length > 0) {
-    const first = forwarded.split(',')[0]?.trim();
-    if (first != null && first.length > 0) {
-      return first;
-    }
-  }
-
   return request.ip ?? 'unknown';
-}
-
-function cleanupExpiredEntries(now: number) {
-  for (const [key, entry] of rateLimitStore.entries()) {
-    if (entry.resetAt <= now) {
-      rateLimitStore.delete(key);
-    }
-  }
 }
 
 function defaultKeyGenerator(request: Request) {
   return getClientIp(request);
+}
+
+function hashBucketKey(scope: string, key: string) {
+  return createHash('sha256').update(`${scope}:${key}`).digest('hex');
+}
+
+async function consumeRateLimitBucket(input: {
+  bucketHash: string;
+  scope: string;
+  windowMs: number;
+}) {
+  const resetAt = new Date(Date.now() + input.windowMs);
+  const [bucket] = await prisma.$queryRaw<
+    Array<{
+      requestCount: number;
+      resetAt: Date;
+    }>
+  >(Prisma.sql`
+    INSERT INTO "RateLimitBucket" (
+      "bucketHash",
+      "scope",
+      "requestCount",
+      "resetAt",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      ${input.bucketHash},
+      ${input.scope},
+      1,
+      ${resetAt},
+      NOW(),
+      NOW()
+    )
+    ON CONFLICT ("bucketHash")
+    DO UPDATE SET
+      "scope" = EXCLUDED."scope",
+      "requestCount" = CASE
+        WHEN "RateLimitBucket"."resetAt" <= NOW() THEN 1
+        ELSE "RateLimitBucket"."requestCount" + 1
+      END,
+      "resetAt" = CASE
+        WHEN "RateLimitBucket"."resetAt" <= NOW() THEN ${resetAt}
+        ELSE "RateLimitBucket"."resetAt"
+      END,
+      "updatedAt" = NOW()
+    RETURNING "requestCount", "resetAt"
+  `);
+
+  if (bucket == null) {
+    throw new AppError(
+      'Nao foi possivel aplicar o controle de taxa para esta requisicao.',
+      500,
+      'RATE_LIMIT_STORE_UNAVAILABLE',
+    );
+  }
+
+  return bucket;
 }
 
 export function createRateLimit(options: RateLimitOptions): RequestHandler {
@@ -50,68 +89,51 @@ export function createRateLimit(options: RateLimitOptions): RequestHandler {
       return;
     }
 
-    const now = Date.now();
-    cleanupExpiredEntries(now);
-
-    const key = `${options.name}:${(options.keyGenerator ?? defaultKeyGenerator)(
-      request,
-    )}`;
-    const existing = rateLimitStore.get(key);
-
-    if (existing == null || existing.resetAt <= now) {
-      rateLimitStore.set(key, {
-        count: 1,
-        resetAt: now + options.windowMs,
+    void (async () => {
+      const bucketKey = (options.keyGenerator ?? defaultKeyGenerator)(request);
+      const bucket = await consumeRateLimitBucket({
+        bucketHash: hashBucketKey(options.name, bucketKey),
+        scope: options.name,
+        windowMs: options.windowMs,
       });
+
+      const remaining = Math.max(options.max - bucket.requestCount, 0);
       response.setHeader('X-RateLimit-Limit', String(options.max));
-      response.setHeader('X-RateLimit-Remaining', String(options.max - 1));
+      response.setHeader('X-RateLimit-Remaining', String(remaining));
       response.setHeader(
         'X-RateLimit-Reset',
-        String(Math.ceil((now + options.windowMs) / 1000)),
+        String(Math.ceil(bucket.resetAt.getTime() / 1000)),
       );
-      next();
-      return;
-    }
 
-    existing.count += 1;
-    rateLimitStore.set(key, existing);
+      if (bucket.requestCount <= options.max) {
+        next();
+        return;
+      }
 
-    const remaining = Math.max(options.max - existing.count, 0);
-    response.setHeader('X-RateLimit-Limit', String(options.max));
-    response.setHeader('X-RateLimit-Remaining', String(remaining));
-    response.setHeader(
-      'X-RateLimit-Reset',
-      String(Math.ceil(existing.resetAt / 1000)),
-    );
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((bucket.resetAt.getTime() - Date.now()) / 1000),
+      );
+      response.setHeader('Retry-After', String(retryAfterSeconds));
 
-    if (existing.count <= options.max) {
-      next();
-      return;
-    }
-
-    const retryAfterSeconds = Math.max(
-      1,
-      Math.ceil((existing.resetAt - now) / 1000),
-    );
-    response.setHeader('Retry-After', String(retryAfterSeconds));
-
-    next(
-      new AppError(
-        options.message,
-        429,
-        options.code ?? 'RATE_LIMIT_EXCEEDED',
-        {
-          limitName: options.name,
-          retryAfterSeconds,
-        },
-        {
-          'Retry-After': String(retryAfterSeconds),
-        },
-      ),
-    );
+      next(
+        new AppError(
+          options.message,
+          429,
+          options.code ?? 'RATE_LIMIT_EXCEEDED',
+          {
+            limitName: options.name,
+            retryAfterSeconds,
+          },
+          {
+            'Retry-After': String(retryAfterSeconds),
+          },
+        ),
+      );
+    })().catch(next);
   };
 }
 
-export function resetRateLimitStore() {
-  rateLimitStore.clear();
+export async function resetRateLimitStore() {
+  await prisma.rateLimitBucket.deleteMany();
 }

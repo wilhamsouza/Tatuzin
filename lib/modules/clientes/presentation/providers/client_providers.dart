@@ -9,6 +9,7 @@ import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
 import '../../data/customers_repository_impl.dart';
 import '../../data/sqlite_customer_credit_repository.dart';
@@ -21,12 +22,12 @@ import '../../domain/repositories/client_repository.dart';
 import '../../domain/repositories/customer_credit_repository.dart';
 
 final localClientRepositoryProvider = Provider<SqliteClientRepository>((ref) {
-  return SqliteClientRepository(ref.read(appDatabaseProvider));
+  return SqliteClientRepository(ref.watch(appDatabaseProvider));
 });
 
 final localCustomerCreditRepositoryProvider =
     Provider<SqliteCustomerCreditRepository>((ref) {
-      return SqliteCustomerCreditRepository(ref.read(appDatabaseProvider));
+      return SqliteCustomerCreditRepository(ref.watch(appDatabaseProvider));
     });
 
 final customersRemoteDatasourceProvider = Provider<CustomersRemoteDatasource>((
@@ -62,6 +63,7 @@ final customerCreditRepositoryProvider = Provider<CustomerCreditRepository>((
 final clientSearchQueryProvider = StateProvider<String>((ref) => '');
 
 final clientListProvider = FutureProvider<List<Client>>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(clientSearchQueryProvider);
   return ref.watch(clientRepositoryProvider).search(query: query);
@@ -71,6 +73,7 @@ final clientLookupProvider = FutureProvider.family<List<Client>, String>((
   ref,
   query,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(clientRepositoryProvider).search(query: query);
 });
@@ -79,6 +82,7 @@ final customerCreditBalanceProvider = FutureProvider.family<int, int>((
   ref,
   customerId,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref
       .watch(customerCreditRepositoryProvider)
@@ -90,6 +94,7 @@ final customerCreditTransactionsProvider =
       ref,
       customerId,
     ) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       return ref
           .watch(customerCreditRepositoryProvider)
@@ -101,6 +106,7 @@ final customerCreditTransactionProvider =
       ref,
       transactionId,
     ) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       return ref
           .watch(customerCreditRepositoryProvider)

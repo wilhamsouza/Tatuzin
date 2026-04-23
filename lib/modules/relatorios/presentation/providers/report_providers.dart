@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../categorias/domain/entities/category.dart';
 import '../../../categorias/presentation/providers/category_providers.dart';
 import '../../../clientes/domain/entities/client.dart';
@@ -32,7 +33,7 @@ import '../../domain/entities/report_variant_summary.dart';
 import '../../domain/repositories/report_repository.dart';
 
 final reportRepositoryProvider = Provider<ReportRepository>((ref) {
-  return SqliteReportRepository(ref.read(appDatabaseProvider));
+  return SqliteReportRepository(ref.watch(appDatabaseProvider));
 });
 
 final reportExportCsvSupportProvider = Provider<ReportExportCsvSupport>((ref) {
@@ -71,6 +72,7 @@ final reportPreviousFilterProvider = Provider<ReportFilter>((ref) {
 final reportOverviewProvider = FutureProvider<ReportOverviewSummary>((
   ref,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref
       .watch(reportRepositoryProvider)
@@ -80,6 +82,7 @@ final reportOverviewProvider = FutureProvider<ReportOverviewSummary>((
 final reportPreviousOverviewProvider = FutureProvider<ReportOverviewSummary>((
   ref,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref
       .watch(reportRepositoryProvider)
@@ -89,6 +92,7 @@ final reportPreviousOverviewProvider = FutureProvider<ReportOverviewSummary>((
 final salesTrendProvider = FutureProvider<List<ReportSalesTrendPoint>>((
   ref,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref
       .watch(reportRepositoryProvider)
@@ -97,6 +101,7 @@ final salesTrendProvider = FutureProvider<List<ReportSalesTrendPoint>>((
 
 final topProductsReportProvider =
     FutureProvider<List<ReportSoldProductSummary>>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       return ref
           .watch(reportRepositoryProvider)
@@ -106,6 +111,7 @@ final topProductsReportProvider =
 final topVariantsReportProvider = FutureProvider<List<ReportVariantSummary>>((
   ref,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref
       .watch(reportRepositoryProvider)
@@ -114,6 +120,7 @@ final topVariantsReportProvider = FutureProvider<List<ReportVariantSummary>>((
 
 final profitabilityReportProvider =
     FutureProvider<List<ReportProfitabilityRow>>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       return ref
           .watch(reportRepositoryProvider)
@@ -122,6 +129,7 @@ final profitabilityReportProvider =
 
 final profitabilityCategoryReportProvider =
     FutureProvider<List<ReportProfitabilityRow>>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(
         reportFilterProvider.select(
@@ -136,6 +144,7 @@ final profitabilityCategoryReportProvider =
 final cashflowReportProvider = FutureProvider<ReportCashflowSummary>((
   ref,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref
       .watch(reportRepositoryProvider)
@@ -144,6 +153,7 @@ final cashflowReportProvider = FutureProvider<ReportCashflowSummary>((
 
 final inventoryHealthReportProvider =
     FutureProvider<ReportInventoryHealthSummary>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       return ref
           .watch(reportRepositoryProvider)
@@ -152,6 +162,7 @@ final inventoryHealthReportProvider =
 
 final customerRankingReportProvider =
     FutureProvider<List<ReportCustomerRankingRow>>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       return ref
           .watch(reportRepositoryProvider)
@@ -164,6 +175,7 @@ final customerRankingReportProvider =
 final purchaseSummaryReportProvider = FutureProvider<ReportPurchaseSummary>((
   ref,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref
       .watch(reportRepositoryProvider)
@@ -171,6 +183,7 @@ final purchaseSummaryReportProvider = FutureProvider<ReportPurchaseSummary>((
 });
 
 final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref
       .watch(reportRepositoryProvider)
@@ -181,16 +194,21 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
 });
 
 final reportClientOptionsProvider = FutureProvider<List<Client>>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(clientRepositoryProvider).search();
 });
 
-final reportCategoryOptionsProvider = FutureProvider<List<Category>>((ref) async {
+final reportCategoryOptionsProvider = FutureProvider<List<Category>>((
+  ref,
+) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(categoryOptionsProvider.future);
 });
 
 final reportProductOptionsProvider = FutureProvider<List<Product>>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(productCatalogProvider.future);
 });
@@ -198,12 +216,14 @@ final reportProductOptionsProvider = FutureProvider<List<Product>>((ref) async {
 final reportSupplierOptionsProvider = FutureProvider<List<Supplier>>((
   ref,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(supplierOptionsProvider.future);
 });
 
 final reportVariantOptionsProvider =
     FutureProvider<List<ReportVariantFilterOption>>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
       final products = await ref.watch(reportProductOptionsProvider.future);
       final options = <ReportVariantFilterOption>[];
       for (final product in products) {
@@ -232,6 +252,7 @@ final reportVariantOptionsProvider =
 
 final reportFilterOptionLabelsProvider =
     FutureProvider<ReportFilterOptionLabels>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
       final customers = await ref.watch(reportClientOptionsProvider.future);
       final categories = await ref.watch(reportCategoryOptionsProvider.future);
       final products = await ref.watch(reportProductOptionsProvider.future);
@@ -248,9 +269,7 @@ final reportFilterOptionLabelsProvider =
         products: {
           for (final product in products) product.id: product.displayName,
         },
-        variants: {
-          for (final variant in variants) variant.id: variant.label,
-        },
+        variants: {for (final variant in variants) variant.id: variant.label},
         suppliers: {
           for (final supplier in suppliers)
             supplier.id: (supplier.tradeName?.trim().isNotEmpty ?? false)
@@ -292,16 +311,18 @@ class ReportFilterController extends Notifier<ReportFilter> {
     required String message,
     bool isFocusOnly = false,
   }) {
-    ref.read(reportPageSessionProvider.notifier).setDrilldown(
-      ReportDrilldownContext(
-        page: page,
-        sourcePage: sourcePage,
-        sourceLabel: sourceLabel,
-        message: message,
-        baselineFilter: state,
-        isFocusOnly: isFocusOnly,
-      ),
-    );
+    ref
+        .read(reportPageSessionProvider.notifier)
+        .setDrilldown(
+          ReportDrilldownContext(
+            page: page,
+            sourcePage: sourcePage,
+            sourceLabel: sourceLabel,
+            message: message,
+            baselineFilter: state,
+            isFocusOnly: isFocusOnly,
+          ),
+        );
     state = nextFilter;
   }
 
@@ -410,10 +431,7 @@ class ReportPageSessionController extends Notifier<ReportPageSessionState> {
 
   void setDrilldown(ReportDrilldownContext context) {
     state = state.copyWith(
-      drilldowns: {
-        ...state.drilldowns,
-        context.page: context,
-      },
+      drilldowns: {...state.drilldowns, context.page: context},
     );
   }
 
@@ -429,10 +447,7 @@ class ReportPageSessionController extends Notifier<ReportPageSessionState> {
 
   void rememberPreset(ReportPageKey page, String presetId) {
     state = state.copyWith(
-      lastPresetIds: {
-        ...state.lastPresetIds,
-        page: presetId,
-      },
+      lastPresetIds: {...state.lastPresetIds, page: presetId},
     );
   }
 }

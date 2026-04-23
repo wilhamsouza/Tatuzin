@@ -129,7 +129,7 @@ class SaleDetailPage extends ConsumerWidget {
       ref.invalidate(currentCashMovementsProvider);
       ref.invalidate(cashSessionHistoryProvider);
       ref.invalidate(fiadoListProvider);
-      ref.invalidate(dashboardMetricsProvider);
+      ref.invalidate(operationalDashboardSnapshotProvider);
       if (detail.sale.clientId != null) {
         ref.invalidate(customerCreditBalanceProvider(detail.sale.clientId!));
         ref.invalidate(
@@ -229,7 +229,7 @@ class SaleDetailPage extends ConsumerWidget {
       ref.invalidate(currentCashMovementsProvider);
       ref.invalidate(cashSessionHistoryProvider);
       ref.invalidate(fiadoListProvider);
-      ref.invalidate(dashboardMetricsProvider);
+      ref.invalidate(operationalDashboardSnapshotProvider);
       if (detail.sale.fiadoId != null) {
         ref.invalidate(fiadoDetailProvider(detail.sale.fiadoId!));
       }

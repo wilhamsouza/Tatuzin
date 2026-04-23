@@ -2,16 +2,34 @@ import type { FinancialEvent, Prisma } from '@prisma/client';
 
 import { prisma } from '../../database/prisma';
 import { AppError } from '../../shared/http/app-error';
-import type { FinancialEventCreateInput } from './financial-events.schemas';
+import { toPaginationParams } from '../../shared/http/pagination';
+import type {
+  FinancialEventCreateInput,
+  FinancialEventListQueryInput,
+} from './financial-events.schemas';
 
 export class FinancialEventsService {
-  async listForCompany(companyId: string) {
-    const items = await prisma.financialEvent.findMany({
-      where: { companyId },
-      orderBy: [{ createdAt: 'desc' }, { updatedAt: 'desc' }],
+  async listForCompany(companyId: string, query: FinancialEventListQueryInput) {
+    const where = { companyId };
+    const { skip, take } = toPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
     });
 
-    return items.map((item) => this.toDto(item));
+    const [total, items] = await prisma.$transaction([
+      prisma.financialEvent.count({ where }),
+      prisma.financialEvent.findMany({
+        where,
+        skip,
+        take,
+        orderBy: [{ createdAt: 'desc' }, { updatedAt: 'desc' }],
+      }),
+    ]);
+
+    return {
+      items: items.map((item) => this.toDto(item)),
+      total,
+    };
   }
 
   async create(companyId: string, input: FinancialEventCreateInput) {

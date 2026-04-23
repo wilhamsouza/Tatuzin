@@ -92,7 +92,7 @@ class AppMainDrawer extends ConsumerWidget {
                     label: 'Visão geral',
                     children: [
                       _DrawerItem(
-                        label: 'Dashboard',
+                        label: 'Dashboard operacional',
                         icon: Icons.space_dashboard_rounded,
                         isSelected: currentPath == AppRoutePaths.dashboard,
                         onTap: () => _navigateTo(

@@ -4,6 +4,7 @@ import '../config/app_environment.dart';
 import '../errors/app_exceptions.dart';
 import '../network/contracts/api_client_contract.dart';
 import '../network/endpoint_config.dart';
+import '../network/paginated_remote_fetch.dart';
 import '../network/remote_feature_diagnostic.dart';
 import '../session/auth_token_storage.dart';
 import 'financial_events_remote_datasource.dart';
@@ -128,25 +129,27 @@ class RealFinancialEventsRemoteDatasource
 
   @override
   Future<List<RemoteFinancialEventRecord>> listAll() async {
-    final response = await _apiClient.getJson(
-      '/financial-events',
-      options: await _authorizedOptions(),
+    return fetchAllPaginatedItems(
+      fetchPage: ({required page, required pageSize}) async {
+        return _apiClient.getJson(
+          '/financial-events',
+          options: await _authorizedOptions(
+            queryParameters: <String, Object?>{
+              'page': page,
+              'pageSize': pageSize,
+            },
+          ),
+        );
+      },
+      fromJson: RemoteFinancialEventRecord.fromJson,
+      invalidItemsMessage:
+          'A API nao retornou a lista de eventos financeiros em formato valido.',
     );
-
-    final items = response.data['items'];
-    if (items is! List) {
-      throw const NetworkRequestException(
-        'A API nao retornou a lista de eventos financeiros em formato valido.',
-      );
-    }
-
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map(RemoteFinancialEventRecord.fromJson)
-        .toList();
   }
 
-  Future<ApiRequestOptions> _authorizedOptions() async {
+  Future<ApiRequestOptions> _authorizedOptions({
+    Map<String, Object?> queryParameters = const <String, Object?>{},
+  }) async {
     final token = await _tokenStorage.readAccessToken();
     if (token == null || token.trim().isEmpty) {
       throw const AuthenticationException(
@@ -156,6 +159,7 @@ class RealFinancialEventsRemoteDatasource
 
     return ApiRequestOptions(
       headers: <String, String>{'Authorization': 'Bearer $token'},
+      queryParameters: queryParameters,
     );
   }
 }

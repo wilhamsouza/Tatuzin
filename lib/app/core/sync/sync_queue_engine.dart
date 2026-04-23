@@ -12,15 +12,18 @@ class SyncQueueEngine {
     required List<SyncFeatureProcessor> processors,
     required SyncRetryPolicy retryPolicy,
     required SyncDependencyResolver dependencyResolver,
+    required bool Function() shouldContinue,
   }) : _queueRepository = queueRepository,
        _processors = processors,
        _retryPolicy = retryPolicy,
-       _dependencyResolver = dependencyResolver;
+       _dependencyResolver = dependencyResolver,
+       _shouldContinue = shouldContinue;
 
   final SyncQueueRepository _queueRepository;
   final List<SyncFeatureProcessor> _processors;
   final SyncRetryPolicy _retryPolicy;
   final SyncDependencyResolver _dependencyResolver;
+  final bool Function() _shouldContinue;
 
   Future<SyncBatchResult> process({
     Iterable<String>? featureKeys,
@@ -34,6 +37,10 @@ class SyncQueueEngine {
     var conflictCount = 0;
 
     for (final processor in _orderedProcessors(featureKeys)) {
+      if (!_shouldContinue()) {
+        break;
+      }
+
       await processor.ensureSyncAllowed();
 
       final eligibleItems = await _queueRepository.listEligibleItems(
@@ -43,6 +50,10 @@ class SyncQueueEngine {
       );
 
       for (final candidate in eligibleItems) {
+        if (!_shouldContinue()) {
+          break;
+        }
+
         final locked = await _queueRepository.lockItem(candidate.id);
         if (locked == null) {
           continue;
@@ -64,11 +75,18 @@ class SyncQueueEngine {
 
         try {
           var result = await processor.processQueueItem(activeItem);
+          if (!_shouldContinue()) {
+            break;
+          }
+
           if (result.outcome == SyncFeatureProcessOutcome.requeued) {
             final retried = await _queueRepository.lockItem(activeItem.id);
             if (retried != null) {
               activeItem = retried;
               result = await processor.processQueueItem(activeItem);
+              if (!_shouldContinue()) {
+                break;
+              }
             }
           }
 
@@ -101,6 +119,10 @@ class SyncQueueEngine {
               break;
           }
         } catch (error) {
+          if (!_shouldContinue()) {
+            break;
+          }
+
           failedCount++;
           final syncError = resolveSyncError(error);
           final nextRetryAt = _retryPolicy.nextRetryAt(
@@ -116,6 +138,10 @@ class SyncQueueEngine {
             nextRetryAt: nextRetryAt,
           );
         }
+      }
+
+      if (!_shouldContinue()) {
+        break;
       }
 
       await processor.pullRemoteSnapshot();

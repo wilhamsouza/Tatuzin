@@ -2,19 +2,37 @@ import type { Category } from '@prisma/client';
 
 import { prisma } from '../../database/prisma';
 import { AppError } from '../../shared/http/app-error';
-import type { CategoryUpsertInput } from './categories.schemas';
+import { toPaginationParams } from '../../shared/http/pagination';
+import type {
+  CategoryListQueryInput,
+  CategoryUpsertInput,
+} from './categories.schemas';
 
 export class CategoriesService {
-  async listForCompany(companyId: string, includeDeleted = false) {
-    const categories = await prisma.category.findMany({
-      where: {
-        companyId,
-        ...(includeDeleted ? {} : { deletedAt: null }),
-      },
-      orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+  async listForCompany(companyId: string, query: CategoryListQueryInput) {
+    const where = {
+      companyId,
+      ...(query.includeDeleted ? {} : { deletedAt: null }),
+    };
+    const { skip, take } = toPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
     });
 
-    return categories.map((category) => this.toCategoryDto(category));
+    const [total, categories] = await prisma.$transaction([
+      prisma.category.count({ where }),
+      prisma.category.findMany({
+        where,
+        skip,
+        take,
+        orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+      }),
+    ]);
+
+    return {
+      items: categories.map((category) => this.toCategoryDto(category)),
+      total,
+    };
   }
 
   async getById(companyId: string, categoryId: string) {

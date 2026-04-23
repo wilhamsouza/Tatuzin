@@ -2,19 +2,37 @@ import type { Supplier } from '@prisma/client';
 
 import { prisma } from '../../database/prisma';
 import { AppError } from '../../shared/http/app-error';
-import type { SupplierUpsertInput } from './suppliers.schemas';
+import { toPaginationParams } from '../../shared/http/pagination';
+import type {
+  SupplierListQueryInput,
+  SupplierUpsertInput,
+} from './suppliers.schemas';
 
 export class SuppliersService {
-  async listForCompany(companyId: string, includeDeleted = false) {
-    const suppliers = await prisma.supplier.findMany({
-      where: {
-        companyId,
-        ...(includeDeleted ? {} : { deletedAt: null }),
-      },
-      orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+  async listForCompany(companyId: string, query: SupplierListQueryInput) {
+    const where = {
+      companyId,
+      ...(query.includeDeleted ? {} : { deletedAt: null }),
+    };
+    const { skip, take } = toPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
     });
 
-    return suppliers.map((supplier) => this.toSupplierDto(supplier));
+    const [total, suppliers] = await prisma.$transaction([
+      prisma.supplier.count({ where }),
+      prisma.supplier.findMany({
+        where,
+        skip,
+        take,
+        orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+      }),
+    ]);
+
+    return {
+      items: suppliers.map((supplier) => this.toSupplierDto(supplier)),
+      total,
+    };
   }
 
   async getById(companyId: string, supplierId: string) {

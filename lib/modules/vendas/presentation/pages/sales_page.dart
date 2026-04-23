@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/widgets/app_bottom_action_bar.dart';
 import '../../../../app/core/widgets/app_bottom_sheet_container.dart';
 import '../../../../app/core/widgets/app_card.dart';
@@ -49,6 +50,13 @@ class _SalesPageState extends ConsumerState<SalesPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<String>(sessionRuntimeKeyProvider, (previous, next) {
+      if (previous == null || previous == next) {
+        return;
+      }
+      _searchController.clear();
+    });
+
     final productsAsync = ref.watch(salesCatalogProvider);
     final cart = ref.watch(cartProvider);
     final layout = context.appLayout;
@@ -1144,6 +1152,7 @@ class _CustomizeCartItemSheetState
   final Map<int, ModifierGroup> _groupsById = <int, ModifierGroup>{};
   final Map<int, ModifierOption> _optionsById = <int, ModifierOption>{};
   bool _isLoading = true;
+  Object? _loadError;
 
   @override
   void initState() {
@@ -1186,6 +1195,15 @@ class _CustomizeCartItemSheetState
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: CircularProgressIndicator(),
               ),
+            )
+          else if (_loadError != null)
+            AppStateCard(
+              title: 'Falha ao carregar complementos',
+              message: '$_loadError',
+              tone: AppStateTone.error,
+              compact: true,
+              actionLabel: 'Tentar novamente',
+              onAction: _retryLoad,
             )
           else if (_groupsById.isNotEmpty)
             SizedBox(
@@ -1272,20 +1290,42 @@ class _CustomizeCartItemSheetState
       return;
     }
 
-    final localCatalog = ref.read(localCatalogRepositoryProvider);
-    final groups = await localCatalog.listModifierGroups(baseProductId);
-    for (final group in groups) {
-      _groupsById[group.id] = group;
-      final options = await localCatalog.listModifierOptions(group.id);
-      for (final option in options) {
-        _optionsById[option.id] = option;
+    try {
+      final localCatalog = ref.read(localCatalogRepositoryProvider);
+      final groups = await localCatalog.listModifierGroups(baseProductId);
+      for (final group in groups) {
+        _groupsById[group.id] = group;
+        final options = await localCatalog.listModifierOptions(group.id);
+        for (final option in options) {
+          _optionsById[option.id] = option;
+        }
       }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _loadError = error;
+        _isLoading = false;
+      });
+      return;
     }
 
     if (!mounted) {
       return;
     }
     setState(() => _isLoading = false);
+  }
+
+  void _retryLoad() {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+      _groupsById.clear();
+      _optionsById.clear();
+      _selectedOptionIds.clear();
+    });
+    _load();
   }
 
   void _toggleOption({

@@ -2,7 +2,9 @@ import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../database/prisma';
 import { AppError } from '../../shared/http/app-error';
+import { toPaginationParams } from '../../shared/http/pagination';
 import type {
+  ProductRecipeListQueryInput,
   ProductRecipeItemInput,
   ProductRecipeUpsertInput,
 } from './product-recipes.schemas';
@@ -29,19 +31,36 @@ type ProductWithRecipe = Prisma.ProductGetPayload<{
 }>;
 
 export class ProductRecipesService {
-  async listForCompany(companyId: string) {
-    const products = await prisma.product.findMany({
-      where: {
-        companyId,
-        recipeItems: {
-          some: {},
-        },
+  async listForCompany(
+    companyId: string,
+    query: ProductRecipeListQueryInput,
+  ) {
+    const where = {
+      companyId,
+      recipeItems: {
+        some: {},
       },
-      include: productRecipeInclude,
-      orderBy: [{ name: 'asc' }, { updatedAt: 'desc' }],
+    } satisfies Prisma.ProductWhereInput;
+    const { skip, take } = toPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
     });
 
-    return products.map((product) => this.toRecipeDto(product));
+    const [total, products] = await prisma.$transaction([
+      prisma.product.count({ where }),
+      prisma.product.findMany({
+        where,
+        include: productRecipeInclude,
+        skip,
+        take,
+        orderBy: [{ name: 'asc' }, { updatedAt: 'desc' }],
+      }),
+    ]);
+
+    return {
+      items: products.map((product) => this.toRecipeDto(product)),
+      total,
+    };
   }
 
   async getByProductId(companyId: string, productId: string) {

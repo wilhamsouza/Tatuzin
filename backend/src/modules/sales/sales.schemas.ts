@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { createListQuerySchema } from '../../shared/http/pagination';
+
 const nullableTrimmedString = (maxLength: number) =>
   z
     .union([z.string().trim().max(maxLength), z.null(), z.undefined()])
@@ -47,6 +49,9 @@ export const saleCancelSchema = z.object({
   canceledAt: z.string().datetime(),
 });
 
+export const saleListQuerySchema = createListQuerySchema();
+
 export type SaleCreateInput = z.infer<typeof saleCreateSchema>;
 export type SaleItemInput = z.infer<typeof saleItemInputSchema>;
 export type SaleCancelInput = z.infer<typeof saleCancelSchema>;
+export type SaleListQueryInput = z.infer<typeof saleListQuerySchema>;

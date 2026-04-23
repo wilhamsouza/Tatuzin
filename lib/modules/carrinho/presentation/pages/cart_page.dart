@@ -77,7 +77,7 @@ class _CartPageState extends ConsumerState<CartPage> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Voltar ao dashboard',
+            tooltip: 'Voltar ao painel operacional',
             onPressed: () => context.goNamed(AppRouteNames.dashboard),
             icon: const Icon(Icons.home_outlined),
           ),

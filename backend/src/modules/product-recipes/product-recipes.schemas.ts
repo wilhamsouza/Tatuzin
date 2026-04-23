@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { createListQuerySchema } from '../../shared/http/pagination';
+
 const nullableTrimmedString = (maxLength: number) =>
   z
     .union([z.string().trim().max(maxLength), z.null(), z.undefined()])
@@ -26,5 +28,10 @@ export const productRecipeUpsertSchema = z.object({
   items: z.array(recipeItemSchema).default([]),
 });
 
+export const productRecipeListQuerySchema = createListQuerySchema();
+
 export type ProductRecipeUpsertInput = z.infer<typeof productRecipeUpsertSchema>;
 export type ProductRecipeItemInput = z.infer<typeof recipeItemSchema>;
+export type ProductRecipeListQueryInput = z.infer<
+  typeof productRecipeListQuerySchema
+>;

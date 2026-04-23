@@ -28,6 +28,29 @@ class AppEnvironment {
       multiUserEnabled = false,
       multiCompanyEnabled = false;
 
+  factory AppEnvironment.remoteDefault() {
+    return AppEnvironment(
+      name: 'remote-default',
+      productName: AppConstants.appName,
+      dataMode: AppDataMode.futureRemoteReady,
+      endpointConfig: EndpointConfig.remoteDefault(),
+      authEnabled: true,
+      remoteSyncEnabled: false,
+      multiUserEnabled: true,
+      multiCompanyEnabled: true,
+    );
+  }
+
+  const AppEnvironment.localDevelopmentRemoteDefault()
+    : name = 'remote-default',
+      productName = AppConstants.appName,
+      dataMode = AppDataMode.futureRemoteReady,
+      endpointConfig = const EndpointConfig.localDevelopment(),
+      authEnabled = true,
+      remoteSyncEnabled = false,
+      multiUserEnabled = true,
+      multiCompanyEnabled = true;
+
   final String name;
   final String productName;
   final AppDataMode dataMode;
@@ -76,8 +99,8 @@ final appDataModeProvider = Provider<AppDataMode>((ref) {
 });
 
 class AppEnvironmentController extends Notifier<AppEnvironment> {
-  static const EndpointConfig _developmentEndpoint =
-      EndpointConfig.localDevelopment();
+  static final EndpointConfig _remoteDefaultEndpoint =
+      EndpointConfig.remoteDefault();
 
   @override
   AppEnvironment build() {
@@ -99,7 +122,7 @@ class AppEnvironmentController extends Notifier<AppEnvironment> {
 
   Future<void> setEndpointBaseUrl(String baseUrl) async {
     final nextState = state.copyWith(
-      endpointConfig: _developmentEndpoint.copyWith(baseUrl: baseUrl),
+      endpointConfig: _remoteDefaultEndpoint.copyWith(baseUrl: baseUrl),
     );
     state = nextState;
     await AppEnvironmentStorage.save(nextState);
@@ -113,13 +136,13 @@ class AppEnvironmentController extends Notifier<AppEnvironment> {
 
   EndpointConfig _resolveRemoteEndpoint(EndpointConfig current) {
     if (!current.isConfigured) {
-      return _developmentEndpoint;
+      return _remoteDefaultEndpoint;
     }
 
     return current.copyWith(
-      apiVersion: _developmentEndpoint.apiVersion,
-      connectTimeout: _developmentEndpoint.connectTimeout,
-      receiveTimeout: _developmentEndpoint.receiveTimeout,
+      apiVersion: _remoteDefaultEndpoint.apiVersion,
+      connectTimeout: _remoteDefaultEndpoint.connectTimeout,
+      receiveTimeout: _remoteDefaultEndpoint.receiveTimeout,
     );
   }
 
@@ -128,9 +151,7 @@ class AppEnvironmentController extends Notifier<AppEnvironment> {
     required EndpointConfig endpointConfig,
   }) {
     return AppEnvironment(
-      name: mode == AppDataMode.localOnly
-          ? 'local-default'
-          : 'local-dev-remote',
+      name: mode == AppDataMode.localOnly ? 'local-default' : 'remote-default',
       productName: AppConstants.appName,
       dataMode: mode,
       endpointConfig: endpointConfig,
@@ -152,23 +173,27 @@ class AppEnvironmentStorage {
 
   static Future<AppEnvironment> load() async {
     final preferences = await SharedPreferences.getInstance();
-    final mode = _parseMode(preferences.getString(_dataModeKey));
+    final persistedMode = preferences.getString(_dataModeKey);
+    final mode = persistedMode == null || persistedMode.trim().isEmpty
+        ? _defaultDataMode()
+        : _parseMode(persistedMode);
     final defaultEndpoint = mode == AppDataMode.localOnly
         ? const EndpointConfig()
-        : const EndpointConfig.localDevelopment();
+        : EndpointConfig.remoteDefault();
     final apiVersion =
         preferences.getString(_endpointApiVersionKey)?.trim().isNotEmpty == true
         ? preferences.getString(_endpointApiVersionKey)!.trim()
         : defaultEndpoint.apiVersion;
-    final endpointConfig = defaultEndpoint.copyWith(
-      apiVersion: apiVersion,
-      baseUrl: preferences.getString(_endpointBaseUrlKey),
+    final persistedBaseUrl = _resolvePersistedBaseUrl(
+      preferences.getString(_endpointBaseUrlKey),
     );
+    var endpointConfig = defaultEndpoint.copyWith(apiVersion: apiVersion);
+    if (persistedBaseUrl != null) {
+      endpointConfig = endpointConfig.copyWith(baseUrl: persistedBaseUrl);
+    }
 
     return AppEnvironment(
-      name: mode == AppDataMode.localOnly
-          ? 'local-default'
-          : 'local-dev-remote',
+      name: mode == AppDataMode.localOnly ? 'local-default' : 'remote-default',
       productName: AppConstants.appName,
       dataMode: mode,
       endpointConfig: endpointConfig,
@@ -208,5 +233,26 @@ class AppEnvironmentStorage {
     }
 
     return AppDataMode.localOnly;
+  }
+
+  static AppDataMode _defaultDataMode() {
+    return AppDataMode.futureRemoteReady;
+  }
+
+  static String? _resolvePersistedBaseUrl(String? rawValue) {
+    final normalized = EndpointConfig.normalizeBaseUrl(
+      rawValue,
+      apiVersion: EndpointConfig.defaultApiVersion,
+    );
+    if (normalized == null) {
+      return null;
+    }
+
+    if (EndpointConfig.isReleaseBuild &&
+        EndpointConfig.isLocalNetworkBaseUrl(normalized)) {
+      return null;
+    }
+
+    return normalized;
   }
 }

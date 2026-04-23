@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../database/app_database.dart';
 import '../database/table_names.dart';
+import 'auto_sync_coordinator.dart';
 import 'sqlite_sync_audit_repository.dart';
 import 'sync_audit_event_type.dart';
 import 'sync_conflict_info.dart';
@@ -86,6 +87,10 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
         },
         createdAt: now,
       );
+      SyncMutationSignalBus.instance.notifyEnqueued(
+        featureKey: featureKey,
+        enqueuedAt: now,
+      );
       return;
     }
 
@@ -165,6 +170,10 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
       },
       createdAt: now,
     );
+    SyncMutationSignalBus.instance.notifyEnqueued(
+      featureKey: existing.featureKey,
+      enqueuedAt: now,
+    );
   }
 
   String _buildCorrelationKey({
@@ -196,6 +205,7 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
   }) async {
     final database = await _appDatabase.database;
     final currentTime = now ?? DateTime.now();
+    await recoverStaleProcessingLocks(now: currentTime);
     final rows = await database.query(
       TableNames.syncQueue,
       orderBy: 'updated_at ASC, id ASC',
@@ -212,6 +222,66 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
           ),
         )
         .toList();
+  }
+
+  @override
+  Future<int> recoverStaleProcessingLocks({DateTime? now}) async {
+    final database = await _appDatabase.database;
+    final currentTime = now ?? DateTime.now();
+    final rows = await database.query(
+      TableNames.syncQueue,
+      where: 'status = ? AND locked_at IS NOT NULL',
+      whereArgs: [SyncQueueStatus.processing.storageValue],
+    );
+
+    final staleItems = rows
+        .map(_mapRow)
+        .where(
+          (item) =>
+              item.lockedAt != null &&
+              currentTime.difference(item.lockedAt!) >= staleLockThreshold,
+        )
+        .toList();
+    if (staleItems.isEmpty) {
+      return 0;
+    }
+
+    await database.transaction((txn) async {
+      for (final item in staleItems) {
+        final recoveredStatus = _statusForOperation(item.operation);
+        await txn.update(
+          TableNames.syncQueue,
+          {
+            'status': recoveredStatus.storageValue,
+            'locked_at': null,
+            'updated_at': currentTime.toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: [item.id],
+        );
+        await _auditRepository.log(
+          executor: txn,
+          featureKey: item.featureKey,
+          entityType: item.entityType,
+          localEntityId: item.localEntityId,
+          localUuid: item.localUuid,
+          remoteId: item.remoteId,
+          eventType: SyncAuditEventType.staleBlockCleared,
+          message:
+              'Um lock stale foi recuperado e o item voltou para a fila reprocessavel.',
+          details: <String, dynamic>{
+            'queueId': item.id,
+            'previousLockedAt': item.lockedAt!.toIso8601String(),
+            'staleThresholdMinutes': staleLockThreshold.inMinutes,
+            'operation': item.operation.storageValue,
+            'recoveredStatus': recoveredStatus.storageValue,
+          },
+          createdAt: currentTime,
+        );
+      }
+    });
+
+    return staleItems.length;
   }
 
   @override
@@ -235,6 +305,26 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
         currentTime.difference(item.lockedAt!) < staleLockThreshold;
     if (isLocked && item.status == SyncQueueStatus.processing) {
       return null;
+    }
+
+    if (item.status == SyncQueueStatus.processing && item.lockedAt != null) {
+      await _auditRepository.log(
+        featureKey: item.featureKey,
+        entityType: item.entityType,
+        localEntityId: item.localEntityId,
+        localUuid: item.localUuid,
+        remoteId: item.remoteId,
+        eventType: SyncAuditEventType.staleBlockCleared,
+        message:
+            'Um lock de processamento expirado foi recuperado para nova tentativa automatica.',
+        details: <String, dynamic>{
+          'queueId': item.id,
+          'previousLockedAt': item.lockedAt!.toIso8601String(),
+          'staleThresholdMinutes': staleLockThreshold.inMinutes,
+          'operation': item.operation.storageValue,
+        },
+        createdAt: currentTime,
+      );
     }
 
     await database.update(
@@ -522,7 +612,8 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
       localUuid: item.localUuid,
       remoteId: item.remoteId,
       eventType: SyncAuditEventType.queueReenqueuedAsCreate,
-      message: 'Registro remoto antigo nao existe mais; item foi reenfileirado como criacao.',
+      message:
+          'Registro remoto antigo nao existe mais; item foi reenfileirado como criacao.',
       details: <String, dynamic>{
         'queueId': item.id,
         'previousOperation': item.operation.storageValue,
@@ -538,6 +629,7 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
   @override
   Future<List<SyncQueueFeatureSummary>> listFeatureSummaries() async {
     final database = await _appDatabase.database;
+    final now = DateTime.now();
     final rows = await database.query(
       TableNames.syncQueue,
       orderBy: 'feature_key ASC, updated_at DESC',
@@ -553,6 +645,8 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
       final items = entry.value;
       var pendingCount = 0;
       var processingCount = 0;
+      var activeProcessingCount = 0;
+      var staleProcessingCount = 0;
       var syncedCount = 0;
       var errorCount = 0;
       var blockedCount = 0;
@@ -573,6 +667,14 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
             break;
           case SyncQueueStatus.processing:
             processingCount++;
+            final lockIsFresh =
+                item.lockedAt != null &&
+                now.difference(item.lockedAt!) < staleLockThreshold;
+            if (lockIsFresh) {
+              activeProcessingCount++;
+            } else {
+              staleProcessingCount++;
+            }
             break;
           case SyncQueueStatus.synced:
             syncedCount++;
@@ -613,6 +715,8 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
         totalTracked: items.length,
         pendingCount: pendingCount,
         processingCount: processingCount,
+        activeProcessingCount: activeProcessingCount,
+        staleProcessingCount: staleProcessingCount,
         syncedCount: syncedCount,
         errorCount: errorCount,
         blockedCount: blockedCount,
@@ -622,6 +726,7 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
         nextRetryAt: nextRetryAt,
         lastError: lastError,
         lastErrorType: lastErrorType,
+        lastErrorAt: lastErrorAt,
       );
     }).toList();
   }

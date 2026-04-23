@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { createListQuerySchema } from '../../shared/http/pagination';
+
 const nullableTrimmedString = (maxLength: number) =>
   z
     .union([z.string().trim().max(maxLength), z.null(), z.undefined()])
@@ -24,4 +26,9 @@ export const categoryUpsertSchema = z.object({
   deletedAt: deletedAtField,
 });
 
+export const categoryListQuerySchema = createListQuerySchema({
+  includeDeleted: true,
+});
+
 export type CategoryUpsertInput = z.infer<typeof categoryUpsertSchema>;
+export type CategoryListQueryInput = z.infer<typeof categoryListQuerySchema>;

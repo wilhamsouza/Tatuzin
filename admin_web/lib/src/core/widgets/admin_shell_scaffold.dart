@@ -21,7 +21,27 @@ class AdminShellScaffold extends ConsumerWidget {
     _AdminNavItem(
       route: '/dashboard',
       icon: Icons.space_dashboard_rounded,
-      label: 'Dashboard Admin',
+      label: 'Dashboard Plataforma',
+    ),
+    _AdminNavItem(
+      route: '/management/dashboard',
+      icon: Icons.insights_rounded,
+      label: 'Dashboard Gerencial',
+    ),
+    _AdminNavItem(
+      route: '/management/reports',
+      icon: Icons.assessment_rounded,
+      label: 'Relatorios Gerenciais',
+    ),
+    _AdminNavItem(
+      route: '/management/governance',
+      icon: Icons.account_tree_rounded,
+      label: 'Governanca Hibrida',
+    ),
+    _AdminNavItem(
+      route: '/management/crm/customers',
+      icon: Icons.people_alt_rounded,
+      label: 'CRM Gerencial',
     ),
     _AdminNavItem(
       route: '/companies',
@@ -74,10 +94,7 @@ class AdminShellScaffold extends ConsumerWidget {
             licenseStatus: auth.session?.company.license?.status,
           ),
         ),
-        body: Padding(
-          padding: const EdgeInsets.all(16),
-          child: child,
-        ),
+        body: Padding(padding: const EdgeInsets.all(16), child: child),
       );
     }
 
@@ -112,15 +129,17 @@ class AdminShellScaffold extends ConsumerWidget {
                           children: [
                             Text(
                               title,
-                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                  ),
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Operacao cloud, licencas e suporte da plataforma Tatuzin.',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              'Plataforma, leitura gerencial e CRM cloud-first do Tatuzin.',
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                                   ),
                             ),
                           ],
@@ -128,9 +147,14 @@ class AdminShellScaffold extends ConsumerWidget {
                       ),
                       const SizedBox(width: 24),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(18),
                         ),
                         child: Column(
@@ -138,9 +162,8 @@ class AdminShellScaffold extends ConsumerWidget {
                           children: [
                             Text(
                               auth.session?.user.name ?? 'Administrador',
-                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                  ),
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                             const SizedBox(height: 4),
                             Text(
@@ -216,7 +239,7 @@ class _Sidebar extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                'Painel da plataforma e suporte cloud',
+                'Painel da plataforma, analytics e CRM',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -249,7 +272,9 @@ class _Sidebar extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Chip(
-                      label: Text(AdminFormatters.formatLicenseStatus(licenseStatus)),
+                      label: Text(
+                        AdminFormatters.formatLicenseStatus(licenseStatus),
+                      ),
                     ),
                   ],
                 ),

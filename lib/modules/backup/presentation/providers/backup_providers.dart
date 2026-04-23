@@ -38,7 +38,7 @@ final backupShareServiceProvider = Provider<BackupShareService>((ref) {
 
 final databaseBackupServiceProvider = Provider<DatabaseBackupService>((ref) {
   return DatabaseBackupService(
-    appDatabase: ref.read(appDatabaseProvider),
+    appDatabase: ref.watch(appDatabaseProvider),
     fileLocator: ref.read(databaseFileLocatorProvider),
     validationService: ref.read(backupValidationServiceProvider),
   );
@@ -46,7 +46,7 @@ final databaseBackupServiceProvider = Provider<DatabaseBackupService>((ref) {
 
 final databaseRestoreServiceProvider = Provider<DatabaseRestoreService>((ref) {
   return DatabaseRestoreService(
-    appDatabase: ref.read(appDatabaseProvider),
+    appDatabase: ref.watch(appDatabaseProvider),
     fileLocator: ref.read(databaseFileLocatorProvider),
     validationService: ref.read(backupValidationServiceProvider),
     backupService: ref.read(databaseBackupServiceProvider),

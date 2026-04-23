@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/core/app_context/app_operational_context.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../data/sqlite_cost_repository.dart';
 import '../../domain/entities/cost_entry.dart';
 import '../../domain/entities/cost_overview.dart';
@@ -14,7 +15,7 @@ import '../../domain/repositories/cost_repository.dart';
 
 final localCostRepositoryProvider = Provider<SqliteCostRepository>((ref) {
   return SqliteCostRepository(
-    ref.read(appDatabaseProvider),
+    ref.watch(appDatabaseProvider),
     ref.watch(appOperationalContextProvider),
   );
 });
@@ -24,6 +25,7 @@ final costRepositoryProvider = Provider<CostRepository>((ref) {
 });
 
 final costOverviewProvider = FutureProvider<CostOverview>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(costRepositoryProvider).fetchOverview();
 });
@@ -52,6 +54,7 @@ final costsProvider = FutureProvider.family<List<CostEntry>, CostType>((
   ref,
   type,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref
       .watch(costRepositoryProvider)
@@ -69,6 +72,7 @@ final costDetailProvider = FutureProvider.family<CostEntry, int>((
   ref,
   costId,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(costRepositoryProvider).fetchCost(costId);
 });

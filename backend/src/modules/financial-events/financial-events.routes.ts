@@ -1,9 +1,12 @@
 import { Router } from 'express';
 
 import { requireCloudLicense } from '../../shared/http/auth-middleware';
+import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { asyncHandler } from '../../shared/http/async-handler';
-import { validateBody } from '../../shared/http/validate';
+import { validateBody, validateQuery } from '../../shared/http/validate';
 import {
+  financialEventListQuerySchema,
+  type FinancialEventListQueryInput,
   financialEventCreateSchema,
 } from './financial-events.schemas';
 import { FinancialEventsService } from './financial-events.service';
@@ -24,14 +27,21 @@ financialEventsRouter.use(requireCloudLicense);
 
 financialEventsRouter.get(
   '/',
+  validateQuery(financialEventListQuerySchema),
   asyncHandler(async (request, response) => {
-    const items = await financialEventsService.listForCompany(
+    const query = request.query as FinancialEventListQueryInput;
+    const result = await financialEventsService.listForCompany(
       request.auth!.companyId,
+      query,
     );
-    response.json({
-      items,
-      count: items.length,
-    });
+    response.json(
+      buildPaginatedResponse({
+        items: result.items,
+        page: query.page,
+        pageSize: query.pageSize,
+        total: result.total,
+      }),
+    );
   }),
 );
 

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { createListQuerySchema } from '../../shared/http/pagination';
+
 const nullableTrimmedString = (maxLength: number) =>
   z
     .union([z.string().trim().max(maxLength), z.null(), z.undefined()])
@@ -103,6 +105,9 @@ export const purchaseUpsertSchema = z.object({
   payments: z.array(purchasePaymentSchema).default([]),
 });
 
+export const purchaseListQuerySchema = createListQuerySchema();
+
 export type PurchaseUpsertInput = z.infer<typeof purchaseUpsertSchema>;
 export type PurchaseItemInput = z.infer<typeof purchaseItemSchema>;
 export type PurchasePaymentInput = z.infer<typeof purchasePaymentSchema>;
+export type PurchaseListQueryInput = z.infer<typeof purchaseListQuerySchema>;

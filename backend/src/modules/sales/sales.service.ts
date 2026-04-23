@@ -2,28 +2,44 @@ import type { Prisma, Sale, SaleItem } from '@prisma/client';
 
 import { prisma } from '../../database/prisma';
 import { AppError } from '../../shared/http/app-error';
+import { toPaginationParams } from '../../shared/http/pagination';
 import type {
   SaleCancelInput,
   SaleCreateInput,
   SaleItemInput,
+  SaleListQueryInput,
 } from './sales.schemas';
 
 type SaleWithItems = Sale & { items: SaleItem[] };
 type SaleWithCount = Sale & { _count: { items: number } };
 
 export class SalesService {
-  async listForCompany(companyId: string) {
-    const sales = await prisma.sale.findMany({
-      where: { companyId },
-      include: {
-        _count: {
-          select: { items: true },
-        },
-      },
-      orderBy: [{ soldAt: 'desc' }, { updatedAt: 'desc' }],
+  async listForCompany(companyId: string, query: SaleListQueryInput) {
+    const where = { companyId };
+    const { skip, take } = toPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
     });
 
-    return sales.map((sale) => this.toSaleSummaryDto(sale));
+    const [total, sales] = await prisma.$transaction([
+      prisma.sale.count({ where }),
+      prisma.sale.findMany({
+        where,
+        include: {
+          _count: {
+            select: { items: true },
+          },
+        },
+        skip,
+        take,
+        orderBy: [{ soldAt: 'desc' }, { updatedAt: 'desc' }],
+      }),
+    ]);
+
+    return {
+      items: sales.map((sale) => this.toSaleSummaryDto(sale)),
+      total,
+    };
   }
 
   async getById(companyId: string, saleId: string) {

@@ -9,6 +9,7 @@ import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../data/datasources/fiado_remote_datasource.dart';
 import '../../data/fiado_payment_sync_processor.dart';
 import '../../data/real/real_fiado_remote_datasource.dart';
@@ -21,7 +22,7 @@ import '../../domain/usecases/register_fiado_payment_use_case.dart';
 
 final localFiadoRepositoryProvider = Provider<SqliteFiadoRepository>((ref) {
   return SqliteFiadoRepository(
-    ref.read(appDatabaseProvider),
+    ref.watch(appDatabaseProvider),
     ref.watch(appOperationalContextProvider),
   );
 });
@@ -55,6 +56,7 @@ final fiadoStatusFilterProvider = StateProvider<String?>((ref) => null);
 final fiadoOverdueOnlyProvider = StateProvider<bool>((ref) => false);
 
 final fiadoListProvider = FutureProvider<List<FiadoAccount>>((ref) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref
       .watch(fiadoRepositoryProvider)
@@ -69,6 +71,7 @@ final fiadoDetailProvider = FutureProvider.family<FiadoDetail, int>((
   ref,
   fiadoId,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   return ref.watch(fiadoRepositoryProvider).fetchDetail(fiadoId);
 });

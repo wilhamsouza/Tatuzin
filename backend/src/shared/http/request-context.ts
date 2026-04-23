@@ -14,14 +14,6 @@ function normalizeRequestId(rawValue: string | undefined) {
 }
 
 function readClientIp(request: Request) {
-  const forwarded = request.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.trim().length > 0) {
-    const first = forwarded.split(',')[0]?.trim();
-    if (first != null && first.length > 0) {
-      return first;
-    }
-  }
-
   return request.ip;
 }
 

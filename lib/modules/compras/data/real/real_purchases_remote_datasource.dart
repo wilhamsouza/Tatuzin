@@ -4,6 +4,7 @@ import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/network/contracts/api_client_contract.dart';
 import '../../../../app/core/network/endpoint_config.dart';
+import '../../../../app/core/network/paginated_remote_fetch.dart';
 import '../../../../app/core/network/remote_feature_diagnostic.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 import '../datasources/purchases_remote_datasource.dart';
@@ -143,22 +144,22 @@ class RealPurchasesRemoteDatasource implements PurchasesRemoteDatasource {
 
   @override
   Future<List<RemotePurchaseRecord>> listAll() async {
-    final response = await _apiClient.getJson(
-      '/purchases',
-      options: await _authorizedOptions(),
+    return fetchAllPaginatedItems(
+      fetchPage: ({required page, required pageSize}) async {
+        return _apiClient.getJson(
+          '/purchases',
+          options: await _authorizedOptions(
+            queryParameters: <String, Object?>{
+              'page': page,
+              'pageSize': pageSize,
+            },
+          ),
+        );
+      },
+      fromJson: RemotePurchaseRecord.fromJson,
+      invalidItemsMessage:
+          'A API nao retornou a lista de compras em formato valido.',
     );
-
-    final items = response.data['items'];
-    if (items is! List) {
-      throw const NetworkRequestException(
-        'A API nao retornou a lista de compras em formato valido.',
-      );
-    }
-
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map(RemotePurchaseRecord.fromJson)
-        .toList();
   }
 
   @override
@@ -182,7 +183,9 @@ class RealPurchasesRemoteDatasource implements PurchasesRemoteDatasource {
     return RemotePurchaseRecord.fromJson(purchase);
   }
 
-  Future<ApiRequestOptions> _authorizedOptions() async {
+  Future<ApiRequestOptions> _authorizedOptions({
+    Map<String, Object?> queryParameters = const <String, Object?>{},
+  }) async {
     final token = await _tokenStorage.readAccessToken();
     if (token == null || token.trim().isEmpty) {
       throw const AuthenticationException(
@@ -192,6 +195,7 @@ class RealPurchasesRemoteDatasource implements PurchasesRemoteDatasource {
 
     return ApiRequestOptions(
       headers: <String, String>{'Authorization': 'Bearer $token'},
+      queryParameters: queryParameters,
     );
   }
 }

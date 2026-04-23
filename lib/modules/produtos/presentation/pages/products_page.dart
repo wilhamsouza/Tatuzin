@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_feedback.dart';
 import '../../../../app/core/widgets/app_list_tile_card.dart';
@@ -43,6 +44,13 @@ class _ProductsPageState extends ConsumerState<ProductsPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<String>(sessionRuntimeKeyProvider, (previous, next) {
+      if (previous == null || previous == next) {
+        return;
+      }
+      _searchController.clear();
+    });
+
     final productsAsync = ref.watch(productListProvider);
     final layout = context.appLayout;
 
@@ -183,7 +191,7 @@ class _ProductsPageState extends ConsumerState<ProductsPage> {
                   padding: EdgeInsets.all(layout.pagePadding + layout.space2),
                   child: AppStateCard(
                     title: 'Falha ao carregar produtos',
-                    message: 'Tente novamente para atualizar o catalogo.',
+                    message: '$error',
                     tone: AppStateTone.error,
                     compact: true,
                     actionLabel: 'Tentar novamente',

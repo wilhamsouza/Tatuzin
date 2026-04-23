@@ -61,7 +61,10 @@ class _ReportDonutChartCardState extends State<ReportDonutChartCard> {
           : LayoutBuilder(
               builder: (context, constraints) {
                 final isCompact = constraints.maxWidth < 720;
-                final chart = _buildChart(context);
+                final spacing = isCompact
+                    ? context.appLayout.space6
+                    : context.appLayout.space7;
+                final chart = _buildChart(context, isCompact: isCompact);
                 final legend = _buildLegend(context);
 
                 return Column(
@@ -69,7 +72,7 @@ class _ReportDonutChartCardState extends State<ReportDonutChartCard> {
                   children: [
                     if (isCompact) ...[
                       chart,
-                      SizedBox(height: context.appLayout.space7),
+                      SizedBox(height: spacing),
                       legend,
                     ] else
                       Row(
@@ -81,7 +84,7 @@ class _ReportDonutChartCardState extends State<ReportDonutChartCard> {
                         ],
                       ),
                     if ((widget.insight ?? '').trim().isNotEmpty) ...[
-                      SizedBox(height: context.appLayout.space7),
+                      SizedBox(height: spacing),
                       ReportChartInsight(text: widget.insight!.trim()),
                     ],
                   ],
@@ -91,22 +94,32 @@ class _ReportDonutChartCardState extends State<ReportDonutChartCard> {
     );
   }
 
-  Widget _buildChart(BuildContext context) {
+  Widget _buildChart(BuildContext context, {required bool isCompact}) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final size = math.min(constraints.maxWidth, 260.0);
-        final safeSize = size <= 0 ? 220.0 : size;
-        final radius = safeSize * 0.34;
-        final centerSpace = safeSize * 0.28;
+        final maxWidth =
+            constraints.maxWidth.isFinite && constraints.maxWidth > 0
+            ? constraints.maxWidth
+            : 220.0;
+        final maxChartSize = math.min(maxWidth, isCompact ? 208.0 : 224.0);
+        final minChartSize = math.min(maxChartSize, isCompact ? 164.0 : 180.0);
+        final targetSize = maxWidth * (isCompact ? 0.58 : 0.8);
+        final safeSize = targetSize.clamp(minChartSize, maxChartSize);
+        final radius = safeSize * 0.36;
+        final centerSpace = safeSize * 0.25;
+        final centerLabelSize = centerSpace * 1.72;
+        final activeRadiusDelta = (safeSize * 0.04).clamp(4.0, 8.0);
         final activeSlice = _activeIndex == null
             ? null
             : widget.slices[_activeIndex!];
 
         return Align(
           alignment: Alignment.topCenter,
-          child: SizedBox(
-            width: safeSize,
-            height: safeSize,
+          child: ConstrainedBox(
+            constraints: BoxConstraints.tightFor(
+              width: safeSize,
+              height: safeSize,
+            ),
             child: Stack(
               clipBehavior: Clip.none,
               children: [
@@ -142,14 +155,16 @@ class _ReportDonutChartCardState extends State<ReportDonutChartCard> {
                           widget.slices[index],
                           isActive: _activeIndex == index,
                           baseRadius: radius,
+                          activeRadiusDelta: activeRadiusDelta,
                         ),
                     ],
                   ),
                   duration: const Duration(milliseconds: 220),
                 ),
                 Align(
-                  child: Padding(
-                    padding: EdgeInsets.all(safeSize * 0.16),
+                  child: SizedBox(
+                    width: centerLabelSize,
+                    height: centerLabelSize,
                     child: ReportChartCenterLabel(
                       label: widget.totalLabel,
                       value: widget.totalValue,
@@ -177,13 +192,14 @@ class _ReportDonutChartCardState extends State<ReportDonutChartCard> {
     ReportDonutSlice slice, {
     required bool isActive,
     required double baseRadius,
+    required double activeRadiusDelta,
   }) {
     final colors = context.appColors;
 
     return PieChartSectionData(
       value: slice.value,
       color: slice.color,
-      radius: isActive ? baseRadius + 10 : baseRadius,
+      radius: isActive ? baseRadius + activeRadiusDelta : baseRadius,
       showTitle: false,
       borderSide: BorderSide(
         color: colors.cardBackground,

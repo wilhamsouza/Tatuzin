@@ -13,6 +13,7 @@ import '../../../../app/core/sync/sqlite_sync_audit_repository.dart';
 import '../../../../app/core/sync/sync_batch_result.dart';
 import '../../../../app/core/sync/sync_audit_log.dart';
 import '../../../../app/core/sync/sync_providers.dart';
+import '../../../../app/core/sync/sync_display_state.dart';
 import '../../../../app/core/sync/sync_repair_action.dart';
 import '../../../../app/core/sync/sync_repair_decision.dart';
 import '../../../../app/core/sync/sync_repair_repository.dart';
@@ -28,6 +29,7 @@ import '../../../categorias/presentation/providers/category_providers.dart';
 import '../../../caixa/presentation/providers/cash_providers.dart';
 import '../../../clientes/presentation/providers/client_providers.dart';
 import '../../../compras/presentation/providers/purchase_providers.dart';
+import '../../../estoque/presentation/providers/inventory_providers.dart';
 import '../../../fiado/presentation/providers/fiado_providers.dart';
 import '../../../fornecedores/presentation/providers/supplier_providers.dart';
 import '../../../insumos/presentation/providers/supply_providers.dart';
@@ -37,7 +39,7 @@ import '../../../vendas/presentation/providers/sales_providers.dart';
 final syncReadinessRepositoryProvider = Provider<SyncReadinessRepository>((
   ref,
 ) {
-  return SqliteSyncReadinessRepository(ref.read(appDatabaseProvider));
+  return SqliteSyncReadinessRepository(ref.watch(appDatabaseProvider));
 });
 
 final syncReadinessSummaryProvider = FutureProvider<List<SyncFeatureSummary>>((
@@ -54,7 +56,7 @@ final syncQueueFeatureSummariesProvider =
     });
 
 final syncAuditRepositoryProvider = Provider<SqliteSyncAuditRepository>((ref) {
-  return SqliteSyncAuditRepository(ref.read(appDatabaseProvider));
+  return SqliteSyncAuditRepository(ref.watch(appDatabaseProvider));
 });
 
 final syncAuditLogsProvider = FutureProvider<List<SyncAuditLog>>((ref) async {
@@ -65,7 +67,7 @@ final syncAuditLogsProvider = FutureProvider<List<SyncAuditLog>>((ref) async {
 final localRemoteReconciliationRepositoryProvider =
     Provider<LocalRemoteReconciliationRepository>((ref) {
       return LocalRemoteReconciliationRepository(
-        appDatabase: ref.read(appDatabaseProvider),
+        appDatabase: ref.watch(appDatabaseProvider),
         suppliersRemoteDatasource: ref.read(suppliersRemoteDatasourceProvider),
         categoriesRemoteDatasource: ref.read(
           categoriesRemoteDatasourceProvider,
@@ -153,6 +155,8 @@ final syncHealthOverviewProvider = Provider<SyncHealthOverview>((ref) {
 
   var totalPending = 0;
   var totalProcessing = 0;
+  var totalActiveProcessing = 0;
+  var totalStaleProcessing = 0;
   var totalSynced = 0;
   var totalErrors = 0;
   var totalBlocked = 0;
@@ -165,6 +169,8 @@ final syncHealthOverviewProvider = Provider<SyncHealthOverview>((ref) {
   for (final summary in summaries) {
     totalPending += summary.pendingCount;
     totalProcessing += summary.processingCount;
+    totalActiveProcessing += summary.activeProcessingCount;
+    totalStaleProcessing += summary.staleProcessingCount;
     totalSynced += summary.syncedCount;
     totalErrors += summary.errorCount;
     totalBlocked += summary.blockedCount;
@@ -177,11 +183,9 @@ final syncHealthOverviewProvider = Provider<SyncHealthOverview>((ref) {
       lastProcessedAt = summary.lastProcessedAt;
     }
 
-    if (summary.lastError != null &&
-        summary.lastProcessedAt != null &&
-        (lastErrorAt == null ||
-            summary.lastProcessedAt!.isAfter(lastErrorAt))) {
-      lastErrorAt = summary.lastProcessedAt;
+    if (summary.lastErrorAt != null &&
+        (lastErrorAt == null || summary.lastErrorAt!.isAfter(lastErrorAt))) {
+      lastErrorAt = summary.lastErrorAt;
     }
 
     if (summary.nextRetryAt != null &&
@@ -193,6 +197,8 @@ final syncHealthOverviewProvider = Provider<SyncHealthOverview>((ref) {
   return SyncHealthOverview(
     totalPending: totalPending,
     totalProcessing: totalProcessing,
+    totalActiveProcessing: totalActiveProcessing,
+    totalStaleProcessing: totalStaleProcessing,
     totalSynced: totalSynced,
     totalErrors: totalErrors,
     totalBlocked: totalBlocked,
@@ -203,6 +209,43 @@ final syncHealthOverviewProvider = Provider<SyncHealthOverview>((ref) {
     nextRetryAt: nextRetryAt,
   );
 });
+
+final hybridOperationalTruthSnapshotProvider =
+    Provider<HybridOperationalTruthSnapshot>((ref) {
+      final categories =
+          ref.watch(categoryOptionsProvider).valueOrNull ?? const [];
+      final products =
+          ref.watch(productCatalogProvider).valueOrNull ?? const [];
+      final customers = ref.watch(clientListProvider).valueOrNull ?? const [];
+      final inventoryItems =
+          ref.watch(inventoryItemsProvider).valueOrNull ?? const [];
+      final syncHealth = ref.watch(syncHealthOverviewProvider);
+
+      return HybridOperationalTruthSnapshot(
+        activeCategories: categories
+            .where((category) => category.isActive)
+            .length,
+        activeProducts: products.where((product) => product.isActive).length,
+        localOnlyProducts: products
+            .where((product) => product.remoteId == null)
+            .length,
+        productsWithLocalPhoto: products
+            .where((product) => product.hasPhoto)
+            .length,
+        activeCustomers: customers
+            .where((customer) => customer.isActive)
+            .length,
+        localOnlyCustomers: customers
+            .where((customer) => customer.remoteId == null)
+            .length,
+        inventoryTrackedItems: inventoryItems.length,
+        hasPendingCloudAttention:
+            syncHealth.totalPending > 0 ||
+            syncHealth.totalErrors > 0 ||
+            syncHealth.totalBlocked > 0 ||
+            syncHealth.totalConflicts > 0,
+      );
+    });
 
 final catalogSyncControllerProvider =
     AsyncNotifierProvider<CatalogSyncController, void>(
@@ -307,10 +350,34 @@ class BackendConnectionStatus {
   final String? remoteCompanyName;
 }
 
+class HybridOperationalTruthSnapshot {
+  const HybridOperationalTruthSnapshot({
+    required this.activeCategories,
+    required this.activeProducts,
+    required this.localOnlyProducts,
+    required this.productsWithLocalPhoto,
+    required this.activeCustomers,
+    required this.localOnlyCustomers,
+    required this.inventoryTrackedItems,
+    required this.hasPendingCloudAttention,
+  });
+
+  final int activeCategories;
+  final int activeProducts;
+  final int localOnlyProducts;
+  final int productsWithLocalPhoto;
+  final int activeCustomers;
+  final int localOnlyCustomers;
+  final int inventoryTrackedItems;
+  final bool hasPendingCloudAttention;
+}
+
 class SyncHealthOverview {
   const SyncHealthOverview({
     required this.totalPending,
     required this.totalProcessing,
+    required this.totalActiveProcessing,
+    required this.totalStaleProcessing,
     required this.totalSynced,
     required this.totalErrors,
     required this.totalBlocked,
@@ -323,6 +390,8 @@ class SyncHealthOverview {
 
   final int totalPending;
   final int totalProcessing;
+  final int totalActiveProcessing;
+  final int totalStaleProcessing;
   final int totalSynced;
   final int totalErrors;
   final int totalBlocked;
@@ -331,6 +400,26 @@ class SyncHealthOverview {
   final DateTime? lastProcessedAt;
   final DateTime? lastErrorAt;
   final DateTime? nextRetryAt;
+
+  int get totalPendingForDisplay => totalPending + totalStaleProcessing;
+
+  bool get hasActiveProcessing => totalActiveProcessing > 0;
+
+  bool get hasAttention =>
+      totalErrors > 0 || totalBlocked > 0 || totalConflicts > 0;
+
+  SyncDisplayState get displayState {
+    if (hasAttention) {
+      return SyncDisplayState.attention;
+    }
+    if (hasActiveProcessing) {
+      return SyncDisplayState.syncing;
+    }
+    if (totalPendingForDisplay > 0) {
+      return SyncDisplayState.pending;
+    }
+    return SyncDisplayState.synced;
+  }
 }
 
 class CatalogSyncController extends AsyncNotifier<void> {
@@ -364,13 +453,8 @@ class CatalogSyncController extends AsyncNotifier<void> {
     state = const AsyncLoading();
     try {
       final result = await ref
-          .read(syncQueueEngineProvider)
-          .process(featureKeys: featureKeys, retryOnly: reprocessedOnly);
-
-      ref.read(appDataRefreshProvider.notifier).state++;
-      ref.invalidate(syncQueueFeatureSummariesProvider);
-      ref.invalidate(syncReadinessSummaryProvider);
-      ref.invalidate(syncAuditLogsProvider);
+          .read(syncBatchRunnerProvider)
+          .run(retryOnly: reprocessedOnly, featureKeys: featureKeys);
       state = const AsyncData(null);
       return result;
     } catch (error, stackTrace) {

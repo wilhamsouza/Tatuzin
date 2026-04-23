@@ -2,19 +2,37 @@ import type { Customer } from '@prisma/client';
 
 import { prisma } from '../../database/prisma';
 import { AppError } from '../../shared/http/app-error';
-import type { CustomerUpsertInput } from './customers.schemas';
+import { toPaginationParams } from '../../shared/http/pagination';
+import type {
+  CustomerListQueryInput,
+  CustomerUpsertInput,
+} from './customers.schemas';
 
 export class CustomersService {
-  async listForCompany(companyId: string, includeDeleted = false) {
-    const customers = await prisma.customer.findMany({
-      where: {
-        companyId,
-        ...(includeDeleted ? {} : { deletedAt: null }),
-      },
-      orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+  async listForCompany(companyId: string, query: CustomerListQueryInput) {
+    const where = {
+      companyId,
+      ...(query.includeDeleted ? {} : { deletedAt: null }),
+    };
+    const { skip, take } = toPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
     });
 
-    return customers.map((customer) => this.toCustomerDto(customer));
+    const [total, customers] = await prisma.$transaction([
+      prisma.customer.count({ where }),
+      prisma.customer.findMany({
+        where,
+        skip,
+        take,
+        orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+      }),
+    ]);
+
+    return {
+      items: customers.map((customer) => this.toCustomerDto(customer)),
+      total,
+    };
   }
 
   async getById(companyId: string, customerId: string) {

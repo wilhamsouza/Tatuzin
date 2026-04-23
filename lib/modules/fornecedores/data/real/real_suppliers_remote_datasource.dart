@@ -4,6 +4,7 @@ import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/network/contracts/api_client_contract.dart';
 import '../../../../app/core/network/endpoint_config.dart';
+import '../../../../app/core/network/paginated_remote_fetch.dart';
 import '../../../../app/core/network/remote_feature_diagnostic.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 import '../datasources/suppliers_remote_datasource.dart';
@@ -152,24 +153,23 @@ class RealSuppliersRemoteDatasource implements SuppliersRemoteDatasource {
 
   @override
   Future<List<RemoteSupplierRecord>> listAll() async {
-    final response = await _apiClient.getJson(
-      '/suppliers',
-      options: await _authorizedOptions(
-        queryParameters: const <String, Object?>{'includeDeleted': true},
-      ),
+    return fetchAllPaginatedItems(
+      fetchPage: ({required page, required pageSize}) async {
+        return _apiClient.getJson(
+          '/suppliers',
+          options: await _authorizedOptions(
+            queryParameters: <String, Object?>{
+              'includeDeleted': true,
+              'page': page,
+              'pageSize': pageSize,
+            },
+          ),
+        );
+      },
+      fromJson: RemoteSupplierRecord.fromJson,
+      invalidItemsMessage:
+          'A API nao retornou a lista de fornecedores em formato valido.',
     );
-
-    final items = response.data['items'];
-    if (items is! List) {
-      throw const NetworkRequestException(
-        'A API nao retornou a lista de fornecedores em formato valido.',
-      );
-    }
-
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map(RemoteSupplierRecord.fromJson)
-        .toList();
   }
 
   @override

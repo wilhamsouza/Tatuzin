@@ -4,6 +4,7 @@ import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/network/contracts/api_client_contract.dart';
 import '../../../../app/core/network/endpoint_config.dart';
+import '../../../../app/core/network/paginated_remote_fetch.dart';
 import '../../../../app/core/network/remote_feature_diagnostic.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 import '../datasources/product_recipes_remote_datasource.dart';
@@ -131,21 +132,24 @@ class RealProductRecipesRemoteDatasource
 
   @override
   Future<List<RemoteProductRecipeRecord>> listAll() async {
-    final response = await _apiClient.getJson(
-      '/product-recipes',
-      options: await _authorizedOptions(),
+    final items = await fetchAllPaginatedItems(
+      fetchPage: ({required page, required pageSize}) async {
+        return _apiClient.getJson(
+          '/product-recipes',
+          options: await _authorizedOptions(
+            queryParameters: <String, Object?>{
+              'page': page,
+              'pageSize': pageSize,
+            },
+          ),
+        );
+      },
+      fromJson: RemoteProductRecipeRecord.fromJson,
+      invalidItemsMessage:
+          'A API nao retornou a lista de fichas tecnicas em formato valido.',
     );
-    final items = response.data['items'];
-    if (items is! List) {
-      throw const NetworkRequestException(
-        'A API nao retornou a lista de fichas tecnicas em formato valido.',
-      );
-    }
 
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map(RemoteProductRecipeRecord.fromJson)
-        .toList(growable: false);
+    return items.toList(growable: false);
   }
 
   @override
@@ -167,7 +171,9 @@ class RealProductRecipesRemoteDatasource
     return RemoteProductRecipeRecord.fromJson(recipe);
   }
 
-  Future<ApiRequestOptions> _authorizedOptions() async {
+  Future<ApiRequestOptions> _authorizedOptions({
+    Map<String, Object?> queryParameters = const <String, Object?>{},
+  }) async {
     final token = await _tokenStorage.readAccessToken();
     if (token == null || token.trim().isEmpty) {
       throw const AuthenticationException(
@@ -177,6 +183,7 @@ class RealProductRecipesRemoteDatasource
 
     return ApiRequestOptions(
       headers: <String, String>{'Authorization': 'Bearer $token'},
+      queryParameters: queryParameters,
     );
   }
 }

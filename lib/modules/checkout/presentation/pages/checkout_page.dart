@@ -104,7 +104,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
             icon: const Icon(Icons.storefront_outlined),
           ),
           IconButton(
-            tooltip: 'Abrir dashboard',
+            tooltip: 'Abrir painel operacional',
             onPressed: () => context.goNamed(AppRouteNames.dashboard),
             icon: const Icon(Icons.home_outlined),
           ),
@@ -846,7 +846,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       ref.invalidate(currentCashMovementsProvider);
       ref.invalidate(cashSessionHistoryProvider);
       ref.invalidate(saleHistoryListProvider);
-      ref.invalidate(dashboardMetricsProvider);
+      ref.invalidate(operationalDashboardSnapshotProvider);
 
       if (!context.mounted) {
         return;

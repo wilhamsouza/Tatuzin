@@ -3,15 +3,46 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/constants/app_constants.dart';
 import 'core/database/app_database.dart';
+import 'core/session/auth_provider.dart';
+import 'core/session/session_reset.dart';
+import 'core/sync/sync_providers.dart';
 import 'core/widgets/app_async_value_view.dart';
 import 'routes/app_router.dart';
 import 'theme/app_theme.dart';
 
-class ErpPdvApp extends ConsumerWidget {
+class ErpPdvApp extends ConsumerStatefulWidget {
   const ErpPdvApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ErpPdvApp> createState() => _ErpPdvAppState();
+}
+
+class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    ref.read(sessionContextResetProvider);
+    ref.read(authControllerProvider);
+    ref.read(autoSyncCoordinatorProvider);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(autoSyncCoordinatorProvider).onAppResumed();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final startup = ref.watch(appStartupProvider);
 
     return startup.when(

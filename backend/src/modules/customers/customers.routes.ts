@@ -1,9 +1,14 @@
 import { Router } from 'express';
 
 import { requireCloudLicense } from '../../shared/http/auth-middleware';
+import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { asyncHandler } from '../../shared/http/async-handler';
-import { validateBody } from '../../shared/http/validate';
-import { customerUpsertSchema } from './customers.schemas';
+import { validateBody, validateQuery } from '../../shared/http/validate';
+import {
+  customerListQuerySchema,
+  type CustomerListQueryInput,
+  customerUpsertSchema,
+} from './customers.schemas';
 import { CustomersService } from './customers.service';
 
 const customersService = new CustomersService();
@@ -22,16 +27,21 @@ customersRouter.use(requireCloudLicense);
 
 customersRouter.get(
   '/',
+  validateQuery(customerListQuerySchema),
   asyncHandler(async (request, response) => {
-    const includeDeleted = request.query.includeDeleted === 'true';
-    const items = await customersService.listForCompany(
+    const query = request.query as CustomerListQueryInput;
+    const result = await customersService.listForCompany(
       request.auth!.companyId,
-      includeDeleted,
+      query,
     );
-    response.json({
-      items,
-      count: items.length,
-    });
+    response.json(
+      buildPaginatedResponse({
+        items: result.items,
+        page: query.page,
+        pageSize: query.pageSize,
+        total: result.total,
+      }),
+    );
   }),
 );
 

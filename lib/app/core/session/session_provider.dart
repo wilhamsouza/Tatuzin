@@ -18,6 +18,14 @@ final currentCompanyContextProvider = Provider<CompanyContext>((ref) {
   return ref.watch(appSessionProvider).company;
 });
 
+final sessionIsolationKeyProvider = Provider<String>((ref) {
+  return SessionIsolation.keyFor(ref.watch(appSessionProvider));
+});
+
+final sessionRuntimeKeyProvider = Provider<String>((ref) {
+  return SessionIsolation.runtimeKeyFor(ref.watch(appSessionProvider));
+});
+
 final sessionGuardProvider = Provider<SessionGuardSnapshot>((ref) {
   final environment = ref.watch(appEnvironmentProvider);
   final session = ref.watch(appSessionProvider);
@@ -59,6 +67,36 @@ class SessionController extends Notifier<AppSession> {
 
   void signOutToLocalMode() {
     state = AppSession.localDefault();
+  }
+}
+
+abstract final class SessionIsolation {
+  static const localKey = 'local_default';
+
+  static String keyFor(AppSession session) {
+    switch (session.scope) {
+      case SessionScope.localDefault:
+        return localKey;
+      case SessionScope.authenticatedMock:
+        return _companyScopedKey('mock', session);
+      case SessionScope.authenticatedRemote:
+        return _companyScopedKey('remote', session);
+    }
+  }
+
+  static String runtimeKeyFor(AppSession session) {
+    return '${keyFor(session)}:${session.startedAt.microsecondsSinceEpoch}';
+  }
+
+  static String _companyScopedKey(String prefix, AppSession session) {
+    final companyId = session.company.remoteId?.trim();
+    if (companyId == null || companyId.isEmpty) {
+      throw StateError(
+        'Sessao autenticada sem identificador remoto de empresa. '
+        'O Tatuzin bloqueou o acesso local para evitar mistura de tenants.',
+      );
+    }
+    return '$prefix:$companyId';
   }
 }
 

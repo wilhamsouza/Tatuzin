@@ -11,6 +11,7 @@ import type {
   PasswordResetDeliveryInput,
   PasswordResetDeliveryService,
 } from './password-reset-delivery.service';
+import { ResendPasswordResetDeliveryService } from './password-reset-delivery.service';
 
 const runId = `pwd-reset-${Date.now()}`;
 const baseClientPayload = {
@@ -66,6 +67,7 @@ describe('auth password reset flow', () => {
   it('forgot-password returns the same neutral response for a non-existing e-mail', async () => {
     const delivery = new CapturingPasswordResetDeliveryService();
     const service = new AuthService(undefined, delivery);
+    const tokenCountBefore = await prisma.passwordResetToken.count();
 
     const response = await service.forgotPassword({
       email: `${runId}.missing@tatuzin.test`,
@@ -77,8 +79,128 @@ describe('auth password reset flow', () => {
     );
     assert.equal(delivery.deliveries.length, 0);
 
-    const tokenCount = await prisma.passwordResetToken.count();
-    assert.equal(tokenCount, 0);
+    const tokenCountAfter = await prisma.passwordResetToken.count();
+    assert.equal(tokenCountAfter, tokenCountBefore);
+  });
+
+  it('resend delivery builds and sends the reset e-mail without calling the real API in tests', async () => {
+    const sentMessages: Array<{
+      from: string;
+      to: string | string[];
+      subject: string;
+      html: string;
+      text: string;
+      replyTo?: string | string[];
+    }> = [];
+    const deliveryLogger = new SpyDeliveryLogger();
+    const deliveryService = new ResendPasswordResetDeliveryService({
+      config: {
+        APP_ENV: 'local-development',
+        MAIL_FROM_AUTH: 'Tatuzin <auth@mail.tatuzin.com.br>',
+        MAIL_REPLY_TO_SUPPORT: 'suporte@tatuzin.com.br',
+        PASSWORD_RESET_APP_BASE_URL: 'http://localhost:3000/reset-password',
+        PASSWORD_RESET_DEBUG_LOG_TOKEN: false,
+        RESEND_API_KEY: 're_test_123',
+        isProduction: false,
+      },
+      logger: deliveryLogger,
+      resendClient: {
+        emails: {
+          send: async (payload) => {
+            sentMessages.push(payload);
+            return {
+              data: {
+                id: 'email_123',
+              },
+              error: null,
+            };
+          },
+        },
+      },
+    });
+
+    await deliveryService.sendResetToken({
+      userId: 'user_123',
+      userEmail: 'pessoa@tatuzin.test',
+      userName: 'Tatuzin Teste',
+      resetToken: 'reset-token-123',
+      expiresAt: new Date(Date.now() + 30 * 60_000),
+    });
+
+    assert.equal(sentMessages.length, 1);
+    assert.equal(sentMessages[0]?.from, 'Tatuzin <auth@mail.tatuzin.com.br>');
+    assert.equal(sentMessages[0]?.to, 'pessoa@tatuzin.test');
+    assert.equal(sentMessages[0]?.subject, 'Redefina sua senha do Tatuzin');
+    assert.equal(sentMessages[0]?.replyTo, 'suporte@tatuzin.com.br');
+    assert.match(
+      sentMessages[0]?.html ?? '',
+      /http:\/\/localhost:3000\/reset-password\?token=reset-token-123/,
+    );
+    assert.match(
+      sentMessages[0]?.html ?? '',
+      /Se o link nao abrir automaticamente no app, copie este token/i,
+    );
+    assert.match(sentMessages[0]?.html ?? '', /reset-token-123/);
+    assert.match(
+      sentMessages[0]?.text ?? '',
+      /http:\/\/localhost:3000\/reset-password\?token=reset-token-123/,
+    );
+    assert.match(sentMessages[0]?.text ?? '', /reset-token-123/);
+    assert.equal(deliveryLogger.errorEntries.length, 0);
+    assert.equal(deliveryLogger.infoEntries.length, 1);
+    assert.equal(
+      deliveryLogger.infoEntries[0]?.message,
+      'auth.password_reset.delivery_sent',
+    );
+  });
+
+  it('production delivery logs a sanitized operational error without leaking the token', async () => {
+    const resetToken = 'prod-reset-token-123456';
+    const deliveryLogger = new SpyDeliveryLogger();
+    const deliveryService = new ResendPasswordResetDeliveryService({
+      config: {
+        APP_ENV: 'production',
+        MAIL_FROM_AUTH: 'Tatuzin <auth@mail.tatuzin.com.br>',
+        MAIL_REPLY_TO_SUPPORT: null,
+        PASSWORD_RESET_APP_BASE_URL: 'https://app.tatuzin.com.br/reset-password',
+        PASSWORD_RESET_DEBUG_LOG_TOKEN: false,
+        RESEND_API_KEY: 're_test_123',
+        isProduction: true,
+      },
+      logger: deliveryLogger,
+      resendClient: {
+        emails: {
+          send: async () => ({
+            data: null,
+            error: {
+              name: 'validation_error',
+              statusCode: 422,
+              message: `invalid payload for token ${resetToken}`,
+            },
+          }),
+        },
+      },
+    });
+
+    await deliveryService.sendResetToken({
+      userId: 'user_456',
+      userEmail: 'pessoa@tatuzin.test',
+      userName: 'Tatuzin Teste',
+      resetToken,
+      expiresAt: new Date(Date.now() + 30 * 60_000),
+    });
+
+    assert.equal(deliveryLogger.infoEntries.length, 0);
+    assert.equal(deliveryLogger.errorEntries.length, 1);
+    assert.equal(
+      deliveryLogger.errorEntries[0]?.message,
+      'auth.password_reset.delivery_failed',
+    );
+
+    const serializedLog = JSON.stringify(deliveryLogger.errorEntries[0]);
+    assert.doesNotMatch(serializedLog, /prod-reset-token-123456/);
+    assert.match(serializedLog, /\[redacted\]/);
+    assert.doesNotMatch(serializedLog, /auth\.password_reset\.debug_delivery/);
   });
 
   it('reset-password accepts a valid token, updates the password and revokes old sessions', async () => {
@@ -236,6 +358,32 @@ class CapturingPasswordResetDeliveryService
 
   lastResetToken() {
     return this.deliveries.at(-1)?.resetToken ?? '';
+  }
+}
+
+class SpyDeliveryLogger {
+  readonly infoEntries: Array<{
+    message: string;
+    context: Record<string, unknown> | undefined;
+  }> = [];
+
+  readonly errorEntries: Array<{
+    message: string;
+    context: Record<string, unknown> | undefined;
+  }> = [];
+
+  info(message: string, context?: Record<string, unknown>) {
+    this.infoEntries.push({
+      message,
+      context,
+    });
+  }
+
+  error(message: string, context?: Record<string, unknown>) {
+    this.errorEntries.push({
+      message,
+      context,
+    });
   }
 }
 

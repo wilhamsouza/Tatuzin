@@ -2,7 +2,9 @@ import type { Prisma } from '@prisma/client';
 
 import { prisma } from '../../database/prisma';
 import { AppError } from '../../shared/http/app-error';
+import { toPaginationParams } from '../../shared/http/pagination';
 import type {
+  PurchaseListQueryInput,
   PurchaseItemInput,
   PurchasePaymentInput,
   PurchaseUpsertInput,
@@ -41,45 +43,59 @@ type PurchaseWithRelations = Prisma.PurchaseGetPayload<{
 }>;
 
 export class PurchasesService {
-  async listForCompany(companyId: string) {
-    const purchases = await prisma.purchase.findMany({
-      where: { companyId },
-      include: {
-        supplier: {
-          select: {
-            id: true,
-            localUuid: true,
-            name: true,
-          },
-        },
-        items: {
-          orderBy: { createdAt: 'asc' },
-          include: {
-            productVariant: {
-              select: {
-                id: true,
-                sku: true,
-                colorLabel: true,
-                sizeLabel: true,
-              },
-            },
-            supply: {
-              select: {
-                id: true,
-                localUuid: true,
-                name: true,
-              },
-            },
-          },
-        },
-        payments: {
-          orderBy: { paidAt: 'asc' },
-        },
-      },
-      orderBy: [{ purchasedAt: 'desc' }, { updatedAt: 'desc' }],
+  async listForCompany(companyId: string, query: PurchaseListQueryInput) {
+    const where = { companyId };
+    const { skip, take } = toPaginationParams({
+      page: query.page,
+      pageSize: query.pageSize,
     });
 
-    return purchases.map((purchase) => this.toPurchaseDto(purchase));
+    const [total, purchases] = await prisma.$transaction([
+      prisma.purchase.count({ where }),
+      prisma.purchase.findMany({
+        where,
+        include: {
+          supplier: {
+            select: {
+              id: true,
+              localUuid: true,
+              name: true,
+            },
+          },
+          items: {
+            orderBy: { createdAt: 'asc' },
+            include: {
+              productVariant: {
+                select: {
+                  id: true,
+                  sku: true,
+                  colorLabel: true,
+                  sizeLabel: true,
+                },
+              },
+              supply: {
+                select: {
+                  id: true,
+                  localUuid: true,
+                  name: true,
+                },
+              },
+            },
+          },
+          payments: {
+            orderBy: { paidAt: 'asc' },
+          },
+        },
+        skip,
+        take,
+        orderBy: [{ purchasedAt: 'desc' }, { updatedAt: 'desc' }],
+      }),
+    ]);
+
+    return {
+      items: purchases.map((purchase) => this.toPurchaseDto(purchase)),
+      total,
+    };
   }
 
   async getById(companyId: string, purchaseId: string) {

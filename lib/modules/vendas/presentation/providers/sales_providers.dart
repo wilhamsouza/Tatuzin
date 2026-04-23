@@ -9,6 +9,7 @@ import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../carrinho/presentation/providers/cart_provider.dart';
 import '../../../produtos/domain/entities/product.dart';
 import '../../../produtos/presentation/providers/product_providers.dart';
@@ -133,6 +134,7 @@ class SalesCatalogEntry {
 final salesCatalogProvider = FutureProvider<List<SalesCatalogEntry>>((
   ref,
 ) async {
+  ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(salesSearchQueryProvider);
   final products = await ref
@@ -168,7 +170,7 @@ final salesQuickAddProvider = Provider<SalesQuickAddController>((ref) {
 
 final localSaleRepositoryProvider = Provider<SqliteSaleRepository>((ref) {
   return SqliteSaleRepository(
-    ref.read(appDatabaseProvider),
+    ref.watch(appDatabaseProvider),
     ref.watch(appOperationalContextProvider),
   );
 });

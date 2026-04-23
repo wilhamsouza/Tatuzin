@@ -9,6 +9,7 @@ type JobRunStatus = 'idle' | 'running' | 'ok' | 'error';
 type MaintenanceJobSummary = {
   expiredLicensesUpdated: number;
   deletedSessions: number;
+  deletedRateLimitBuckets: number;
 };
 
 type PlatformJobsSnapshot = {
@@ -78,8 +79,13 @@ export class PlatformJobsService {
         now.getTime() -
           env.SESSION_CLEANUP_RETENTION_DAYS * 24 * 60 * 60 * 1000,
       );
+      const rateLimitRetentionCutoff = new Date(
+        now.getTime() -
+          env.RATE_LIMIT_BUCKET_RETENTION_MINUTES * 60 * 1000,
+      );
 
-      const [expiredLicenses, deletedSessions] = await Promise.all([
+      const [expiredLicenses, deletedSessions, deletedRateLimitBuckets] =
+        await Promise.all([
         prisma.license.updateMany({
           where: {
             status: {
@@ -111,6 +117,13 @@ export class PlatformJobsService {
             ],
           },
         }),
+        prisma.rateLimitBucket.deleteMany({
+          where: {
+            resetAt: {
+              lt: rateLimitRetentionCutoff,
+            },
+          },
+        }),
       ]);
 
       const finishedAt = new Date();
@@ -119,6 +132,7 @@ export class PlatformJobsService {
       this.lastSummary = {
         expiredLicensesUpdated: expiredLicenses.count,
         deletedSessions: deletedSessions.count,
+        deletedRateLimitBuckets: deletedRateLimitBuckets.count,
       };
       this.lastError = null;
       this.status = 'ok';
