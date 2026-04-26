@@ -92,7 +92,18 @@ class AdminPage extends ConsumerWidget {
                 title: 'Falha ao carregar o painel',
                 subtitle:
                     'Nao foi possivel consultar os dados administrativos.',
-                child: Text(error.toString()),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(error.toString()),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: () => ref.invalidate(adminOverviewProvider),
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Tentar novamente'),
+                    ),
+                  ],
+                ),
               ),
             ),
         ],
@@ -287,7 +298,17 @@ class AdminPage extends ConsumerWidget {
                   error: (error, _) => ListView(
                     controller: scrollController,
                     padding: const EdgeInsets.all(20),
-                    children: [Text(error.toString())],
+                    children: [
+                      Text(error.toString()),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: () => ref.invalidate(
+                          adminCompanyDetailProvider(company.id),
+                        ),
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Tentar novamente'),
+                      ),
+                    ],
                   ),
                 );
               },

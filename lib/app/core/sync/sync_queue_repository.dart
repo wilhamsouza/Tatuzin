@@ -67,4 +67,6 @@ abstract interface class SyncQueueRepository {
   });
 
   Future<List<SyncQueueFeatureSummary>> listFeatureSummaries();
+
+  Future<List<SyncQueueItem>> listAttentionItems({int limit = 50});
 }

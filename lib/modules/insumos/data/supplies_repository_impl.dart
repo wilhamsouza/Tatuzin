@@ -10,6 +10,8 @@ import '../../../app/core/sync/sync_queue_item.dart';
 import '../../../app/core/sync/sync_queue_operation.dart';
 import '../../../app/core/sync/sync_remote_identity_recovery.dart';
 import '../../../app/core/sync/sync_status.dart';
+import '../../../app/core/utils/app_logger.dart';
+import '../../../app/core/utils/id_generator.dart';
 import '../domain/entities/supply.dart';
 import '../domain/entities/supply_cost_history_entry.dart';
 import '../domain/entities/supply_inventory.dart';
@@ -42,13 +44,86 @@ class SuppliesRepositoryImpl implements SupplyRepository, SyncFeatureProcessor {
   String get displayName => 'Insumos';
 
   @override
-  Future<int> create(SupplyInput input) => _localRepository.create(input);
+  Future<int> create(SupplyInput input) async {
+    if (_shouldUseErpRemoteWrite) {
+      try {
+        final remote = await _remoteDatasource
+            .create(_remoteSupplyFromInput(input))
+            .timeout(const Duration(seconds: 15));
+        return _cacheAndResolveRemoteSupply(remote);
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Insumos ERP server-first falhou ao criar na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
+    return _localRepository.create(input);
+  }
 
   @override
-  Future<void> deactivate(int id) => _localRepository.deactivate(id);
+  Future<void> deactivate(int id) async {
+    if (_shouldUseErpRemoteWrite) {
+      final supply = await _localRepository
+          .findSupplyForSync(id)
+          .timeout(const Duration(seconds: 8));
+      if (supply?.remoteId == null) {
+        throw const ValidationException(
+          'Insumo ainda nao possui vinculo remoto para desativacao server-first.',
+        );
+      }
+
+      try {
+        final remote = await _remoteDatasource
+            .update(
+              supply!.remoteId!,
+              RemoteSupplyRecord.fromSyncPayload(supply).copyWithInactive(),
+            )
+            .timeout(const Duration(seconds: 15));
+        await _localRepository.applyPushResult(supply: supply, remote: remote);
+        return;
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Insumos ERP server-first falhou ao desativar na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
+    return _localRepository.deactivate(id);
+  }
 
   @override
-  Future<Supply?> findById(int id) => _localRepository.findById(id);
+  Future<Supply?> findById(int id) async {
+    final local = await _localRepository
+        .findById(id)
+        .timeout(const Duration(seconds: 8));
+    final syncPayload = await _localRepository
+        .findSupplyForSync(id)
+        .timeout(const Duration(seconds: 8));
+    if (!_shouldUseErpRemoteRead || syncPayload?.remoteId == null) {
+      return local;
+    }
+
+    try {
+      final remote = await _remoteDatasource
+          .fetchById(syncPayload!.remoteId!)
+          .timeout(const Duration(seconds: 15));
+      return _cacheAndFindRemoteSupply(remote);
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Insumos ERP server-first falhou no detalhe; usando cache local.',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return local;
+    }
+  }
 
   @override
   Future<List<SupplyInventoryOverview>> listInventoryOverview({
@@ -105,7 +180,32 @@ class SuppliesRepositoryImpl implements SupplyRepository, SyncFeatureProcessor {
   }
 
   @override
-  Future<List<Supply>> search({String query = '', bool activeOnly = false}) {
+  Future<List<Supply>> search({
+    String query = '',
+    bool activeOnly = false,
+  }) async {
+    if (_shouldUseErpRemoteRead) {
+      try {
+        final remoteSupplies = await _remoteDatasource.listAll().timeout(
+          const Duration(seconds: 15),
+        );
+        return _cacheAndResolveRemoteSupplies(
+          remoteSupplies,
+          query: query,
+          activeOnly: activeOnly,
+        );
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Insumos ERP server-first falhou; usando cache local com timeout.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        return _localRepository
+            .search(query: query, activeOnly: activeOnly)
+            .timeout(const Duration(seconds: 8));
+      }
+    }
+
     return _localRepository.search(query: query, activeOnly: activeOnly);
   }
 
@@ -213,7 +313,42 @@ class SuppliesRepositoryImpl implements SupplyRepository, SyncFeatureProcessor {
   }
 
   @override
-  Future<void> update(int id, SupplyInput input) {
+  Future<void> update(int id, SupplyInput input) async {
+    if (_shouldUseErpRemoteWrite) {
+      final supply = await _localRepository
+          .findSupplyForSync(id)
+          .timeout(const Duration(seconds: 8));
+      if (supply?.remoteId == null) {
+        throw const ValidationException(
+          'Insumo ainda nao possui vinculo remoto para atualizacao server-first.',
+        );
+      }
+
+      try {
+        final remote = await _remoteDatasource
+            .update(
+              supply!.remoteId!,
+              _remoteSupplyFromInput(
+                input,
+                localUuid: supply.supplyUuid,
+                remoteId: supply.remoteId!,
+                createdAt: supply.createdAt,
+                costHistory: supply.costHistory,
+              ),
+            )
+            .timeout(const Duration(seconds: 15));
+        await _localRepository.applyPushResult(supply: supply, remote: remote);
+        return;
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Insumos ERP server-first falhou ao atualizar na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.update(id, input);
   }
 
@@ -280,6 +415,94 @@ class SuppliesRepositoryImpl implements SupplyRepository, SyncFeatureProcessor {
       await _localRepository.upsertFromRemote(remoteSupply);
     }
     return remoteSupplies.length;
+  }
+
+  bool get _shouldUseErpRemoteRead =>
+      _dataAccessPolicy.strategyFor(AppModule.erp) ==
+          DataSourceStrategy.serverFirst &&
+      _operationalContext.canUseCloudReads;
+
+  bool get _shouldUseErpRemoteWrite => _shouldUseErpRemoteRead;
+
+  Future<List<Supply>> _cacheAndResolveRemoteSupplies(
+    List<RemoteSupplyRecord> remoteSupplies, {
+    required String query,
+    required bool activeOnly,
+  }) async {
+    final supplies = <Supply>[];
+    for (final remoteSupply in remoteSupplies) {
+      final supply = await _cacheAndFindRemoteSupply(remoteSupply);
+      if (supply != null &&
+          (!activeOnly || supply.isActive) &&
+          _matchesQuery(supply, query)) {
+        supplies.add(supply);
+      }
+    }
+    supplies.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return supplies;
+  }
+
+  Future<int> _cacheAndResolveRemoteSupply(RemoteSupplyRecord remote) async {
+    final supply = await _cacheAndFindRemoteSupply(remote);
+    if (supply == null) {
+      throw const NetworkRequestException(
+        'Insumo remoto salvo, mas o cache local nao retornou o espelho.',
+      );
+    }
+    return supply.id;
+  }
+
+  Future<Supply?> _cacheAndFindRemoteSupply(RemoteSupplyRecord remote) async {
+    await _localRepository.upsertFromRemote(remote);
+    return _localRepository
+        .findByRemoteId(remote.remoteId)
+        .timeout(const Duration(seconds: 8));
+  }
+
+  RemoteSupplyRecord _remoteSupplyFromInput(
+    SupplyInput input, {
+    String? localUuid,
+    String remoteId = '',
+    DateTime? createdAt,
+    List<SupplyCostHistorySyncPayload> costHistory =
+        const <SupplyCostHistorySyncPayload>[],
+  }) {
+    final now = DateTime.now();
+    return RemoteSupplyRecord(
+      remoteId: remoteId,
+      localUuid: localUuid ?? IdGenerator.next(),
+      remoteDefaultSupplierId: null,
+      name: input.name,
+      sku: input.sku,
+      unitType: input.unitType,
+      purchaseUnitType: input.purchaseUnitType,
+      conversionFactor: input.conversionFactor,
+      lastPurchasePriceCents: input.lastPurchasePriceCents,
+      averagePurchasePriceCents: input.averagePurchasePriceCents,
+      currentStockMil: input.currentStockMil,
+      minimumStockMil: input.minimumStockMil,
+      isActive: input.isActive,
+      createdAt: createdAt ?? now,
+      updatedAt: now,
+      deletedAt: input.isActive ? null : now,
+      costHistory: costHistory
+          .map(RemoteSupplyCostHistoryRecord.fromSyncPayload)
+          .toList(growable: false),
+    );
+  }
+
+  bool _matchesQuery(Supply supply, String query) {
+    final normalized = query.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return true;
+    }
+    return supply.name.toLowerCase().contains(normalized) ||
+        (supply.sku?.toLowerCase().contains(normalized) ?? false) ||
+        (supply.defaultSupplierName?.toLowerCase().contains(normalized) ??
+            false);
   }
 
   void _ensureSyncIsAllowed() {

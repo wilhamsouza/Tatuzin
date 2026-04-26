@@ -62,6 +62,12 @@ class AppEnvironment {
 
   bool get isLocalOnly => dataMode == AppDataMode.localOnly;
 
+  bool get allowsTechnicalEndpointOverride =>
+      !isLocalOnly && EndpointConfig.allowTechnicalEndpointOverride;
+
+  bool get usesOfficialProductionEndpoint =>
+      endpointConfig.isOfficialProductionEndpoint;
+
   AppEnvironment copyWith({
     String? name,
     String? productName,
@@ -121,6 +127,20 @@ class AppEnvironmentController extends Notifier<AppEnvironment> {
   }
 
   Future<void> setEndpointBaseUrl(String baseUrl) async {
+    if (!state.allowsTechnicalEndpointOverride) {
+      if (state.dataMode == AppDataMode.localOnly) {
+        await AppEnvironmentStorage.save(state);
+        return;
+      }
+
+      final lockedState = state.copyWith(
+        endpointConfig: _remoteDefaultEndpoint,
+      );
+      state = lockedState;
+      await AppEnvironmentStorage.save(lockedState);
+      return;
+    }
+
     final nextState = state.copyWith(
       endpointConfig: _remoteDefaultEndpoint.copyWith(baseUrl: baseUrl),
     );
@@ -171,15 +191,29 @@ class AppEnvironmentStorage {
   static const String _endpointApiVersionKey =
       'app.environment.endpoint_api_version';
 
-  static Future<AppEnvironment> load() async {
+  static Future<AppEnvironment> load({
+    bool? allowTechnicalEndpointOverride,
+    EndpointConfig? remoteDefaultEndpoint,
+  }) async {
+    final canUseTechnicalEndpointOverride =
+        allowTechnicalEndpointOverride ??
+        EndpointConfig.allowTechnicalEndpointOverride;
     final preferences = await SharedPreferences.getInstance();
     final persistedMode = preferences.getString(_dataModeKey);
     final mode = persistedMode == null || persistedMode.trim().isEmpty
         ? _defaultDataMode()
         : _parseMode(persistedMode);
+    final resolvedRemoteDefaultEndpoint =
+        remoteDefaultEndpoint ?? EndpointConfig.remoteDefault();
     final defaultEndpoint = mode == AppDataMode.localOnly
         ? const EndpointConfig()
-        : EndpointConfig.remoteDefault();
+        : resolvedRemoteDefaultEndpoint;
+
+    if (!canUseTechnicalEndpointOverride) {
+      await _clearLegacyEndpointOverride(preferences);
+      return _buildEnvironment(mode: mode, endpointConfig: defaultEndpoint);
+    }
+
     final apiVersion =
         preferences.getString(_endpointApiVersionKey)?.trim().isNotEmpty == true
         ? preferences.getString(_endpointApiVersionKey)!.trim()
@@ -192,21 +226,24 @@ class AppEnvironmentStorage {
       endpointConfig = endpointConfig.copyWith(baseUrl: persistedBaseUrl);
     }
 
-    return AppEnvironment(
-      name: mode == AppDataMode.localOnly ? 'local-default' : 'remote-default',
-      productName: AppConstants.appName,
-      dataMode: mode,
-      endpointConfig: endpointConfig,
-      authEnabled: mode != AppDataMode.localOnly,
-      remoteSyncEnabled: mode == AppDataMode.futureHybridReady,
-      multiUserEnabled: mode != AppDataMode.localOnly,
-      multiCompanyEnabled: mode != AppDataMode.localOnly,
-    );
+    return _buildEnvironment(mode: mode, endpointConfig: endpointConfig);
   }
 
-  static Future<void> save(AppEnvironment environment) async {
+  static Future<void> save(
+    AppEnvironment environment, {
+    bool? allowTechnicalEndpointOverride,
+  }) async {
+    final canUseTechnicalEndpointOverride =
+        allowTechnicalEndpointOverride ??
+        EndpointConfig.allowTechnicalEndpointOverride;
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(_dataModeKey, environment.dataMode.name);
+
+    if (!canUseTechnicalEndpointOverride) {
+      await _clearLegacyEndpointOverride(preferences);
+      return;
+    }
+
     final baseUrl = environment.endpointConfig.baseUrl?.trim();
     if (baseUrl == null || baseUrl.isEmpty) {
       await preferences.remove(_endpointBaseUrlKey);
@@ -237,6 +274,29 @@ class AppEnvironmentStorage {
 
   static AppDataMode _defaultDataMode() {
     return AppDataMode.futureRemoteReady;
+  }
+
+  static AppEnvironment _buildEnvironment({
+    required AppDataMode mode,
+    required EndpointConfig endpointConfig,
+  }) {
+    return AppEnvironment(
+      name: mode == AppDataMode.localOnly ? 'local-default' : 'remote-default',
+      productName: AppConstants.appName,
+      dataMode: mode,
+      endpointConfig: endpointConfig,
+      authEnabled: mode != AppDataMode.localOnly,
+      remoteSyncEnabled: mode == AppDataMode.futureHybridReady,
+      multiUserEnabled: mode != AppDataMode.localOnly,
+      multiCompanyEnabled: mode != AppDataMode.localOnly,
+    );
+  }
+
+  static Future<void> _clearLegacyEndpointOverride(
+    SharedPreferences preferences,
+  ) async {
+    await preferences.remove(_endpointBaseUrlKey);
+    await preferences.remove(_endpointApiVersionKey);
   }
 
   static String? _resolvePersistedBaseUrl(String? rawValue) {

@@ -17,13 +17,13 @@ extension AppDataModeX on AppDataMode {
       case AppDataMode.localOnly:
         return 'SQLite local permanece como fonte unica de dados.';
       case AppDataMode.futureRemoteReady:
-        return 'Base local preservada, com leitura remota preparada para API futura.';
+        return 'ERP e CRM priorizam a API; PDV preserva a base local offline.';
       case AppDataMode.futureHybridReady:
-        return 'Arquitetura pronta para local-first com sincronizacao futura.';
+        return 'PDV local-first com sync em background; ERP e CRM server-first.';
     }
   }
 
-  bool get keepsLocalAsSourceOfTruth => true;
+  bool get keepsLocalAsSourceOfTruth => this == AppDataMode.localOnly;
 
   bool get allowsRemoteRead => this != AppDataMode.localOnly;
 

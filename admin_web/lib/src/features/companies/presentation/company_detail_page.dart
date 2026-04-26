@@ -137,7 +137,8 @@ class _CompanyDetailContent extends ConsumerWidget {
 
     final sessionsSurface = AdminSurface(
       title: 'Sessoes e dispositivos',
-      subtitle: 'Inventario minimo das sessoes cloud ativas e historicas da empresa.',
+      subtitle:
+          'Inventario minimo das sessoes cloud ativas e historicas da empresa.',
       child: payload.sessions.isEmpty
           ? Text(
               'Nenhuma sessao registrada para esta empresa ate agora.',
@@ -163,7 +164,8 @@ class _CompanyDetailContent extends ConsumerWidget {
                       ),
                       if (session.status == 'active')
                         FilledButton.tonalIcon(
-                          onPressed: () => _revokeSession(context, ref, session),
+                          onPressed: () =>
+                              _revokeSession(context, ref, session),
                           icon: const Icon(Icons.block_rounded),
                           label: const Text('Revogar'),
                         ),
@@ -189,7 +191,10 @@ class _CompanyDetailContent extends ConsumerWidget {
             label: 'Eventos financeiros',
             value: company.counts.financialEvents,
           ),
-          _CountRow(label: 'Eventos de caixa', value: company.counts.cashEvents),
+          _CountRow(
+            label: 'Eventos de caixa',
+            value: company.counts.cashEvents,
+          ),
           const Divider(height: 24),
           _CountRow(
             label: 'Total remoto',
@@ -241,24 +246,24 @@ class _CompanyDetailContent extends ConsumerWidget {
                 );
               }
 
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: Column(
-                        children: [
-                          membershipsSurface,
-                          const SizedBox(height: 24),
-                          sessionsSurface,
-                        ],
-                      ),
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Column(
+                      children: [
+                        membershipsSurface,
+                        const SizedBox(height: 24),
+                        sessionsSurface,
+                      ],
                     ),
-                    const SizedBox(width: 24),
-                    Expanded(flex: 2, child: healthSurface),
-                  ],
-                );
-              },
+                  ),
+                  const SizedBox(width: 24),
+                  Expanded(flex: 2, child: healthSurface),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -294,13 +299,18 @@ class _CompanyDetailContent extends ConsumerWidget {
     WidgetRef ref,
     AdminLicenseSnapshot license,
   ) async {
-    final edit = await showLicenseEditorDialog(context: context, license: license);
+    final edit = await showLicenseEditorDialog(
+      context: context,
+      license: license,
+    );
     if (edit == null || !context.mounted) {
       return;
     }
 
     try {
-      await ref.read(adminApiServiceProvider).updateLicense(
+      await ref
+          .read(adminApiServiceProvider)
+          .updateLicense(
             companyId: license.companyId,
             plan: edit.plan,
             status: edit.status,
@@ -320,9 +330,9 @@ class _CompanyDetailContent extends ConsumerWidget {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -344,9 +354,9 @@ class _CompanyDetailContent extends ConsumerWidget {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 }
@@ -367,8 +377,8 @@ class _DetailRow extends StatelessWidget {
             child: Text(
               label,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           const SizedBox(width: 16),
@@ -376,9 +386,9 @@ class _DetailRow extends StatelessWidget {
             child: Text(
               value,
               textAlign: TextAlign.right,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
         ],
@@ -408,8 +418,8 @@ class _CountRow extends StatelessWidget {
           Text(
             '$value',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: emphasize ? FontWeight.w900 : FontWeight.w700,
-                ),
+              fontWeight: emphasize ? FontWeight.w900 : FontWeight.w700,
+            ),
           ),
         ],
       ),

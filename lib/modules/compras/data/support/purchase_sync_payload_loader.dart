@@ -104,7 +104,9 @@ class PurchaseSyncPayloadLoader {
             (item) => PurchaseSyncItemPayload(
               itemId: item['id'] as int,
               itemUuid: item['uuid'] as String,
-              itemType: purchaseItemTypeFromStorage(item['item_type'] as String?),
+              itemType: purchaseItemTypeFromStorage(
+                item['item_type'] as String?,
+              ),
               productLocalId: item['produto_id'] as int?,
               productVariantLocalId: item['produto_variante_id'] as int?,
               supplyLocalId: item['supply_id'] as int?,
@@ -116,7 +118,8 @@ class PurchaseSyncPayloadLoader {
                   item['nome_produto_snapshot'] as String? ??
                   'Item',
               variantSkuSnapshot: item['sku_variante_snapshot'] as String?,
-              variantColorLabelSnapshot: item['cor_variante_snapshot'] as String?,
+              variantColorLabelSnapshot:
+                  item['cor_variante_snapshot'] as String?,
               variantSizeLabelSnapshot:
                   item['tamanho_variante_snapshot'] as String?,
               unitMeasureSnapshot:

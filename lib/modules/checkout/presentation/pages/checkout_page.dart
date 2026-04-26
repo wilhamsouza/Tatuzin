@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/utils/app_logger.dart';
 import '../../../../app/core/utils/money_parser.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
@@ -836,7 +837,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       ref.read(cartProvider.notifier).clear();
       ref.invalidate(productListProvider);
       ref.invalidate(salesCatalogProvider);
-      ref.invalidate(clientListProvider);
+      ref.invalidate(pdvCustomerLookupProvider);
       if (_selectedClient != null) {
         ref.invalidate(customerCreditBalanceProvider(_selectedClient!.id));
         ref.invalidate(customerCreditTransactionsProvider(_selectedClient!.id));
@@ -865,6 +866,9 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
   }
 
   void _setSelectedClient(Client? client) {
+    AppLogger.info(
+      "Checkout PDV selected local customer | has_customer=${client != null} | local_id=${client?.id ?? 'none'}",
+    );
     setState(() {
       _selectedClient = client;
       if (client == null) {
@@ -914,7 +918,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
             return Consumer(
               builder: (context, ref, _) {
                 final clientsAsync = ref.watch(
-                  clientLookupProvider(searchQuery),
+                  pdvCustomerLookupProvider(searchQuery),
                 );
                 return SafeArea(
                   child: Padding(
@@ -972,7 +976,20 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                             error: (error, _) => Center(
                               child: Padding(
                                 padding: const EdgeInsets.all(24),
-                                child: Text('Falha ao buscar clientes: $error'),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('Falha ao buscar clientes: $error'),
+                                    const SizedBox(height: 12),
+                                    OutlinedButton.icon(
+                                      onPressed: () => ref.invalidate(
+                                        pdvCustomerLookupProvider(searchQuery),
+                                      ),
+                                      icon: const Icon(Icons.refresh),
+                                      label: const Text('Tentar novamente'),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),

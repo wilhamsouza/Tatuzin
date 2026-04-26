@@ -52,7 +52,8 @@ class SystemMockAuthSection extends StatelessWidget {
                 label: const Text('Entrar com mock'),
               ),
               OutlinedButton.icon(
-                onPressed: authState.isLoading || !authStatus.isMockAuthenticated
+                onPressed:
+                    authState.isLoading || !authStatus.isMockAuthenticated
                     ? null
                     : onSignOut,
                 icon: const Icon(Icons.logout_rounded),

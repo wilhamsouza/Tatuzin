@@ -12,11 +12,7 @@ void main() {
 
   testWidgets('renderiza a tela de login administrativo', (tester) async {
     await tester.pumpWidget(
-      const ProviderScope(
-        child: MaterialApp(
-          home: LoginPage(),
-        ),
-      ),
+      const ProviderScope(child: MaterialApp(home: LoginPage())),
     );
 
     await tester.pumpAndSettle();

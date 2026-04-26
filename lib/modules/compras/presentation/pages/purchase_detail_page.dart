@@ -407,7 +407,8 @@ class _PurchaseSyncNotice extends StatelessWidget {
   Widget build(BuildContext context) {
     final label = _noticeLabel(purchase);
     final description = _noticeDescription(purchase);
-    final tone = purchase.syncStatus == SyncStatus.syncError ||
+    final tone =
+        purchase.syncStatus == SyncStatus.syncError ||
             purchase.syncStatus == SyncStatus.conflict
         ? AppStatusTone.warning
         : AppStatusTone.info;
@@ -422,16 +423,9 @@ class _PurchaseSyncNotice extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AppStatusBadge(
-            label: label,
-            tone: tone,
-            icon: icon,
-          ),
+          AppStatusBadge(label: label, tone: tone, icon: icon),
           const SizedBox(height: 12),
-          Text(
-            description,
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
+          Text(description, style: Theme.of(context).textTheme.bodyMedium),
           if (purchase.syncIssueMessage?.trim().isNotEmpty ?? false) ...[
             const SizedBox(height: 10),
             Text(

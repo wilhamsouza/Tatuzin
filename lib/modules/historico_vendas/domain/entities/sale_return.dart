@@ -57,10 +57,8 @@ class SaleReturnRecord {
   final DateTime createdAt;
   final List<SaleReturnItemRecord> items;
 
-  int get totalReturnedCents => items.fold<int>(
-    0,
-    (total, item) => total + item.subtotalCents,
-  );
+  int get totalReturnedCents =>
+      items.fold<int>(0, (total, item) => total + item.subtotalCents);
 }
 
 class SaleReturnItemRecord {

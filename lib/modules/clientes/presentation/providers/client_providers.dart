@@ -8,9 +8,11 @@ import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
+import '../../../../app/core/utils/app_logger.dart';
 import '../../data/customers_repository_impl.dart';
 import '../../data/sqlite_customer_credit_repository.dart';
 import '../../data/datasources/customers_remote_datasource.dart';
@@ -66,7 +68,10 @@ final clientListProvider = FutureProvider<List<Client>>((ref) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(clientSearchQueryProvider);
-  return ref.watch(clientRepositoryProvider).search(query: query);
+  return runProviderGuarded(
+    'clientListProvider',
+    () => ref.watch(clientRepositoryProvider).search(query: query),
+  );
 });
 
 final clientLookupProvider = FutureProvider.family<List<Client>, String>((
@@ -75,7 +80,26 @@ final clientLookupProvider = FutureProvider.family<List<Client>, String>((
 ) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref.watch(clientRepositoryProvider).search(query: query);
+  return runProviderGuarded(
+    'clientLookupProvider',
+    () => ref.watch(clientRepositoryProvider).search(query: query),
+  );
+});
+
+final pdvCustomerLookupProvider = FutureProvider.family<List<Client>, String>((
+  ref,
+  query,
+) async {
+  ref.watch(sessionRuntimeKeyProvider);
+  ref.watch(appDataRefreshProvider);
+  AppLogger.info(
+    'PDV customer lookup using local cache | has_query=${query.trim().isNotEmpty}',
+  );
+  return runProviderGuarded(
+    'pdvCustomerLookupProvider',
+    () => ref.watch(localClientRepositoryProvider).search(query: query),
+    timeout: localProviderTimeout,
+  );
 });
 
 final customerCreditBalanceProvider = FutureProvider.family<int, int>((
@@ -84,9 +108,13 @@ final customerCreditBalanceProvider = FutureProvider.family<int, int>((
 ) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref
-      .watch(customerCreditRepositoryProvider)
-      .getCustomerCreditBalance(customerId);
+  return runProviderGuarded(
+    'customerCreditBalanceProvider',
+    () => ref
+        .watch(customerCreditRepositoryProvider)
+        .getCustomerCreditBalance(customerId),
+    timeout: localProviderTimeout,
+  );
 });
 
 final customerCreditTransactionsProvider =
@@ -96,9 +124,13 @@ final customerCreditTransactionsProvider =
     ) async {
       ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
-      return ref
-          .watch(customerCreditRepositoryProvider)
-          .getCustomerCreditTransactions(customerId);
+      return runProviderGuarded(
+        'customerCreditTransactionsProvider',
+        () => ref
+            .watch(customerCreditRepositoryProvider)
+            .getCustomerCreditTransactions(customerId),
+        timeout: localProviderTimeout,
+      );
     });
 
 final customerCreditTransactionProvider =
@@ -108,9 +140,13 @@ final customerCreditTransactionProvider =
     ) async {
       ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
-      return ref
-          .watch(customerCreditRepositoryProvider)
-          .getTransactionById(transactionId);
+      return runProviderGuarded(
+        'customerCreditTransactionProvider',
+        () => ref
+            .watch(customerCreditRepositoryProvider)
+            .getTransactionById(transactionId),
+        timeout: localProviderTimeout,
+      );
     });
 
 final customerCreditControllerProvider =

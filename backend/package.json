@@ -11,9 +11,11 @@
     "build": "tsc -p tsconfig.json",
     "test": "tsx --test src/**/*.test.ts",
     "start": "node dist/main.js",
+    "start:prod": "node dist/main.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
+    "prisma:status": "prisma migrate status",
     "seed": "tsx prisma/seed.ts",
     "reset:remote-business-data": "tsx scripts/reset-remote-business-data.ts"
   },

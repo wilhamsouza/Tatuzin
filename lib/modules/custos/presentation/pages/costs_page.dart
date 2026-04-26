@@ -923,6 +923,11 @@ class _CostDetailSheet extends ConsumerWidget {
           title: 'Nao foi possivel abrir este custo',
           subtitle: error.toString(),
           compact: true,
+          action: AppButton.secondary(
+            label: 'Tentar novamente',
+            icon: Icons.refresh_rounded,
+            onPressed: () => ref.invalidate(costDetailProvider(costId)),
+          ),
         ),
       ),
     );

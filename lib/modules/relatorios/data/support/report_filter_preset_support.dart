@@ -133,7 +133,8 @@ abstract final class ReportFilterPresetSupport {
               id: 'weekly',
               label: 'Semana',
               helperText: 'Troca o hub para a leitura desta semana.',
-              transform: (current) => _applyPeriod(current, ReportPeriod.weekly),
+              transform: (current) =>
+                  _applyPeriod(current, ReportPeriod.weekly),
             ),
             ReportFilterPreset(
               id: 'monthly',
@@ -176,13 +177,15 @@ abstract final class ReportFilterPresetSupport {
               id: 'week',
               label: 'Esta semana',
               helperText: 'Organiza a leitura pelas vendas da semana atual.',
-              transform: (current) => _applyPeriod(current, ReportPeriod.weekly),
+              transform: (current) =>
+                  _applyPeriod(current, ReportPeriod.weekly),
             ),
             ReportFilterPreset(
               id: 'month',
               label: 'Este mes',
               helperText: 'Mantem o recorte mensal da pagina de vendas.',
-              transform: (current) => _applyPeriod(current, ReportPeriod.monthly),
+              transform: (current) =>
+                  _applyPeriod(current, ReportPeriod.monthly),
             ),
             ReportFilterPreset(
               id: 'canceled-only',
@@ -241,33 +244,29 @@ abstract final class ReportFilterPresetSupport {
               id: 'entries',
               label: 'Entradas',
               helperText: 'Traz as entradas para a frente da leitura.',
-              transform: (current) => current.copyWith(
-                focus: ReportFocus.cashEntries,
-              ),
+              transform: (current) =>
+                  current.copyWith(focus: ReportFocus.cashEntries),
             ),
             ReportFilterPreset(
               id: 'fiado',
               label: 'Fiado recebido',
               helperText: 'Destaque para o que voltou do fiado.',
-              transform: (current) => current.copyWith(
-                focus: ReportFocus.cashFiadoReceipts,
-              ),
+              transform: (current) =>
+                  current.copyWith(focus: ReportFocus.cashFiadoReceipts),
             ),
             ReportFilterPreset(
               id: 'manual',
               label: 'Entradas manuais',
               helperText: 'Mostra suprimentos e ajustes positivos primeiro.',
-              transform: (current) => current.copyWith(
-                focus: ReportFocus.cashManualEntries,
-              ),
+              transform: (current) =>
+                  current.copyWith(focus: ReportFocus.cashManualEntries),
             ),
             ReportFilterPreset(
               id: 'net',
               label: 'Fluxo do periodo',
               helperText: 'Prioriza a linha do tempo do saldo liquido.',
-              transform: (current) => current.copyWith(
-                focus: ReportFocus.cashNetFlow,
-              ),
+              transform: (current) =>
+                  current.copyWith(focus: ReportFocus.cashNetFlow),
             ),
           ],
         );
@@ -286,33 +285,30 @@ abstract final class ReportFilterPresetSupport {
               id: 'critical',
               label: 'Criticos',
               helperText: 'Destaca os itens que pedem reposicao agora.',
-              transform: (current) => current.copyWith(
-                focus: ReportFocus.inventoryCritical,
-              ),
+              transform: (current) =>
+                  current.copyWith(focus: ReportFocus.inventoryCritical),
             ),
             ReportFilterPreset(
               id: 'zeroed',
               label: 'Zerados',
               helperText: 'Filtra a leitura para quem esta sem saldo.',
-              transform: (current) => current.copyWith(
-                focus: ReportFocus.inventoryZeroed,
-              ),
+              transform: (current) =>
+                  current.copyWith(focus: ReportFocus.inventoryZeroed),
             ),
             ReportFilterPreset(
               id: 'divergence',
               label: 'Com divergencia',
-              helperText: 'Puxa para frente os sinais de inventario divergente.',
-              transform: (current) => current.copyWith(
-                focus: ReportFocus.inventoryDivergence,
-              ),
+              helperText:
+                  'Puxa para frente os sinais de inventario divergente.',
+              transform: (current) =>
+                  current.copyWith(focus: ReportFocus.inventoryDivergence),
             ),
             ReportFilterPreset(
               id: 'alerts',
               label: 'Todos com alerta',
               helperText: 'Une zerados, abaixo do minimo e divergencias.',
-              transform: (current) => current.copyWith(
-                focus: ReportFocus.inventoryAlerts,
-              ),
+              transform: (current) =>
+                  current.copyWith(focus: ReportFocus.inventoryAlerts),
             ),
           ],
         );
@@ -332,33 +328,29 @@ abstract final class ReportFilterPresetSupport {
               id: 'fiado',
               label: 'Com fiado',
               helperText: 'Traz os saldos pendentes para a frente.',
-              transform: (current) => current.copyWith(
-                focus: ReportFocus.customersWithFiado,
-              ),
+              transform: (current) =>
+                  current.copyWith(focus: ReportFocus.customersWithFiado),
             ),
             ReportFilterPreset(
               id: 'credit',
               label: 'Com haver',
               helperText: 'Mostra primeiro os clientes com saldo positivo.',
-              transform: (current) => current.copyWith(
-                focus: ReportFocus.customersWithCredit,
-              ),
+              transform: (current) =>
+                  current.copyWith(focus: ReportFocus.customersWithCredit),
             ),
             ReportFilterPreset(
               id: 'top',
               label: 'Top compras',
               helperText: 'Prioriza quem mais comprou no periodo.',
-              transform: (current) => current.copyWith(
-                focus: ReportFocus.customersTopPurchases,
-              ),
+              transform: (current) =>
+                  current.copyWith(focus: ReportFocus.customersTopPurchases),
             ),
             ReportFilterPreset(
               id: 'pending',
               label: 'Pendencia aberta',
               helperText: 'Foca nos clientes que mais pedem cobranca.',
-              transform: (current) => current.copyWith(
-                focus: ReportFocus.customersPending,
-              ),
+              transform: (current) =>
+                  current.copyWith(focus: ReportFocus.customersPending),
             ),
           ],
         );
@@ -377,35 +369,32 @@ abstract final class ReportFilterPresetSupport {
             ReportFilterPreset(
               id: 'suppliers',
               label: 'Por fornecedor',
-              helperText: 'Abre a leitura pelas compras concentradas em fornecedor.',
-              transform: (current) => current.copyWith(
-                focus: ReportFocus.purchasesSuppliers,
-              ),
+              helperText:
+                  'Abre a leitura pelas compras concentradas em fornecedor.',
+              transform: (current) =>
+                  current.copyWith(focus: ReportFocus.purchasesSuppliers),
             ),
             ReportFilterPreset(
               id: 'items',
               label: 'Itens comprados',
-              helperText: 'Puxa para frente os itens com maior peso nas compras.',
-              transform: (current) => current.copyWith(
-                focus: ReportFocus.purchasesItems,
-              ),
+              helperText:
+                  'Puxa para frente os itens com maior peso nas compras.',
+              transform: (current) =>
+                  current.copyWith(focus: ReportFocus.purchasesItems),
             ),
             ReportFilterPreset(
               id: 'replenishment',
               label: 'Reposicao',
               helperText: 'Destaca as variantes que mais entraram no periodo.',
-              transform: (current) => current.copyWith(
-                focus: ReportFocus.purchasesReplenishment,
-              ),
+              transform: (current) =>
+                  current.copyWith(focus: ReportFocus.purchasesReplenishment),
             ),
             ReportFilterPreset(
               id: 'period-current',
               label: 'Periodo atual',
               helperText: 'Volta ao recorte padrao da pagina de compras.',
-              transform: (current) => _resetPeriod(
-                current,
-                configFor(ReportPageKey.purchases),
-              ),
+              transform: (current) =>
+                  _resetPeriod(current, configFor(ReportPageKey.purchases)),
             ),
           ],
         );
@@ -585,7 +574,8 @@ abstract final class ReportFilterPresetSupport {
         ),
       );
     }
-    if (config.supports(ReportFilterField.onlyCanceled) && filter.onlyCanceled) {
+    if (config.supports(ReportFilterField.onlyCanceled) &&
+        filter.onlyCanceled) {
       descriptors.add(
         const ReportActiveFilterDescriptor(
           field: ReportFilterField.onlyCanceled,
@@ -603,13 +593,15 @@ abstract final class ReportFilterPresetSupport {
         ),
       );
     }
-    if (config.supports(ReportFilterField.customer) && filter.customerId != null) {
+    if (config.supports(ReportFilterField.customer) &&
+        filter.customerId != null) {
       descriptors.add(
         ReportActiveFilterDescriptor(
           field: ReportFilterField.customer,
           label: 'Cliente',
           value:
-              labels.customers[filter.customerId!] ?? 'Cliente #${filter.customerId}',
+              labels.customers[filter.customerId!] ??
+              'Cliente #${filter.customerId}',
         ),
       );
     }
@@ -619,28 +611,33 @@ abstract final class ReportFilterPresetSupport {
         ReportActiveFilterDescriptor(
           field: ReportFilterField.category,
           label: 'Categoria',
-          value: labels.categories[filter.categoryId!] ??
+          value:
+              labels.categories[filter.categoryId!] ??
               'Categoria #${filter.categoryId}',
         ),
       );
     }
-    if (config.supports(ReportFilterField.product) && filter.productId != null) {
+    if (config.supports(ReportFilterField.product) &&
+        filter.productId != null) {
       descriptors.add(
         ReportActiveFilterDescriptor(
           field: ReportFilterField.product,
           label: 'Produto',
           value:
-              labels.products[filter.productId!] ?? 'Produto #${filter.productId}',
+              labels.products[filter.productId!] ??
+              'Produto #${filter.productId}',
         ),
       );
     }
-    if (config.supports(ReportFilterField.variant) && filter.variantId != null) {
+    if (config.supports(ReportFilterField.variant) &&
+        filter.variantId != null) {
       descriptors.add(
         ReportActiveFilterDescriptor(
           field: ReportFilterField.variant,
           label: 'Variante',
           value:
-              labels.variants[filter.variantId!] ?? 'Variante #${filter.variantId}',
+              labels.variants[filter.variantId!] ??
+              'Variante #${filter.variantId}',
         ),
       );
     }
@@ -660,7 +657,8 @@ abstract final class ReportFilterPresetSupport {
         ReportActiveFilterDescriptor(
           field: ReportFilterField.supplier,
           label: 'Fornecedor',
-          value: labels.suppliers[filter.supplierId!] ??
+          value:
+              labels.suppliers[filter.supplierId!] ??
               'Fornecedor #${filter.supplierId}',
         ),
       );

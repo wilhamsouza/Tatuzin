@@ -8,8 +8,26 @@ import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/auto_sync_coordinator.dart';
 import '../../../../app/core/sync/sync_display_state.dart';
 import '../../../../app/core/sync/sync_providers.dart';
+import '../../../../app/core/sync/sync_queue_item.dart';
+import '../../../../app/core/sync/sync_queue_operation.dart';
+import '../../../../app/core/sync/sync_queue_status.dart';
+import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../system/presentation/providers/system_providers.dart';
+
+final accountCloudAttentionItemsProvider =
+    FutureProvider<List<AccountCloudSyncIssue>>((ref) async {
+      ref.watch(appDataRefreshProvider);
+      final items = await runProviderGuarded(
+        'accountCloudAttentionItemsProvider',
+        () => ref.watch(syncQueueRepositoryProvider).listAttentionItems(),
+        timeout: syncProviderTimeout,
+      );
+      return items
+          .map(AccountCloudSyncIssue.fromQueueItem)
+          .toList(growable: false);
+    });
 
 final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
   final authStatus = ref.watch(authStatusProvider);
@@ -164,6 +182,32 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
       conflictCount: syncOverview.totalConflicts,
       lastSyncedAt: syncOverview.lastProcessedAt,
       nextRetryAt: syncOverview.nextRetryAt,
+    );
+  }
+
+  if (autoSyncSnapshot.lastFailureMessage != null &&
+      autoSyncSnapshot.lastFailureMessage!.trim().isNotEmpty &&
+      !syncOverview.hasAttention) {
+    return AccountCloudStatusSnapshot(
+      statusLabel: 'Precisa de atencao',
+      statusMessage:
+          'Sua conta entrou, mas o auto-sync inicial nao conseguiu ser agendado. O uso local continua liberado enquanto a nuvem precisa de revisao.',
+      tone: AppStatusTone.warning,
+      icon: Icons.error_outline_rounded,
+      accountModeLabel: 'Conta conectada',
+      cloudAvailabilityLabel: 'Auto-sync com alerta',
+      supportingLabel: 'Ultima falha',
+      supportingValue: autoSyncSnapshot.lastFailureMessage,
+      syncingNowCount: syncingNowCount,
+      pendingCount: pendingCount,
+      errorCount: syncOverview.totalErrors,
+      blockedCount: syncOverview.totalBlocked,
+      conflictCount: syncOverview.totalConflicts,
+      lastSyncedAt: syncOverview.lastProcessedAt,
+      nextRetryAt: _nextOperatorAttemptAt(
+        syncOverview: syncOverview,
+        autoSyncSnapshot: autoSyncSnapshot,
+      ),
     );
   }
 
@@ -406,13 +450,22 @@ DateTime? _nextOperatorAttemptAt({
 }) {
   final scheduledAt = autoSyncSnapshot.nextScheduledAt;
   final retryAt = syncOverview.nextRetryAt;
+  final lastProcessedAt = syncOverview.lastProcessedAt;
+  DateTime? candidate;
   if (scheduledAt == null) {
-    return retryAt;
+    candidate = retryAt;
+  } else if (retryAt == null) {
+    candidate = scheduledAt;
+  } else {
+    candidate = scheduledAt.isBefore(retryAt) ? scheduledAt : retryAt;
   }
-  if (retryAt == null) {
-    return scheduledAt;
+  if (candidate == null || lastProcessedAt == null) {
+    return candidate;
   }
-  return scheduledAt.isBefore(retryAt) ? scheduledAt : retryAt;
+  if (!candidate.isBefore(lastProcessedAt)) {
+    return candidate;
+  }
+  return lastProcessedAt.add(const Duration(minutes: 1));
 }
 
 final internalMobileSurfaceAccessProvider =
@@ -474,4 +527,125 @@ class InternalMobileSurfaceAccess {
   final bool canOpenAdminCloud;
 
   bool get hasAnyAccess => canOpenTechnicalSystem || canOpenAdminCloud;
+}
+
+class AccountCloudSyncIssue {
+  const AccountCloudSyncIssue({
+    required this.queueId,
+    required this.featureKey,
+    required this.entityLabel,
+    required this.operationLabel,
+    required this.statusLabel,
+    required this.localId,
+    required this.localUuid,
+    required this.remoteId,
+    required this.endpoint,
+    required this.message,
+    required this.httpStatusCode,
+    required this.nextRetryAt,
+    required this.updatedAt,
+  });
+
+  factory AccountCloudSyncIssue.fromQueueItem(SyncQueueItem item) {
+    return AccountCloudSyncIssue(
+      queueId: item.id,
+      featureKey: item.featureKey,
+      entityLabel: item.entityType,
+      operationLabel: item.operation.operatorLabel,
+      statusLabel: item.status.operatorLabel,
+      localId: item.localEntityId,
+      localUuid: item.localUuid,
+      remoteId: item.remoteId,
+      endpoint: _endpointFor(item),
+      message:
+          item.conflictReason ??
+          item.lastError ??
+          'A fila marcou este item para revisao, mas nao registrou uma mensagem detalhada.',
+      httpStatusCode: _extractHttpStatusCode(item.lastError),
+      nextRetryAt: item.nextRetryAt,
+      updatedAt: item.updatedAt,
+    );
+  }
+
+  final int queueId;
+  final String featureKey;
+  final String entityLabel;
+  final String operationLabel;
+  final String statusLabel;
+  final int localId;
+  final String? localUuid;
+  final String? remoteId;
+  final String endpoint;
+  final String message;
+  final int? httpStatusCode;
+  final DateTime? nextRetryAt;
+  final DateTime updatedAt;
+}
+
+extension on SyncQueueOperation {
+  String get operatorLabel {
+    switch (this) {
+      case SyncQueueOperation.create:
+        return 'Criacao';
+      case SyncQueueOperation.update:
+        return 'Atualizacao';
+      case SyncQueueOperation.delete:
+        return 'Exclusao';
+      case SyncQueueOperation.cancel:
+        return 'Cancelamento';
+    }
+  }
+}
+
+extension on SyncQueueStatus {
+  String get operatorLabel {
+    switch (this) {
+      case SyncQueueStatus.pendingUpload:
+        return 'Pendente de envio';
+      case SyncQueueStatus.pendingUpdate:
+        return 'Pendente de atualizacao';
+      case SyncQueueStatus.processing:
+        return 'Em processamento';
+      case SyncQueueStatus.synced:
+        return 'Sincronizado';
+      case SyncQueueStatus.syncError:
+        return 'Com erro';
+      case SyncQueueStatus.blockedDependency:
+        return 'Bloqueado por dependencia';
+      case SyncQueueStatus.conflict:
+        return 'Conflito';
+    }
+  }
+}
+
+String _endpointFor(SyncQueueItem item) {
+  final collection = switch (item.featureKey) {
+    'categories' => '/categories',
+    'supplies' => '/supplies',
+    'products' => '/products',
+    'product_recipes' => '/product-recipes',
+    'customers' => '/customers',
+    'suppliers' => '/suppliers',
+    'purchases' => '/purchases',
+    'sales' => '/sales',
+    'financial_events' => '/financial-events',
+    'cash_events' => '/cash-events',
+    _ => '/${item.featureKey}',
+  };
+  final remoteId = item.remoteId;
+  if (remoteId == null || remoteId.trim().isEmpty) {
+    return collection;
+  }
+  return '$collection/$remoteId';
+}
+
+int? _extractHttpStatusCode(String? message) {
+  if (message == null) {
+    return null;
+  }
+  final match = RegExp(r'HTTP\s+(\d{3})').firstMatch(message);
+  if (match == null) {
+    return null;
+  }
+  return int.tryParse(match.group(1)!);
 }

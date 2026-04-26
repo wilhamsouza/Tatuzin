@@ -8,6 +8,7 @@ import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
@@ -67,9 +68,13 @@ final purchaseListProvider = FutureProvider<List<Purchase>>((ref) async {
   final query = ref.watch(purchaseSearchQueryProvider);
   final status = ref.watch(purchaseStatusFilterProvider);
   final supplierId = ref.watch(purchaseSupplierFilterProvider);
-  return ref
-      .watch(purchaseRepositoryProvider)
-      .search(query: query, status: status, supplierId: supplierId);
+  return runProviderGuarded(
+    'purchaseListProvider',
+    () => ref
+        .watch(purchaseRepositoryProvider)
+        .search(query: query, status: status, supplierId: supplierId),
+    timeout: localProviderTimeout,
+  );
 });
 
 final purchaseDetailProvider = FutureProvider.family<PurchaseDetail, int>((
@@ -78,7 +83,11 @@ final purchaseDetailProvider = FutureProvider.family<PurchaseDetail, int>((
 ) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref.watch(purchaseRepositoryProvider).fetchDetail(purchaseId);
+  return runProviderGuarded(
+    'purchaseDetailProvider',
+    () => ref.watch(purchaseRepositoryProvider).fetchDetail(purchaseId),
+    timeout: localProviderTimeout,
+  );
 });
 
 final purchasesBySupplierProvider = FutureProvider.family<List<Purchase>, int>((
@@ -87,7 +96,11 @@ final purchasesBySupplierProvider = FutureProvider.family<List<Purchase>, int>((
 ) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref.watch(purchaseRepositoryProvider).search(supplierId: supplierId);
+  return runProviderGuarded(
+    'purchasesBySupplierProvider',
+    () => ref.watch(purchaseRepositoryProvider).search(supplierId: supplierId),
+    timeout: localProviderTimeout,
+  );
 });
 
 final purchaseSyncControllerProvider =

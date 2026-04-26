@@ -319,6 +319,9 @@ class CashReportsPage extends ConsumerWidget {
                 message: '$error',
                 tone: AppStateTone.error,
                 compact: true,
+                actionLabel: 'Tentar novamente',
+                onAction: () =>
+                    ref.read(appDataRefreshProvider.notifier).state++,
               ),
             ),
           ],

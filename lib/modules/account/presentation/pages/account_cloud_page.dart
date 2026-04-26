@@ -12,6 +12,7 @@ import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
+import '../../../system/presentation/providers/system_providers.dart';
 import '../providers/account_cloud_providers.dart';
 
 class AccountCloudPage extends ConsumerWidget {
@@ -25,6 +26,14 @@ class AccountCloudPage extends ConsumerWidget {
     final authStatus = ref.watch(authStatusProvider);
     final company = ref.watch(currentCompanyContextProvider);
     final accountCloud = ref.watch(accountCloudStatusProvider);
+    final hasSyncAttention =
+        authStatus.isRemoteAuthenticated &&
+        (accountCloud.errorCount > 0 ||
+            accountCloud.blockedCount > 0 ||
+            accountCloud.conflictCount > 0);
+    final syncIssuesAsync = hasSyncAttention
+        ? ref.watch(accountCloudAttentionItemsProvider)
+        : null;
     final internalAccess = ref.watch(internalMobileSurfaceAccessProvider);
 
     return Scaffold(
@@ -41,6 +50,60 @@ class AccountCloudPage extends ConsumerWidget {
             badgeIcon: accountCloud.icon,
             emphasized: true,
           ),
+          if (hasSyncAttention) ...[
+            const SizedBox(height: 18),
+            AppSectionCard(
+              title: 'Itens com revisao',
+              subtitle:
+                  'Detalhes reais da fila local para entender o que precisa de nova tentativa ou ajuste.',
+              child: syncIssuesAsync!.when(
+                data: (issues) {
+                  if (issues.isEmpty) {
+                    return Text(
+                      'A fila informou atencao, mas nenhum item detalhado foi encontrado nesta leitura.',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    );
+                  }
+                  return Column(
+                    children: [
+                      for (final issue in issues) ...[
+                        _SyncIssueTile(issue: issue),
+                        const SizedBox(height: 10),
+                      ],
+                    ],
+                  );
+                },
+                loading: () => Text(
+                  'Carregando detalhes da fila...',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                error: (error, _) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Nao foi possivel carregar os detalhes da fila: $error',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.error,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    AppButton.secondary(
+                      label: 'Tentar novamente',
+                      icon: Icons.refresh_rounded,
+                      compact: true,
+                      onPressed: () =>
+                          ref.invalidate(accountCloudAttentionItemsProvider),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 18),
           AppSectionCard(
             title: 'Sua conta',
@@ -353,6 +416,119 @@ class AccountCloudPage extends ConsumerWidget {
         ),
       );
     }
+  }
+}
+
+class _SyncIssueTile extends ConsumerWidget {
+  const _SyncIssueTile({required this.issue});
+
+  final AccountCloudSyncIssue issue;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final nextRetryAt = issue.nextRetryAt;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    '${issue.entityLabel} - ${issue.operationLabel}',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                AppStatusBadge(
+                  label: issue.statusLabel,
+                  tone: AppStatusTone.warning,
+                  icon: Icons.error_outline_rounded,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _IssueLine(label: 'ID local', value: '${issue.localId}'),
+            if (issue.localUuid != null)
+              _IssueLine(label: 'UUID local', value: issue.localUuid!),
+            _IssueLine(
+              label: 'ID remoto',
+              value: issue.remoteId?.trim().isNotEmpty == true
+                  ? issue.remoteId!
+                  : 'Ainda nao criado',
+            ),
+            _IssueLine(label: 'Endpoint', value: issue.endpoint),
+            if (issue.httpStatusCode != null)
+              _IssueLine(label: 'HTTP', value: '${issue.httpStatusCode}'),
+            _IssueLine(label: 'Mensagem', value: issue.message),
+            _IssueLine(
+              label: 'Atualizado',
+              value: AppFormatters.shortDateTime(issue.updatedAt),
+            ),
+            _IssueLine(
+              label: 'Proxima tentativa',
+              value: nextRetryAt == null
+                  ? 'Sem retry automatico'
+                  : AppFormatters.shortDateTime(nextRetryAt),
+            ),
+            const SizedBox(height: 10),
+            AppButton.secondary(
+              label: 'Tentar novamente',
+              icon: Icons.refresh_rounded,
+              compact: true,
+              onPressed: () async {
+                await ref
+                    .read(catalogSyncControllerProvider.notifier)
+                    .retryFeatures([issue.featureKey]);
+                ref.invalidate(accountCloudAttentionItemsProvider);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _IssueLine extends StatelessWidget {
+  const _IssueLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '$label: ',
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            TextSpan(text: value),
+          ],
+        ),
+        style: theme.textTheme.bodySmall,
+      ),
+    );
   }
 }
 

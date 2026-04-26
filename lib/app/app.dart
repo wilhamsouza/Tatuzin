@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/constants/app_constants.dart';
 import 'core/database/app_database.dart';
 import 'core/session/auth_provider.dart';
+import 'core/session/session_provider.dart';
 import 'core/session/session_reset.dart';
 import 'core/sync/sync_providers.dart';
 import 'core/widgets/app_async_value_view.dart';
@@ -46,7 +48,26 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
     final startup = ref.watch(appStartupProvider);
 
     return startup.when(
-      data: (_) {
+      data: (startupState) {
+        if (!startupState.isSuccess) {
+          return MaterialApp(
+            title: AppConstants.appName,
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.light(),
+            home: AppAsyncValueView.error(
+              title: startupState.title,
+              message: startupState.message,
+              actionLabel: 'Tentar novamente',
+              onAction: _retryStartup,
+              secondaryActionLabel: 'Sair da conta',
+              onSecondaryAction: _signOutFromBootstrapError,
+              detailsMessage: kDebugMode
+                  ? _buildStartupDebugDetails(startupState)
+                  : null,
+            ),
+          );
+        }
+
         final router = ref.watch(appRouterProvider);
 
         return MaterialApp.router(
@@ -72,11 +93,46 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
         theme: AppTheme.light(),
         home: AppAsyncValueView.error(
           title: 'Falha ao iniciar o Tatuzin',
-          message: error.toString(),
+          message:
+              'Nao foi possivel concluir a preparacao inicial com seguranca.',
           actionLabel: 'Tentar novamente',
-          onAction: () => ref.invalidate(appStartupProvider),
+          onAction: _retryStartup,
+          secondaryActionLabel: 'Sair da conta',
+          onSecondaryAction: _signOutFromBootstrapError,
+          detailsMessage: kDebugMode ? error.toString() : null,
         ),
       ),
     );
+  }
+
+  void _retryStartup() {
+    ref.invalidate(appDatabaseProvider);
+    ref.invalidate(appStartupProvider);
+  }
+
+  Future<void> _signOutFromBootstrapError() async {
+    try {
+      await ref.read(authControllerProvider.notifier).signOutCurrentSession();
+    } catch (_) {
+      ref.read(autoSyncCoordinatorProvider).cancelPending();
+      ref.read(appSessionProvider.notifier).signOutToLocalMode();
+      ref.invalidate(appDatabaseProvider);
+      ref.invalidate(appStartupProvider);
+    }
+  }
+
+  String _buildStartupDebugDetails(AppStartupState startupState) {
+    final lines = <String>[
+      'Bootstrap: ${startupState.status.name}',
+      'Ultima etapa concluida: ${startupState.lastCompletedStep ?? 'nenhuma'}',
+      'Parou em: ${startupState.pendingStep ?? 'nenhuma'}',
+    ];
+
+    final debugDetails = startupState.debugDetails?.trim();
+    if (debugDetails != null && debugDetails.isNotEmpty) {
+      lines.add(debugDetails);
+    }
+
+    return lines.join('\n');
   }
 }

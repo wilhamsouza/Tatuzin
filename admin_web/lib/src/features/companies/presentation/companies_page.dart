@@ -71,7 +71,9 @@ class _CompaniesPageState extends ConsumerState<CompaniesPage> {
             ),
             const SizedBox(height: 20),
             if (result.items.isEmpty)
-              const _EmptyState(message: 'Nenhuma empresa encontrada para os filtros.')
+              const _EmptyState(
+                message: 'Nenhuma empresa encontrada para os filtros.',
+              )
             else
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -107,11 +109,16 @@ class _CompaniesPageState extends ConsumerState<CompaniesPage> {
                         DataCell(Text(company.license?.plan ?? 'Sem licenca')),
                         DataCell(
                           _StatusBadge(
-                            status: company.license?.status ?? 'without_license',
+                            status:
+                                company.license?.status ?? 'without_license',
                           ),
                         ),
                         DataCell(
-                          Text(AdminFormatters.formatDate(company.license?.expiresAt)),
+                          Text(
+                            AdminFormatters.formatDate(
+                              company.license?.expiresAt,
+                            ),
+                          ),
                         ),
                         DataCell(
                           Text(
@@ -125,7 +132,8 @@ class _CompaniesPageState extends ConsumerState<CompaniesPage> {
                         DataCell(Text('${company.counts.memberships}')),
                         DataCell(
                           FilledButton.tonal(
-                            onPressed: () => context.go('/companies/${company.id}'),
+                            onPressed: () =>
+                                context.go('/companies/${company.id}'),
                             child: const Text('Abrir'),
                           ),
                         ),
@@ -288,7 +296,10 @@ class _CompaniesFiltersState extends State<_CompaniesFilters> {
                 items: const [
                   DropdownMenuItem<bool?>(value: null, child: Text('Todas')),
                   DropdownMenuItem<bool?>(value: true, child: Text('Ativas')),
-                  DropdownMenuItem<bool?>(value: false, child: Text('Inativas')),
+                  DropdownMenuItem<bool?>(
+                    value: false,
+                    child: Text('Inativas'),
+                  ),
                 ],
                 onChanged: (value) => setState(() => _isActive = value),
               ),
@@ -300,8 +311,14 @@ class _CompaniesFiltersState extends State<_CompaniesFilters> {
                 decoration: const InputDecoration(labelText: 'Licenca'),
                 items: const [
                   DropdownMenuItem<String?>(value: null, child: Text('Todas')),
-                  DropdownMenuItem<String?>(value: 'trial', child: Text('Trial')),
-                  DropdownMenuItem<String?>(value: 'active', child: Text('Ativa')),
+                  DropdownMenuItem<String?>(
+                    value: 'trial',
+                    child: Text('Trial'),
+                  ),
+                  DropdownMenuItem<String?>(
+                    value: 'active',
+                    child: Text('Ativa'),
+                  ),
                   DropdownMenuItem<String?>(
                     value: 'suspended',
                     child: Text('Suspensa'),
@@ -325,7 +342,10 @@ class _CompaniesFiltersState extends State<_CompaniesFilters> {
                 decoration: const InputDecoration(labelText: 'Sync'),
                 items: const [
                   DropdownMenuItem<bool?>(value: null, child: Text('Todas')),
-                  DropdownMenuItem<bool?>(value: true, child: Text('Habilitada')),
+                  DropdownMenuItem<bool?>(
+                    value: true,
+                    child: Text('Habilitada'),
+                  ),
                   DropdownMenuItem<bool?>(
                     value: false,
                     child: Text('Desativada'),
@@ -400,10 +420,7 @@ class _CompaniesFiltersState extends State<_CompaniesFilters> {
               icon: const Icon(Icons.filter_alt_rounded),
               label: const Text('Aplicar'),
             ),
-            TextButton(
-              onPressed: widget.onClear,
-              child: const Text('Limpar'),
-            ),
+            TextButton(onPressed: widget.onClear, child: const Text('Limpar')),
           ],
         ),
       ],
@@ -478,10 +495,7 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 32),
-      child: Text(
-        message,
-        style: Theme.of(context).textTheme.bodyMedium,
-      ),
+      child: Text(message, style: Theme.of(context).textTheme.bodyMedium),
     );
   }
 }
@@ -502,9 +516,9 @@ class _StatusBadge extends StatelessWidget {
       child: Text(
         AdminFormatters.formatLicenseStatus(status),
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AdminFormatters.statusColor(context, status),
-              fontWeight: FontWeight.w700,
-            ),
+          color: AdminFormatters.statusColor(context, status),
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

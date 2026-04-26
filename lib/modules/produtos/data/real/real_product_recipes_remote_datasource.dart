@@ -55,7 +55,9 @@ class RealProductRecipesRemoteDatasource
   }
 
   @override
-  Future<RemoteProductRecipeRecord> fetchByProductId(String productRemoteId) async {
+  Future<RemoteProductRecipeRecord> fetchByProductId(
+    String productRemoteId,
+  ) async {
     final response = await _apiClient.getJson(
       '/product-recipes/$productRemoteId',
       options: await _authorizedOptions(),

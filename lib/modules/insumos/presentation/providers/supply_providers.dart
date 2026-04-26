@@ -8,6 +8,7 @@ import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
@@ -54,13 +55,21 @@ final supplyListProvider = FutureProvider<List<Supply>>((ref) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(supplySearchQueryProvider);
-  return ref.watch(supplyRepositoryProvider).search(query: query);
+  return runProviderGuarded(
+    'supplyListProvider',
+    () => ref.watch(supplyRepositoryProvider).search(query: query),
+    timeout: localProviderTimeout,
+  );
 });
 
 final activeSupplyOptionsProvider = FutureProvider<List<Supply>>((ref) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref.watch(supplyRepositoryProvider).search(activeOnly: true);
+  return runProviderGuarded(
+    'activeSupplyOptionsProvider',
+    () => ref.watch(supplyRepositoryProvider).search(activeOnly: true),
+    timeout: localProviderTimeout,
+  );
 });
 
 final supplyDetailProvider = FutureProvider.family<Supply?, int>((
@@ -69,7 +78,11 @@ final supplyDetailProvider = FutureProvider.family<Supply?, int>((
 ) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref.watch(supplyRepositoryProvider).findById(supplyId);
+  return runProviderGuarded(
+    'supplyDetailProvider',
+    () => ref.watch(supplyRepositoryProvider).findById(supplyId),
+    timeout: localProviderTimeout,
+  );
 });
 
 final supplyInventoryOverviewProvider =
@@ -77,9 +90,13 @@ final supplyInventoryOverviewProvider =
       ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       final query = ref.watch(supplySearchQueryProvider);
-      return ref
-          .watch(supplyRepositoryProvider)
-          .listInventoryOverview(query: query);
+      return runProviderGuarded(
+        'supplyInventoryOverviewProvider',
+        () => ref
+            .watch(supplyRepositoryProvider)
+            .listInventoryOverview(query: query),
+        timeout: localProviderTimeout,
+      );
     });
 
 final reorderSuggestionsSearchQueryProvider = StateProvider<String>(
@@ -96,9 +113,13 @@ final supplyReorderSuggestionsProvider =
       ref.watch(appDataRefreshProvider);
       final query = ref.watch(reorderSuggestionsSearchQueryProvider);
       final filter = ref.watch(reorderSuggestionsFilterProvider);
-      return ref
-          .watch(supplyRepositoryProvider)
-          .listReorderSuggestions(query: query, filter: filter);
+      return runProviderGuarded(
+        'supplyReorderSuggestionsProvider',
+        () => ref
+            .watch(supplyRepositoryProvider)
+            .listReorderSuggestions(query: query, filter: filter),
+        timeout: localProviderTimeout,
+      );
     });
 
 final supplyInventoryMovementsProvider =
@@ -108,15 +129,19 @@ final supplyInventoryMovementsProvider =
     >((ref, query) async {
       ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
-      return ref
-          .watch(supplyRepositoryProvider)
-          .listInventoryMovements(
-            supplyId: query.supplyId,
-            sourceType: query.sourceType,
-            occurredFrom: query.occurredFrom,
-            occurredTo: query.occurredTo,
-            limit: query.limit,
-          );
+      return runProviderGuarded(
+        'supplyInventoryMovementsProvider',
+        () => ref
+            .watch(supplyRepositoryProvider)
+            .listInventoryMovements(
+              supplyId: query.supplyId,
+              sourceType: query.sourceType,
+              occurredFrom: query.occurredFrom,
+              occurredTo: query.occurredTo,
+              limit: query.limit,
+            ),
+        timeout: localProviderTimeout,
+      );
     });
 
 final supplyCostHistoryProvider =
@@ -126,9 +151,13 @@ final supplyCostHistoryProvider =
     ) async {
       ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
-      return ref
-          .watch(supplyRepositoryProvider)
-          .listCostHistory(supplyId: supplyId);
+      return runProviderGuarded(
+        'supplyCostHistoryProvider',
+        () => ref
+            .watch(supplyRepositoryProvider)
+            .listCostHistory(supplyId: supplyId),
+        timeout: localProviderTimeout,
+      );
     });
 
 final supplyActionControllerProvider =

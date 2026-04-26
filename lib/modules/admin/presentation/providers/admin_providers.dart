@@ -4,6 +4,7 @@ import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/network/contracts/api_client_contract.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 
 final adminRemoteServiceProvider = Provider<AdminRemoteService>((ref) {
@@ -15,15 +16,22 @@ final adminRemoteServiceProvider = Provider<AdminRemoteService>((ref) {
 
 final adminOverviewProvider = FutureProvider<AdminOverview>((ref) async {
   ref.watch(appDataRefreshProvider);
-  return ref.watch(adminRemoteServiceProvider).fetchOverview();
+  return runProviderGuarded(
+    'adminOverviewProvider',
+    () => ref.watch(adminRemoteServiceProvider).fetchOverview(),
+    timeout: defaultProviderTimeout,
+  );
 });
 
 final adminCompanyDetailProvider =
     FutureProvider.family<AdminCompanyDetail, String>((ref, companyId) async {
       ref.watch(appDataRefreshProvider);
-      return ref
-          .watch(adminRemoteServiceProvider)
-          .fetchCompanyDetail(companyId);
+      return runProviderGuarded(
+        'adminCompanyDetailProvider',
+        () =>
+            ref.watch(adminRemoteServiceProvider).fetchCompanyDetail(companyId),
+        timeout: defaultProviderTimeout,
+      );
     });
 
 final adminLicenseControllerProvider =

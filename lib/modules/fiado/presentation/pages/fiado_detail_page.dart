@@ -174,7 +174,21 @@ class FiadoDetailPage extends ConsumerWidget {
         error: (error, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Text('Falha ao carregar o fiado: $error'),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Falha ao carregar o fiado: $error',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => ref.invalidate(fiadoDetailProvider(fiadoId)),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Tentar novamente'),
+                ),
+              ],
+            ),
           ),
         ),
       ),

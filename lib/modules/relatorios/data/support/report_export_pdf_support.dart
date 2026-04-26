@@ -58,10 +58,7 @@ class ReportExportPdfSupport {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(24),
-        theme: pw.ThemeData.withFont(
-          base: fonts.base,
-          bold: fonts.bold,
-        ),
+        theme: pw.ThemeData.withFont(base: fonts.base, bold: fonts.bold),
         build: (_) => [
           _buildHeader(document),
           pw.SizedBox(height: 16),
@@ -167,7 +164,10 @@ class ReportExportPdfSupport {
             style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 10),
-          _metaLine('Gerado em', AppFormatters.shortDateTime(document.generatedAt)),
+          _metaLine(
+            'Gerado em',
+            AppFormatters.shortDateTime(document.generatedAt),
+          ),
           _metaLine('Modo', document.mode.label),
           _metaLine('Periodo', document.periodLabel),
           if ((document.navigationSummary ?? '').trim().isNotEmpty)
@@ -276,9 +276,7 @@ class ReportExportPdfSupport {
                 ),
                 for (final row in table.rows)
                   pw.TableRow(
-                    children: [
-                      for (final value in row) _tableCell(value),
-                    ],
+                    children: [for (final value in row) _tableCell(value)],
                   ),
               ],
             ),
@@ -297,19 +295,13 @@ class ReportExportPdfSupport {
             width: 74,
             child: pw.Text(
               label,
-              style: const pw.TextStyle(
-                fontSize: 10,
-                color: PdfColors.grey700,
-              ),
+              style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
             ),
           ),
           pw.Expanded(
             child: pw.Text(
               value,
-              style: pw.TextStyle(
-                fontSize: 10,
-                fontWeight: pw.FontWeight.bold,
-              ),
+              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
             ),
           ),
         ],
@@ -361,18 +353,12 @@ class ReportExportPdfSupport {
   Future<_PdfFontBundle> _createFontBundle() async {
     final regular = await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
     final bold = await rootBundle.load('assets/fonts/NotoSans-Bold.ttf');
-    return _PdfFontBundle(
-      base: pw.Font.ttf(regular),
-      bold: pw.Font.ttf(bold),
-    );
+    return _PdfFontBundle(base: pw.Font.ttf(regular), bold: pw.Font.ttf(bold));
   }
 }
 
 class _PdfFontBundle {
-  const _PdfFontBundle({
-    required this.base,
-    required this.bold,
-  });
+  const _PdfFontBundle({required this.base, required this.bold});
 
   final pw.Font base;
   final pw.Font bold;

@@ -27,11 +27,13 @@ class PurchasePaymentInput {
     required this.purchaseId,
     required this.amountCents,
     required this.paymentMethod,
+    this.paymentUuid,
     this.notes,
   });
 
   final int purchaseId;
   final int amountCents;
   final PaymentMethod paymentMethod;
+  final String? paymentUuid;
   final String? notes;
 }

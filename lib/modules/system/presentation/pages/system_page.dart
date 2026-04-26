@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../app/core/app_context/data_access_policy.dart';
 import '../../../../app/core/config/app_data_mode.dart';
 import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/formatters/app_formatters.dart';
-import '../../../../app/core/network/endpoint_config.dart';
 import '../../../../app/core/network/remote_feature_diagnostic.dart';
 import '../../../../app/core/session/auth_provider.dart';
 import '../../../../app/core/session/session_provider.dart';
@@ -27,6 +25,7 @@ import '../helpers/system_feedback_helpers.dart';
 import '../helpers/system_page_helpers.dart';
 import '../providers/system_providers.dart';
 import '../widgets/system_backend_status_section.dart';
+import '../widgets/system_environment_section.dart';
 import '../widgets/system_financial_events_section.dart';
 import '../widgets/system_hybrid_governance_section.dart';
 import '../widgets/system_mock_auth_section.dart';
@@ -78,7 +77,6 @@ class _SystemPageState extends ConsumerState<SystemPage> {
   Widget build(BuildContext context) {
     final environment = ref.watch(appEnvironmentProvider);
     final session = ref.watch(appSessionProvider);
-    final accessPolicy = ref.watch(appDataAccessPolicyProvider);
     final guard = ref.watch(sessionGuardProvider);
     final authState = ref.watch(authControllerProvider);
     final authStatus = ref.watch(authStatusProvider);
@@ -168,7 +166,8 @@ class _SystemPageState extends ConsumerState<SystemPage> {
         authStatus.cloudSyncEnabled;
     final currentEndpointText = environment.endpointConfig.baseUrl ?? '';
 
-    if (!_endpointFocusNode.hasFocus &&
+    if (environment.allowsTechnicalEndpointOverride &&
+        !_endpointFocusNode.hasFocus &&
         _endpointController.text.trim() != currentEndpointText) {
       _setEndpointControllerText(currentEndpointText);
     }
@@ -190,16 +189,31 @@ class _SystemPageState extends ConsumerState<SystemPage> {
           const SizedBox(height: 18),
           SystemSessionSection(session: session, authStatus: authStatus),
           const SizedBox(height: 18),
-          AppSectionCard(
-            title: 'Modo de dados e endpoint',
-            subtitle:
-                'Controle central do ambiente sem levar backend para as telas operacionais.',
-            trailing: AppStatusBadge(
-              label: accessPolicy.strategyLabel,
-              tone: AppStatusTone.success,
-              icon: Icons.storage_rounded,
-            ),
-            child: _buildDataModeSection(context, environment, guard, theme),
+          SystemEnvironmentSection(
+            environment: environment,
+            guard: guard,
+            canEditEndpoint: environment.allowsTechnicalEndpointOverride,
+            endpointController: environment.allowsTechnicalEndpointOverride
+                ? _endpointController
+                : null,
+            endpointFocusNode: environment.allowsTechnicalEndpointOverride
+                ? _endpointFocusNode
+                : null,
+            onDataModeChanged: (mode) async {
+              await ref.read(appEnvironmentProvider.notifier).setDataMode(mode);
+              final updatedEnvironment = ref.read(appEnvironmentProvider);
+              if (updatedEnvironment.allowsTechnicalEndpointOverride) {
+                _setEndpointControllerText(
+                  updatedEnvironment.endpointConfig.baseUrl ?? '',
+                );
+              }
+            },
+            onSaveEndpoint: environment.allowsTechnicalEndpointOverride
+                ? _saveEndpoint
+                : null,
+            onUseDefaultEndpoint: environment.allowsTechnicalEndpointOverride
+                ? _useDefaultEndpoint
+                : null,
           ),
           const SizedBox(height: 18),
           SystemHybridGovernanceSection(snapshot: hybridOperationalTruth),
@@ -211,18 +225,18 @@ class _SystemPageState extends ConsumerState<SystemPage> {
                   ref.invalidate(backendConnectionStatusProvider),
             ),
             loading: () => const AppSectionCard(
-              title: 'API real de desenvolvimento',
+              title: 'API oficial do Tatuzin',
               subtitle:
-                  'Saude do backend local e validacao do tenant remoto sem acoplar vendas, caixa ou relatorios a HTTP.',
+                  'Saude do backend remoto oficial e validacao do tenant sem acoplar vendas, caixa ou relatorios a HTTP.',
               child: Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: Center(child: CircularProgressIndicator()),
               ),
             ),
             error: (error, _) => AppSectionCard(
-              title: 'API real de desenvolvimento',
+              title: 'API oficial do Tatuzin',
               subtitle:
-                  'Saude do backend local e validacao do tenant remoto sem acoplar vendas, caixa ou relatorios a HTTP.',
+                  'Saude do backend remoto oficial e validacao do tenant sem acoplar vendas, caixa ou relatorios a HTTP.',
               child: Text(
                 error.toString(),
                 style: theme.textTheme.bodyMedium?.copyWith(
@@ -422,117 +436,6 @@ class _SystemPageState extends ConsumerState<SystemPage> {
     );
   }
 
-  Widget _buildDataModeSection(
-    BuildContext context,
-    AppEnvironment environment,
-    SessionGuardSnapshot guard,
-    ThemeData theme,
-  ) {
-    final defaultEndpointBaseUrl = EndpointConfig.remoteDefault().baseUrl!;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SegmentedButton<AppDataMode>(
-          segments: AppDataMode.values
-              .map(
-                (mode) => ButtonSegment<AppDataMode>(
-                  value: mode,
-                  label: Text(mode.label),
-                ),
-              )
-              .toList(),
-          selected: <AppDataMode>{environment.dataMode},
-          showSelectedIcon: false,
-          onSelectionChanged: (selection) async {
-            await ref
-                .read(appEnvironmentProvider.notifier)
-                .setDataMode(selection.first);
-            final updatedEnvironment = ref.read(appEnvironmentProvider);
-            _setEndpointControllerText(
-              updatedEnvironment.endpointConfig.baseUrl ??
-                  (selection.first == AppDataMode.localOnly
-                      ? ''
-                      : defaultEndpointBaseUrl),
-            );
-          },
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _endpointController,
-          focusNode: _endpointFocusNode,
-          decoration: InputDecoration(
-            labelText: 'Base URL do backend',
-            hintText: defaultEndpointBaseUrl,
-            prefixIcon: const Icon(Icons.link_rounded),
-          ),
-          keyboardType: TextInputType.url,
-          textInputAction: TextInputAction.done,
-        ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            FilledButton.icon(
-              onPressed: _saveEndpoint,
-              icon: const Icon(Icons.save_outlined),
-              label: const Text('Salvar endpoint'),
-            ),
-            OutlinedButton.icon(
-              onPressed: () async {
-                _setEndpointControllerText(defaultEndpointBaseUrl);
-                await _saveEndpoint();
-              },
-              icon: const Icon(Icons.restart_alt_rounded),
-              label: const Text('Usar endpoint padrao'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            const SystemModeChip(
-              label: 'SQLite local ativo',
-              icon: Icons.dns_rounded,
-            ),
-            SystemModeChip(
-              label: environment.endpointConfig.summaryLabel,
-              icon: Icons.cloud_queue_rounded,
-            ),
-            SystemModeChip(
-              label: guard.allowRemoteRoutes
-                  ? 'Remoto liberado'
-                  : 'Remoto em espera',
-              icon: Icons.sync_alt_rounded,
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Text(
-          environment.dataMode.description,
-          style: theme.textTheme.bodyMedium,
-        ),
-        const SizedBox(height: 14),
-        SystemInfoRow(label: 'Ambiente', value: environment.name),
-        SystemInfoRow(
-          label: 'Auth remota',
-          value: environment.authEnabled
-              ? 'Real habilitada para desenvolvimento'
-              : 'Desativada no modo local',
-        ),
-        SystemInfoRow(
-          label: 'Sync remota',
-          value: environment.remoteSyncEnabled
-              ? 'Preparado para fase futura'
-              : 'Ainda isolado do operacional',
-        ),
-      ],
-    );
-  }
-
   Future<void> _saveEndpoint() async {
     final messenger = ScaffoldMessenger.of(context);
     await ref
@@ -550,9 +453,16 @@ class _SystemPageState extends ConsumerState<SystemPage> {
     }
     messenger.showSnackBar(
       const SnackBar(
-        content: Text('Endpoint remoto atualizado para este ambiente.'),
+        content: Text('Override tecnico de endpoint atualizado para debug.'),
       ),
     );
+  }
+
+  Future<void> _useDefaultEndpoint() async {
+    _setEndpointControllerText(
+      AppEnvironment.remoteDefault().endpointConfig.baseUrl ?? '',
+    );
+    await _saveEndpoint();
   }
 
   void _setEndpointControllerText(String value) {

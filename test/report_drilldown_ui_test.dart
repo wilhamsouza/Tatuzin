@@ -81,11 +81,7 @@ void main() {
     );
     addTearDown(container.dispose);
 
-    await _pumpRouterFlow(
-      tester,
-      container: container,
-      router: router,
-    );
+    await _pumpRouterFlow(tester, container: container, router: router);
 
     await tester.tap(find.text('Vendas liquidas').first);
     await tester.pumpAndSettle();
@@ -241,6 +237,13 @@ AccountCloudStatusSnapshot _cloudStatus() {
     icon: Icons.offline_bolt_rounded,
     accountModeLabel: 'Modo local',
     cloudAvailabilityLabel: 'Uso local disponivel',
+    syncingNowCount: 0,
+    pendingCount: 0,
+    errorCount: 0,
+    blockedCount: 0,
+    conflictCount: 0,
+    lastSyncedAt: null,
+    nextRetryAt: null,
   );
 }
 

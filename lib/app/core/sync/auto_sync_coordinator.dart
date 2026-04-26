@@ -399,7 +399,19 @@ class AutoSyncCoordinator {
   }
 
   Future<bool> _scheduleRetryWakeupIfNeeded() async {
-    final summaries = await _loadQueueSummaries();
+    late final List<SyncQueueFeatureSummary> summaries;
+    try {
+      summaries = await _loadQueueSummaries().timeout(
+        const Duration(seconds: 10),
+      );
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Auto sync nao conseguiu ler a fila para agendar retry.',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return false;
+    }
     DateTime? nextRetryAt;
 
     for (final summary in summaries) {

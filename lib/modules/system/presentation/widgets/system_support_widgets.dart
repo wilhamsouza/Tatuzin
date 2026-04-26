@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 
 class SystemInfoRow extends StatelessWidget {
-  const SystemInfoRow({
-    required this.label,
-    required this.value,
-    super.key,
-  });
+  const SystemInfoRow({required this.label, required this.value, super.key});
 
   final String label;
   final String value;
@@ -29,12 +25,7 @@ class SystemInfoRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              value,
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
+          Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),
         ],
       ),
     );
@@ -66,10 +57,7 @@ class SystemStateTile extends StatelessWidget {
             color: theme.colorScheme.primary.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(
-            icon,
-            color: theme.colorScheme.primary,
-          ),
+          child: Icon(icon, color: theme.colorScheme.primary),
         ),
         const SizedBox(width: 14),
         Expanded(
@@ -98,11 +86,7 @@ class SystemStateTile extends StatelessWidget {
 }
 
 class SystemModeChip extends StatelessWidget {
-  const SystemModeChip({
-    required this.label,
-    required this.icon,
-    super.key,
-  });
+  const SystemModeChip({required this.label, required this.icon, super.key});
 
   final String label;
   final IconData icon;

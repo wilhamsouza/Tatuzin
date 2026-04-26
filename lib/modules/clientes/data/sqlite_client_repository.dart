@@ -258,7 +258,10 @@ class SqliteClientRepository implements ClientRepository {
     return _mapClient(rows.first);
   }
 
-  Future<void> upsertFromRemote(RemoteCustomerRecord remote) async {
+  Future<void> upsertFromRemote(
+    RemoteCustomerRecord remote, {
+    bool preserveLocalPendingChanges = true,
+  }) async {
     final database = await _appDatabase.database;
 
     await database.transaction((txn) async {
@@ -292,7 +295,8 @@ class SqliteClientRepository implements ClientRepository {
         final localUpdatedAt = DateTime.parse(
           existing['atualizado_em'] as String,
         );
-        if (localUpdatedAt.isAfter(remote.updatedAt)) {
+        if (preserveLocalPendingChanges &&
+            localUpdatedAt.isAfter(remote.updatedAt)) {
           await _syncMetadataRepository.markPendingUpdate(
             txn,
             featureKey: featureKey,

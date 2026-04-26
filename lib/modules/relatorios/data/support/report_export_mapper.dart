@@ -608,14 +608,11 @@ abstract final class ReportExportMapper {
       ..sort((a, b) => b.totalPurchasedCents.compareTo(a.totalPurchasedCents));
     final openFiado =
         rows.where((row) => row.hasPendingFiado).toList(growable: false)
-          ..sort(
-            (a, b) => b.pendingFiadoCents.compareTo(a.pendingFiadoCents),
-          );
+          ..sort((a, b) => b.pendingFiadoCents.compareTo(a.pendingFiadoCents));
     final withCredit =
-        rows.where((row) => row.hasCredit).toList(growable: false)
-          ..sort(
-            (a, b) => b.creditBalanceCents.compareTo(a.creditBalanceCents),
-          );
+        rows.where((row) => row.hasCredit).toList(growable: false)..sort(
+          (a, b) => b.creditBalanceCents.compareTo(a.creditBalanceCents),
+        );
     final inactive =
         rows
             .where(
@@ -718,7 +715,8 @@ abstract final class ReportExportMapper {
         openFiadoTable,
         withCreditTable,
       ] else ...[
-        if (filter.focus != ReportFocus.customersTopPurchases) topCustomersTable,
+        if (filter.focus != ReportFocus.customersTopPurchases)
+          topCustomersTable,
         if (filter.focus != ReportFocus.customersWithFiado &&
             filter.focus != ReportFocus.customersPending)
           openFiadoTable,
@@ -727,9 +725,8 @@ abstract final class ReportExportMapper {
       if (mode == ReportExportMode.detailed) inactiveTable,
     ];
     final csvRows = <List<String>>[
-      for (final row in (mode == ReportExportMode.summary
-          ? topCustomers.take(10)
-          : rows))
+      for (final row
+          in (mode == ReportExportMode.summary ? topCustomers.take(10) : rows))
         [
           row.customerName,
           row.isActive ? 'Sim' : 'Nao',
@@ -766,10 +763,7 @@ abstract final class ReportExportMapper {
           label: 'Com fiado aberto',
           value: '${openFiado.length}',
         ),
-        ReportExportMetric(
-          label: 'Com haver',
-          value: '${withCredit.length}',
-        ),
+        ReportExportMetric(label: 'Com haver', value: '${withCredit.length}'),
         ReportExportMetric(
           label: 'Maior saldo pendente',
           value: openFiado.isEmpty
@@ -848,8 +842,10 @@ abstract final class ReportExportMapper {
     final tables = <ReportExportTable>[
       if (filter.focus == ReportFocus.purchasesSuppliers) supplierTable,
       if (filter.focus == ReportFocus.purchasesItems) topItemsTable,
-      if (filter.focus == ReportFocus.purchasesReplenishment) replenishmentTable,
-      if (filter.focus == null || filter.focus == ReportFocus.purchasesSuppliers)
+      if (filter.focus == ReportFocus.purchasesReplenishment)
+        replenishmentTable,
+      if (filter.focus == null ||
+          filter.focus == ReportFocus.purchasesSuppliers)
         if (filter.focus == null) supplierTable,
       if (mode == ReportExportMode.detailed ||
           filter.focus == ReportFocus.purchasesItems)
@@ -1071,7 +1067,9 @@ abstract final class ReportExportMapper {
     return active.map((item) => item.displayLabel).toList(growable: false);
   }
 
-  static List<List<String>> _cashEntryOriginRows(ReportCashflowSummary cashflow) {
+  static List<List<String>> _cashEntryOriginRows(
+    ReportCashflowSummary cashflow,
+  ) {
     final salesEntries =
         (cashflow.totalReceivedCents - cashflow.fiadoReceiptsCents).clamp(
           0,

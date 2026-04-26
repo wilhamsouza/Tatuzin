@@ -56,8 +56,7 @@ class RemoteProductRecord {
           json['costPriceCents'] as int? ??
           0,
       costSource: productCostSourceFromStorage(json['costSource'] as String?),
-      variableCostSnapshotCents:
-          json['variableCostSnapshotCents'] as int?,
+      variableCostSnapshotCents: json['variableCostSnapshotCents'] as int?,
       estimatedGrossMarginCents: json['estimatedGrossMarginCents'] as int?,
       estimatedGrossMarginPercentBasisPoints:
           json['estimatedGrossMarginPercentBasisPoints'] as int?,
@@ -155,6 +154,40 @@ class RemoteProductRecord {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
+
+  RemoteProductRecord copyWithInactive() {
+    final now = DateTime.now();
+    return RemoteProductRecord(
+      remoteId: remoteId,
+      localUuid: localUuid,
+      remoteCategoryId: remoteCategoryId,
+      name: name,
+      description: description,
+      barcode: barcode,
+      productType: productType,
+      niche: niche,
+      catalogType: catalogType,
+      modelName: modelName,
+      variantLabel: variantLabel,
+      unitMeasure: unitMeasure,
+      costCents: costCents,
+      manualCostCents: manualCostCents,
+      costSource: costSource,
+      variableCostSnapshotCents: variableCostSnapshotCents,
+      estimatedGrossMarginCents: estimatedGrossMarginCents,
+      estimatedGrossMarginPercentBasisPoints:
+          estimatedGrossMarginPercentBasisPoints,
+      lastCostUpdatedAt: lastCostUpdatedAt,
+      salePriceCents: salePriceCents,
+      stockMil: stockMil,
+      variants: variants,
+      modifierGroups: modifierGroups,
+      isActive: false,
+      createdAt: createdAt,
+      updatedAt: now,
+      deletedAt: deletedAt ?? now,
+    );
+  }
 
   String get displayName {
     final resolvedModel = modelName?.trim();

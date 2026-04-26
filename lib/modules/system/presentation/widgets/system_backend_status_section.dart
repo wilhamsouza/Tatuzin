@@ -18,9 +18,9 @@ class SystemBackendStatusSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppSectionCard(
-      title: 'API real de desenvolvimento',
+      title: 'API oficial do Tatuzin',
       subtitle:
-          'Saude do backend local e validacao do tenant remoto sem acoplar vendas, caixa ou relatorios a HTTP.',
+          'Saude do backend remoto oficial e validacao do tenant sem acoplar vendas, caixa ou relatorios a HTTP.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -29,10 +29,10 @@ class SystemBackendStatusSection extends StatelessWidget {
                 ? Icons.cloud_done_outlined
                 : Icons.cloud_off_outlined,
             title: status.isReachable
-                ? 'Backend local alcancavel'
+                ? 'API oficial alcancavel'
                 : status.isConfigured
-                ? 'Backend configurado, mas indisponivel'
-                : 'Backend remoto ainda nao configurado',
+                ? 'API oficial configurada, mas indisponivel'
+                : 'Uso local sem API remota ativa',
             subtitle: status.message,
           ),
           const SizedBox(height: 14),

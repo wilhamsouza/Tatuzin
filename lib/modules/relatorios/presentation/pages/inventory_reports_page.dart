@@ -18,6 +18,7 @@ import '../../domain/entities/report_filter.dart';
 import '../../domain/entities/report_inventory_health_summary.dart';
 import '../providers/report_providers.dart';
 import '../widgets/inventory_health_card.dart';
+import '../widgets/report_data_origin_banner.dart';
 import '../widgets/report_donut_chart_card.dart';
 import '../widgets/report_empty_state.dart';
 import '../widgets/report_filter_toolbar.dart';
@@ -79,6 +80,7 @@ class InventoryReportsPage extends ConsumerWidget {
               onExportPdf: (mode) => _exportPdf(ref, mode),
               onExportCsv: (mode) => _exportCsv(ref, mode),
             ),
+            const ReportDataOriginBanner(page: ReportPageKey.inventory),
             SizedBox(height: layout.sectionGap),
             inventoryAsync.when(
               data: (summary) => Column(
@@ -319,6 +321,9 @@ class InventoryReportsPage extends ConsumerWidget {
                 message: '$error',
                 tone: AppStateTone.error,
                 compact: true,
+                actionLabel: 'Tentar novamente',
+                onAction: () =>
+                    ref.read(appDataRefreshProvider.notifier).state++,
               ),
             ),
           ],

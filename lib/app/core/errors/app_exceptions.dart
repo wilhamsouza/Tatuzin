@@ -27,3 +27,7 @@ final class NetworkRequestException extends AppException {
 final class AuthenticationException extends AppException {
   const AuthenticationException(super.message, {super.cause});
 }
+
+final class AppStartupException extends AppException {
+  const AppStartupException(super.message, {super.cause});
+}

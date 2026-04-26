@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/session/session_provider.dart';
 import '../../data/sqlite_operational_dashboard_repository.dart';
 import '../../domain/entities/managerial_dashboard_readiness.dart';
@@ -19,7 +20,11 @@ final operationalDashboardSnapshotProvider =
     FutureProvider<OperationalDashboardSnapshot>((ref) async {
       ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
-      return ref.watch(operationalDashboardRepositoryProvider).fetchSnapshot();
+      return runProviderGuarded(
+        'operationalDashboardSnapshotProvider',
+        () => ref.watch(operationalDashboardRepositoryProvider).fetchSnapshot(),
+        timeout: localProviderTimeout,
+      );
     });
 
 final managerialDashboardReadinessProvider = Provider<ManagerialDashboardReadiness>((

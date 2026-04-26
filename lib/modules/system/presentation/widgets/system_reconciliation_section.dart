@@ -101,9 +101,7 @@ class SystemReconciliationSection extends StatelessWidget {
               ),
             )
           else
-            Column(
-              children: _buildCards(),
-            ),
+            Column(children: _buildCards()),
         ],
       ),
     );

@@ -100,11 +100,9 @@ class RealApiClient implements ApiClientContract {
       final payload = _decodeBody(response);
 
       if (response.statusCode >= 400) {
-        if (
-          response.statusCode == 401 &&
-          allowRefreshRetry &&
-          _shouldAttemptRefresh(path, headers)
-        ) {
+        if (response.statusCode == 401 &&
+            allowRefreshRetry &&
+            _shouldAttemptRefresh(path, headers)) {
           final refreshedAccessToken = await _tryRefreshAccessToken(
             timeout: options.timeout,
           );
@@ -191,9 +189,7 @@ class RealApiClient implements ApiClientContract {
     return http.Response.fromStream(streamedResponse);
   }
 
-  Future<String?> _tryRefreshAccessToken({
-    required Duration timeout,
-  }) async {
+  Future<String?> _tryRefreshAccessToken({required Duration timeout}) async {
     final tokenStorage = _tokenStorage;
     if (tokenStorage == null) {
       return null;
@@ -201,11 +197,9 @@ class RealApiClient implements ApiClientContract {
 
     final refreshToken = await tokenStorage.readRefreshToken();
     final clientContext = await tokenStorage.readClientContext();
-    if (
-      refreshToken == null ||
-      refreshToken.trim().isEmpty ||
-      clientContext == null
-    ) {
+    if (refreshToken == null ||
+        refreshToken.trim().isEmpty ||
+        clientContext == null) {
       return null;
     }
 

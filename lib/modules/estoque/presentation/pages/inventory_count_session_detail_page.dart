@@ -136,8 +136,7 @@ class _InventoryCountSessionDetailPageState
                 SizedBox(height: layout.space5),
                 AppSectionCard(
                   title: 'Aplicacao',
-                  subtitle:
-                      pendingReviewCount > 0
+                  subtitle: pendingReviewCount > 0
                       ? 'Existem itens desatualizados. Revise o saldo atual antes de aplicar o lote.'
                       : 'Revise a sessao antes de aplicar. O ajuste em lote usa a divergencia registrada em cada item.',
                   child: Column(
@@ -240,11 +239,13 @@ class _InventoryCountSessionDetailPageState
                           ? () => _editItem(item)
                           : null,
                       onRecalculate:
-                          detail.session.status.canEdit && !actionState.isLoading
+                          detail.session.status.canEdit &&
+                              !actionState.isLoading
                           ? () => _recalculateStaleItem(item)
                           : null,
                       onKeepDifference:
-                          detail.session.status.canEdit && !actionState.isLoading
+                          detail.session.status.canEdit &&
+                              !actionState.isLoading
                           ? () => _keepRecordedDifference(item)
                           : null,
                     ),
@@ -636,9 +637,7 @@ class _InventoryCountItemTile extends StatelessWidget {
       'Contagem ${AppFormatters.quantityFromMil(item.systemStockMil)} ${item.unitMeasure}',
       'Atual ${AppFormatters.quantityFromMil(item.currentStockMil)} ${item.unitMeasure}',
     ];
-    final hasFooter =
-        item.isStale ||
-        (item.notes ?? '').trim().isNotEmpty;
+    final hasFooter = item.isStale || (item.notes ?? '').trim().isNotEmpty;
     return AppListTileCard(
       title: item.displayName,
       subtitle: subtitleParts.join('  |  '),

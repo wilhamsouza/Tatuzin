@@ -19,6 +19,7 @@ class PurchasePaymentWriter {
     required PaymentMethod? paymentMethod,
     required DateTime registeredAt,
     required String? notes,
+    String? paymentUuid,
   }) async {
     if (paymentMethod == null || paymentMethod == PaymentMethod.fiado) {
       throw const ValidationException(
@@ -49,7 +50,7 @@ class PurchasePaymentWriter {
     );
 
     await db.insert(TableNames.compraPagamentos, {
-      'uuid': IdGenerator.next(),
+      'uuid': paymentUuid ?? IdGenerator.next(),
       'compra_id': purchaseId,
       'valor_centavos': amountCents,
       'forma_pagamento': paymentMethod.dbValue,

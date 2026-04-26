@@ -75,38 +75,35 @@ void main() {
   test(
     'AdminSession.fromIdentityResponse aceita o payload atual de /auth/me',
     () {
-      final session = AdminSession.fromIdentityResponse(
-        <String, dynamic>{
-          'user': <String, dynamic>{
-            'id': 'user-1',
-            'email': 'admin@simples.local',
-            'name': 'Administrador',
-            'isPlatformAdmin': true,
-          },
-          'company': <String, dynamic>{
-            'id': 'company-1',
-            'name': 'Tatuzin Cloud',
-            'legalName': 'Tatuzin Cloud LTDA',
-            'documentNumber': '123',
-            'slug': 'tatuzin-cloud',
-            'license': <String, dynamic>{
-              'id': 'license-1',
-              'plan': 'pro',
-              'status': 'active',
-              'startsAt': '2026-04-01T12:00:00.000Z',
-              'expiresAt': '2026-05-01T12:00:00.000Z',
-              'maxDevices': 5,
-              'syncEnabled': true,
-            },
-          },
-          'membership': <String, dynamic>{
-            'id': 'membership-1',
-            'role': 'OWNER',
-            'isDefault': true,
+      final session = AdminSession.fromIdentityResponse(<String, dynamic>{
+        'user': <String, dynamic>{
+          'id': 'user-1',
+          'email': 'admin@simples.local',
+          'name': 'Administrador',
+          'isPlatformAdmin': true,
+        },
+        'company': <String, dynamic>{
+          'id': 'company-1',
+          'name': 'Tatuzin Cloud',
+          'legalName': 'Tatuzin Cloud LTDA',
+          'documentNumber': '123',
+          'slug': 'tatuzin-cloud',
+          'license': <String, dynamic>{
+            'id': 'license-1',
+            'plan': 'pro',
+            'status': 'active',
+            'startsAt': '2026-04-01T12:00:00.000Z',
+            'expiresAt': '2026-05-01T12:00:00.000Z',
+            'maxDevices': 5,
+            'syncEnabled': true,
           },
         },
-        accessToken: 'restored-access-token',
-      );
+        'membership': <String, dynamic>{
+          'id': 'membership-1',
+          'role': 'OWNER',
+          'isDefault': true,
+        },
+      }, accessToken: 'restored-access-token');
 
       expect(session.accessToken, 'restored-access-token');
       expect(session.user.isPlatformAdmin, isTrue);

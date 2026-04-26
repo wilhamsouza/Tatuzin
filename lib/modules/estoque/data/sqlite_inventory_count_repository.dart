@@ -602,9 +602,9 @@ class SqliteInventoryCountRepository {
   }
 
   void _throwIfSessionHasPendingStaleItems(List<InventoryCountItem> items) {
-    final staleItems = items.where((item) => item.needsReview).toList(
-      growable: false,
-    );
+    final staleItems = items
+        .where((item) => item.needsReview)
+        .toList(growable: false);
     if (staleItems.isEmpty) {
       return;
     }

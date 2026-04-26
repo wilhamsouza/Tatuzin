@@ -18,6 +18,8 @@ abstract final class AdminEnv {
       }
       return 'http://localhost:4000/api';
     }
-    return trimmed.endsWith('/') ? trimmed.substring(0, trimmed.length - 1) : trimmed;
+    return trimmed.endsWith('/')
+        ? trimmed.substring(0, trimmed.length - 1)
+        : trimmed;
   }
 }

@@ -1193,7 +1193,8 @@ class _PurchaseItemEditorSheetState extends State<_PurchaseItemEditorSheet> {
             estimatedGrossMarginPercentBasisPoints:
                 product.estimatedGrossMarginPercentBasisPoints,
             lastCostUpdatedAt: product.lastCostUpdatedAt,
-            salePriceCents: product.salePriceCents + variant.priceAdditionalCents,
+            salePriceCents:
+                product.salePriceCents + variant.priceAdditionalCents,
             stockMil: variant.stockMil,
             isActive: product.isActive,
             createdAt: product.createdAt,
@@ -1693,7 +1694,8 @@ class _PurchaseItemEditorSheetMixedState
             estimatedGrossMarginPercentBasisPoints:
                 product.estimatedGrossMarginPercentBasisPoints,
             lastCostUpdatedAt: product.lastCostUpdatedAt,
-            salePriceCents: product.salePriceCents + variant.priceAdditionalCents,
+            salePriceCents:
+                product.salePriceCents + variant.priceAdditionalCents,
             stockMil: variant.stockMil,
             isActive: product.isActive,
             createdAt: product.createdAt,
@@ -1862,7 +1864,9 @@ class _ProductSelectionList extends StatelessWidget {
                         Text(
                           [
                             'Unidade ${product.unitMeasure}',
-                            if ((product.sellableVariantSku ?? '').trim().isNotEmpty)
+                            if ((product.sellableVariantSku ?? '')
+                                .trim()
+                                .isNotEmpty)
                               'SKU ${product.sellableVariantSku!.trim()}',
                             'Saldo ${AppFormatters.quantityFromMil(product.stockMil)}',
                             'Custo ${AppFormatters.currencyFromCents(product.costCents)}',

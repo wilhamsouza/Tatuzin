@@ -60,6 +60,22 @@ class RemoteCustomerRecord {
   final DateTime updatedAt;
   final DateTime? deletedAt;
 
+  RemoteCustomerRecord copyWithInactive() {
+    final now = DateTime.now();
+    return RemoteCustomerRecord(
+      remoteId: remoteId,
+      localUuid: localUuid,
+      name: name,
+      phone: phone,
+      address: address,
+      notes: notes,
+      isActive: false,
+      createdAt: createdAt,
+      updatedAt: now,
+      deletedAt: deletedAt ?? now,
+    );
+  }
+
   Map<String, dynamic> toUpsertBody() {
     return <String, dynamic>{
       'localUuid': localUuid,

@@ -63,8 +63,9 @@ class AdminAuthStorage extends ChangeNotifier {
     String? appVersion = 'admin-web',
   }) async {
     final preferences = await SharedPreferences.getInstance();
-    final existingClientInstanceId =
-        preferences.getString(_clientInstanceIdKey)?.trim();
+    final existingClientInstanceId = preferences
+        .getString(_clientInstanceIdKey)
+        ?.trim();
     final clientInstanceId =
         existingClientInstanceId == null || existingClientInstanceId.isEmpty
         ? _generateClientInstanceId()
@@ -118,7 +119,9 @@ class AdminAuthStorage extends ChangeNotifier {
 
   Future<AdminClientContext?> readClientContext() async {
     final preferences = await SharedPreferences.getInstance();
-    final clientType = _normalizeOptional(preferences.getString(_clientTypeKey));
+    final clientType = _normalizeOptional(
+      preferences.getString(_clientTypeKey),
+    );
     final clientInstanceId = _normalizeOptional(
       preferences.getString(_clientInstanceIdKey),
     );

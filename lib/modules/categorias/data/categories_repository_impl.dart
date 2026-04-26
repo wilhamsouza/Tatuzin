@@ -9,6 +9,8 @@ import '../../../app/core/sync/sync_queue_item.dart';
 import '../../../app/core/sync/sync_queue_operation.dart';
 import '../../../app/core/sync/sync_remote_identity_recovery.dart';
 import '../../../app/core/sync/sync_status.dart';
+import '../../../app/core/utils/app_logger.dart';
+import '../../../app/core/utils/id_generator.dart';
 import '../domain/entities/category.dart';
 import '../domain/repositories/category_repository.dart';
 import 'datasources/categories_remote_datasource.dart';
@@ -39,17 +41,88 @@ class CategoriesRepositoryImpl
   String get displayName => 'Categorias';
 
   @override
-  Future<int> create(CategoryInput input) {
+  Future<int> create(CategoryInput input) async {
+    if (_shouldUseErpRemoteWrite) {
+      try {
+        final remote = await _remoteDatasource
+            .create(_remoteCategoryFromInput(input))
+            .timeout(const Duration(seconds: 15));
+        return _cacheAndResolveRemoteCategory(remote);
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Categorias ERP server-first falhou ao criar na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.create(input);
   }
 
   @override
-  Future<void> delete(int id) {
+  Future<void> delete(int id) async {
+    if (_shouldUseErpRemoteWrite) {
+      final category = await _localRepository
+          .findById(id, includeDeleted: true)
+          .timeout(const Duration(seconds: 8));
+      if (category?.remoteId == null) {
+        throw const ValidationException(
+          'Categoria ainda nao possui vinculo remoto para exclusao server-first.',
+        );
+      }
+
+      try {
+        await _remoteDatasource
+            .delete(category!.remoteId!)
+            .timeout(const Duration(seconds: 15));
+        await _localRepository.upsertFromRemote(
+          RemoteCategoryRecord(
+            remoteId: category.remoteId!,
+            localUuid: category.uuid,
+            name: category.name,
+            description: category.description,
+            isActive: false,
+            createdAt: category.createdAt,
+            updatedAt: DateTime.now(),
+            deletedAt: DateTime.now(),
+          ),
+        );
+        return;
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Categorias ERP server-first falhou ao excluir na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.delete(id);
   }
 
   @override
-  Future<List<Category>> search({String query = ''}) {
+  Future<List<Category>> search({String query = ''}) async {
+    if (_shouldUseErpRemoteRead) {
+      try {
+        final remoteCategories = await _remoteDatasource.listAll().timeout(
+          const Duration(seconds: 15),
+        );
+        return _cacheAndResolveRemoteCategories(remoteCategories, query: query);
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Categorias ERP server-first falhou; usando cache local com timeout.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        return _localRepository
+            .search(query: query)
+            .timeout(const Duration(seconds: 8));
+      }
+    }
+
     return _localRepository.search(query: query);
   }
 
@@ -150,7 +223,44 @@ class CategoriesRepositoryImpl
   }
 
   @override
-  Future<void> update(int id, CategoryInput input) {
+  Future<void> update(int id, CategoryInput input) async {
+    if (_shouldUseErpRemoteWrite) {
+      final category = await _localRepository
+          .findById(id, includeDeleted: true)
+          .timeout(const Duration(seconds: 8));
+      if (category?.remoteId == null) {
+        throw const ValidationException(
+          'Categoria ainda nao possui vinculo remoto para atualizacao server-first.',
+        );
+      }
+
+      try {
+        final remote = await _remoteDatasource
+            .update(
+              category!.remoteId!,
+              _remoteCategoryFromInput(
+                input,
+                localUuid: category.uuid,
+                remoteId: category.remoteId!,
+                createdAt: category.createdAt,
+              ),
+            )
+            .timeout(const Duration(seconds: 15));
+        await _localRepository.applyPushResult(
+          category: category,
+          remote: remote,
+        );
+        return;
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Categorias ERP server-first falhou ao atualizar na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.update(id, input);
   }
 
@@ -237,6 +347,82 @@ class CategoriesRepositoryImpl
       await _localRepository.upsertFromRemote(remoteCategory);
     }
     return remoteCategories.length;
+  }
+
+  bool get _shouldUseErpRemoteRead =>
+      _dataAccessPolicy.strategyFor(AppModule.erp) ==
+          DataSourceStrategy.serverFirst &&
+      _operationalContext.canUseCloudReads;
+
+  bool get _shouldUseErpRemoteWrite => _shouldUseErpRemoteRead;
+
+  Future<List<Category>> _cacheAndResolveRemoteCategories(
+    List<RemoteCategoryRecord> remoteCategories, {
+    required String query,
+  }) async {
+    final categories = <Category>[];
+    for (final remoteCategory in remoteCategories) {
+      final category = await _cacheAndFindRemoteCategory(remoteCategory);
+      if (category != null &&
+          category.deletedAt == null &&
+          _matchesQuery(category, query)) {
+        categories.add(category);
+      }
+    }
+    categories.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return categories;
+  }
+
+  Future<int> _cacheAndResolveRemoteCategory(
+    RemoteCategoryRecord remote,
+  ) async {
+    final category = await _cacheAndFindRemoteCategory(remote);
+    if (category == null) {
+      throw const NetworkRequestException(
+        'Categoria remota salva, mas o cache local nao retornou o espelho.',
+      );
+    }
+    return category.id;
+  }
+
+  Future<Category?> _cacheAndFindRemoteCategory(
+    RemoteCategoryRecord remote,
+  ) async {
+    await _localRepository.upsertFromRemote(remote);
+    return _localRepository
+        .findByRemoteId(remote.remoteId)
+        .timeout(const Duration(seconds: 8));
+  }
+
+  RemoteCategoryRecord _remoteCategoryFromInput(
+    CategoryInput input, {
+    String? localUuid,
+    String remoteId = '',
+    DateTime? createdAt,
+  }) {
+    final now = DateTime.now();
+    return RemoteCategoryRecord(
+      remoteId: remoteId,
+      localUuid: localUuid ?? IdGenerator.next(),
+      name: input.name,
+      description: input.description,
+      isActive: input.isActive,
+      createdAt: createdAt ?? now,
+      updatedAt: now,
+      deletedAt: input.isActive ? null : now,
+    );
+  }
+
+  bool _matchesQuery(Category category, String query) {
+    final normalized = query.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return true;
+    }
+    return category.name.toLowerCase().contains(normalized) ||
+        (category.description?.toLowerCase().contains(normalized) ?? false);
   }
 
   void _ensureSyncIsAllowed() {

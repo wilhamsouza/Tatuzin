@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import '../../constants/app_constants.dart';
@@ -6,6 +7,7 @@ import '../../session/app_session.dart';
 import '../../session/app_user.dart';
 import '../../session/auth_token_storage.dart';
 import '../../session/company_context.dart';
+import '../../utils/app_logger.dart';
 import '../contracts/api_client_contract.dart';
 import '../contracts/auth_gateway.dart';
 import 'remote_sign_up_request.dart';
@@ -14,39 +16,98 @@ class RemoteAuthGateway implements AuthGateway {
   const RemoteAuthGateway({
     required ApiClientContract apiClient,
     required AuthTokenStorage tokenStorage,
+    Duration authSessionTimeout = const Duration(seconds: 10),
+    Duration currentUserTimeout = const Duration(seconds: 8),
+    Duration currentCompanyTimeout = const Duration(seconds: 8),
   }) : _apiClient = apiClient,
-       _tokenStorage = tokenStorage;
+       _tokenStorage = tokenStorage,
+       _authSessionTimeout = authSessionTimeout,
+       _currentUserTimeout = currentUserTimeout,
+       _currentCompanyTimeout = currentCompanyTimeout;
 
   final ApiClientContract _apiClient;
   final AuthTokenStorage _tokenStorage;
+  final Duration _authSessionTimeout;
+  final Duration _currentUserTimeout;
+  final Duration _currentCompanyTimeout;
 
   @override
   Future<AppSession?> restoreSession() async {
+    final stopwatch = Stopwatch()..start();
+    _logStepStarted('auth_session_load_started');
     final token = await _tokenStorage.readAccessToken();
     if (token == null) {
+      _logStepCompleted('auth_session_loaded', stopwatch, restored: false);
       return null;
     }
 
     try {
       final identity = await _fetchIdentity(token);
-      return _buildSession(identity);
-    } on AuthenticationException {
+      final session = _buildSession(identity);
+      _logStepCompleted(
+        'auth_session_loaded',
+        stopwatch,
+        companyRemoteId: session.company.remoteId,
+        userRemoteId: session.user.remoteId,
+        restored: true,
+      );
+      return session;
+    } on AuthenticationException catch (error, stackTrace) {
+      _logStepFailure(
+        'auth_session_load_started',
+        stopwatch,
+        error,
+        stackTrace: stackTrace,
+      );
       await _tokenStorage.clear();
       return null;
+    } catch (error, stackTrace) {
+      _logStepFailure(
+        'auth_session_load_started',
+        stopwatch,
+        error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
     }
   }
 
   @override
   Future<AppSession> refreshSession() async {
+    final stopwatch = Stopwatch()..start();
+    _logStepStarted('auth_session_load_started');
     final token = await _tokenStorage.readAccessToken();
     if (token == null) {
+      _logStepFailure(
+        'auth_session_load_started',
+        stopwatch,
+        const AuthenticationException('missing_refresh_session'),
+      );
       throw const AuthenticationException(
         'Nao existe sessao remota salva para atualizar.',
       );
     }
 
-    final identity = await _fetchIdentity(token);
-    return _buildSession(identity);
+    try {
+      final identity = await _fetchIdentity(token);
+      final session = _buildSession(identity);
+      _logStepCompleted(
+        'auth_session_loaded',
+        stopwatch,
+        companyRemoteId: session.company.remoteId,
+        userRemoteId: session.user.remoteId,
+        restored: true,
+      );
+      return session;
+    } catch (error, stackTrace) {
+      _logStepFailure(
+        'auth_session_load_started',
+        stopwatch,
+        error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
   }
 
   @override
@@ -61,7 +122,9 @@ class RemoteAuthGateway implements AuthGateway {
       appVersion: AppConstants.appVersion,
     );
 
+    final stopwatch = Stopwatch()..start();
     try {
+      _logStepStarted('auth_session_load_started');
       final response = await _apiClient.postJson(
         '/auth/login',
         body: <String, dynamic>{
@@ -69,9 +132,26 @@ class RemoteAuthGateway implements AuthGateway {
           'password': password,
           ...clientContext.toApiPayload(),
         },
+        options: ApiRequestOptions(timeout: _authSessionTimeout),
+      );
+      final userRemoteId = _readOptionalStringFromNestedMap(
+        response.data,
+        'user',
+        'id',
+      );
+      _logStepCompleted(
+        'auth_session_loaded',
+        stopwatch,
+        userRemoteId: userRemoteId,
       );
       return _buildAuthenticatedSession(response.data);
-    } catch (error) {
+    } catch (error, stackTrace) {
+      _logStepFailure(
+        'auth_session_load_started',
+        stopwatch,
+        error,
+        stackTrace: stackTrace,
+      );
       await _tokenStorage.clear();
       rethrow;
     }
@@ -100,13 +180,32 @@ class RemoteAuthGateway implements AuthGateway {
       password: password,
     );
 
+    final stopwatch = Stopwatch()..start();
     try {
+      _logStepStarted('auth_session_load_started');
       final response = await _apiClient.postJson(
         '/auth/register',
         body: request.toApiPayload(clientContext),
+        options: ApiRequestOptions(timeout: _authSessionTimeout),
+      );
+      final userRemoteId = _readOptionalStringFromNestedMap(
+        response.data,
+        'user',
+        'id',
+      );
+      _logStepCompleted(
+        'auth_session_loaded',
+        stopwatch,
+        userRemoteId: userRemoteId,
       );
       return _buildAuthenticatedSession(response.data);
-    } catch (error) {
+    } catch (error, stackTrace) {
+      _logStepFailure(
+        'auth_session_load_started',
+        stopwatch,
+        error,
+        stackTrace: stackTrace,
+      );
       await _tokenStorage.clear();
       rethrow;
     }
@@ -163,15 +262,72 @@ class RemoteAuthGateway implements AuthGateway {
   }
 
   Future<_AuthIdentityPayload> _fetchIdentity(String accessToken) async {
-    final meResponse = await _apiClient.getJson(
-      '/auth/me',
-      options: _authorized(accessToken),
+    final userStopwatch = Stopwatch()..start();
+    _logStepStarted('current_user_load_started');
+    late ApiResponse<Map<String, dynamic>> meResponse;
+    try {
+      meResponse = await _apiClient.getJson(
+        '/auth/me',
+        options: ApiRequestOptions(
+          headers: _authorized(accessToken).headers,
+          timeout: _currentUserTimeout,
+        ),
+      );
+    } catch (error, stackTrace) {
+      _logStepFailure(
+        'current_user_load_started',
+        userStopwatch,
+        error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
+    final userRemoteId = _readOptionalStringFromNestedMap(
+      meResponse.data,
+      'user',
+      'id',
     );
+    _logStepCompleted(
+      'current_user_loaded',
+      userStopwatch,
+      userRemoteId: userRemoteId,
+    );
+
     final latestAccessToken =
         await _tokenStorage.readAccessToken() ?? accessToken;
-    final companyResponse = await _apiClient.getJson(
-      '/companies/current',
-      options: _authorized(latestAccessToken),
+    final companyStopwatch = Stopwatch()..start();
+    _logStepStarted(
+      'companies_current_load_started',
+      userRemoteId: userRemoteId,
+    );
+    late ApiResponse<Map<String, dynamic>> companyResponse;
+    try {
+      companyResponse = await _apiClient.getJson(
+        '/companies/current',
+        options: ApiRequestOptions(
+          headers: _authorized(latestAccessToken).headers,
+          timeout: _currentCompanyTimeout,
+        ),
+      );
+    } catch (error, stackTrace) {
+      _logStepFailure(
+        'companies_current_load_started',
+        companyStopwatch,
+        error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
+    final companyRemoteId = _readOptionalStringFromNestedMap(
+      companyResponse.data,
+      'company',
+      'id',
+    );
+    _logStepCompleted(
+      'companies_current_loaded',
+      companyStopwatch,
+      companyRemoteId: companyRemoteId,
+      userRemoteId: userRemoteId,
     );
 
     return _AuthIdentityPayload.fromApi(
@@ -205,9 +361,52 @@ class RemoteAuthGateway implements AuthGateway {
       refreshToken: refreshToken,
     );
 
-    final companyResponse = await _apiClient.getJson(
-      '/companies/current',
-      options: _authorized(accessToken),
+    final userStopwatch = Stopwatch()..start();
+    _logStepStarted('current_user_load_started');
+    final userRemoteId = _readOptionalStringFromNestedMap(
+      authPayload,
+      'user',
+      'id',
+    );
+    _logStepCompleted(
+      'current_user_loaded',
+      userStopwatch,
+      userRemoteId: userRemoteId,
+    );
+
+    final companyStopwatch = Stopwatch()..start();
+    _logStepStarted(
+      'companies_current_load_started',
+      userRemoteId: userRemoteId,
+    );
+    late ApiResponse<Map<String, dynamic>> companyResponse;
+    try {
+      companyResponse = await _apiClient.getJson(
+        '/companies/current',
+        options: ApiRequestOptions(
+          headers: _authorized(accessToken).headers,
+          timeout: _currentCompanyTimeout,
+        ),
+      );
+    } catch (error, stackTrace) {
+      _logStepFailure(
+        'companies_current_load_started',
+        companyStopwatch,
+        error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
+    final companyRemoteId = _readOptionalStringFromNestedMap(
+      companyResponse.data,
+      'company',
+      'id',
+    );
+    _logStepCompleted(
+      'companies_current_loaded',
+      companyStopwatch,
+      companyRemoteId: companyRemoteId,
+      userRemoteId: userRemoteId,
     );
 
     return _buildSession(
@@ -298,6 +497,65 @@ class RemoteAuthGateway implements AuthGateway {
       return 'Tatuzin Linux';
     }
     return 'Tatuzin App';
+  }
+
+  void _logStepStarted(
+    String step, {
+    String? companyRemoteId,
+    String? userRemoteId,
+  }) {
+    AppLogger.info(
+      '$step | duration_ms=0 | '
+      'company_remote_id=${companyRemoteId ?? 'n/a'} | '
+      'user_remote_id=${userRemoteId ?? 'n/a'}',
+    );
+  }
+
+  void _logStepCompleted(
+    String step,
+    Stopwatch stopwatch, {
+    String? companyRemoteId,
+    String? userRemoteId,
+    bool? restored,
+  }) {
+    AppLogger.info(
+      '$step | duration_ms=${stopwatch.elapsedMilliseconds} | '
+      'company_remote_id=${companyRemoteId ?? 'n/a'} | '
+      'user_remote_id=${userRemoteId ?? 'n/a'}'
+      '${restored == null ? '' : ' | restored=$restored'}',
+    );
+  }
+
+  void _logStepFailure(
+    String step,
+    Stopwatch stopwatch,
+    Object error, {
+    StackTrace? stackTrace,
+  }) {
+    AppLogger.error(
+      'bootstrap_failed | step=$step | duration_ms=${stopwatch.elapsedMilliseconds} | '
+      'reason=$error',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+
+  String? _readOptionalStringFromNestedMap(
+    Map<String, dynamic> source,
+    String parentKey,
+    String childKey,
+  ) {
+    final parent = source[parentKey];
+    if (parent is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final value = parent[childKey];
+    if (value is String && value.trim().isNotEmpty) {
+      return value.trim();
+    }
+
+    return null;
   }
 
   static String _readString(

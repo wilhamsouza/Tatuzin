@@ -8,6 +8,7 @@ import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
@@ -67,7 +68,11 @@ final baseProductOptionsProvider = FutureProvider<List<BaseProduct>>((
   ref,
 ) async {
   ref.watch(sessionRuntimeKeyProvider);
-  return ref.read(localCatalogRepositoryProvider).listBaseProducts();
+  return runProviderGuarded(
+    'baseProductOptionsProvider',
+    () => ref.read(localCatalogRepositoryProvider).listBaseProducts(),
+    timeout: localProviderTimeout,
+  );
 });
 
 final productHybridRepositoryProvider = Provider<ProductsRepositoryImpl>((ref) {
@@ -101,13 +106,19 @@ final productListProvider = FutureProvider<List<Product>>((ref) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(productSearchQueryProvider);
-  return ref.watch(productRepositoryProvider).search(query: query);
+  return runProviderGuarded(
+    'productListProvider',
+    () => ref.watch(productRepositoryProvider).search(query: query),
+  );
 });
 
 final productCatalogProvider = FutureProvider<List<Product>>((ref) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref.watch(productRepositoryProvider).search();
+  return runProviderGuarded(
+    'productCatalogProvider',
+    () => ref.watch(productRepositoryProvider).search(),
+  );
 });
 
 final productProfitabilitySearchQueryProvider = StateProvider<String>(
@@ -129,9 +140,11 @@ final productProfitabilityRowsProvider =
       final query = ref.watch(productProfitabilitySearchQueryProvider);
       final filter = ref.watch(productProfitabilityFilterProvider);
       final sort = ref.watch(productProfitabilitySortProvider);
-      final products = await ref
-          .read(localProductRepositoryProvider)
-          .search(query: query);
+      final products = await runProviderGuarded(
+        'productProfitabilityRowsProvider',
+        () => ref.read(localProductRepositoryProvider).search(query: query),
+        timeout: localProviderTimeout,
+      );
 
       final rows = products
           .map(ProductProfitabilityRow.fromProduct)

@@ -10,6 +10,7 @@ import '../network/fakes/fake_auth_gateway.dart';
 import '../network/real/remote_auth_gateway.dart';
 import '../network/network_providers.dart';
 import '../sync/sync_providers.dart';
+import '../utils/app_logger.dart';
 import 'app_session.dart';
 import 'auth_token_storage.dart';
 import 'session_provider.dart';
@@ -28,6 +29,17 @@ final remoteAuthGatewayProvider = Provider<AuthGateway>((ref) {
 final authControllerProvider = AsyncNotifierProvider<AuthController, void>(
   AuthController.new,
 );
+
+typedef AppStartupSyncKickoff = Future<void> Function(AppSession session);
+
+final appStartupSyncKickoffProvider = Provider<AppStartupSyncKickoff>((ref) {
+  return (session) async {
+    if (!session.isRemoteAuthenticated) {
+      return;
+    }
+    ref.read(autoSyncCoordinatorProvider).onRemoteSessionAvailable();
+  };
+});
 
 final authStatusProvider = Provider<AuthStatusSnapshot>((ref) {
   final session = ref.watch(appSessionProvider);
@@ -67,7 +79,7 @@ class AuthController extends AsyncNotifier<void> {
       if (session != null) {
         await _applySession(session);
       }
-    } on AppException {
+    } on AuthenticationException {
       ref.read(appSessionProvider.notifier).signOutToLocalMode();
     }
   }
@@ -160,7 +172,7 @@ class AuthController extends AsyncNotifier<void> {
       } else {
         ref.read(autoSyncCoordinatorProvider).cancelPending();
         ref.read(appSessionProvider.notifier).signOutToLocalMode();
-        await ref.read(appStartupProvider.future);
+        await _ensureStartupReady();
       }
       state = const AsyncData(null);
       return session;
@@ -221,7 +233,7 @@ class AuthController extends AsyncNotifier<void> {
       final session = ref.read(appSessionProvider);
       ref.read(autoSyncCoordinatorProvider).cancelPending();
       ref.read(appSessionProvider.notifier).signOutToLocalMode();
-      await ref.read(appStartupProvider.future);
+      await _ensureStartupReady();
 
       if (session.isRemoteAuthenticated) {
         await ref.read(remoteAuthGatewayProvider).signOut();
@@ -255,10 +267,68 @@ class AuthController extends AsyncNotifier<void> {
           isOfflineFallback: session.isOfflineFallback,
         );
 
-    await ref.read(appStartupProvider.future);
+    await _ensureStartupReady();
 
     if (session.isRemoteAuthenticated) {
-      ref.read(autoSyncCoordinatorProvider).onRemoteSessionAvailable();
+      _startSyncInBackground(session);
+    }
+  }
+
+  Future<void> _ensureStartupReady() async {
+    final startupState = await ref.read(appStartupProvider.future);
+    if (startupState.isSuccess) {
+      return;
+    }
+
+    throw AppStartupException(
+      startupState.message,
+      cause: startupState.debugDetails,
+    );
+  }
+
+  void _startSyncInBackground(AppSession session) {
+    final stopwatch = Stopwatch()..start();
+    final kickoff = ref.read(appStartupSyncKickoffProvider);
+    AppLogger.info(
+      'sync_coordinator_start_scheduled | duration_ms=0 | '
+      'company_remote_id=${session.company.remoteId ?? 'n/a'}',
+    );
+    final kickoffFuture = kickoff(session);
+    unawaited(_observeSyncKickoff(session, kickoffFuture, stopwatch));
+  }
+
+  Future<void> _observeSyncKickoff(
+    AppSession session,
+    Future<void> kickoffFuture,
+    Stopwatch stopwatch,
+  ) async {
+    try {
+      await kickoffFuture;
+      AppLogger.info(
+        'sync_coordinator_started | duration_ms=${stopwatch.elapsedMilliseconds} | '
+        'company_remote_id=${session.company.remoteId ?? 'n/a'}',
+      );
+    } catch (error, stackTrace) {
+      try {
+        final currentSnapshot = ref.read(autoSyncSnapshotProvider);
+        ref.read(autoSyncSnapshotProvider.notifier).state = currentSnapshot
+            .copyWith(
+              lastFailureMessage: error.toString(),
+              lastFinishedAt: DateTime.now(),
+              clearCurrentReason: true,
+              clearNextScheduledAt: true,
+              followUpQueued: false,
+            );
+      } catch (_) {
+        // The container may already be disposed when the background kickoff settles.
+      }
+      AppLogger.error(
+        'bootstrap_failed | reason=sync_coordinator_start_failed | '
+        'duration_ms=${stopwatch.elapsedMilliseconds} | '
+        'company_remote_id=${session.company.remoteId ?? 'n/a'}',
+        error: error,
+        stackTrace: stackTrace,
+      );
     }
   }
 }

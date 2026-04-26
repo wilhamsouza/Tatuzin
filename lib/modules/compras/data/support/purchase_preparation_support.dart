@@ -62,8 +62,7 @@ class PurchasePreparationSupport {
     final productVariantMap = <int, Map<String, Object?>>{};
     if (uniqueProductIds.isNotEmpty) {
       final placeholders = List.filled(uniqueProductIds.length, '?').join(',');
-      final productRows = await db.rawQuery(
-        '''
+      final productRows = await db.rawQuery('''
         SELECT
           id,
           nome,
@@ -72,15 +71,12 @@ class PurchasePreparationSupport {
           deletado_em
         FROM ${TableNames.produtos}
         WHERE id IN ($placeholders)
-      ''',
-        uniqueProductIds,
-      );
+      ''', uniqueProductIds);
       productMap.addEntries(
         productRows.map((row) => MapEntry(row['id'] as int, row)),
       );
 
-      final variantRows = await db.rawQuery(
-        '''
+      final variantRows = await db.rawQuery('''
         SELECT
           id,
           produto_id,
@@ -90,9 +86,7 @@ class PurchasePreparationSupport {
           ativo
         FROM ${TableNames.produtoVariantes}
         WHERE produto_id IN ($placeholders)
-      ''',
-        uniqueProductIds,
-      );
+      ''', uniqueProductIds);
       productVariantMap.addEntries(
         variantRows.map((row) => MapEntry(row['id'] as int, row)),
       );
@@ -101,8 +95,7 @@ class PurchasePreparationSupport {
     final supplyMap = <int, Map<String, Object?>>{};
     if (uniqueSupplyIds.isNotEmpty) {
       final placeholders = List.filled(uniqueSupplyIds.length, '?').join(',');
-      final supplyRows = await db.rawQuery(
-        '''
+      final supplyRows = await db.rawQuery('''
         SELECT
           id,
           name,
@@ -110,9 +103,7 @@ class PurchasePreparationSupport {
           conversion_factor
         FROM ${TableNames.supplies}
         WHERE id IN ($placeholders)
-      ''',
-        uniqueSupplyIds,
-      );
+      ''', uniqueSupplyIds);
       supplyMap.addEntries(
         supplyRows.map((row) => MapEntry(row['id'] as int, row)),
       );
@@ -189,7 +180,8 @@ class PurchasePreparationSupport {
             variantSkuSnapshot: productVariantRow?['sku'] as String?,
             variantColorLabelSnapshot: productVariantRow?['cor'] as String?,
             variantSizeLabelSnapshot: productVariantRow?['tamanho'] as String?,
-            unitMeasureSnapshot: productRow['unidade_medida'] as String? ?? 'un',
+            unitMeasureSnapshot:
+                productRow['unidade_medida'] as String? ?? 'un',
             quantityMil: inputItem.quantityMil,
             unitCostCents: inputItem.unitCostCents,
             subtotalCents: itemSubtotal,

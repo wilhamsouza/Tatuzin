@@ -7,11 +7,7 @@ import '../auth/admin_auth_storage.dart';
 import '../auth/admin_debug_log.dart';
 
 class AdminApiException implements Exception {
-  const AdminApiException({
-    required this.message,
-    this.statusCode,
-    this.code,
-  });
+  const AdminApiException({required this.message, this.statusCode, this.code});
 
   final String message;
   final int? statusCode;
@@ -52,12 +48,7 @@ class AdminApiClient {
     Map<String, dynamic>? body,
     String? accessToken,
   }) async {
-    return _send(
-      'POST',
-      path,
-      body: body,
-      accessToken: accessToken,
-    );
+    return _send('POST', path, body: body, accessToken: accessToken);
   }
 
   Future<dynamic> patchJson(
@@ -65,12 +56,7 @@ class AdminApiClient {
     required Map<String, dynamic> body,
     String? accessToken,
   }) async {
-    return _send(
-      'PATCH',
-      path,
-      body: body,
-      accessToken: accessToken,
-    );
+    return _send('PATCH', path, body: body, accessToken: accessToken);
   }
 
   Future<dynamic> _send(
@@ -81,7 +67,9 @@ class AdminApiClient {
     Map<String, dynamic>? queryParameters,
     bool allowRefreshRetry = true,
   }) async {
-    final baseUri = Uri.parse('$_baseUrl${path.startsWith('/') ? path : '/$path'}');
+    final baseUri = Uri.parse(
+      '$_baseUrl${path.startsWith('/') ? path : '/$path'}',
+    );
     final uri = (queryParameters == null || queryParameters.isEmpty)
         ? baseUri
         : baseUri.replace(
@@ -92,9 +80,7 @@ class AdminApiClient {
               ),
             },
           );
-    final headers = <String, String>{
-      'Accept': 'application/json',
-    };
+    final headers = <String, String>{'Accept': 'application/json'};
 
     if (body != null) {
       headers['Content-Type'] = 'application/json';
@@ -131,7 +117,11 @@ class AdminApiClient {
         );
         break;
       default:
-        throw ArgumentError.value(method, 'method', 'Metodo HTTP nao suportado.');
+        throw ArgumentError.value(
+          method,
+          'method',
+          'Metodo HTTP nao suportado.',
+        );
     }
 
     final rawBody = utf8.decode(response.bodyBytes);
@@ -143,13 +133,11 @@ class AdminApiClient {
       'hasPayload': payload != null,
     });
 
-    if (
-      response.statusCode == 401 &&
-      allowRefreshRetry &&
-      headers.containsKey('Authorization') &&
-      path != '/auth/login' &&
-      path != '/auth/refresh'
-    ) {
+    if (response.statusCode == 401 &&
+        allowRefreshRetry &&
+        headers.containsKey('Authorization') &&
+        path != '/auth/login' &&
+        path != '/auth/refresh') {
       final refreshedAccessToken = await _tryRefreshAccessToken();
       if (refreshedAccessToken != null) {
         return _send(
@@ -167,7 +155,8 @@ class AdminApiClient {
       return payload;
     }
 
-    final message = payload is Map<String, dynamic> &&
+    final message =
+        payload is Map<String, dynamic> &&
             payload['message'] is String &&
             (payload['message'] as String).trim().isNotEmpty
         ? (payload['message'] as String).trim()
@@ -187,13 +176,12 @@ class AdminApiClient {
   Future<String?> _tryRefreshAccessToken() async {
     final refreshToken = await _authStorage.readRefreshToken();
     final clientContext = await _authStorage.readClientContext();
-    if (
-      refreshToken == null ||
-      refreshToken.trim().isEmpty ||
-      clientContext == null
-    ) {
+    if (refreshToken == null ||
+        refreshToken.trim().isEmpty ||
+        clientContext == null) {
       adminDebugLog('http.refresh.skipped', {
-        'hasRefreshToken': refreshToken != null && refreshToken.trim().isNotEmpty,
+        'hasRefreshToken':
+            refreshToken != null && refreshToken.trim().isNotEmpty,
         'hasClientContext': clientContext != null,
       });
       return null;
@@ -205,17 +193,19 @@ class AdminApiClient {
         'clientInstanceId': clientContext.clientInstanceId,
       });
       final uri = Uri.parse('$_baseUrl/auth/refresh');
-      final response = await _httpClient.post(
-        uri,
-        headers: const <String, String>{
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(<String, dynamic>{
-          'refreshToken': refreshToken,
-          ...clientContext.toApiPayload(),
-        }),
-      ).timeout(const Duration(seconds: 15));
+      final response = await _httpClient
+          .post(
+            uri,
+            headers: const <String, String>{
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(<String, dynamic>{
+              'refreshToken': refreshToken,
+              ...clientContext.toApiPayload(),
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
 
       final rawBody = utf8.decode(response.bodyBytes);
       final payload = rawBody.trim().isEmpty ? null : jsonDecode(rawBody);
@@ -223,7 +213,8 @@ class AdminApiClient {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         if (payload is! Map<String, dynamic>) {
           throw const AdminApiException(
-            message: 'A API administrativa nao retornou a nova sessao no formato esperado.',
+            message:
+                'A API administrativa nao retornou a nova sessao no formato esperado.',
             statusCode: 401,
             code: 'ADMIN_REFRESH_INVALID_PAYLOAD',
           );
@@ -232,12 +223,14 @@ class AdminApiClient {
         final nextAccessToken = _readRequiredString(
           payload,
           'accessToken',
-          fallbackMessage: 'A API administrativa nao retornou um novo access token.',
+          fallbackMessage:
+              'A API administrativa nao retornou um novo access token.',
         );
         final nextRefreshToken = _readRequiredString(
           payload,
           'refreshToken',
-          fallbackMessage: 'A API administrativa nao retornou um novo refresh token.',
+          fallbackMessage:
+              'A API administrativa nao retornou um novo refresh token.',
         );
         await _authStorage.saveTokens(
           accessToken: nextAccessToken,
@@ -250,7 +243,8 @@ class AdminApiClient {
         return nextAccessToken;
       }
 
-      final message = payload is Map<String, dynamic> &&
+      final message =
+          payload is Map<String, dynamic> &&
               payload['message'] is String &&
               (payload['message'] as String).trim().isNotEmpty
           ? (payload['message'] as String).trim()
@@ -308,6 +302,8 @@ class AdminApiClient {
         message: 'A URL base da API administrativa nao foi configurada.',
       );
     }
-    return trimmed.endsWith('/') ? trimmed.substring(0, trimmed.length - 1) : trimmed;
+    return trimmed.endsWith('/')
+        ? trimmed.substring(0, trimmed.length - 1)
+        : trimmed;
   }
 }

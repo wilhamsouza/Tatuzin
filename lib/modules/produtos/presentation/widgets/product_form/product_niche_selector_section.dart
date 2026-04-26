@@ -28,8 +28,7 @@ class ProductNicheSelectorSection extends StatelessWidget {
 
     return AppSectionCard(
       title: 'Tipo de produto',
-      subtitle:
-          'Escolha o segmento e como deseja organizar este produto.',
+      subtitle: 'Escolha o segmento e como deseja organizar este produto.',
       tone: AppCardTone.muted,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -89,8 +88,7 @@ class ProductNicheSelectorSection extends StatelessWidget {
           AppSummaryBlock(
             label: 'Como vai aparecer',
             value: previewLabel,
-            caption:
-                'Nome que aparece no catalogo e na venda.',
+            caption: 'Nome que aparece no catalogo e na venda.',
             icon: Icons.label_outline_rounded,
             palette: context.appColors.brand,
             compact: true,

@@ -73,8 +73,7 @@ class ProductBaseInfoSection extends StatelessWidget {
 
     return AppSectionCard(
       title: 'Informacoes do produto',
-      subtitle:
-          'Preencha o essencial para cadastrar seu produto.',
+      subtitle: 'Preencha o essencial para cadastrar seu produto.',
       tone: AppCardTone.standard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -160,7 +159,9 @@ class ProductBaseInfoSection extends StatelessWidget {
                 contentPadding: const EdgeInsets.symmetric(horizontal: 4),
                 title: const Text('Disponivel para venda'),
                 subtitle: Text(
-                  isActive ? 'Produto visivel na operacao.' : 'Oculto da operacao.',
+                  isActive
+                      ? 'Produto visivel na operacao.'
+                      : 'Oculto da operacao.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),

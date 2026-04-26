@@ -18,6 +18,7 @@ import '../../domain/entities/report_filter.dart';
 import '../../domain/entities/report_inventory_health_summary.dart';
 import '../../domain/entities/report_payment_summary.dart';
 import '../providers/report_providers.dart';
+import '../widgets/report_data_origin_banner.dart';
 import '../widgets/product_sales_summary_widget.dart';
 import '../widgets/report_comparison_card.dart';
 import '../widgets/report_donut_chart_card.dart';
@@ -82,6 +83,7 @@ class ReportsPage extends ConsumerWidget {
               emphasized: true,
             ),
             const ReportFilterToolbar(page: ReportPageKey.overview),
+            const ReportDataOriginBanner(page: ReportPageKey.overview),
             SizedBox(height: layout.sectionGap),
             overviewAsync.when(
               data: (overview) => Column(
@@ -383,6 +385,10 @@ class ReportsPage extends ConsumerWidget {
                             message: '$error',
                             tone: AppStateTone.error,
                             compact: true,
+                            actionLabel: 'Tentar novamente',
+                            onAction: () => ref
+                                .read(appDataRefreshProvider.notifier)
+                                .state++,
                           ),
                         ),
                       ),
@@ -422,6 +428,9 @@ class ReportsPage extends ConsumerWidget {
                       message: '$error',
                       tone: AppStateTone.error,
                       compact: true,
+                      actionLabel: 'Tentar novamente',
+                      onAction: () =>
+                          ref.read(appDataRefreshProvider.notifier).state++,
                     ),
                   ),
                 ],
@@ -437,6 +446,9 @@ class ReportsPage extends ConsumerWidget {
                 message: '$error',
                 tone: AppStateTone.error,
                 compact: true,
+                actionLabel: 'Tentar novamente',
+                onAction: () =>
+                    ref.read(appDataRefreshProvider.notifier).state++,
               ),
             ),
           ],

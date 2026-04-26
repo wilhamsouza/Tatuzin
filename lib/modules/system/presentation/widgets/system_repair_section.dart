@@ -122,9 +122,7 @@ class SystemRepairSection extends StatelessWidget {
               ),
             )
           else
-            Column(
-              children: _buildCards(),
-            ),
+            Column(children: _buildCards()),
         ],
       ),
     );
@@ -180,11 +178,7 @@ class SystemRepairSection extends StatelessWidget {
       featureKey: 'purchases',
       decisions: purchaseRepairs,
     );
-    addCard(
-      title: 'Vendas',
-      featureKey: 'sales',
-      decisions: salesRepairs,
-    );
+    addCard(title: 'Vendas', featureKey: 'sales', decisions: salesRepairs);
     addCard(
       title: 'Eventos financeiros',
       featureKey: 'financial_events',

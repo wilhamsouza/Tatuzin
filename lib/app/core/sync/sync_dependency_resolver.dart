@@ -104,7 +104,9 @@ class SyncDependencyResolver {
   }
 
   Future<DependencyResolution> _checkSupply(SyncQueueItem item) async {
-    final supply = await _supplyRepository.findSupplyForSync(item.localEntityId);
+    final supply = await _supplyRepository.findSupplyForSync(
+      item.localEntityId,
+    );
     if (supply == null) {
       return const DependencyResolution(isBlocked: false);
     }
@@ -162,7 +164,9 @@ class SyncDependencyResolver {
     }
 
     for (final itemPayload in recipe.items) {
-      final supply = await _supplyRepository.findById(itemPayload.supplyLocalId);
+      final supply = await _supplyRepository.findById(
+        itemPayload.supplyLocalId,
+      );
       if (supply == null) {
         return const DependencyResolution(
           isBlocked: true,

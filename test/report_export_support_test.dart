@@ -179,10 +179,7 @@ void main() {
       expect(document.tables.first.rows.first.first, 'Bebidas e cafés');
       expect(document.filterSummary, contains('Agrupamento: Categoria'));
       expect(pdfBytes.length, greaterThan(1000));
-      expect(
-        String.fromCharCodes(pdfBytes),
-        isNot(contains('Helvetica')),
-      );
+      expect(String.fromCharCodes(pdfBytes), isNot(contains('Helvetica')));
     });
   });
 }

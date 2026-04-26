@@ -228,6 +228,13 @@ AccountCloudStatusSnapshot _cloudStatus() {
     icon: Icons.offline_bolt_rounded,
     accountModeLabel: 'Modo local',
     cloudAvailabilityLabel: 'Uso local disponivel',
+    syncingNowCount: 0,
+    pendingCount: 0,
+    errorCount: 0,
+    blockedCount: 0,
+    conflictCount: 0,
+    lastSyncedAt: null,
+    nextRetryAt: null,
   );
 }
 

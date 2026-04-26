@@ -9,6 +9,8 @@ import '../../../app/core/sync/sync_queue_item.dart';
 import '../../../app/core/sync/sync_queue_operation.dart';
 import '../../../app/core/sync/sync_remote_identity_recovery.dart';
 import '../../../app/core/sync/sync_status.dart';
+import '../../../app/core/utils/app_logger.dart';
+import '../../../app/core/utils/id_generator.dart';
 import '../domain/entities/supplier.dart';
 import '../domain/repositories/supplier_repository.dart';
 import 'datasources/suppliers_remote_datasource.dart';
@@ -39,22 +41,118 @@ class SuppliersRepositoryImpl
   String get displayName => 'Fornecedores';
 
   @override
-  Future<int> create(SupplierInput input) {
+  Future<int> create(SupplierInput input) async {
+    if (_shouldUseErpRemoteWrite) {
+      try {
+        final remote = await _remoteDatasource
+            .create(_remoteSupplierFromInput(input))
+            .timeout(const Duration(seconds: 15));
+        return _cacheAndResolveRemoteSupplier(remote);
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Fornecedores ERP server-first falhou ao criar na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.create(input);
   }
 
   @override
-  Future<void> delete(int id) {
+  Future<void> delete(int id) async {
+    if (_shouldUseErpRemoteWrite) {
+      final supplier = await _localRepository
+          .findById(id)
+          .timeout(const Duration(seconds: 8));
+      if (supplier?.remoteId == null) {
+        throw const ValidationException(
+          'Fornecedor ainda nao possui vinculo remoto para exclusao server-first.',
+        );
+      }
+
+      try {
+        await _remoteDatasource
+            .delete(supplier!.remoteId!)
+            .timeout(const Duration(seconds: 15));
+        await _localRepository.upsertFromRemote(
+          RemoteSupplierRecord(
+            remoteId: supplier.remoteId!,
+            localUuid: supplier.uuid,
+            name: supplier.name,
+            tradeName: supplier.tradeName,
+            phone: supplier.phone,
+            email: supplier.email,
+            address: supplier.address,
+            document: supplier.document,
+            contactPerson: supplier.contactPerson,
+            notes: supplier.notes,
+            isActive: false,
+            createdAt: supplier.createdAt,
+            updatedAt: DateTime.now(),
+            deletedAt: DateTime.now(),
+          ),
+        );
+        return;
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Fornecedores ERP server-first falhou ao excluir na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.delete(id);
   }
 
   @override
-  Future<Supplier?> findById(int id) {
-    return _localRepository.findById(id);
+  Future<Supplier?> findById(int id) async {
+    final local = await _localRepository
+        .findById(id)
+        .timeout(const Duration(seconds: 8));
+    if (!_shouldUseErpRemoteRead || local?.remoteId == null) {
+      return local;
+    }
+
+    try {
+      final remote = await _remoteDatasource
+          .fetchById(local!.remoteId!)
+          .timeout(const Duration(seconds: 15));
+      return _cacheAndFindRemoteSupplier(remote);
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Fornecedores ERP server-first falhou no detalhe; usando cache local.',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return local;
+    }
   }
 
   @override
-  Future<List<Supplier>> search({String query = ''}) {
+  Future<List<Supplier>> search({String query = ''}) async {
+    if (_shouldUseErpRemoteRead) {
+      try {
+        final remoteSuppliers = await _remoteDatasource.listAll().timeout(
+          const Duration(seconds: 15),
+        );
+        return _cacheAndResolveRemoteSuppliers(remoteSuppliers, query: query);
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Fornecedores ERP server-first falhou; usando cache local com timeout.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        return _localRepository
+            .search(query: query)
+            .timeout(const Duration(seconds: 8));
+      }
+    }
+
     return _localRepository.search(query: query);
   }
 
@@ -155,7 +253,44 @@ class SuppliersRepositoryImpl
   }
 
   @override
-  Future<void> update(int id, SupplierInput input) {
+  Future<void> update(int id, SupplierInput input) async {
+    if (_shouldUseErpRemoteWrite) {
+      final supplier = await _localRepository
+          .findById(id)
+          .timeout(const Duration(seconds: 8));
+      if (supplier?.remoteId == null) {
+        throw const ValidationException(
+          'Fornecedor ainda nao possui vinculo remoto para atualizacao server-first.',
+        );
+      }
+
+      try {
+        final remote = await _remoteDatasource
+            .update(
+              supplier!.remoteId!,
+              _remoteSupplierFromInput(
+                input,
+                localUuid: supplier.uuid,
+                remoteId: supplier.remoteId!,
+                createdAt: supplier.createdAt,
+              ),
+            )
+            .timeout(const Duration(seconds: 15));
+        await _localRepository.applyPushResult(
+          supplier: supplier,
+          remote: remote,
+        );
+        return;
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Fornecedores ERP server-first falhou ao atualizar na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.update(id, input);
   }
 
@@ -239,6 +374,90 @@ class SuppliersRepositoryImpl
       await _localRepository.upsertFromRemote(remoteSupplier);
     }
     return remoteSuppliers.length;
+  }
+
+  bool get _shouldUseErpRemoteRead =>
+      _dataAccessPolicy.strategyFor(AppModule.erp) ==
+          DataSourceStrategy.serverFirst &&
+      _operationalContext.canUseCloudReads;
+
+  bool get _shouldUseErpRemoteWrite => _shouldUseErpRemoteRead;
+
+  Future<List<Supplier>> _cacheAndResolveRemoteSuppliers(
+    List<RemoteSupplierRecord> remoteSuppliers, {
+    required String query,
+  }) async {
+    final suppliers = <Supplier>[];
+    for (final remoteSupplier in remoteSuppliers) {
+      final supplier = await _cacheAndFindRemoteSupplier(remoteSupplier);
+      if (supplier != null &&
+          supplier.deletedAt == null &&
+          _matchesQuery(supplier, query)) {
+        suppliers.add(supplier);
+      }
+    }
+    suppliers.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return suppliers;
+  }
+
+  Future<int> _cacheAndResolveRemoteSupplier(
+    RemoteSupplierRecord remote,
+  ) async {
+    final supplier = await _cacheAndFindRemoteSupplier(remote);
+    if (supplier == null) {
+      throw const NetworkRequestException(
+        'Fornecedor remoto salvo, mas o cache local nao retornou o espelho.',
+      );
+    }
+    return supplier.id;
+  }
+
+  Future<Supplier?> _cacheAndFindRemoteSupplier(
+    RemoteSupplierRecord remote,
+  ) async {
+    await _localRepository.upsertFromRemote(remote);
+    return _localRepository
+        .findByRemoteId(remote.remoteId)
+        .timeout(const Duration(seconds: 8));
+  }
+
+  RemoteSupplierRecord _remoteSupplierFromInput(
+    SupplierInput input, {
+    String? localUuid,
+    String remoteId = '',
+    DateTime? createdAt,
+  }) {
+    final now = DateTime.now();
+    return RemoteSupplierRecord(
+      remoteId: remoteId,
+      localUuid: localUuid ?? IdGenerator.next(),
+      name: input.name,
+      tradeName: input.tradeName,
+      phone: input.phone,
+      email: input.email,
+      address: input.address,
+      document: input.document,
+      contactPerson: input.contactPerson,
+      notes: input.notes,
+      isActive: input.isActive,
+      createdAt: createdAt ?? now,
+      updatedAt: now,
+      deletedAt: input.isActive ? null : now,
+    );
+  }
+
+  bool _matchesQuery(Supplier supplier, String query) {
+    final normalized = query.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return true;
+    }
+    return supplier.name.toLowerCase().contains(normalized) ||
+        (supplier.tradeName?.toLowerCase().contains(normalized) ?? false) ||
+        (supplier.phone?.toLowerCase().contains(normalized) ?? false) ||
+        (supplier.document?.toLowerCase().contains(normalized) ?? false);
   }
 
   void _ensureSyncIsAllowed() {

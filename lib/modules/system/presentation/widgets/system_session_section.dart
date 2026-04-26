@@ -45,10 +45,7 @@ class SystemSessionSection extends StatelessWidget {
             label: 'E-mail ativo',
             value: authStatus.email ?? 'Nao autenticado',
           ),
-          SystemInfoRow(
-            label: 'Empresa ativa',
-            value: authStatus.companyLabel,
-          ),
+          SystemInfoRow(label: 'Empresa ativa', value: authStatus.companyLabel),
           SystemInfoRow(
             label: 'Plano cloud',
             value: authStatus.licensePlanLabel,
@@ -57,10 +54,7 @@ class SystemSessionSection extends StatelessWidget {
             label: 'Status da licenca',
             value: authStatus.licenseStatusLabel,
           ),
-          SystemInfoRow(
-            label: 'Cloud/sync',
-            value: authStatus.cloudSyncLabel,
-          ),
+          SystemInfoRow(label: 'Cloud/sync', value: authStatus.cloudSyncLabel),
           SystemInfoRow(
             label: 'Validade',
             value: authStatus.licenseExpiresAt == null

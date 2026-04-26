@@ -11,7 +11,7 @@ Este guia cobre:
 - pull e subida da aplicacao na VM
 - uso de `docker-compose.prod.yml`
 - proxy reverso HTTPS via Caddy
-- migracao no startup
+- migracao Prisma explicita antes do startup
 - health check, logs e rollback simples
 
 O PostgreSQL e externo ao compose desta etapa. O container depende de `DATABASE_URL` valida e acessivel pela VM.
@@ -50,11 +50,21 @@ Valores recomendados para Oracle VM atras de reverse proxy:
 - `HOST=0.0.0.0`
 - `PORT=4000`
 - `TRUST_PROXY=1`
-- `RUN_DB_MIGRATIONS=true`
+- `RUN_DB_MIGRATIONS=false`
 
 Se o container ficar exposto diretamente na internet, use:
 
 - `TRUST_PROXY=false`
+
+Variaveis novas desta base de deploy:
+
+- `BACKEND_IMAGE`: nome/tag da imagem a ser buildada ou puxada
+- `BACKEND_BIND_IP`: bind local do backend publicado no host
+- `BACKEND_BIND_PORT`: porta publicada do backend no host
+- `EDGE_HTTP_PORT`: porta HTTP publica do Caddy
+- `EDGE_HTTPS_PORT`: porta HTTPS publica do Caddy
+
+Se existir uma stack antiga ocupando `80`, `443` ou `127.0.0.1:4000`, ajuste essas portas antes do primeiro `up -d`.
 
 ## 2. Validar localmente antes da publicacao
 
@@ -64,6 +74,7 @@ No diretorio `backend`:
 npm run build
 npm test
 docker build -t tatuzin-backend-local-check .
+docker run --rm tatuzin-backend-local-check sh -lc 'echo entrypoint-ok'
 ```
 
 Para validar o empacotamento ARM no host local:
@@ -125,38 +136,37 @@ scp Caddyfile opc@IP_DA_VM:~/tatuzin/backend/
 scp .env.production opc@IP_DA_VM:~/tatuzin/backend/
 ```
 
-## 5. Pull e subida na VM
+## 5. Pull, build, migration e subida na VM
 
 Na VM:
 
 ```bash
 cd ~/tatuzin/backend
-export BACKEND_IMAGE=ghcr.io/seu-usuario/tatuzin-backend:2026-04-20
-docker login ghcr.io
-docker compose -f docker-compose.prod.yml pull backend
-docker compose -f docker-compose.prod.yml up -d
+git pull origin main
+docker compose --env-file .env.production -f docker-compose.prod.yml build --pull backend
+docker compose --env-file .env.production -f docker-compose.prod.yml run --rm --no-deps backend npm run prisma:deploy
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --remove-orphans
 ```
 
 Comandos operacionais basicos:
 
 ```bash
-docker compose -f docker-compose.prod.yml ps
-docker compose -f docker-compose.prod.yml logs -f edge backend
-docker inspect --format '{{json .State.Health}}' tatuzin-backend
-docker inspect --format '{{json .State.Health}}' tatuzin-edge
+docker compose --env-file .env.production -f docker-compose.prod.yml ps
+docker compose --env-file .env.production -f docker-compose.prod.yml logs -f edge backend
 ```
 
 ## 6. Rede e runtime
 
 - Porta interna do backend: `4000`
-- Porta de compatibilidade no host: `127.0.0.1:4000`
-- Porta publica do proxy: `80/443`
+- Porta de compatibilidade no host: `${BACKEND_BIND_IP}:${BACKEND_BIND_PORT}`
+- Porta publica do proxy: `${EDGE_HTTP_PORT}/${EDGE_HTTPS_PORT}`
 - O backend nao fica publicado diretamente no host
 - Health endpoint: `GET /api/health`
 - Readiness endpoint: `GET /api/readiness`
 - Banco: PostgreSQL externo via `DATABASE_URL`
 - Ordem de subida: banco acessivel antes de subir o backend
-- Startup: o entrypoint executa `npm run prisma:deploy` antes de iniciar `node dist/main.js` quando `RUN_DB_MIGRATIONS=true`
+- Fluxo recomendado: `build --pull`, `run --rm backend npm run prisma:deploy`, depois `up -d`
+- `RUN_DB_MIGRATIONS=true` fica reservado para cenarios controlados de bootstrap unico, nao como fluxo padrao
 - TLS: o Caddy emite e renova certificado automaticamente para `API_DOMAIN`
 
 ## 7. Validacao na VM
@@ -164,38 +174,40 @@ docker inspect --format '{{json .State.Health}}' tatuzin-edge
 Depois do `up -d`, execute:
 
 ```bash
+curl -fsS "http://127.0.0.1:${BACKEND_BIND_PORT:-4000}/api/readiness"
 curl -fsS http://127.0.0.1/healthz
-curl -fsS https://api.tatuzin.com.br/api/health
-curl -fsS https://api.tatuzin.com.br/api/readiness
+curl -fsS "https://${API_DOMAIN}/api/health"
+curl -fsS "https://${API_DOMAIN}/api/readiness"
 ```
 
 Se houver proxy reverso publico, valide tambem pelo dominio final.
 
 ## 8. Rollback simples
 
-Use uma tag anterior conhecida:
+Use um commit ou tag anterior conhecido e refaca o mesmo fluxo:
 
 ```bash
 cd ~/tatuzin/backend
-export BACKEND_IMAGE=ghcr.io/seu-usuario/tatuzin-backend:2026-04-19
-docker compose -f docker-compose.prod.yml pull backend
-docker compose -f docker-compose.prod.yml up -d
+git checkout <tag-ou-commit-anterior>
+docker compose --env-file .env.production -f docker-compose.prod.yml build --pull backend
+docker compose --env-file .env.production -f docker-compose.prod.yml run --rm --no-deps backend npm run prisma:deploy
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --remove-orphans
 ```
 
 Atencao:
 
 - rollback de imagem nao desfaz migrations ja aplicadas
 - so volte para uma tag anterior se ela for compativel com o schema atual
-- por isso, mantenha tags imutaveis por release
+- por isso, mantenha tags imutaveis por release se tambem publicar imagens em registry
 
 ## 9. Smoke test publicado
 
 Checklist minimo na VM:
 
-1. `docker compose -f docker-compose.prod.yml ps` mostra `backend` e `edge` em `Up`.
-2. `docker inspect` mostra health `healthy` para `backend` e `edge`.
-3. `GET https://api.tatuzin.com.br/api/health` retorna `200`.
-4. `GET https://api.tatuzin.com.br/api/readiness` retorna `200`.
+1. `docker compose --env-file .env.production -f docker-compose.prod.yml ps` mostra `backend` e `edge` em `Up`.
+2. `GET http://127.0.0.1:${BACKEND_BIND_PORT:-4000}/api/readiness` retorna `200`.
+3. `GET https://${API_DOMAIN}/api/health` retorna `200`.
+4. `GET https://${API_DOMAIN}/api/readiness` retorna `200`.
 5. `POST /api/auth/register` cria conta nova.
 6. `POST /api/auth/login` autentica.
 7. `POST /api/auth/forgot-password` aceita requisicao.
@@ -205,7 +217,7 @@ Checklist minimo na VM:
 
 ## 10. Riscos restantes
 
-- `RUN_DB_MIGRATIONS=true` simplifica o deploy, mas exige cuidado para evitar duas replicas aplicando migrations ao mesmo tempo.
+- `RUN_DB_MIGRATIONS=true` continua existindo como fallback, mas ainda traz risco de corrida se duas replicas tentarem subir ao mesmo tempo.
 - rollback de imagem e limitado pela compatibilidade do schema ja migrado.
 - o compose desta etapa nao sobe o PostgreSQL; a disponibilidade do banco continua sendo dependencia externa.
 - `TRUST_PROXY` precisa refletir a topologia real da VM. Valor errado afeta IP real e rate limit.

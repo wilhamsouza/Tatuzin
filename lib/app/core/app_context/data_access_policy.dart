@@ -3,7 +3,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../config/app_data_mode.dart';
 import '../config/app_environment.dart';
 
-enum DataAccessStrategy { localOnly, localFirst, hybridReady }
+enum AppModule { pdv, erp, crm }
+
+enum DataSourceStrategy { localFirst, serverFirst }
+
+enum DataAccessStrategy { localOnly, localFirst, serverFirst, hybridReady }
+
+DataSourceStrategy strategyForModule(AppModule module) {
+  switch (module) {
+    case AppModule.pdv:
+      return DataSourceStrategy.localFirst;
+    case AppModule.erp:
+    case AppModule.crm:
+      return DataSourceStrategy.serverFirst;
+  }
+}
 
 class DataAccessPolicy {
   const DataAccessPolicy({
@@ -25,7 +39,7 @@ class DataAccessPolicy {
       case AppDataMode.futureRemoteReady:
         return const DataAccessPolicy(
           mode: AppDataMode.futureRemoteReady,
-          strategy: DataAccessStrategy.localFirst,
+          strategy: DataAccessStrategy.serverFirst,
           allowRemoteRead: true,
           allowRemoteWrite: false,
         );
@@ -50,9 +64,18 @@ class DataAccessPolicy {
         return 'Somente local';
       case DataAccessStrategy.localFirst:
         return 'Local first';
+      case DataAccessStrategy.serverFirst:
+        return 'Server first';
       case DataAccessStrategy.hybridReady:
         return 'Hibrido pronto';
     }
+  }
+
+  DataSourceStrategy strategyFor(AppModule module) {
+    if (!allowRemoteRead) {
+      return DataSourceStrategy.localFirst;
+    }
+    return strategyForModule(module);
   }
 }
 
