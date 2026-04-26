@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../app/core/config/app_data_mode.dart';
 import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/errors/app_exceptions.dart';
@@ -7,6 +8,7 @@ import '../../../../app/core/network/contracts/api_client_contract.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/network/remote_feature_diagnostic.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 import '../../../../app/core/sync/local_remote_reconciliation_repository.dart';
 import '../../../../app/core/sync/sqlite_sync_audit_repository.dart';
@@ -46,13 +48,21 @@ final syncReadinessSummaryProvider = FutureProvider<List<SyncFeatureSummary>>((
   ref,
 ) async {
   ref.watch(appDataRefreshProvider);
-  return ref.watch(syncReadinessRepositoryProvider).listFeatureSummaries();
+  return runProviderGuarded(
+    'syncReadinessSummaryProvider',
+    () => ref.watch(syncReadinessRepositoryProvider).listFeatureSummaries(),
+    timeout: localProviderTimeout,
+  );
 });
 
 final syncQueueFeatureSummariesProvider =
     FutureProvider<List<SyncQueueFeatureSummary>>((ref) async {
       ref.watch(appDataRefreshProvider);
-      return ref.watch(syncQueueRepositoryProvider).listFeatureSummaries();
+      return runProviderGuarded(
+        'syncQueueFeatureSummariesProvider',
+        () => ref.watch(syncQueueRepositoryProvider).listFeatureSummaries(),
+        timeout: localProviderTimeout,
+      );
     });
 
 final syncAuditRepositoryProvider = Provider<SqliteSyncAuditRepository>((ref) {
@@ -61,7 +71,11 @@ final syncAuditRepositoryProvider = Provider<SqliteSyncAuditRepository>((ref) {
 
 final syncAuditLogsProvider = FutureProvider<List<SyncAuditLog>>((ref) async {
   ref.watch(appDataRefreshProvider);
-  return ref.watch(syncAuditRepositoryProvider).listRecent(limit: 40);
+  return runProviderGuarded(
+    'syncAuditLogsProvider',
+    () => ref.watch(syncAuditRepositoryProvider).listRecent(limit: 40),
+    timeout: localProviderTimeout,
+  );
 });
 
 final localRemoteReconciliationRepositoryProvider =
@@ -131,20 +145,26 @@ final syncRepairControllerProvider =
 
 final remoteDiagnosticsProvider = FutureProvider<List<RemoteFeatureDiagnostic>>(
   (ref) async {
-    return <RemoteFeatureDiagnostic>[
-      await ref.watch(suppliersRemoteDatasourceProvider).fetchDiagnostic(),
-      await ref.watch(suppliesRemoteDatasourceProvider).fetchDiagnostic(),
-      await ref.watch(categoriesRemoteDatasourceProvider).fetchDiagnostic(),
-      await ref.watch(productsRemoteDatasourceProvider).fetchDiagnostic(),
-      await ref.watch(productRecipesRemoteDatasourceProvider).fetchDiagnostic(),
-      await ref.watch(customersRemoteDatasourceProvider).fetchDiagnostic(),
-      await ref.watch(purchasesRemoteDatasourceProvider).fetchDiagnostic(),
-      await ref.watch(salesRemoteDatasourceProvider).fetchDiagnostic(),
-      await ref
-          .watch(financialEventsRemoteDatasourceProvider)
-          .fetchDiagnostic(),
-      await ref.watch(cashRemoteDatasourceProvider).fetchDiagnostic(),
-    ];
+    return runProviderGuarded(
+      'remoteDiagnosticsProvider',
+      () async => <RemoteFeatureDiagnostic>[
+        await ref.watch(suppliersRemoteDatasourceProvider).fetchDiagnostic(),
+        await ref.watch(suppliesRemoteDatasourceProvider).fetchDiagnostic(),
+        await ref.watch(categoriesRemoteDatasourceProvider).fetchDiagnostic(),
+        await ref.watch(productsRemoteDatasourceProvider).fetchDiagnostic(),
+        await ref
+            .watch(productRecipesRemoteDatasourceProvider)
+            .fetchDiagnostic(),
+        await ref.watch(customersRemoteDatasourceProvider).fetchDiagnostic(),
+        await ref.watch(purchasesRemoteDatasourceProvider).fetchDiagnostic(),
+        await ref.watch(salesRemoteDatasourceProvider).fetchDiagnostic(),
+        await ref
+            .watch(financialEventsRemoteDatasourceProvider)
+            .fetchDiagnostic(),
+        await ref.watch(cashRemoteDatasourceProvider).fetchDiagnostic(),
+      ],
+      timeout: defaultProviderTimeout,
+    );
   },
 );
 
@@ -206,9 +226,25 @@ final syncHealthOverviewProvider = Provider<SyncHealthOverview>((ref) {
     totalAttempts: totalAttempts,
     lastProcessedAt: lastProcessedAt,
     lastErrorAt: lastErrorAt,
-    nextRetryAt: nextRetryAt,
+    nextRetryAt: _clampRetryAfterLastProcessed(
+      nextRetryAt: nextRetryAt,
+      lastProcessedAt: lastProcessedAt,
+    ),
   );
 });
+
+DateTime? _clampRetryAfterLastProcessed({
+  required DateTime? nextRetryAt,
+  required DateTime? lastProcessedAt,
+}) {
+  if (nextRetryAt == null || lastProcessedAt == null) {
+    return nextRetryAt;
+  }
+  if (!nextRetryAt.isBefore(lastProcessedAt)) {
+    return nextRetryAt;
+  }
+  return lastProcessedAt.add(const Duration(minutes: 1));
+}
 
 final hybridOperationalTruthSnapshotProvider =
     Provider<HybridOperationalTruthSnapshot>((ref) {
@@ -252,9 +288,17 @@ final catalogSyncControllerProvider =
       CatalogSyncController.new,
     );
 
-final backendConnectionStatusProvider = FutureProvider<BackendConnectionStatus>((
-  ref,
-) async {
+final backendConnectionStatusProvider = FutureProvider<BackendConnectionStatus>(
+  (ref) async {
+    return runProviderGuarded(
+      'backendConnectionStatusProvider',
+      () => _resolveBackendConnectionStatus(ref),
+      timeout: defaultProviderTimeout,
+    );
+  },
+);
+
+Future<BackendConnectionStatus> _resolveBackendConnectionStatus(Ref ref) async {
   final environment = ref.watch(appEnvironmentProvider);
   if (!environment.endpointConfig.isConfigured) {
     return BackendConnectionStatus(
@@ -262,7 +306,9 @@ final backendConnectionStatusProvider = FutureProvider<BackendConnectionStatus>(
       isReachable: false,
       companyLookupSucceeded: false,
       endpointLabel: environment.endpointConfig.summaryLabel,
-      message: 'Endpoint remoto ainda nao configurado para este modo.',
+      message: environment.dataMode == AppDataMode.localOnly
+          ? 'Modo local ativo. A API oficial fica disponivel quando o app voltar a um modo remoto.'
+          : 'Endpoint remoto indisponivel para este modo.',
       checkedAt: DateTime.now(),
     );
   }
@@ -328,7 +374,7 @@ final backendConnectionStatusProvider = FutureProvider<BackendConnectionStatus>(
       checkedAt: DateTime.now(),
     );
   }
-});
+}
 
 class BackendConnectionStatus {
   const BackendConnectionStatus({

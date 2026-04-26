@@ -1,8 +1,12 @@
+import 'package:flutter/foundation.dart';
+
 class EndpointConfig {
   static const Object _noChange = Object();
   static const String envKey = 'TATUZIN_API_BASE_URL';
   static const String defaultApiVersion = 'api';
   static const String productionBaseUrl = 'https://api.tatuzin.com.br';
+  static const String productionApiUrl =
+      'https://api.tatuzin.com.br/$defaultApiVersion';
   static const String localDevelopmentBaseUrl = 'http://10.0.2.2:4000';
   static const bool _isReleaseBuild = bool.fromEnvironment('dart.vm.product');
   static const String _compileTimeBaseUrl = String.fromEnvironment(envKey);
@@ -37,6 +41,14 @@ class EndpointConfig {
 
   static bool get isReleaseBuild => _isReleaseBuild;
 
+  static bool get isProductionEndpointLocked => _isReleaseBuild;
+
+  static bool get allowTechnicalEndpointOverride =>
+      !isProductionEndpointLocked && kDebugMode;
+
+  static String get productionResolvedBaseUrl =>
+      normalizeBaseUrl(productionApiUrl, apiVersion: defaultApiVersion)!;
+
   static String? normalizeBaseUrl(String? value, {required String apiVersion}) {
     final trimmed = value?.trim();
     if (trimmed == null || trimmed.isEmpty) {
@@ -60,6 +72,10 @@ class EndpointConfig {
     bool isReleaseBuild = _isReleaseBuild,
     String apiVersion = defaultApiVersion,
   }) {
+    if (isReleaseBuild) {
+      return normalizeBaseUrl(productionApiUrl, apiVersion: apiVersion)!;
+    }
+
     final explicitBaseUrl = normalizeBaseUrl(
       configuredBaseUrl,
       apiVersion: apiVersion,
@@ -68,9 +84,7 @@ class EndpointConfig {
       return explicitBaseUrl;
     }
 
-    final fallbackBaseUrl = isReleaseBuild
-        ? productionBaseUrl
-        : localDevelopmentBaseUrl;
+    const fallbackBaseUrl = localDevelopmentBaseUrl;
     return normalizeBaseUrl(fallbackBaseUrl, apiVersion: apiVersion)!;
   }
 
@@ -120,6 +134,12 @@ class EndpointConfig {
     }
 
     return '$baseUrl/$apiVersion';
+  }
+
+  bool get isOfficialProductionEndpoint {
+    return normalizeBaseUrl(baseUrl, apiVersion: apiVersion) ==
+            productionResolvedBaseUrl &&
+        apiVersion == defaultApiVersion;
   }
 
   EndpointConfig copyWith({

@@ -8,6 +8,7 @@ import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
@@ -56,13 +57,21 @@ final supplierListProvider = FutureProvider<List<Supplier>>((ref) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(supplierSearchQueryProvider);
-  return ref.watch(supplierRepositoryProvider).search(query: query);
+  return runProviderGuarded(
+    'supplierListProvider',
+    () => ref.watch(supplierRepositoryProvider).search(query: query),
+    timeout: localProviderTimeout,
+  );
 });
 
 final supplierOptionsProvider = FutureProvider<List<Supplier>>((ref) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref.watch(supplierRepositoryProvider).search();
+  return runProviderGuarded(
+    'supplierOptionsProvider',
+    () => ref.watch(supplierRepositoryProvider).search(),
+    timeout: localProviderTimeout,
+  );
 });
 
 final supplierLookupProvider = FutureProvider.family<List<Supplier>, String>((
@@ -71,7 +80,11 @@ final supplierLookupProvider = FutureProvider.family<List<Supplier>, String>((
 ) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref.watch(supplierRepositoryProvider).search(query: query);
+  return runProviderGuarded(
+    'supplierLookupProvider',
+    () => ref.watch(supplierRepositoryProvider).search(query: query),
+    timeout: localProviderTimeout,
+  );
 });
 
 final supplierDetailProvider = FutureProvider.family<Supplier?, int>((
@@ -80,7 +93,11 @@ final supplierDetailProvider = FutureProvider.family<Supplier?, int>((
 ) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref.watch(supplierRepositoryProvider).findById(supplierId);
+  return runProviderGuarded(
+    'supplierDetailProvider',
+    () => ref.watch(supplierRepositoryProvider).findById(supplierId),
+    timeout: localProviderTimeout,
+  );
 });
 
 final supplierSyncControllerProvider =

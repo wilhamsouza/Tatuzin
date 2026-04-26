@@ -133,9 +133,7 @@ class ProductNicheDetailsSection extends StatelessWidget {
             tilePadding: EdgeInsets.zero,
             childrenPadding: const EdgeInsets.only(top: 12),
             title: const Text('Campos avancados'),
-            subtitle: const Text(
-              'Opcional. Informacoes tecnicas adicionais.',
-            ),
+            subtitle: const Text('Opcional. Informacoes tecnicas adicionais.'),
             children: [
               TextFormField(
                 controller: extraAttributesController,

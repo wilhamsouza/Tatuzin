@@ -40,9 +40,7 @@ class _ModifierGroupsSectionState extends State<ModifierGroupsSection> {
           builder: (context, setLocalState) {
             return AlertDialog(
               title: Text(
-                index == null
-                    ? 'Novo grupo de adicionais'
-                    : 'Editar grupo',
+                index == null ? 'Novo grupo de adicionais' : 'Editar grupo',
               ),
               content: SingleChildScrollView(
                 child: Column(
@@ -271,8 +269,7 @@ class _ModifierGroupsSectionState extends State<ModifierGroupsSection> {
 
     return AppSectionCard(
       title: 'Adicionais',
-      subtitle:
-          'Monte grupos de opcoes para o cliente personalizar o pedido.',
+      subtitle: 'Monte grupos de opcoes para o cliente personalizar o pedido.',
       trailing: FilledButton.tonalIcon(
         onPressed: () => _openGroupEditor(),
         icon: const Icon(Icons.add_rounded),

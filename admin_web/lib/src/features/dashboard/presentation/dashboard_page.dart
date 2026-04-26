@@ -84,7 +84,8 @@ class _DashboardContent extends StatelessWidget {
             builder: (context, constraints) {
               final companiesSurface = AdminSurface(
                 title: 'Empresas com mais dados remotos',
-                subtitle: 'Resumo rapido para suporte e acompanhamento da plataforma.',
+                subtitle:
+                    'Resumo rapido para suporte e acompanhamento da plataforma.',
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: DataTable(
@@ -111,9 +112,14 @@ class _DashboardContent extends StatelessWidget {
                               ],
                             ),
                           ),
-                          DataCell(Text(company.license?.plan ?? 'Sem licenca')),
                           DataCell(
-                            _StatusBadge(status: company.license?.status ?? 'without_license'),
+                            Text(company.license?.plan ?? 'Sem licenca'),
+                          ),
+                          DataCell(
+                            _StatusBadge(
+                              status:
+                                  company.license?.status ?? 'without_license',
+                            ),
                           ),
                           DataCell(
                             Text(
@@ -193,8 +199,8 @@ class _MetricGrid extends StatelessWidget {
         final crossAxisCount = constraints.maxWidth >= 1400
             ? 3
             : constraints.maxWidth >= 900
-                ? 2
-                : 1;
+            ? 2
+            : 1;
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -212,8 +218,13 @@ class _MetricGrid extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 24,
-                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                    child: Icon(item.icon, color: Theme.of(context).colorScheme.primary),
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer,
+                    child: Icon(
+                      item.icon,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -223,19 +234,24 @@ class _MetricGrid extends StatelessWidget {
                       children: [
                         Text(
                           item.label,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
                               ),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           item.value,
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                fontWeight: FontWeight.w900,
-                              ),
+                          style: Theme.of(context).textTheme.headlineMedium
+                              ?.copyWith(fontWeight: FontWeight.w900),
                         ),
                         const SizedBox(height: 6),
-                        Text(item.helper, style: Theme.of(context).textTheme.bodySmall),
+                        Text(
+                          item.helper,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                       ],
                     ),
                   ),
@@ -279,9 +295,9 @@ class _StatusBadge extends StatelessWidget {
       child: Text(
         AdminFormatters.formatLicenseStatus(status),
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AdminFormatters.statusColor(context, status),
-              fontWeight: FontWeight.w700,
-            ),
+          color: AdminFormatters.statusColor(context, status),
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

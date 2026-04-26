@@ -32,7 +32,7 @@ class SystemRemoteAuthSection extends StatelessWidget {
     return AppSectionCard(
       title: 'Autenticacao remota real',
       subtitle:
-          'Login incremental para desenvolvimento local. O app continua operando offline mesmo sem sessao remota.',
+          'Login remoto contra a API oficial do Tatuzin. O app continua operando offline mesmo sem sessao remota.',
       trailing: AppStatusBadge(
         label: authStatus.isRemoteAuthenticated
             ? 'Sessao remota ativa'
@@ -53,10 +53,10 @@ class SystemRemoteAuthSection extends StatelessWidget {
                 : Icons.login_rounded,
             title: authStatus.isRemoteAuthenticated
                 ? 'Login remoto validado'
-                : 'Use o backend local para autenticar',
+                : 'Use a API oficial para autenticar',
             subtitle: authStatus.isRemoteAuthenticated
                 ? 'Sessao remota ativa e tenant resolvido pelo backend. Os modulos operacionais continuam locais nesta fase.'
-                : 'Ative um modo com backend, confirme o endpoint e entre com o usuario seeded para validar a arquitetura real.',
+                : 'Ative um modo com backend e entre com seu usuario remoto. O endpoint oficial ja vem nativo neste build.',
           ),
           const SizedBox(height: 16),
           TextField(

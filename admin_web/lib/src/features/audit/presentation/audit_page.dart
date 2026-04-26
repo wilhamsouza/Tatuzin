@@ -75,12 +75,14 @@ class _AuditPageState extends ConsumerState<AuditPage> {
                         title: 'Total de eventos',
                         value: '${summary.totalEvents}',
                       ),
-                      ...summary.countsByAction.entries.take(4).map(
-                        (entry) => _AuditMetric(
-                          title: entry.key,
-                          value: '${entry.value}',
-                        ),
-                      ),
+                      ...summary.countsByAction.entries
+                          .take(4)
+                          .map(
+                            (entry) => _AuditMetric(
+                              title: entry.key,
+                              value: '${entry.value}',
+                            ),
+                          ),
                     ],
                   ),
                 ],
@@ -102,8 +104,9 @@ class _AuditPageState extends ConsumerState<AuditPage> {
                             return ListTile(
                               contentPadding: EdgeInsets.zero,
                               leading: CircleAvatar(
-                                backgroundColor:
-                                    Theme.of(context).colorScheme.primaryContainer,
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.primaryContainer,
                                 child: Icon(
                                   Icons.history_toggle_off_rounded,
                                   color: Theme.of(context).colorScheme.primary,
@@ -273,10 +276,7 @@ class _AuditFiltersState extends State<_AuditFilters> {
               icon: const Icon(Icons.filter_alt_rounded),
               label: const Text('Aplicar'),
             ),
-            TextButton(
-              onPressed: widget.onClear,
-              child: const Text('Limpar'),
-            ),
+            TextButton(onPressed: widget.onClear, child: const Text('Limpar')),
           ],
         ),
       ],
@@ -337,10 +337,7 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _AuditMetric extends StatelessWidget {
-  const _AuditMetric({
-    required this.title,
-    required this.value,
-  });
+  const _AuditMetric({required this.title, required this.value});
 
   final String title;
   final String value;
@@ -360,15 +357,15 @@ class _AuditMetric extends StatelessWidget {
           Text(
             title,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 10),
           Text(
             value,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
           ),
         ],
       ),

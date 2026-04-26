@@ -353,9 +353,10 @@ class LocalRemoteReconciliationRepository
       });
 
       final refreshed = await reconcileFeature(action.target.featureKey);
-      final afterIssue = ReconciliationDecisionSupport.findIssue(<SyncReconciliationResult>[
-        refreshed,
-      ], action.target);
+      final afterIssue = ReconciliationDecisionSupport.findIssue(
+        <SyncReconciliationResult>[refreshed],
+        action.target,
+      );
       await _logRepairOutcome(
         action: action,
         issue: issue,
@@ -950,9 +951,7 @@ class LocalRemoteReconciliationRepository
     issues.sort((left, right) {
       final severityCompare = ReconciliationDecisionSupport.severityOf(
         right.status,
-      ).compareTo(
-        ReconciliationDecisionSupport.severityOf(left.status),
-      );
+      ).compareTo(ReconciliationDecisionSupport.severityOf(left.status));
       if (severityCompare != 0) {
         return severityCompare;
       }
@@ -974,7 +973,8 @@ class LocalRemoteReconciliationRepository
   SyncReconciliationIssue _buildIssueForLocalRecord(
     ReconciliationLocalComparableRecord local, {
     required Map<String, ReconciliationRemoteComparableRecord> remoteById,
-    required Map<String, ReconciliationRemoteComparableRecord> remoteByLocalUuid,
+    required Map<String, ReconciliationRemoteComparableRecord>
+    remoteByLocalUuid,
     required Set<String> matchedRemoteIds,
   }) {
     final remoteByLinkedId = local.remoteId == null
@@ -1052,10 +1052,9 @@ class LocalRemoteReconciliationRepository
           localPayloadSignature: ReconciliationPayloadSupport.payloadSignature(
             local.payload,
           ),
-          remotePayloadSignature:
-              ReconciliationPayloadSupport.payloadSignature(
-                remoteByUuid.payload,
-              ),
+          remotePayloadSignature: ReconciliationPayloadSupport.payloadSignature(
+            remoteByUuid.payload,
+          ),
         );
       }
 
@@ -1135,10 +1134,9 @@ class LocalRemoteReconciliationRepository
         localPayloadSignature: ReconciliationPayloadSupport.payloadSignature(
           local.payload,
         ),
-        remotePayloadSignature:
-            ReconciliationPayloadSupport.payloadSignature(
-              remoteByLinkedId.payload,
-            ),
+        remotePayloadSignature: ReconciliationPayloadSupport.payloadSignature(
+          remoteByLinkedId.payload,
+        ),
       );
     }
 
@@ -1163,18 +1161,16 @@ class LocalRemoteReconciliationRepository
         localPayloadSignature: ReconciliationPayloadSupport.payloadSignature(
           local.payload,
         ),
-        remotePayloadSignature:
-            ReconciliationPayloadSupport.payloadSignature(
-              remoteByLinkedId.payload,
-            ),
+        remotePayloadSignature: ReconciliationPayloadSupport.payloadSignature(
+          remoteByLinkedId.payload,
+        ),
       );
     }
 
-    if (
-        !ReconciliationPayloadSupport.signaturesMatch(
-          local.payload,
-          remoteByLinkedId.payload,
-        )) {
+    if (!ReconciliationPayloadSupport.signaturesMatch(
+      local.payload,
+      remoteByLinkedId.payload,
+    )) {
       return SyncReconciliationIssue(
         featureKey: local.featureKey,
         entityType: local.entityType,
@@ -1196,10 +1192,9 @@ class LocalRemoteReconciliationRepository
         localPayloadSignature: ReconciliationPayloadSupport.payloadSignature(
           local.payload,
         ),
-        remotePayloadSignature:
-            ReconciliationPayloadSupport.payloadSignature(
-              remoteByLinkedId.payload,
-            ),
+        remotePayloadSignature: ReconciliationPayloadSupport.payloadSignature(
+          remoteByLinkedId.payload,
+        ),
       );
     }
 
@@ -2005,27 +2000,16 @@ class LocalRemoteReconciliationRepository
       return false;
     }
 
-    switch (
-      ReconciliationRetryDependencyDispatch.resolve(
-        featureKey: issue.featureKey,
-        entityType: issue.entityType,
-      )
-    ) {
+    switch (ReconciliationRetryDependencyDispatch.resolve(
+      featureKey: issue.featureKey,
+      entityType: issue.entityType,
+    )) {
       case RetryDependencyDispatchTarget.productDependencyChain:
-        return _retryProductDependencyChain(
-          txn,
-          localEntityId: localEntityId,
-        );
+        return _retryProductDependencyChain(txn, localEntityId: localEntityId);
       case RetryDependencyDispatchTarget.purchaseDependencyChain:
-        return _retryPurchaseDependencyChain(
-          txn,
-          localEntityId: localEntityId,
-        );
+        return _retryPurchaseDependencyChain(txn, localEntityId: localEntityId);
       case RetryDependencyDispatchTarget.saleDependencyChain:
-        return _retrySaleDependencyChain(
-          txn,
-          localEntityId: localEntityId,
-        );
+        return _retrySaleDependencyChain(txn, localEntityId: localEntityId);
       case RetryDependencyDispatchTarget.canceledSaleFinancialEventChain:
         return _retryCanceledSaleFinancialEventChain(
           txn,

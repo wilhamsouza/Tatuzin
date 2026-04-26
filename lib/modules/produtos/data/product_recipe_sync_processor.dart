@@ -96,7 +96,9 @@ class ProductRecipeSyncProcessor implements SyncFeatureProcessor {
         recipe: recipe,
         remote: persisted,
       );
-      return SyncFeatureProcessResult.synced(remoteId: persisted.productRemoteId);
+      return SyncFeatureProcessResult.synced(
+        remoteId: persisted.productRemoteId,
+      );
     } catch (error) {
       final syncError = resolveSyncError(error);
       await _localRepository.markProductRecipeSyncError(

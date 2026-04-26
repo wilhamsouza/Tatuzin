@@ -236,40 +236,48 @@ void main() {
     expect(detail!.session.status, InventoryCountSessionStatus.counting);
   });
 
-  test('recalcular item desatualizado atualiza diferenca corretamente', () async {
-    database = await _openDatabase();
-    repository = SqliteInventoryCountRepository.forDatabase(
-      databaseLoader: () async => database,
-    );
-    await _insertProduct(database, id: 1, name: 'Vestido Midi', stockMil: 2000);
+  test(
+    'recalcular item desatualizado atualiza diferenca corretamente',
+    () async {
+      database = await _openDatabase();
+      repository = SqliteInventoryCountRepository.forDatabase(
+        databaseLoader: () async => database,
+      );
+      await _insertProduct(
+        database,
+        id: 1,
+        name: 'Vestido Midi',
+        stockMil: 2000,
+      );
 
-    final session = await repository.createSession(name: 'Revisao estoque');
-    final item = await repository.upsertItem(
-      const InventoryCountItemInput(
-        sessionId: 1,
-        productId: 1,
-        productVariantId: null,
-        countedStockMil: 500,
-      ),
-    );
-    await _updateProductStock(database, productId: 1, stockMil: 1700);
+      final session = await repository.createSession(name: 'Revisao estoque');
+      final item = await repository.upsertItem(
+        const InventoryCountItemInput(
+          sessionId: 1,
+          productId: 1,
+          productVariantId: null,
+          countedStockMil: 500,
+        ),
+      );
+      await _updateProductStock(database, productId: 1, stockMil: 1700);
 
-    final recalculated = await repository.recalculateItemFromCurrentStock(
-      item.id,
-    );
+      final recalculated = await repository.recalculateItemFromCurrentStock(
+        item.id,
+      );
 
-    expect(recalculated.countSessionId, session.id);
-    expect(recalculated.systemStockMil, 1700);
-    expect(recalculated.currentStockMil, 1700);
-    expect(recalculated.countedStockMil, 500);
-    expect(recalculated.differenceMil, -1200);
-    expect(recalculated.isStale, isFalse);
-    expect(recalculated.needsReview, isFalse);
+      expect(recalculated.countSessionId, session.id);
+      expect(recalculated.systemStockMil, 1700);
+      expect(recalculated.currentStockMil, 1700);
+      expect(recalculated.countedStockMil, 500);
+      expect(recalculated.differenceMil, -1200);
+      expect(recalculated.isStale, isFalse);
+      expect(recalculated.needsReview, isFalse);
 
-    final detail = await repository.getSessionDetail(session.id);
-    expect(detail!.summary.staleItems, 0);
-    expect(detail.summary.readyItems, 1);
-  });
+      final detail = await repository.getSessionDetail(session.id);
+      expect(detail!.summary.staleItems, 0);
+      expect(detail.summary.readyItems, 1);
+    },
+  );
 
   test('sessao volta a aplicar normalmente apos revisao', () async {
     database = await _openDatabase();
@@ -311,7 +319,9 @@ void main() {
     final detailBefore = await repository.getSessionDetail(session.id);
     expect(detailBefore!.items.single.isStale, isTrue);
 
-    await repository.recalculateItemFromCurrentStock(detailBefore.items.single.id);
+    await repository.recalculateItemFromCurrentStock(
+      detailBefore.items.single.id,
+    );
     await repository.applySession(session.id);
 
     expect(await _variantStock(database, 10), 1000);

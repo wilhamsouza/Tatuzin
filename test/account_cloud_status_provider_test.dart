@@ -212,4 +212,68 @@ void main() {
       expect(snapshot.conflictCount, 1);
     },
   );
+
+  test('does not show next retry before last processed sync', () async {
+    final container = ProviderContainer(
+      overrides: [
+        backendConnectionStatusProvider.overrideWith(
+          (ref) async => BackendConnectionStatus(
+            isConfigured: true,
+            isReachable: true,
+            companyLookupSucceeded: true,
+            endpointLabel: 'API',
+            message: 'online',
+            checkedAt: DateTime(2026, 4, 26, 7, 45),
+          ),
+        ),
+        syncHealthOverviewProvider.overrideWith(
+          (ref) => SyncHealthOverview(
+            totalPending: 0,
+            totalProcessing: 0,
+            totalActiveProcessing: 0,
+            totalStaleProcessing: 0,
+            totalSynced: 2,
+            totalErrors: 3,
+            totalBlocked: 0,
+            totalConflicts: 0,
+            totalAttempts: 8,
+            lastProcessedAt: DateTime(2026, 4, 26, 7, 43),
+            lastErrorAt: DateTime(2026, 4, 26, 7, 42),
+            nextRetryAt: DateTime(2026, 4, 24, 13, 44),
+          ),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container
+        .read(appSessionProvider.notifier)
+        .setAuthenticatedSession(
+          scope: SessionScope.authenticatedRemote,
+          user: const AppUser(
+            localId: 1,
+            remoteId: 'user-1',
+            displayName: 'Operador',
+            email: 'operador@tatuzin.app',
+            roleLabel: 'Operador',
+            kind: AppUserKind.remoteAuthenticated,
+          ),
+          company: const CompanyContext(
+            localId: 1,
+            remoteId: 'company-1',
+            displayName: 'Tatuzin',
+            legalName: 'Tatuzin LTDA',
+            documentNumber: '123',
+            licensePlan: 'pro',
+            licenseStatus: 'active',
+            syncEnabled: true,
+          ),
+          isOfflineFallback: false,
+        );
+
+    await container.read(backendConnectionStatusProvider.future);
+    final snapshot = container.read(accountCloudStatusProvider);
+
+    expect(snapshot.nextRetryAt, DateTime(2026, 4, 26, 7, 44));
+  });
 }

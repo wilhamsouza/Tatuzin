@@ -105,6 +105,31 @@ class RemoteSupplyRecord {
   final DateTime? deletedAt;
   final List<RemoteSupplyCostHistoryRecord> costHistory;
 
+  RemoteSupplyRecord copyWithInactive() {
+    final now = DateTime.now();
+    return RemoteSupplyRecord(
+      remoteId: remoteId,
+      localUuid: localUuid,
+      remoteDefaultSupplierId: remoteDefaultSupplierId,
+      name: name,
+      sku: sku,
+      unitType: unitType,
+      purchaseUnitType: purchaseUnitType,
+      conversionFactor: conversionFactor,
+      lastPurchasePriceCents: lastPurchasePriceCents,
+      averagePurchasePriceCents: averagePurchasePriceCents,
+      currentStockMil: currentStockMil,
+      minimumStockMil: minimumStockMil,
+      isActive: false,
+      createdAt: createdAt,
+      updatedAt: now,
+      deletedAt: now,
+      defaultSupplierLocalUuid: defaultSupplierLocalUuid,
+      defaultSupplierName: defaultSupplierName,
+      costHistory: costHistory,
+    );
+  }
+
   Map<String, dynamic> toUpsertBody() {
     return <String, dynamic>{
       'localUuid': localUuid,
@@ -148,9 +173,7 @@ class RemoteSupplyCostHistoryRecord {
     return RemoteSupplyCostHistoryRecord(
       remoteId: json['id'] as String? ?? '',
       localUuid:
-          (json['localUuid'] as String?) ??
-          (json['uuid'] as String?) ??
-          '',
+          (json['localUuid'] as String?) ?? (json['uuid'] as String?) ?? '',
       purchaseRemoteId: json['purchaseId'] as String?,
       purchaseItemId: json['purchaseItemId'] as String?,
       purchaseItemLocalUuid: json['purchaseItemLocalUuid'] as String?,

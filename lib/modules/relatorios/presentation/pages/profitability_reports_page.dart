@@ -16,6 +16,7 @@ import '../../domain/entities/report_filter.dart';
 import '../../domain/entities/report_profitability_row.dart';
 import '../providers/report_providers.dart';
 import '../widgets/profitability_table.dart';
+import '../widgets/report_data_origin_banner.dart';
 import '../widgets/report_donut_chart_card.dart';
 import '../widgets/report_filter_toolbar.dart';
 import '../widgets/report_kpi_grid.dart';
@@ -79,6 +80,7 @@ class ProfitabilityReportsPage extends ConsumerWidget {
               onExportPdf: (mode) => _exportPdf(ref, mode),
               onExportCsv: (mode) => _exportCsv(ref, mode),
             ),
+            const ReportDataOriginBanner(page: ReportPageKey.profitability),
             SizedBox(height: layout.sectionGap),
             profitabilityAsync.when(
               data: (rows) {
@@ -316,6 +318,9 @@ class ProfitabilityReportsPage extends ConsumerWidget {
                 message: '$error',
                 tone: AppStateTone.error,
                 compact: true,
+                actionLabel: 'Tentar novamente',
+                onAction: () =>
+                    ref.read(appDataRefreshProvider.notifier).state++,
               ),
             ),
           ],

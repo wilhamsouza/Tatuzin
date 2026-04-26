@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../../../app/core/app_context/app_operational_context.dart';
+import '../../../app/core/app_context/record_identity.dart';
 import '../../../app/core/database/app_database.dart';
 import '../../../app/core/database/table_names.dart';
 import '../../../app/core/errors/app_exceptions.dart';
@@ -430,6 +431,7 @@ class SqlitePurchaseRepository implements PurchaseRepository {
         paymentMethod: input.paymentMethod,
         registeredAt: now,
         notes: input.notes,
+        paymentUuid: input.paymentUuid,
       );
 
       final currentPaid = purchaseRow['valor_pago_centavos'] as int? ?? 0;
@@ -464,6 +466,211 @@ class SqlitePurchaseRepository implements PurchaseRepository {
     });
 
     return fetchDetail(input.purchaseId);
+  }
+
+  Future<RemotePurchaseRecord> buildRemoteRecordFromInput(
+    PurchaseUpsertInput input, {
+    String remoteId = '',
+    String? localUuid,
+    DateTime? createdAt,
+  }) async {
+    final database = await _appDatabase.database;
+    final prepared = await PurchasePreparationSupport.preparePurchase(
+      database,
+      input,
+    );
+    final now = DateTime.now();
+    final supplierRemoteId = await _resolveRemoteIdRequired(
+      database,
+      featureKey: SyncFeatureKeys.suppliers,
+      localId: input.supplierId,
+      message:
+          'Fornecedor ainda nao possui vinculo remoto para registrar a compra no ERP.',
+    );
+
+    final items = <RemotePurchaseItemRecord>[];
+    for (final item in prepared.items) {
+      String? productRemoteId;
+      String? supplyRemoteId;
+      if (item.itemType == PurchaseItemType.product) {
+        productRemoteId = await _resolveRemoteIdRequired(
+          database,
+          featureKey: SyncFeatureKeys.products,
+          localId: item.productId!,
+          message:
+              'Produto "${item.itemNameSnapshot}" ainda nao possui vinculo remoto para registrar a compra no ERP.',
+        );
+      } else {
+        supplyRemoteId = await _resolveRemoteIdRequired(
+          database,
+          featureKey: SyncFeatureKeys.supplies,
+          localId: item.supplyId!,
+          message:
+              'Insumo "${item.itemNameSnapshot}" ainda nao possui vinculo remoto para registrar a compra no ERP.',
+        );
+      }
+
+      items.add(
+        RemotePurchaseItemRecord(
+          remoteId: '',
+          localUuid: IdGenerator.next(),
+          itemType: item.itemType,
+          remoteProductId: productRemoteId,
+          remoteProductVariantId: null,
+          remoteSupplyId: supplyRemoteId,
+          itemNameSnapshot: item.itemNameSnapshot,
+          variantSkuSnapshot: item.variantSkuSnapshot,
+          variantColorLabelSnapshot: item.variantColorLabelSnapshot,
+          variantSizeLabelSnapshot: item.variantSizeLabelSnapshot,
+          unitMeasureSnapshot: item.unitMeasureSnapshot,
+          quantityMil: item.quantityMil,
+          unitCostCents: item.unitCostCents,
+          subtotalCents: item.subtotalCents,
+        ),
+      );
+    }
+
+    final paymentUuid = IdGenerator.next();
+    return RemotePurchaseRecord(
+      remoteId: remoteId,
+      localUuid: localUuid ?? IdGenerator.next(),
+      remoteSupplierId: supplierRemoteId,
+      supplierLocalUuid: null,
+      supplierName: prepared.supplierName,
+      documentNumber: input.documentNumber,
+      notes: input.notes,
+      purchasedAt: input.purchasedAt,
+      dueDate: input.dueDate,
+      paymentMethod: input.paymentMethod,
+      status: prepared.status,
+      subtotalCents: prepared.subtotalCents,
+      discountCents: input.discountCents,
+      surchargeCents: input.surchargeCents,
+      freightCents: input.freightCents,
+      finalAmountCents: prepared.finalAmountCents,
+      paidAmountCents: prepared.paidAmountCents,
+      pendingAmountCents: prepared.pendingAmountCents,
+      canceledAt: null,
+      createdAt: createdAt ?? now,
+      updatedAt: now,
+      items: items,
+      payments: prepared.paidAmountCents > 0 && input.paymentMethod != null
+          ? <RemotePurchasePaymentRecord>[
+              RemotePurchasePaymentRecord(
+                remoteId: '',
+                localUuid: paymentUuid,
+                amountCents: prepared.paidAmountCents,
+                paymentMethod: input.paymentMethod!,
+                paidAt: now,
+                notes: 'Pagamento inicial da compra',
+              ),
+            ]
+          : const <RemotePurchasePaymentRecord>[],
+    );
+  }
+
+  Future<Purchase?> cacheRemoteSnapshot(RemotePurchaseRecord remote) async {
+    final database = await _appDatabase.database;
+    final existing = await findByRemoteId(remote.remoteId);
+    if (existing != null) {
+      await reconcileRemoteSnapshot(remote);
+      return findByRemoteId(remote.remoteId);
+    }
+
+    final cachedPurchaseId = await database.transaction<int?>((txn) async {
+      final supplierLocalId = await _resolveLocalIdByRemoteId(
+        txn,
+        featureKey: SyncFeatureKeys.suppliers,
+        remoteId: remote.remoteSupplierId,
+      );
+      if (supplierLocalId == null) {
+        return null;
+      }
+
+      final purchaseId = await txn.insert(TableNames.compras, {
+        'uuid': remote.localUuid,
+        'fornecedor_id': supplierLocalId,
+        'numero_documento': _cleanNullable(remote.documentNumber),
+        'observacao': _cleanNullable(remote.notes),
+        'data_compra': remote.purchasedAt.toIso8601String(),
+        'data_vencimento': remote.dueDate?.toIso8601String(),
+        'forma_pagamento': remote.paymentMethod?.dbValue,
+        'status': remote.status.dbValue,
+        'subtotal_centavos': remote.subtotalCents,
+        'desconto_centavos': remote.discountCents,
+        'acrescimo_centavos': remote.surchargeCents,
+        'frete_centavos': remote.freightCents,
+        'valor_final_centavos': remote.finalAmountCents,
+        'valor_pago_centavos': remote.paidAmountCents,
+        'valor_pendente_centavos': remote.pendingAmountCents,
+        'cancelada_em': remote.canceledAt?.toIso8601String(),
+        'criado_em': remote.createdAt.toIso8601String(),
+        'atualizado_em': remote.updatedAt.toIso8601String(),
+      });
+
+      for (final item in remote.items) {
+        final productId = item.remoteProductId == null
+            ? null
+            : await _resolveLocalIdByRemoteId(
+                txn,
+                featureKey: SyncFeatureKeys.products,
+                remoteId: item.remoteProductId!,
+              );
+        final supplyId = item.remoteSupplyId == null
+            ? null
+            : await _resolveLocalIdByRemoteId(
+                txn,
+                featureKey: SyncFeatureKeys.supplies,
+                remoteId: item.remoteSupplyId!,
+              );
+        await txn.insert(TableNames.itensCompra, {
+          'uuid': item.localUuid,
+          'compra_id': purchaseId,
+          'item_type': item.itemType.storageValue,
+          'produto_id': productId,
+          'produto_variante_id': null,
+          'supply_id': supplyId,
+          'nome_item_snapshot': item.itemNameSnapshot,
+          'sku_variante_snapshot': item.variantSkuSnapshot,
+          'cor_variante_snapshot': item.variantColorLabelSnapshot,
+          'tamanho_variante_snapshot': item.variantSizeLabelSnapshot,
+          'unidade_medida_snapshot': item.unitMeasureSnapshot,
+          'quantidade_mil': item.quantityMil,
+          'custo_unitario_centavos': item.unitCostCents,
+          'subtotal_centavos': item.subtotalCents,
+        });
+      }
+
+      for (final payment in remote.payments) {
+        await txn.insert(TableNames.compraPagamentos, {
+          'uuid': payment.localUuid,
+          'compra_id': purchaseId,
+          'valor_centavos': payment.amountCents,
+          'forma_pagamento': payment.paymentMethod.dbValue,
+          'data_hora': payment.paidAt.toIso8601String(),
+          'observacao': _cleanNullable(payment.notes),
+          'caixa_movimento_id': null,
+        });
+      }
+
+      await _syncMetadataRepository.markSynced(
+        txn,
+        featureKey: featureKey,
+        localId: purchaseId,
+        localUuid: remote.localUuid,
+        remoteId: remote.remoteId,
+        origin: RecordOrigin.remote,
+        createdAt: remote.createdAt,
+        updatedAt: remote.updatedAt,
+        syncedAt: DateTime.now(),
+      );
+
+      return purchaseId;
+    });
+    if (cachedPurchaseId == null) {
+      return null;
+    }
+    return findByRemoteId(remote.remoteId);
   }
 
   @override
@@ -747,6 +954,37 @@ class SqlitePurchaseRepository implements PurchaseRepository {
       return cleanedCurrent;
     }
     return '$cleanedCurrent\n$cleanedAppended';
+  }
+
+  Future<String> _resolveRemoteIdRequired(
+    DatabaseExecutor db, {
+    required String featureKey,
+    required int localId,
+    required String message,
+  }) async {
+    final metadata = await _syncMetadataRepository.findByLocalId(
+      db,
+      featureKey: featureKey,
+      localId: localId,
+    );
+    final remoteId = metadata?.identity.remoteId;
+    if (remoteId == null || remoteId.trim().isEmpty) {
+      throw ValidationException(message);
+    }
+    return remoteId;
+  }
+
+  Future<int?> _resolveLocalIdByRemoteId(
+    DatabaseExecutor db, {
+    required String featureKey,
+    required String remoteId,
+  }) async {
+    final metadata = await _syncMetadataRepository.findByRemoteId(
+      db,
+      featureKey: featureKey,
+      remoteId: remoteId,
+    );
+    return metadata?.identity.localId;
   }
 
   Set<int> _collectSupplyIds(List<PurchaseItem> items) {

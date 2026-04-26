@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/session/session_provider.dart';
 import '../../../carrinho/domain/entities/cart_item.dart';
 import '../../../produtos/domain/entities/product.dart';
@@ -54,9 +55,13 @@ final operationalOrderBoardProvider = FutureProvider<OperationalOrderBoardData>(
   (ref) async {
     ref.watch(sessionRuntimeKeyProvider);
     final query = ref.watch(operationalOrderSearchQueryProvider);
-    final orders = await ref
-        .read(operationalOrderRepositoryProvider)
-        .listSummaries(query: query);
+    final orders = await runProviderGuarded(
+      'operationalOrderBoardProvider',
+      () => ref
+          .read(operationalOrderRepositoryProvider)
+          .listSummaries(query: query),
+      timeout: localProviderTimeout,
+    );
     return OperationalOrderBoardData(orders: orders);
   },
 );
@@ -65,36 +70,38 @@ final operationalOrderDetailProvider =
     FutureProvider.family<OperationalOrderDetail?, int>((ref, orderId) async {
       ref.watch(sessionRuntimeKeyProvider);
       final repository = ref.read(operationalOrderRepositoryProvider);
-      final order = await repository.findById(orderId);
-      if (order == null) {
-        return null;
-      }
+      return runProviderGuarded('operationalOrderDetailProvider', () async {
+        final order = await repository.findById(orderId);
+        if (order == null) {
+          return null;
+        }
 
-      final itemsFuture = repository.listItems(orderId);
-      final linkedSaleFuture = repository.findLinkedSaleId(orderId);
-      final items = await itemsFuture;
-      final linkedSaleId = await linkedSaleFuture;
+        final itemsFuture = repository.listItems(orderId);
+        final linkedSaleFuture = repository.findLinkedSaleId(orderId);
+        final items = await itemsFuture;
+        final linkedSaleId = await linkedSaleFuture;
 
-      final modifiersFutures = items.map(
-        (item) => repository.listItemModifiers(item.id),
-      );
-      final modifiersList = await Future.wait(modifiersFutures);
-
-      final details = <OperationalOrderItemDetail>[];
-      for (var index = 0; index < items.length; index++) {
-        details.add(
-          OperationalOrderItemDetail(
-            item: items[index],
-            modifiers: modifiersList[index],
-          ),
+        final modifiersFutures = items.map(
+          (item) => repository.listItemModifiers(item.id),
         );
-      }
+        final modifiersList = await Future.wait(modifiersFutures);
 
-      return OperationalOrderDetail(
-        order: order,
-        items: details,
-        linkedSaleId: linkedSaleId,
-      );
+        final details = <OperationalOrderItemDetail>[];
+        for (var index = 0; index < items.length; index++) {
+          details.add(
+            OperationalOrderItemDetail(
+              item: items[index],
+              modifiers: modifiersList[index],
+            ),
+          );
+        }
+
+        return OperationalOrderDetail(
+          order: order,
+          items: details,
+          linkedSaleId: linkedSaleId,
+        );
+      }, timeout: localProviderTimeout);
     });
 
 final orderCatalogProvider = FutureProvider.family<List<Product>, String>((
@@ -102,7 +109,12 @@ final orderCatalogProvider = FutureProvider.family<List<Product>, String>((
   query,
 ) {
   ref.watch(sessionRuntimeKeyProvider);
-  return ref.read(productRepositoryProvider).searchAvailable(query: query);
+  return runProviderGuarded(
+    'orderCatalogProvider',
+    () =>
+        ref.read(localProductRepositoryProvider).searchAvailable(query: query),
+    timeout: defaultProviderTimeout,
+  );
 });
 
 class OrderCatalogGroup {
@@ -114,29 +126,31 @@ class OrderCatalogGroup {
 
 final orderCatalogGroupsProvider =
     FutureProvider.family<List<OrderCatalogGroup>, String>((ref, query) async {
-      final products = await ref.watch(orderCatalogProvider(query).future);
-      final grouped = <String, List<Product>>{};
-      for (final product in products) {
-        final label = (product.categoryName?.trim().isNotEmpty ?? false)
-            ? product.categoryName!.trim()
-            : 'Sem categoria';
-        grouped.putIfAbsent(label, () => <Product>[]).add(product);
-      }
+      return runProviderGuarded('orderCatalogGroupsProvider', () async {
+        final products = await ref.watch(orderCatalogProvider(query).future);
+        final grouped = <String, List<Product>>{};
+        for (final product in products) {
+          final label = (product.categoryName?.trim().isNotEmpty ?? false)
+              ? product.categoryName!.trim()
+              : 'Sem categoria';
+          grouped.putIfAbsent(label, () => <Product>[]).add(product);
+        }
 
-      final categories = grouped.keys.toList(growable: false)..sort();
-      return categories
-          .map(
-            (category) => OrderCatalogGroup(
-              label: category,
-              products:
-                  (grouped[category]!..sort(
-                        (left, right) =>
-                            left.displayName.compareTo(right.displayName),
-                      ))
-                      .toList(growable: false),
-            ),
-          )
-          .toList(growable: false);
+        final categories = grouped.keys.toList(growable: false)..sort();
+        return categories
+            .map(
+              (category) => OrderCatalogGroup(
+                label: category,
+                products:
+                    (grouped[category]!..sort(
+                          (left, right) =>
+                              left.displayName.compareTo(right.displayName),
+                        ))
+                        .toList(growable: false),
+              ),
+            )
+            .toList(growable: false);
+      }, timeout: defaultProviderTimeout);
     });
 
 final createOperationalOrderControllerProvider =

@@ -36,8 +36,12 @@ class ReconciliationLocalSimpleLoader {
         row,
         localId: localId,
         metadata: metadata,
-        queueItem: queueByEntityKey[
-            _entityKey(SyncFeatureKeys.categories, 'category', localId)],
+        queueItem:
+            queueByEntityKey[_entityKey(
+              SyncFeatureKeys.categories,
+              'category',
+              localId,
+            )],
         createdAt: DateTime.parse(row['criado_em'] as String),
         updatedAt: DateTime.parse(row['atualizado_em'] as String),
       );
@@ -72,8 +76,12 @@ class ReconciliationLocalSimpleLoader {
         row,
         localId: localId,
         metadata: metadata,
-        queueItem: queueByEntityKey[
-            _entityKey(SyncFeatureKeys.customers, 'customer', localId)],
+        queueItem:
+            queueByEntityKey[_entityKey(
+              SyncFeatureKeys.customers,
+              'customer',
+              localId,
+            )],
         createdAt: DateTime.parse(row['criado_em'] as String),
         updatedAt: DateTime.parse(row['atualizado_em'] as String),
       );
@@ -112,8 +120,12 @@ class ReconciliationLocalSimpleLoader {
         row,
         localId: localId,
         metadata: metadata,
-        queueItem: queueByEntityKey[
-            _entityKey(SyncFeatureKeys.suppliers, 'supplier', localId)],
+        queueItem:
+            queueByEntityKey[_entityKey(
+              SyncFeatureKeys.suppliers,
+              'supplier',
+              localId,
+            )],
         createdAt: DateTime.parse(row['criado_em'] as String),
         updatedAt: DateTime.parse(row['atualizado_em'] as String),
       );

@@ -9,6 +9,8 @@ import '../../../app/core/sync/sync_queue_item.dart';
 import '../../../app/core/sync/sync_queue_operation.dart';
 import '../../../app/core/sync/sync_remote_identity_recovery.dart';
 import '../../../app/core/sync/sync_status.dart';
+import '../../../app/core/utils/app_logger.dart';
+import '../../../app/core/utils/id_generator.dart';
 import '../../categorias/data/sqlite_category_repository.dart';
 import '../domain/entities/product.dart';
 import '../domain/repositories/product_repository.dart';
@@ -43,23 +45,91 @@ class ProductsRepositoryImpl
   String get displayName => 'Produtos';
 
   @override
-  Future<int> create(ProductInput input) {
+  Future<int> create(ProductInput input) async {
+    if (_shouldUseErpRemoteWrite) {
+      try {
+        final remote = await _remoteDatasource
+            .create(await _remoteProductFromInput(input))
+            .timeout(const Duration(seconds: 15));
+        return _cacheAndResolveRemoteProduct(remote);
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Produtos ERP server-first falhou ao criar na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.create(input);
   }
 
   @override
-  Future<void> delete(int id) {
+  Future<void> delete(int id) async {
+    if (_shouldUseErpRemoteWrite) {
+      final product = await _localRepository
+          .findById(id, includeDeleted: true)
+          .timeout(const Duration(seconds: 8));
+      if (product?.remoteId == null) {
+        throw const ValidationException(
+          'Produto ainda nao possui vinculo remoto para exclusao server-first.',
+        );
+      }
+
+      try {
+        await _remoteDatasource
+            .delete(product!.remoteId!)
+            .timeout(const Duration(seconds: 15));
+        final remoteCategoryId = await _remoteCategoryIdForProduct(product);
+        await _localRepository.upsertFromRemote(
+          RemoteProductRecord.fromLocalProduct(
+            product,
+            remoteCategoryId: remoteCategoryId,
+          ).copyWithInactive(),
+        );
+        return;
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Produtos ERP server-first falhou ao excluir na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.delete(id);
   }
 
   @override
-  Future<List<Product>> search({String query = ''}) {
+  Future<List<Product>> search({String query = ''}) async {
+    if (_shouldUseErpRemoteRead) {
+      try {
+        final remoteProducts = await _remoteDatasource.listAll().timeout(
+          const Duration(seconds: 15),
+        );
+        return _cacheAndResolveRemoteProducts(remoteProducts, query: query);
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Produtos ERP server-first falhou; usando cache local com timeout.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        return _localRepository
+            .search(query: query)
+            .timeout(const Duration(seconds: 8));
+      }
+    }
+
     return _localRepository.search(query: query);
   }
 
   @override
-  Future<List<Product>> searchAvailable({String query = ''}) {
-    return _localRepository.searchAvailable(query: query);
+  Future<List<Product>> searchAvailable({String query = ''}) async {
+    return _localRepository
+        .searchAvailable(query: query)
+        .timeout(const Duration(seconds: 8));
   }
 
   Future<SyncActionResult> syncNow({bool retryOnly = false}) async {
@@ -154,7 +224,44 @@ class ProductsRepositoryImpl
   }
 
   @override
-  Future<void> update(int id, ProductInput input) {
+  Future<void> update(int id, ProductInput input) async {
+    if (_shouldUseErpRemoteWrite) {
+      final product = await _localRepository
+          .findById(id, includeDeleted: true)
+          .timeout(const Duration(seconds: 8));
+      if (product?.remoteId == null) {
+        throw const ValidationException(
+          'Produto ainda nao possui vinculo remoto para atualizacao server-first.',
+        );
+      }
+
+      try {
+        final remote = await _remoteDatasource
+            .update(
+              product!.remoteId!,
+              await _remoteProductFromInput(
+                input,
+                localUuid: product.uuid,
+                remoteId: product.remoteId!,
+                createdAt: product.createdAt,
+              ),
+            )
+            .timeout(const Duration(seconds: 15));
+        await _localRepository.applyPushResult(
+          product: product,
+          remote: remote,
+        );
+        return;
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Produtos ERP server-first falhou ao atualizar na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.update(id, input);
   }
 
@@ -247,6 +354,149 @@ class ProductsRepositoryImpl
       await _localRepository.upsertFromRemote(remoteProduct);
     }
     return remoteProducts.length;
+  }
+
+  bool get _shouldUseErpRemoteRead =>
+      _dataAccessPolicy.strategyFor(AppModule.erp) ==
+          DataSourceStrategy.serverFirst &&
+      _operationalContext.canUseCloudReads;
+
+  bool get _shouldUseErpRemoteWrite => _shouldUseErpRemoteRead;
+
+  Future<List<Product>> _cacheAndResolveRemoteProducts(
+    List<RemoteProductRecord> remoteProducts, {
+    required String query,
+  }) async {
+    final products = <Product>[];
+    for (final remoteProduct in remoteProducts) {
+      final product = await _cacheAndFindRemoteProduct(remoteProduct);
+      if (product != null &&
+          product.deletedAt == null &&
+          _matchesQuery(product, query)) {
+        products.add(product);
+      }
+    }
+    products.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return products;
+  }
+
+  Future<int> _cacheAndResolveRemoteProduct(RemoteProductRecord remote) async {
+    final product = await _cacheAndFindRemoteProduct(remote);
+    if (product == null) {
+      throw const NetworkRequestException(
+        'Produto remoto salvo, mas o cache local nao retornou o espelho.',
+      );
+    }
+    return product.id;
+  }
+
+  Future<Product?> _cacheAndFindRemoteProduct(
+    RemoteProductRecord remote,
+  ) async {
+    await _localRepository.upsertFromRemote(remote);
+    return _localRepository
+        .findByRemoteId(remote.remoteId)
+        .timeout(const Duration(seconds: 8));
+  }
+
+  Future<RemoteProductRecord> _remoteProductFromInput(
+    ProductInput input, {
+    String? localUuid,
+    String remoteId = '',
+    DateTime? createdAt,
+  }) async {
+    final now = DateTime.now();
+    return RemoteProductRecord(
+      remoteId: remoteId,
+      localUuid: localUuid ?? IdGenerator.next(),
+      remoteCategoryId: await _remoteCategoryIdForInput(input),
+      name: input.name,
+      description: input.description,
+      barcode: input.barcode,
+      productType: input.productType,
+      niche: input.niche,
+      catalogType: input.catalogType,
+      modelName: input.modelName,
+      variantLabel: input.variantLabel,
+      unitMeasure: input.unitMeasure,
+      costCents: input.costCents,
+      manualCostCents: input.costCents,
+      costSource: ProductCostSource.manual,
+      variableCostSnapshotCents: null,
+      estimatedGrossMarginCents: null,
+      estimatedGrossMarginPercentBasisPoints: null,
+      lastCostUpdatedAt: now,
+      salePriceCents: input.salePriceCents,
+      stockMil: input.stockMil,
+      variants: input.variants
+          .map(
+            (variant) => RemoteProductVariantRecord(
+              sku: variant.sku,
+              colorLabel: variant.colorLabel,
+              sizeLabel: variant.sizeLabel,
+              priceAdditionalCents: variant.priceAdditionalCents,
+              stockMil: variant.stockMil,
+              sortOrder: variant.sortOrder,
+              isActive: variant.isActive,
+            ),
+          )
+          .toList(growable: false),
+      modifierGroups:
+          (input.modifierGroups ?? const <ProductModifierGroupInput>[])
+              .map(
+                (group) => RemoteProductModifierGroupRecord(
+                  name: group.name,
+                  isRequired: group.isRequired,
+                  minSelections: group.minSelections,
+                  maxSelections: group.maxSelections,
+                  options: group.options
+                      .map(
+                        (option) => RemoteProductModifierOptionRecord(
+                          name: option.name,
+                          adjustmentType: option.adjustmentType,
+                          priceDeltaCents: option.priceDeltaCents,
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
+              )
+              .toList(growable: false),
+      isActive: input.isActive,
+      createdAt: createdAt ?? now,
+      updatedAt: now,
+      deletedAt: input.isActive ? null : now,
+    );
+  }
+
+  Future<String?> _remoteCategoryIdForInput(ProductInput input) async {
+    final categoryId = input.categoryId;
+    if (categoryId == null) {
+      return null;
+    }
+    final category = await _localCategoryRepository.findById(categoryId);
+    return category?.remoteId;
+  }
+
+  Future<String?> _remoteCategoryIdForProduct(Product product) async {
+    final categoryId = product.categoryId;
+    if (categoryId == null) {
+      return null;
+    }
+    final category = await _localCategoryRepository.findById(categoryId);
+    return category?.remoteId;
+  }
+
+  bool _matchesQuery(Product product, String query) {
+    final normalized = query.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return true;
+    }
+    return product.name.toLowerCase().contains(normalized) ||
+        (product.barcode?.toLowerCase().contains(normalized) ?? false) ||
+        (product.categoryName?.toLowerCase().contains(normalized) ?? false);
   }
 
   void _ensureSyncIsAllowed() {

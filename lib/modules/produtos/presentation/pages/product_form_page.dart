@@ -430,8 +430,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                 isLoading: _isLoadingAdvancedData,
                 skuSeed: _variantSkuSeed,
                 draft: _fashionGridDraft,
-                onChanged: (draft) =>
-                    setState(() => _fashionGridDraft = draft),
+                onChanged: (draft) => setState(() => _fashionGridDraft = draft),
               ),
             ],
 
@@ -493,7 +492,6 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
 
   // ── Toggle chip bar ──
   Widget _buildToggleChips(dynamic layout) {
-
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -960,7 +958,6 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   bool _isReservedNicheAttribute(String key) {
     return key.startsWith('food_') || key.startsWith('fashion_');
   }
-
 
   String? _cleanNullable(String? value) {
     final trimmed = value?.trim();

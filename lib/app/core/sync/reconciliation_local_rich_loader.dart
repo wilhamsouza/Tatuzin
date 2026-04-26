@@ -142,8 +142,7 @@ class ReconciliationLocalRichLoader {
     return records;
   }
 
-  static Future<List<ReconciliationLocalComparableRecord>>
-  loadFinancialEvents(
+  static Future<List<ReconciliationLocalComparableRecord>> loadFinancialEvents(
     DatabaseExecutor database, {
     required Map<int, SyncMetadata> cancellationMetadataByLocalId,
     required Map<int, SyncMetadata> paymentMetadataByLocalId,

@@ -67,7 +67,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                     passwordController: _passwordController,
                                     obscurePassword: _obscurePassword,
                                     authError: auth.errorMessage,
-                                    isBusy: auth.isSubmitting || auth.isRestoring,
+                                    isBusy:
+                                        auth.isSubmitting || auth.isRestoring,
                                     onTogglePassword: () {
                                       setState(() {
                                         _obscurePassword = !_obscurePassword;
@@ -92,7 +93,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                     passwordController: _passwordController,
                                     obscurePassword: _obscurePassword,
                                     authError: auth.errorMessage,
-                                    isBusy: auth.isSubmitting || auth.isRestoring,
+                                    isBusy:
+                                        auth.isSubmitting || auth.isRestoring,
                                     onTogglePassword: () {
                                       setState(() {
                                         _obscurePassword = !_obscurePassword;
@@ -119,15 +121,15 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       return;
     }
 
-    final ok = await ref.read(adminAuthControllerProvider).login(
+    final ok = await ref
+        .read(adminAuthControllerProvider)
+        .login(
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
 
     if (ok && mounted) {
-      adminDebugLog('auth.ui.login.redirecting', {
-        'route': '/dashboard',
-      });
+      adminDebugLog('auth.ui.login.redirecting', {'route': '/dashboard'});
       context.go('/dashboard');
       return;
     }
@@ -175,7 +177,9 @@ class _HeroPanel extends StatelessWidget {
         const SizedBox(height: 28),
         Text(
           'Tatuzin Admin',
-          style: theme.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w900),
+          style: theme.textTheme.displaySmall?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
         ),
         const SizedBox(height: 12),
         Text(
@@ -199,9 +203,7 @@ class _HeroPanel extends StatelessWidget {
         const SizedBox(height: 40),
         Row(
           children: [
-            const Icon(
-              Icons.admin_panel_settings_rounded,
-            ),
+            const Icon(Icons.admin_panel_settings_rounded),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -257,7 +259,9 @@ class _LoginFormCard extends StatelessWidget {
           children: [
             Text(
               'Entrar no painel',
-              style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -290,7 +294,9 @@ class _LoginFormCard extends StatelessWidget {
                 suffixIcon: IconButton(
                   onPressed: onTogglePassword,
                   icon: Icon(
-                    obscurePassword ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                    obscurePassword
+                        ? Icons.visibility_rounded
+                        : Icons.visibility_off_rounded,
                   ),
                 ),
               ),

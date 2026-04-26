@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import '../../../app/core/app_context/app_operational_context.dart';
 import '../../../app/core/app_context/data_access_policy.dart';
+import '../../../app/core/utils/app_logger.dart';
 import '../domain/entities/fiado_account.dart';
 import '../domain/entities/fiado_detail.dart';
 import '../domain/entities/fiado_payment_input.dart';
@@ -48,18 +51,53 @@ class FiadoRepositoryImpl implements FiadoRepository {
   }
 
   Future<T> _executeRead<T>(Future<T> Function() localAction) async {
-    if (_dataAccessPolicy.allowRemoteRead &&
-        _operationalContext.canUseCloudReads) {
-      await _remoteDatasource.canReachRemote();
-    }
-    return localAction();
+    AppLogger.info(
+      'Fiado PDV read using local-first store; remote preflight is non-blocking.',
+    );
+    final result = await localAction();
+    _scheduleRemoteProbe(operation: 'read');
+    return result;
   }
 
   Future<T> _executeWrite<T>(Future<T> Function() localAction) async {
-    if (_dataAccessPolicy.allowRemoteWrite &&
-        _operationalContext.canUseCloudWrites) {
-      await _remoteDatasource.canReachRemote();
+    AppLogger.info(
+      'Fiado PDV write committed locally first; sync remains queued in background.',
+    );
+    final result = await localAction();
+    _scheduleRemoteProbe(operation: 'write');
+    return result;
+  }
+
+  void _scheduleRemoteProbe({required String operation}) {
+    final canProbe = switch (operation) {
+      'read' =>
+        _dataAccessPolicy.allowRemoteRead &&
+            _operationalContext.canUseCloudReads,
+      'write' =>
+        _dataAccessPolicy.allowRemoteWrite &&
+            _operationalContext.canUseCloudWrites,
+      _ => false,
+    };
+    if (!canProbe) {
+      return;
     }
-    return localAction();
+
+    AppLogger.info(
+      'Fiado PDV remote reachability probe scheduled in background | operation=$operation',
+    );
+    unawaited(() async {
+      try {
+        await _remoteDatasource.canReachRemote();
+        AppLogger.info(
+          'Fiado PDV remote reachability probe finished | operation=$operation',
+        );
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Fiado PDV remote reachability probe failed without blocking local operation.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }());
   }
 }

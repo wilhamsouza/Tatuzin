@@ -93,7 +93,21 @@ class SaleDetailPage extends ConsumerWidget {
         error: (error, _) => Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Text('Falha ao carregar a venda: $error'),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Falha ao carregar a venda: $error',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => ref.invalidate(saleDetailProvider(saleId)),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Tentar novamente'),
+                ),
+              ],
+            ),
           ),
         ),
       ),

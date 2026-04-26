@@ -10,6 +10,8 @@ import '../../../app/core/sync/sync_queue_item.dart';
 import '../../../app/core/sync/sync_queue_operation.dart';
 import '../../../app/core/sync/sync_remote_identity_recovery.dart';
 import '../../../app/core/sync/sync_status.dart';
+import '../../../app/core/utils/app_logger.dart';
+import '../../../app/core/utils/id_generator.dart';
 import '../domain/entities/purchase.dart';
 import '../domain/entities/purchase_detail.dart';
 import '../domain/entities/purchase_item.dart';
@@ -45,22 +47,179 @@ class PurchasesRepositoryImpl
   String get displayName => 'Compras';
 
   @override
-  Future<void> cancel(int purchaseId, {String? reason}) {
+  Future<void> cancel(int purchaseId, {String? reason}) async {
+    if (_shouldUseErpRemoteWrite) {
+      final purchase = await _localRepository
+          .findPurchaseForSync(purchaseId)
+          .timeout(const Duration(seconds: 8));
+      final remoteId = _requireRemoteId(
+        purchase,
+        'Compra ainda nao possui vinculo remoto para cancelamento server-first.',
+      );
+      final now = DateTime.now();
+      try {
+        final remote = RemotePurchaseRecord.fromSyncPayload(purchase!).copyWith(
+          status: PurchaseStatus.cancelada,
+          canceledAt: now,
+          updatedAt: now,
+          notes: _mergeNotes(
+            purchase.notes,
+            reason == null || reason.trim().isEmpty
+                ? 'Compra cancelada.'
+                : 'Compra cancelada: ${reason.trim()}',
+          ),
+        );
+        final persisted = await _remoteDatasource
+            .update(remoteId, remote)
+            .timeout(const Duration(seconds: 15));
+        await _localRepository.cancel(purchaseId, reason: reason);
+        final updated = await _localRepository
+            .findPurchaseForSync(purchaseId)
+            .timeout(const Duration(seconds: 8));
+        if (updated != null) {
+          await _localRepository.applyPushResult(
+            purchase: updated,
+            remote: persisted,
+          );
+        }
+        return;
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Compras ERP server-first falhou ao cancelar na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.cancel(purchaseId, reason: reason);
   }
 
   @override
-  Future<int> create(PurchaseUpsertInput input) {
+  Future<int> create(PurchaseUpsertInput input) async {
+    if (_shouldUseErpRemoteWrite) {
+      try {
+        final remoteDraft = await _localRepository
+            .buildRemoteRecordFromInput(input)
+            .timeout(const Duration(seconds: 8));
+        final persisted = await _remoteDatasource
+            .create(remoteDraft)
+            .timeout(const Duration(seconds: 15));
+        final localId = await _localRepository
+            .create(input)
+            .timeout(const Duration(seconds: 8));
+        final purchase = await _localRepository
+            .findPurchaseForSync(localId)
+            .timeout(const Duration(seconds: 8));
+        if (purchase != null) {
+          await _localRepository.applyPushResult(
+            purchase: purchase,
+            remote: persisted,
+          );
+        }
+        return localId;
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Compras ERP server-first falhou ao criar na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.create(input);
   }
 
   @override
-  Future<PurchaseDetail> fetchDetail(int purchaseId) {
+  Future<PurchaseDetail> fetchDetail(int purchaseId) async {
+    if (_shouldUseErpRemoteRead) {
+      final local = await _localRepository
+          .findById(purchaseId)
+          .timeout(const Duration(seconds: 8));
+      final remoteId = local?.remoteId;
+      if (remoteId != null && remoteId.trim().isNotEmpty) {
+        try {
+          final remote = await _remoteDatasource
+              .fetchById(remoteId)
+              .timeout(const Duration(seconds: 15));
+          final cached = await _localRepository
+              .cacheRemoteSnapshot(remote)
+              .timeout(const Duration(seconds: 8));
+          return _localRepository
+              .fetchDetail(cached?.id ?? purchaseId)
+              .timeout(const Duration(seconds: 8));
+        } catch (error, stackTrace) {
+          AppLogger.error(
+            'Compras ERP server-first falhou ao buscar detalhe remoto; usando cache local.',
+            error: error,
+            stackTrace: stackTrace,
+          );
+        }
+      }
+    }
+
     return _localRepository.fetchDetail(purchaseId);
   }
 
   @override
-  Future<PurchaseDetail> registerPayment(PurchasePaymentInput input) {
+  Future<PurchaseDetail> registerPayment(PurchasePaymentInput input) async {
+    if (_shouldUseErpRemoteWrite) {
+      final purchase = await _localRepository
+          .findPurchaseForSync(input.purchaseId)
+          .timeout(const Duration(seconds: 8));
+      final remoteId = _requireRemoteId(
+        purchase,
+        'Compra ainda nao possui vinculo remoto para pagamento server-first.',
+      );
+      final pending = purchase!.pendingAmountCents;
+      if (input.amountCents <= 0 || input.amountCents > pending) {
+        throw const ValidationException(
+          'Valor de pagamento invalido para a compra.',
+        );
+      }
+      final paymentUuid = input.paymentUuid ?? IdGenerator.next();
+      try {
+        final remote = _remoteWithPayment(
+          purchase,
+          input: input,
+          paymentUuid: paymentUuid,
+        );
+        final persisted = await _remoteDatasource
+            .update(remoteId, remote)
+            .timeout(const Duration(seconds: 15));
+        final detail = await _localRepository
+            .registerPayment(
+              PurchasePaymentInput(
+                purchaseId: input.purchaseId,
+                amountCents: input.amountCents,
+                paymentMethod: input.paymentMethod,
+                paymentUuid: paymentUuid,
+                notes: input.notes,
+              ),
+            )
+            .timeout(const Duration(seconds: 8));
+        final updated = await _localRepository
+            .findPurchaseForSync(input.purchaseId)
+            .timeout(const Duration(seconds: 8));
+        if (updated != null) {
+          await _localRepository.applyPushResult(
+            purchase: updated,
+            remote: persisted,
+          );
+        }
+        return detail;
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Compras ERP server-first falhou ao registrar pagamento na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.registerPayment(input);
   }
 
@@ -69,7 +228,30 @@ class PurchasesRepositoryImpl
     String query = '',
     PurchaseStatus? status,
     int? supplierId,
-  }) {
+  }) async {
+    if (_shouldUseErpRemoteRead) {
+      try {
+        final remotePurchases = await _remoteDatasource.listAll().timeout(
+          const Duration(seconds: 15),
+        );
+        return _cacheAndResolveRemotePurchases(
+          remotePurchases,
+          query: query,
+          status: status,
+          supplierId: supplierId,
+        );
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Compras ERP server-first falhou; usando cache local com timeout.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        return _localRepository
+            .search(query: query, status: status, supplierId: supplierId)
+            .timeout(const Duration(seconds: 8));
+      }
+    }
+
     return _localRepository.search(
       query: query,
       status: status,
@@ -172,7 +354,50 @@ class PurchasesRepositoryImpl
   }
 
   @override
-  Future<void> update(int id, PurchaseUpsertInput input) {
+  Future<void> update(int id, PurchaseUpsertInput input) async {
+    if (_shouldUseErpRemoteWrite) {
+      final purchase = await _localRepository
+          .findPurchaseForSync(id)
+          .timeout(const Duration(seconds: 8));
+      final remoteId = _requireRemoteId(
+        purchase,
+        'Compra ainda nao possui vinculo remoto para atualizacao server-first.',
+      );
+      try {
+        final remoteDraft = await _localRepository
+            .buildRemoteRecordFromInput(
+              input,
+              remoteId: remoteId,
+              localUuid: purchase!.purchaseUuid,
+              createdAt: purchase.createdAt,
+            )
+            .timeout(const Duration(seconds: 8));
+        final persisted = await _remoteDatasource
+            .update(remoteId, remoteDraft)
+            .timeout(const Duration(seconds: 15));
+        await _localRepository
+            .update(id, input)
+            .timeout(const Duration(seconds: 8));
+        final updated = await _localRepository
+            .findPurchaseForSync(id)
+            .timeout(const Duration(seconds: 8));
+        if (updated != null) {
+          await _localRepository.applyPushResult(
+            purchase: updated,
+            remote: persisted,
+          );
+        }
+        return;
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Compras ERP server-first falhou ao atualizar na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.update(id, input);
   }
 
@@ -223,9 +448,115 @@ class PurchasesRepositoryImpl
   Future<int> pullRemoteSnapshot() async {
     final remotePurchases = await _remoteDatasource.listAll();
     for (final remotePurchase in remotePurchases) {
-      await _localRepository.reconcileRemoteSnapshot(remotePurchase);
+      await _localRepository.cacheRemoteSnapshot(remotePurchase);
     }
     return remotePurchases.length;
+  }
+
+  bool get _shouldUseErpRemoteRead =>
+      _dataAccessPolicy.strategyFor(AppModule.erp) ==
+          DataSourceStrategy.serverFirst &&
+      _operationalContext.canUseCloudReads;
+
+  bool get _shouldUseErpRemoteWrite => _shouldUseErpRemoteRead;
+
+  Future<List<Purchase>> _cacheAndResolveRemotePurchases(
+    List<RemotePurchaseRecord> remotePurchases, {
+    required String query,
+    required PurchaseStatus? status,
+    required int? supplierId,
+  }) async {
+    final purchases = <Purchase>[];
+    for (final remote in remotePurchases) {
+      final purchase = await _localRepository
+          .cacheRemoteSnapshot(remote)
+          .timeout(const Duration(seconds: 8));
+      if (purchase != null &&
+          _matchesFilters(
+            purchase,
+            query: query,
+            status: status,
+            supplierId: supplierId,
+          )) {
+        purchases.add(purchase);
+      }
+    }
+    purchases.sort(
+      (left, right) => right.purchasedAt.compareTo(left.purchasedAt),
+    );
+    return purchases;
+  }
+
+  bool _matchesFilters(
+    Purchase purchase, {
+    required String query,
+    required PurchaseStatus? status,
+    required int? supplierId,
+  }) {
+    if (status != null && purchase.status != status) {
+      return false;
+    }
+    if (supplierId != null && purchase.supplierId != supplierId) {
+      return false;
+    }
+    final normalized = query.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return true;
+    }
+    return purchase.supplierName.toLowerCase().contains(normalized) ||
+        (purchase.documentNumber?.toLowerCase().contains(normalized) ?? false);
+  }
+
+  String _requireRemoteId(PurchaseSyncPayload? purchase, String message) {
+    final remoteId = purchase?.remoteId;
+    if (remoteId == null || remoteId.trim().isEmpty) {
+      throw ValidationException(message);
+    }
+    return remoteId;
+  }
+
+  RemotePurchaseRecord _remoteWithPayment(
+    PurchaseSyncPayload purchase, {
+    required PurchasePaymentInput input,
+    required String paymentUuid,
+  }) {
+    final now = DateTime.now();
+    final nextPaid = purchase.paidAmountCents + input.amountCents;
+    final nextPending = purchase.finalAmountCents - nextPaid <= 0
+        ? 0
+        : purchase.finalAmountCents - nextPaid;
+    final nextStatus = nextPending <= 0
+        ? PurchaseStatus.paga
+        : PurchaseStatus.parcialmentePaga;
+    return RemotePurchaseRecord.fromSyncPayload(purchase).copyWith(
+      status: nextStatus,
+      paidAmountCents: nextPaid,
+      pendingAmountCents: nextPending,
+      updatedAt: now,
+      payments: <RemotePurchasePaymentRecord>[
+        ...RemotePurchaseRecord.fromSyncPayload(purchase).payments,
+        RemotePurchasePaymentRecord(
+          remoteId: '',
+          localUuid: paymentUuid,
+          amountCents: input.amountCents,
+          paymentMethod: input.paymentMethod,
+          paidAt: now,
+          notes: input.notes,
+        ),
+      ],
+    );
+  }
+
+  String? _mergeNotes(String? current, String? next) {
+    final currentValue = current?.trim();
+    final nextValue = next?.trim();
+    if (currentValue == null || currentValue.isEmpty) {
+      return nextValue == null || nextValue.isEmpty ? null : nextValue;
+    }
+    if (nextValue == null || nextValue.isEmpty) {
+      return currentValue;
+    }
+    return '$currentValue\n$nextValue';
   }
 
   void _ensureSyncIsAllowed() {

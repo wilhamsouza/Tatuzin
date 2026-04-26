@@ -141,8 +141,27 @@ class KitchenOrderViewPage extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) =>
-            Center(child: Text('Falha ao carregar pedido: $error')),
+        error: (error, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Falha ao carregar pedido: $error',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () =>
+                      ref.invalidate(operationalOrderDetailProvider(orderId)),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Tentar novamente'),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),

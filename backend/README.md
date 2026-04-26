@@ -166,7 +166,7 @@ Para deploy em Oracle Cloud ARM 1 Flex com Docker, use o guia dedicado em [DEPLO
 Build da imagem:
 
 ```powershell
-docker build -t tatuzin-backend .
+docker build -t tatuzin-backend:prod-check .
 ```
 
 Exemplo de execucao local em container apontando para um PostgreSQL do host no Windows:
@@ -178,16 +178,18 @@ docker run --rm `
   -e APP_ENV=production `
   -e DATABASE_URL="postgresql://postgres:postgres@host.docker.internal:5432/simples_erp_dev?schema=public" `
   -e TRUST_PROXY=1 `
-  -e RUN_DB_MIGRATIONS=true `
-  tatuzin-backend
+  -e RUN_DB_MIGRATIONS=false `
+  tatuzin-backend:prod-check
 ```
 
 Detalhes importantes do runtime de producao:
 
-- executa `npm run prisma:deploy` automaticamente no startup quando `RUN_DB_MIGRATIONS=true`
+- a imagem final inclui `dist`, `prisma/` e `Prisma Client` gerado para o runtime
+- o entrypoint aceita comandos one-shot, entao `docker compose run --rm backend npm run prisma:deploy` funciona de verdade
+- `RUN_DB_MIGRATIONS` existe apenas como fallback controlado; o fluxo recomendado de producao roda `npm run prisma:deploy` antes do `up -d`
 - backend responde internamente em `4000`
 - `docker-compose.prod.yml` publica `80/443` via Caddy
-- inclui `HEALTHCHECK` em `/api/health`
+- inclui `HEALTHCHECK` em `/api/readiness`
 - inicia com `NODE_ENV=production`
 
 Em orquestradores como Render, Railway, Fly.io, ECS ou Kubernetes, a configuracao equivalente e:
@@ -195,7 +197,7 @@ Em orquestradores como Render, Railway, Fly.io, ECS ou Kubernetes, a configuraca
 - imagem gerada por `docker build`
 - `APP_ENV=production`
 - `TRUST_PROXY` ajustado para a cadeia de proxy real
-- `RUN_DB_MIGRATIONS=true` apenas se o deploy puder serializar migracoes com seguranca
+- `RUN_DB_MIGRATIONS=true` apenas se o deploy puder serializar migracoes com seguranca e voce conscientemente abrir mao do passo explicito de migration
 
 ## Publicacao HTTPS de producao
 
@@ -215,6 +217,11 @@ Topologia esperada:
 
 Variaveis adicionais no `.env.production`:
 
+- `BACKEND_IMAGE=tatuzin-backend:prod-local`
+- `BACKEND_BIND_IP=127.0.0.1`
+- `BACKEND_BIND_PORT=4000`
+- `EDGE_HTTP_PORT=80`
+- `EDGE_HTTPS_PORT=443`
 - `API_DOMAIN=api.tatuzin.com.br`
 - `HOST=0.0.0.0`
 

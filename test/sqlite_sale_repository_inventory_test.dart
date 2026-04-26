@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'package:erp_pdv_app/app/core/database/table_names.dart';
+import 'package:erp_pdv_app/app/core/sync/sync_feature_keys.dart';
 import 'package:erp_pdv_app/modules/vendas/domain/entities/checkout_input.dart';
 import 'package:erp_pdv_app/modules/vendas/domain/entities/sale_enums.dart';
 
@@ -210,5 +211,146 @@ void main() {
       expect(await countRows(database, TableNames.vendas), 0);
       expect(await countRows(database, TableNames.itensVenda), 0);
     });
+
+    test(
+      'checkout offline finaliza venda sem cliente e enfileira sync',
+      () async {
+        database = await openSaleInventoryTestDatabase();
+        final syncMetadataRepository = RecordingSyncMetadataRepository();
+        final syncQueueRepository = RecordingSyncQueueRepository();
+        final repository = createSaleRepositoryWithRecordingSync(
+          database,
+          syncMetadataRepository: syncMetadataRepository,
+          syncQueueRepository: syncQueueRepository,
+        );
+        await insertSimpleProduct(
+          database,
+          productId: 1,
+          name: 'Bone',
+          stockMil: 5000,
+        );
+
+        final sale = await repository.completeCashSale(
+          input: CheckoutInput(
+            items: [
+              buildSimpleCartItem(
+                productId: 1,
+                productName: 'Bone',
+                quantityMil: 1000,
+                availableStockMil: 5000,
+              ),
+            ],
+            saleType: SaleType.cash,
+            paymentMethod: PaymentMethod.pix,
+          ),
+        );
+
+        expect(sale.clientId, isNull);
+        expect(await countRows(database, TableNames.vendas), 1);
+        expect(
+          syncQueueRepository.mutations.any(
+            (mutation) =>
+                mutation.featureKey == SyncFeatureKeys.sales &&
+                mutation.localEntityId == sale.saleId,
+          ),
+          isTrue,
+        );
+      },
+    );
+
+    test('checkout offline finaliza venda com cliente local/cache', () async {
+      database = await openSaleInventoryTestDatabase();
+      final repository = createSaleRepository(database);
+      await insertClient(database, customerId: 7);
+      await insertSimpleProduct(
+        database,
+        productId: 1,
+        name: 'Bone',
+        stockMil: 5000,
+      );
+
+      final sale = await repository.completeCashSale(
+        input: CheckoutInput(
+          items: [
+            buildSimpleCartItem(
+              productId: 1,
+              productName: 'Bone',
+              quantityMil: 1000,
+              availableStockMil: 5000,
+            ),
+          ],
+          saleType: SaleType.cash,
+          paymentMethod: PaymentMethod.pix,
+          clientId: 7,
+        ),
+      );
+
+      expect(sale.clientId, 7);
+      final saleRows = await database.query(
+        TableNames.vendas,
+        columns: const ['cliente_id'],
+        where: 'id = ?',
+        whereArgs: [sale.saleId],
+        limit: 1,
+      );
+      expect(saleRows.single['cliente_id'], 7);
+    });
+
+    test(
+      'fiado offline grava local primeiro e permanece pendente para sync',
+      () async {
+        database = await openSaleInventoryTestDatabase();
+        final syncMetadataRepository = RecordingSyncMetadataRepository();
+        final syncQueueRepository = RecordingSyncQueueRepository();
+        final repository = createSaleRepositoryWithRecordingSync(
+          database,
+          syncMetadataRepository: syncMetadataRepository,
+          syncQueueRepository: syncQueueRepository,
+        );
+        await insertClient(database, customerId: 7);
+        await insertSimpleProduct(
+          database,
+          productId: 1,
+          name: 'Bone',
+          stockMil: 5000,
+        );
+
+        final sale = await repository.completeCreditSale(
+          input: CheckoutInput(
+            items: [
+              buildSimpleCartItem(
+                productId: 1,
+                productName: 'Bone',
+                quantityMil: 1000,
+                availableStockMil: 5000,
+              ),
+            ],
+            saleType: SaleType.fiado,
+            paymentMethod: PaymentMethod.fiado,
+            clientId: 7,
+            dueDate: DateTime(2026, 5, 26),
+          ),
+        );
+
+        expect(sale.clientId, 7);
+        expect(sale.fiadoId, isNotNull);
+        final fiadoRows = await database.query(
+          TableNames.fiado,
+          where: 'id = ?',
+          whereArgs: [sale.fiadoId],
+          limit: 1,
+        );
+        expect(fiadoRows.single['cliente_id'], 7);
+        expect(fiadoRows.single['status'], 'pendente');
+        expect(
+          syncQueueRepository.mutations.any(
+            (mutation) =>
+                mutation.featureKey == SyncFeatureKeys.sales &&
+                mutation.localEntityId == sale.saleId,
+          ),
+          isTrue,
+        );
+      },
+    );
   });
 }

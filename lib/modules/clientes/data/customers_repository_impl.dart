@@ -9,6 +9,8 @@ import '../../../app/core/sync/sync_queue_item.dart';
 import '../../../app/core/sync/sync_queue_operation.dart';
 import '../../../app/core/sync/sync_remote_identity_recovery.dart';
 import '../../../app/core/sync/sync_status.dart';
+import '../../../app/core/utils/app_logger.dart';
+import '../../../app/core/utils/id_generator.dart';
 import '../domain/entities/client.dart';
 import '../domain/repositories/client_repository.dart';
 import 'datasources/customers_remote_datasource.dart';
@@ -39,18 +41,108 @@ class CustomersRepositoryImpl
   String get displayName => 'Clientes';
 
   @override
-  Future<int> create(ClientInput input) {
+  Future<int> create(ClientInput input) async {
+    if (_shouldUseCrmRemoteWrite) {
+      try {
+        final remote = await _remoteDatasource
+            .create(_remoteCustomerFromInput(input))
+            .timeout(const Duration(seconds: 15));
+        return _cacheAndResolveRemoteCustomer(remote);
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Clientes CRM server-first falhou ao criar na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.create(input);
   }
 
   @override
-  Future<void> delete(int id) {
+  Future<void> delete(int id) async {
+    if (_shouldUseCrmRemoteWrite) {
+      final client = await _localRepository
+          .findById(id, includeDeleted: true)
+          .timeout(const Duration(seconds: 8));
+      if (client?.remoteId == null) {
+        throw const ValidationException(
+          'Cliente ainda nao possui vinculo remoto para exclusao server-first.',
+        );
+      }
+
+      try {
+        await _remoteDatasource
+            .delete(client!.remoteId!)
+            .timeout(const Duration(seconds: 15));
+        await _localRepository.applyPushResult(
+          client: client,
+          remote: RemoteCustomerRecord.fromLocalClient(
+            client,
+          ).copyWithInactive(),
+        );
+        return;
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Clientes CRM server-first falhou ao excluir na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.delete(id);
   }
 
   @override
-  Future<List<Client>> search({String query = ''}) {
-    return _localRepository.search(query: query);
+  Future<List<Client>> search({String query = ''}) async {
+    if (_shouldUseCrmRemoteRead) {
+      try {
+        final remoteClients = await _remoteDatasource.listAll().timeout(
+          const Duration(seconds: 15),
+        );
+        return _cacheAndResolveRemoteCustomers(remoteClients, query: query);
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Clientes server-first falhou; tentando cache local com timeout.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        return _localRepository
+            .search(query: query)
+            .timeout(const Duration(seconds: 8));
+      }
+    }
+
+    return _localRepository
+        .search(query: query)
+        .timeout(const Duration(seconds: 12));
+  }
+
+  Future<Client?> findById(int id) async {
+    final local = await _localRepository
+        .findById(id, includeDeleted: true)
+        .timeout(const Duration(seconds: 8));
+    if (!_shouldUseCrmRemoteRead || local?.remoteId == null) {
+      return local;
+    }
+
+    try {
+      final remote = await _remoteDatasource
+          .fetchById(local!.remoteId!)
+          .timeout(const Duration(seconds: 15));
+      return _cacheAndFindRemoteCustomer(remote);
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Clientes CRM server-first falhou ao buscar detalhe remoto; usando cache local.',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return local;
+    }
   }
 
   Future<SyncActionResult> syncNow({bool retryOnly = false}) async {
@@ -145,7 +237,41 @@ class CustomersRepositoryImpl
   }
 
   @override
-  Future<void> update(int id, ClientInput input) {
+  Future<void> update(int id, ClientInput input) async {
+    if (_shouldUseCrmRemoteWrite) {
+      final client = await _localRepository
+          .findById(id, includeDeleted: true)
+          .timeout(const Duration(seconds: 8));
+      if (client?.remoteId == null) {
+        throw const ValidationException(
+          'Cliente ainda nao possui vinculo remoto para atualizacao server-first.',
+        );
+      }
+
+      try {
+        final remote = await _remoteDatasource
+            .update(
+              client!.remoteId!,
+              _remoteCustomerFromInput(
+                input,
+                remoteId: client.remoteId!,
+                localUuid: client.uuid,
+                createdAt: client.createdAt,
+              ),
+            )
+            .timeout(const Duration(seconds: 15));
+        await _localRepository.applyPushResult(client: client, remote: remote);
+        return;
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Clientes CRM server-first falhou ao atualizar na API.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
+    }
+
     return _localRepository.update(id, input);
   }
 
@@ -229,6 +355,92 @@ class CustomersRepositoryImpl
       await _localRepository.upsertFromRemote(remoteClient);
     }
     return remoteClients.length;
+  }
+
+  bool get _shouldUseCrmRemoteRead =>
+      _dataAccessPolicy.strategyFor(AppModule.crm) ==
+          DataSourceStrategy.serverFirst &&
+      _operationalContext.canUseCloudReads;
+
+  bool get _shouldUseCrmRemoteWrite => _shouldUseCrmRemoteRead;
+
+  Future<List<Client>> _cacheAndResolveRemoteCustomers(
+    List<RemoteCustomerRecord> remoteClients, {
+    required String query,
+  }) async {
+    final clients = <Client>[];
+    for (final remoteClient in remoteClients) {
+      final client = await _cacheAndFindRemoteCustomer(remoteClient);
+      if (client != null &&
+          client.deletedAt == null &&
+          _matchesQuery(client, query)) {
+        clients.add(client);
+      }
+    }
+    clients.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return clients;
+  }
+
+  Future<int> _cacheAndResolveRemoteCustomer(
+    RemoteCustomerRecord remote,
+  ) async {
+    final client = await _cacheAndFindRemoteCustomer(remote);
+    if (client == null) {
+      throw const NetworkRequestException(
+        'Cliente remoto salvo, mas o cache local nao retornou o espelho.',
+      );
+    }
+    return client.id;
+  }
+
+  Future<Client?> _cacheAndFindRemoteCustomer(
+    RemoteCustomerRecord remote,
+  ) async {
+    await _localRepository.upsertFromRemote(
+      remote,
+      preserveLocalPendingChanges: false,
+    );
+    return _localRepository
+        .findByRemoteId(remote.remoteId)
+        .timeout(const Duration(seconds: 8));
+  }
+
+  RemoteCustomerRecord _remoteCustomerFromInput(
+    ClientInput input, {
+    String remoteId = '',
+    String? localUuid,
+    DateTime? createdAt,
+  }) {
+    final now = DateTime.now();
+    return RemoteCustomerRecord(
+      remoteId: remoteId,
+      localUuid: localUuid ?? IdGenerator.next(),
+      name: input.name.trim(),
+      phone: _cleanNullable(input.phone),
+      address: _cleanNullable(input.address),
+      notes: _cleanNullable(input.notes),
+      isActive: input.isActive,
+      createdAt: createdAt ?? now,
+      updatedAt: now,
+      deletedAt: input.isActive ? null : now,
+    );
+  }
+
+  bool _matchesQuery(Client client, String query) {
+    final normalized = query.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return true;
+    }
+    return client.name.toLowerCase().contains(normalized) ||
+        (client.phone?.toLowerCase().contains(normalized) ?? false);
+  }
+
+  String? _cleanNullable(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 
   void _ensureSyncIsAllowed() {

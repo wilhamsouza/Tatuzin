@@ -188,11 +188,7 @@ class AdminMembershipContext {
   }
 
   Map<String, dynamic> toMap() {
-    return <String, dynamic>{
-      'id': id,
-      'role': role,
-      'isDefault': isDefault,
-    };
+    return <String, dynamic>{'id': id, 'role': role, 'isDefault': isDefault};
   }
 }
 
@@ -209,10 +205,7 @@ class AdminDashboardSnapshot {
 }
 
 class AdminSortMeta {
-  const AdminSortMeta({
-    required this.by,
-    required this.direction,
-  });
+  const AdminSortMeta({required this.by, required this.direction});
 
   final String by;
   final String direction;
@@ -582,7 +575,11 @@ class AdminCompanySummary {
     return AdminCompanySummary(
       id: _readString(map, 'id'),
       name: _readString(map, 'name'),
-      legalName: _readString(map, 'legalName', fallback: _readString(map, 'name')),
+      legalName: _readString(
+        map,
+        'legalName',
+        fallback: _readString(map, 'name'),
+      ),
       documentNumber: _readOptionalString(map, 'documentNumber'),
       slug: _readString(map, 'slug'),
       isActive: map['isActive'] == true,
@@ -688,7 +685,10 @@ class AdminDeviceSession {
       createdAt: _readOptionalDateTime(map, 'createdAt'),
       lastSeenAt: _readOptionalDateTime(map, 'lastSeenAt'),
       lastRefreshedAt: _readOptionalDateTime(map, 'lastRefreshedAt'),
-      refreshTokenExpiresAt: _readOptionalDateTime(map, 'refreshTokenExpiresAt'),
+      refreshTokenExpiresAt: _readOptionalDateTime(
+        map,
+        'refreshTokenExpiresAt',
+      ),
       revokedAt: _readOptionalDateTime(map, 'revokedAt'),
       revokedReason: _readOptionalString(map, 'revokedReason'),
     );
@@ -825,7 +825,8 @@ class AdminLicenseSnapshot {
         'companySlug',
         fallback: companySlugFallback ?? '',
       ),
-      companyIsActive: map['companyIsActive'] == true || companyIsActiveFallback,
+      companyIsActive:
+          map['companyIsActive'] == true || companyIsActiveFallback,
       plan: _readString(map, 'plan'),
       status: _readString(map, 'status').toLowerCase(),
       startsAt: _readOptionalDateTime(map, 'startsAt'),
@@ -927,9 +928,9 @@ class AdminAuditSummary {
     return AdminAuditSummary(
       totalEvents: _readOptionalInt(overview, 'totalEvents') ?? 0,
       countsByAction: _countsByActionFromObject(overview['countsByAction']),
-      recentEvents: _readAdminItemMaps(map)
-          .map(AdminAuditEvent.fromMap)
-          .toList(),
+      recentEvents: _readAdminItemMaps(
+        map,
+      ).map(AdminAuditEvent.fromMap).toList(),
       pagination: AdminPaginationMeta.fromPayload(map),
       filters: _readFiltersPayload(map),
       sort: AdminSortMeta.fromPayload(map),
@@ -1007,9 +1008,9 @@ class AdminSyncSummary {
                 .entries)
           entry.key: _normalizeToInt(entry.value),
       },
-      companySummaries: _readAdminItemMaps(map)
-          .map(AdminSyncCompanySummary.fromMap)
-          .toList(),
+      companySummaries: _readAdminItemMaps(
+        map,
+      ).map(AdminSyncCompanySummary.fromMap).toList(),
       pagination: AdminPaginationMeta.fromPayload(map),
       filters: _readFiltersPayload(map),
       sort: AdminSortMeta.fromPayload(map),
@@ -1036,16 +1037,14 @@ class AdminSyncOperationalSummary {
 
   factory AdminSyncOperationalSummary.fromMap(Map<String, dynamic> map) {
     return AdminSyncOperationalSummary(
-      overview: AdminSyncOperationalOverview.fromMap(
-        _readOverviewPayload(map),
-      ),
+      overview: AdminSyncOperationalOverview.fromMap(_readOverviewPayload(map)),
       capabilities: AdminSyncOperationalCapabilities.fromMap(
         map['capabilities'] as Map<String, dynamic>? ??
             const <String, dynamic>{},
       ),
-      companies: _readAdminItemMaps(map)
-          .map(AdminSyncOperationalCompanySummary.fromMap)
-          .toList(),
+      companies: _readAdminItemMaps(
+        map,
+      ).map(AdminSyncOperationalCompanySummary.fromMap).toList(),
       pagination: AdminPaginationMeta.fromPayload(map),
       filters: _readFiltersPayload(map),
       sort: AdminSortMeta.fromPayload(map),
@@ -1093,10 +1092,11 @@ class AdminSyncOperationalCapabilities {
       observedSignals: _readStringList(map['observedSignals']),
       unavailableSignals: _readStringList(map['unavailableSignals']),
       observedFeatureKeys: _readStringList(map['observedFeatureKeys']),
-      telemetryGaps: (map['telemetryGaps'] as List<dynamic>? ?? const <dynamic>[])
-          .whereType<Map<String, dynamic>>()
-          .map(AdminTelemetryGap.fromMap)
-          .toList(),
+      telemetryGaps:
+          (map['telemetryGaps'] as List<dynamic>? ?? const <dynamic>[])
+              .whereType<Map<String, dynamic>>()
+              .map(AdminTelemetryGap.fromMap)
+              .toList(),
       notes: _readStringList(map['notes']),
     );
   }
@@ -1161,9 +1161,7 @@ class AdminSyncOperationalCompanySummary {
   final AdminTelemetryAvailability telemetryAvailability;
   final List<AdminObservedFeature> observedFeatures;
 
-  factory AdminSyncOperationalCompanySummary.fromMap(
-    Map<String, dynamic> map,
-  ) {
+  factory AdminSyncOperationalCompanySummary.fromMap(Map<String, dynamic> map) {
     return AdminSyncOperationalCompanySummary(
       companyId: _readString(map, 'companyId'),
       companyName: _readString(map, 'companyName'),
@@ -1177,8 +1175,10 @@ class AdminSyncOperationalCompanySummary {
       lastSessionSeenAt: _readOptionalDateTime(map, 'lastSessionSeenAt'),
       observedRemoteRecordCount:
           _readOptionalInt(map, 'observedRemoteRecordCount') ?? 0,
-      lastObservedRemoteChangeAt:
-          _readOptionalDateTime(map, 'lastObservedRemoteChangeAt'),
+      lastObservedRemoteChangeAt: _readOptionalDateTime(
+        map,
+        'lastObservedRemoteChangeAt',
+      ),
       remoteCoverage: AdminRemoteCoverage.fromMap(
         map['remoteCoverage'] as Map<String, dynamic>? ??
             const <String, dynamic>{},
@@ -1276,16 +1276,16 @@ class AdminObservedFeature {
       featureKey: _readString(map, 'featureKey'),
       displayName: _readString(map, 'displayName'),
       remoteRecordCount: _readOptionalInt(map, 'remoteRecordCount') ?? 0,
-      lastObservedRemoteChangeAt:
-          _readOptionalDateTime(map, 'lastObservedRemoteChangeAt'),
+      lastObservedRemoteChangeAt: _readOptionalDateTime(
+        map,
+        'lastObservedRemoteChangeAt',
+      ),
       observationKind: _readString(map, 'observationKind'),
     );
   }
 }
 
-List<Map<String, dynamic>> readAdminItems(
-  Map<String, dynamic> map,
-) {
+List<Map<String, dynamic>> readAdminItems(Map<String, dynamic> map) {
   return _readAdminItemMaps(map);
 }
 
@@ -1332,7 +1332,8 @@ class AdminSyncCompanySummary {
       syncEnabled: map['syncEnabled'] == true,
       remoteRecordCount: _readOptionalInt(map, 'remoteRecordCount') ?? 0,
       entityCounts: AdminEntityCounts.fromMap(
-        map['entityCounts'] as Map<String, dynamic>? ?? const <String, dynamic>{},
+        map['entityCounts'] as Map<String, dynamic>? ??
+            const <String, dynamic>{},
       ),
     );
   }
@@ -1436,7 +1437,9 @@ Map<String, dynamic> _readFiltersPayload(Map<String, dynamic> map) {
 List<Map<String, dynamic>> _readAdminItemMaps(Map<String, dynamic> map) {
   final primaryItems = map['items'];
   if (primaryItems is List<dynamic>) {
-    return primaryItems.whereType<Map<String, dynamic>>().toList(growable: false);
+    return primaryItems.whereType<Map<String, dynamic>>().toList(
+      growable: false,
+    );
   }
   return const <Map<String, dynamic>>[];
 }
@@ -1451,7 +1454,8 @@ Map<String, int> _countsByActionFromObject(Object? rawValue) {
 
   if (rawValue is Map<String, dynamic>) {
     return <String, int>{
-      for (final entry in rawValue.entries) entry.key: _normalizeToInt(entry.value),
+      for (final entry in rawValue.entries)
+        entry.key: _normalizeToInt(entry.value),
     };
   }
 

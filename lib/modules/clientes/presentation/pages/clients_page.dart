@@ -108,7 +108,7 @@ class ClientsPage extends ConsumerWidget {
                   padding: const EdgeInsets.all(24),
                   child: AppStateCard(
                     title: 'Falha ao carregar clientes',
-                    message: 'Verifique a conexao local e tente novamente.',
+                    message: 'Erro: $error',
                     tone: AppStateTone.error,
                     compact: true,
                     actionLabel: 'Tentar novamente',
@@ -139,6 +139,7 @@ class _ClientTile extends ConsumerWidget {
     ];
     final hasDebt = client.debtorBalanceCents > 0;
     final hasCredit = client.creditBalanceCents > 0;
+    final isRemoteOnly = client.id <= 0;
     final initials = client.name
         .trim()
         .split(RegExp(r'\s+'))
@@ -249,74 +250,75 @@ class _ClientTile extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  PopupMenuButton<_ClientAction>(
-                    tooltip: 'Acoes do cliente',
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(
-                        value: _ClientAction.addCredit,
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.add_circle_outline),
-                          title: Text('Adicionar haver'),
+                  if (!isRemoteOnly)
+                    PopupMenuButton<_ClientAction>(
+                      tooltip: 'Acoes do cliente',
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: _ClientAction.addCredit,
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.add_circle_outline),
+                            title: Text('Adicionar haver'),
+                          ),
                         ),
-                      ),
-                      PopupMenuItem(
-                        value: _ClientAction.addDebit,
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.remove_circle_outline),
-                          title: Text('Registrar pendencia'),
+                        PopupMenuItem(
+                          value: _ClientAction.addDebit,
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.remove_circle_outline),
+                            title: Text('Registrar pendencia'),
+                          ),
                         ),
-                      ),
-                      PopupMenuDivider(),
-                      PopupMenuItem(
-                        value: _ClientAction.edit,
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.edit_outlined),
-                          title: Text('Editar cliente'),
+                        PopupMenuDivider(),
+                        PopupMenuItem(
+                          value: _ClientAction.edit,
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.edit_outlined),
+                            title: Text('Editar cliente'),
+                          ),
                         ),
-                      ),
-                      PopupMenuItem(
-                        value: _ClientAction.delete,
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.delete_outline),
-                          title: Text('Excluir cliente'),
+                        PopupMenuItem(
+                          value: _ClientAction.delete,
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.delete_outline),
+                            title: Text('Excluir cliente'),
+                          ),
                         ),
+                      ],
+                      onSelected: (value) async {
+                        switch (value) {
+                          case _ClientAction.addCredit:
+                            await openCustomerCreditActionDialog(
+                              context,
+                              ref,
+                              client: client,
+                              isCredit: true,
+                            );
+                            break;
+                          case _ClientAction.addDebit:
+                            await openCustomerCreditActionDialog(
+                              context,
+                              ref,
+                              client: client,
+                              isCredit: false,
+                            );
+                            break;
+                          case _ClientAction.edit:
+                            await _openEditor(context, ref);
+                            break;
+                          case _ClientAction.delete:
+                            await _delete(context, ref);
+                            break;
+                        }
+                      },
+                      icon: Icon(
+                        Icons.more_vert_rounded,
+                        color: colorScheme.onSurfaceVariant,
                       ),
-                    ],
-                    onSelected: (value) async {
-                      switch (value) {
-                        case _ClientAction.addCredit:
-                          await openCustomerCreditActionDialog(
-                            context,
-                            ref,
-                            client: client,
-                            isCredit: true,
-                          );
-                          break;
-                        case _ClientAction.addDebit:
-                          await openCustomerCreditActionDialog(
-                            context,
-                            ref,
-                            client: client,
-                            isCredit: false,
-                          );
-                          break;
-                        case _ClientAction.edit:
-                          await _openEditor(context, ref);
-                          break;
-                        case _ClientAction.delete:
-                          await _delete(context, ref);
-                          break;
-                      }
-                    },
-                    icon: Icon(
-                      Icons.more_vert_rounded,
-                      color: colorScheme.onSurfaceVariant,
                     ),
-                  ),
                 ],
               ),
             ),
@@ -350,13 +352,17 @@ class _ClientTile extends ConsumerWidget {
             Align(
               alignment: Alignment.centerLeft,
               child: OutlinedButton.icon(
-                onPressed: () => context.pushNamed(
-                  AppRouteNames.clientCreditStatement,
-                  pathParameters: {'clientId': '${client.id}'},
-                  extra: client,
-                ),
+                onPressed: isRemoteOnly
+                    ? null
+                    : () => context.pushNamed(
+                        AppRouteNames.clientCreditStatement,
+                        pathParameters: {'clientId': '${client.id}'},
+                        extra: client,
+                      ),
                 icon: const Icon(Icons.receipt_long_outlined),
-                label: const Text('Ver extrato'),
+                label: Text(
+                  isRemoteOnly ? 'Extrato apos cache' : 'Ver extrato',
+                ),
               ),
             ),
           ],

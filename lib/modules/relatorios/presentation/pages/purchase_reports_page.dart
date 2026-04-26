@@ -15,6 +15,7 @@ import '../../domain/entities/report_breakdown_row.dart';
 import '../../domain/entities/report_filter.dart';
 import '../../domain/entities/report_purchase_summary.dart';
 import '../providers/report_providers.dart';
+import '../widgets/report_data_origin_banner.dart';
 import '../widgets/report_empty_state.dart';
 import '../widgets/report_filter_toolbar.dart';
 import '../widgets/report_kpi_grid.dart';
@@ -75,6 +76,7 @@ class PurchaseReportsPage extends ConsumerWidget {
               onExportPdf: (mode) => _exportPdf(ref, mode),
               onExportCsv: (mode) => _exportCsv(ref, mode),
             ),
+            const ReportDataOriginBanner(page: ReportPageKey.purchases),
             SizedBox(height: layout.sectionGap),
             purchaseAsync.when(
               data: (summary) => Column(
@@ -157,6 +159,9 @@ class PurchaseReportsPage extends ConsumerWidget {
                 message: '$error',
                 tone: AppStateTone.error,
                 compact: true,
+                actionLabel: 'Tentar novamente',
+                onAction: () =>
+                    ref.read(appDataRefreshProvider.notifier).state++,
               ),
             ),
           ],

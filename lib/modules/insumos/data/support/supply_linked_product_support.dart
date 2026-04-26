@@ -21,8 +21,7 @@ abstract final class SupplyLinkedProductSupport {
     }
 
     final placeholders = List.filled(normalizedSupplyIds.length, '?').join(',');
-    final productRows = await txn.rawQuery(
-      '''
+    final productRows = await txn.rawQuery('''
       SELECT DISTINCT
         p.id,
         p.uuid,
@@ -33,9 +32,7 @@ abstract final class SupplyLinkedProductSupport {
       WHERE pri.supply_id IN ($placeholders)
         AND p.deletado_em IS NULL
       ORDER BY p.id ASC
-    ''',
-      normalizedSupplyIds,
-    );
+    ''', normalizedSupplyIds);
 
     for (final productRow in productRows) {
       final productId = productRow['id'] as int;

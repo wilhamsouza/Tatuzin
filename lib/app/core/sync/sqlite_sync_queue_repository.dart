@@ -696,9 +696,10 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
           lastProcessedAt = item.lastProcessedAt;
         }
 
-        if (item.nextRetryAt != null &&
-            (nextRetryAt == null || item.nextRetryAt!.isBefore(nextRetryAt))) {
-          nextRetryAt = item.nextRetryAt;
+        final safeNextRetryAt = _normalizeNextRetryAt(item);
+        if (safeNextRetryAt != null &&
+            (nextRetryAt == null || safeNextRetryAt.isBefore(nextRetryAt))) {
+          nextRetryAt = safeNextRetryAt;
         }
 
         if (item.lastError != null &&
@@ -729,6 +730,37 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
         lastErrorAt: lastErrorAt,
       );
     }).toList();
+  }
+
+  @override
+  Future<List<SyncQueueItem>> listAttentionItems({int limit = 50}) async {
+    final database = await _appDatabase.database;
+    final rows = await database.query(
+      TableNames.syncQueue,
+      where: 'status IN (?, ?, ?)',
+      whereArgs: [
+        SyncQueueStatus.syncError.storageValue,
+        SyncQueueStatus.blockedDependency.storageValue,
+        SyncQueueStatus.conflict.storageValue,
+      ],
+      orderBy: 'updated_at DESC, id DESC',
+      limit: limit,
+    );
+    return rows.map(_mapRow).toList(growable: false);
+  }
+
+  DateTime? _normalizeNextRetryAt(SyncQueueItem item) {
+    final retryAt = item.nextRetryAt;
+    if (retryAt == null) {
+      return null;
+    }
+
+    final lastProcessedAt = item.lastProcessedAt;
+    if (lastProcessedAt == null || !retryAt.isBefore(lastProcessedAt)) {
+      return retryAt;
+    }
+
+    return lastProcessedAt.add(const Duration(minutes: 1));
   }
 
   bool _isEligible(

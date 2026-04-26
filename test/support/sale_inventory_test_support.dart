@@ -49,6 +49,22 @@ SqliteSaleRepository createSaleRepository(Database database) {
   );
 }
 
+SqliteSaleRepository createSaleRepositoryWithRecordingSync(
+  Database database, {
+  required RecordingSyncMetadataRepository syncMetadataRepository,
+  required RecordingSyncQueueRepository syncQueueRepository,
+}) {
+  return SqliteSaleRepository.forDatabase(
+    databaseLoader: () async => database,
+    operationalContext: AppOperationalContext(
+      environment: const AppEnvironment.localDefault(),
+      session: AppSession.localDefault(),
+    ),
+    syncMetadataRepository: syncMetadataRepository,
+    syncQueueRepository: syncQueueRepository,
+  );
+}
+
 SqliteSaleReturnRepository createSaleReturnRepository(
   Database database, {
   SqliteSaleRepository? saleRepository,
@@ -266,6 +282,117 @@ class VariantSeed {
   final int stockMil;
   final int order;
   final int additionalPriceCents;
+}
+
+class RecordingSyncMetadataEntry {
+  const RecordingSyncMetadataEntry({
+    required this.featureKey,
+    required this.localId,
+    required this.localUuid,
+  });
+
+  final String featureKey;
+  final int localId;
+  final String localUuid;
+}
+
+class RecordingSyncMutation {
+  const RecordingSyncMutation({
+    required this.featureKey,
+    required this.entityType,
+    required this.localEntityId,
+    required this.localUuid,
+    required this.remoteId,
+    required this.operation,
+  });
+
+  final String featureKey;
+  final String entityType;
+  final int localEntityId;
+  final String? localUuid;
+  final String? remoteId;
+  final SyncQueueOperation operation;
+}
+
+class RecordingSyncMetadataRepository extends SqliteSyncMetadataRepository {
+  RecordingSyncMetadataRepository() : super(AppDatabase.instance);
+
+  final entries = <RecordingSyncMetadataEntry>[];
+
+  @override
+  Future<SyncMetadata?> findByLocalId(
+    DatabaseExecutor db, {
+    required String featureKey,
+    required int localId,
+  }) async {
+    return null;
+  }
+
+  @override
+  Future<void> markPendingUpload(
+    DatabaseExecutor db, {
+    required String featureKey,
+    required int localId,
+    required String localUuid,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  }) async {
+    entries.add(
+      RecordingSyncMetadataEntry(
+        featureKey: featureKey,
+        localId: localId,
+        localUuid: localUuid,
+      ),
+    );
+  }
+
+  @override
+  Future<void> markPendingUpdate(
+    DatabaseExecutor db, {
+    required String featureKey,
+    required int localId,
+    required String localUuid,
+    required String? remoteId,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  }) async {
+    entries.add(
+      RecordingSyncMetadataEntry(
+        featureKey: featureKey,
+        localId: localId,
+        localUuid: localUuid,
+      ),
+    );
+  }
+}
+
+class RecordingSyncQueueRepository extends SqliteSyncQueueRepository {
+  RecordingSyncQueueRepository() : super(AppDatabase.instance);
+
+  final mutations = <RecordingSyncMutation>[];
+
+  @override
+  Future<void> enqueueMutation(
+    DatabaseExecutor db, {
+    required String featureKey,
+    required String entityType,
+    required int localEntityId,
+    required String? localUuid,
+    required String? remoteId,
+    required SyncQueueOperation operation,
+    required DateTime localUpdatedAt,
+  }) async {
+    mutations.add(
+      RecordingSyncMutation(
+        featureKey: featureKey,
+        entityType: entityType,
+        localEntityId: localEntityId,
+        localUuid: localUuid,
+        remoteId: remoteId,
+        operation: operation,
+      ),
+    );
+  }
 }
 
 class _NoopSyncMetadataRepository extends SqliteSyncMetadataRepository {

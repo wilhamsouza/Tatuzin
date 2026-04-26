@@ -1,6 +1,7 @@
 import 'package:erp_pdv_app/app/app.dart';
 import 'package:erp_pdv_app/app/core/database/app_database.dart';
-import 'package:erp_pdv_app/modules/dashboard/domain/entities/dashboard_metrics.dart';
+import 'package:erp_pdv_app/app/core/session/session_reset.dart';
+import 'package:erp_pdv_app/modules/dashboard/domain/entities/operational_dashboard_snapshot.dart';
 import 'package:erp_pdv_app/modules/dashboard/presentation/pages/dashboard_page.dart';
 import 'package:erp_pdv_app/modules/dashboard/presentation/providers/dashboard_providers.dart';
 import 'package:erp_pdv_app/modules/estoque/domain/entities/inventory_count_session.dart';
@@ -23,7 +24,7 @@ void main() {
     await _pumpOfflineApp(tester);
 
     expect(find.byType(DashboardPage), findsOneWidget);
-    expect(find.text('Painel do dia'), findsOneWidget);
+    expect(find.text('Dashboard operacional'), findsAtLeastNWidgets(1));
     expect(find.text('Nova venda'), findsAtLeastNWidgets(1));
     expect(find.text('Vendido hoje'), findsOneWidget);
 
@@ -168,14 +169,18 @@ Future<void> _pumpOfflineApp(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        appStartupProvider.overrideWith((ref) async {}),
-        dashboardMetricsProvider.overrideWith(
-          (ref) async => const DashboardMetrics(
+        sessionContextResetProvider.overrideWith((ref) {}),
+        appStartupProvider.overrideWith(
+          (ref) async => const AppStartupState.success(),
+        ),
+        operationalDashboardSnapshotProvider.overrideWith(
+          (ref) async => const OperationalDashboardSnapshot(
             soldTodayCents: 152340,
             currentCashCents: 81300,
             pendingFiadoCount: 4,
             pendingFiadoCents: 92750,
-            realizedProfitTodayCents: 48210,
+            activeOperationalOrdersCount: 3,
+            recentMovements: <OperationalDashboardRecentMovement>[],
           ),
         ),
         backendConnectionStatusProvider.overrideWith(

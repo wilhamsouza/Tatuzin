@@ -61,7 +61,8 @@ class SharedPreferencesAuthTokenStorage implements AuthTokenStorage {
   static const String _accessTokenKey = 'session.remote_access_token';
   static const String _refreshTokenKey = 'session.remote_refresh_token';
   static const String _clientTypeKey = 'session.remote_client_type';
-  static const String _clientInstanceIdKey = 'session.remote_client_instance_id';
+  static const String _clientInstanceIdKey =
+      'session.remote_client_instance_id';
   static const String _deviceLabelKey = 'session.remote_device_label';
   static const String _platformKey = 'session.remote_platform';
   static const String _appVersionKey = 'session.remote_app_version';
@@ -83,8 +84,9 @@ class SharedPreferencesAuthTokenStorage implements AuthTokenStorage {
     String? appVersion,
   }) async {
     final preferences = await SharedPreferences.getInstance();
-    final existingClientInstanceId =
-        preferences.getString(_clientInstanceIdKey)?.trim();
+    final existingClientInstanceId = preferences
+        .getString(_clientInstanceIdKey)
+        ?.trim();
     final clientInstanceId =
         existingClientInstanceId == null || existingClientInstanceId.isEmpty
         ? _generateClientInstanceId()
@@ -131,7 +133,9 @@ class SharedPreferencesAuthTokenStorage implements AuthTokenStorage {
   @override
   Future<AuthClientContext?> readClientContext() async {
     final preferences = await SharedPreferences.getInstance();
-    final clientType = _normalizeOptional(preferences.getString(_clientTypeKey));
+    final clientType = _normalizeOptional(
+      preferences.getString(_clientTypeKey),
+    );
     final clientInstanceId = _normalizeOptional(
       preferences.getString(_clientInstanceIdKey),
     );

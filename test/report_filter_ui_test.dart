@@ -22,7 +22,9 @@ void main() {
     final container = _buildContainer();
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(_wrap(container, const ReportFilterToolbar(page: ReportPageKey.sales)));
+    await tester.pumpWidget(
+      _wrap(container, const ReportFilterToolbar(page: ReportPageKey.sales)),
+    );
 
     await tester.tap(find.text('Ajustar filtros'));
     await tester.pumpAndSettle();
@@ -43,7 +45,9 @@ void main() {
     expect(filter.includeCanceled, isTrue);
   });
 
-  testWidgets('removing a chip clears the corresponding filter', (tester) async {
+  testWidgets('removing a chip clears the corresponding filter', (
+    tester,
+  ) async {
     _prepareSurface(tester);
     final container = _buildContainer(
       labels: const ReportFilterOptionLabels(),
@@ -66,37 +70,38 @@ void main() {
     expect(find.text('Forma: Pix'), findsNothing);
   });
 
-  testWidgets('clear button removes optional filters and preserves the core view', (
-    tester,
-  ) async {
-    _prepareSurface(tester);
-    final initial = ReportFilter.fromPeriod(
-      ReportPeriod.weekly,
-    ).copyWith(
-      grouping: ReportGrouping.week,
-      includeCanceled: true,
-      paymentMethod: PaymentMethod.pix,
-      focus: ReportFocus.cashEntries,
-    );
-    final container = _buildContainer(
-      labels: const ReportFilterOptionLabels(),
-      initialFilter: initial,
-    );
-    addTearDown(container.dispose);
+  testWidgets(
+    'clear button removes optional filters and preserves the core view',
+    (tester) async {
+      _prepareSurface(tester);
+      final initial = ReportFilter.fromPeriod(ReportPeriod.weekly).copyWith(
+        grouping: ReportGrouping.week,
+        includeCanceled: true,
+        paymentMethod: PaymentMethod.pix,
+        focus: ReportFocus.cashEntries,
+      );
+      final container = _buildContainer(
+        labels: const ReportFilterOptionLabels(),
+        initialFilter: initial,
+      );
+      addTearDown(container.dispose);
 
-    await tester.pumpWidget(_wrap(container, const ReportFilterToolbar(page: ReportPageKey.sales)));
+      await tester.pumpWidget(
+        _wrap(container, const ReportFilterToolbar(page: ReportPageKey.sales)),
+      );
 
-    await tester.tap(find.text('Limpar filtros'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Limpar filtros'));
+      await tester.pumpAndSettle();
 
-    final filter = container.read(reportFilterProvider);
-    expect(filter.start, initial.start);
-    expect(filter.endExclusive, initial.endExclusive);
-    expect(filter.grouping, ReportGrouping.week);
-    expect(filter.includeCanceled, isTrue);
-    expect(filter.paymentMethod, isNull);
-    expect(filter.focus, isNull);
-  });
+      final filter = container.read(reportFilterProvider);
+      expect(filter.start, initial.start);
+      expect(filter.endExclusive, initial.endExclusive);
+      expect(filter.grouping, ReportGrouping.week);
+      expect(filter.includeCanceled, isTrue);
+      expect(filter.paymentMethod, isNull);
+      expect(filter.focus, isNull);
+    },
+  );
 
   testWidgets('page presets apply the expected configuration', (tester) async {
     _prepareSurface(tester);
@@ -120,15 +125,16 @@ void main() {
   });
 
   test('reset support restores the page default state', () {
-    final initial = ReportFilter.fromPeriod(
-      ReportPeriod.weekly,
-      reference: DateTime(2026, 4, 18),
-    ).copyWith(
-      grouping: ReportGrouping.week,
-      includeCanceled: true,
-      paymentMethod: PaymentMethod.pix,
-      focus: ReportFocus.salesPaymentMethods,
-    );
+    final initial =
+        ReportFilter.fromPeriod(
+          ReportPeriod.weekly,
+          reference: DateTime(2026, 4, 18),
+        ).copyWith(
+          grouping: ReportGrouping.week,
+          includeCanceled: true,
+          paymentMethod: PaymentMethod.pix,
+          focus: ReportFocus.salesPaymentMethods,
+        );
 
     final reset = ReportFilterPresetSupport.resetToPageDefault(
       ReportPageKey.sales,
@@ -156,13 +162,20 @@ void main() {
     );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(_wrap(container, const ReportFilterToolbar(page: ReportPageKey.sales)));
+    await tester.pumpWidget(
+      _wrap(container, const ReportFilterToolbar(page: ReportPageKey.sales)),
+    );
     await tester.pumpAndSettle();
 
-    await tester.pumpWidget(_wrap(container, const ReportFilterToolbar(page: ReportPageKey.cash)));
+    await tester.pumpWidget(
+      _wrap(container, const ReportFilterToolbar(page: ReportPageKey.cash)),
+    );
     await tester.pumpAndSettle();
 
-    expect(container.read(reportFilterProvider).paymentMethod, PaymentMethod.pix);
+    expect(
+      container.read(reportFilterProvider).paymentMethod,
+      PaymentMethod.pix,
+    );
     expect(find.text('Forma: Pix'), findsOneWidget);
   });
 }

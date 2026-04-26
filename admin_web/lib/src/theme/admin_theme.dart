@@ -12,26 +12,27 @@ abstract final class AdminTheme {
   static const error = Color(0xFFEF4444);
 
   static ThemeData light() {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: primary,
-      brightness: Brightness.light,
-    ).copyWith(
-      primary: primary,
-      onPrimary: Colors.white,
-      secondary: secondary,
-      onSecondary: Colors.white,
-      surface: surface,
-      onSurface: ink,
-      error: error,
-      onError: Colors.white,
-      outline: const Color(0xFFD9D5F0),
-      outlineVariant: const Color(0xFFE7E4F7),
-      primaryContainer: const Color(0xFFE9E3FF),
-      onPrimaryContainer: const Color(0xFF2D156D),
-      surfaceContainerHighest: const Color(0xFFF2F0FD),
-      surfaceContainerHigh: const Color(0xFFF7F5FF),
-      onSurfaceVariant: const Color(0xFF667085),
-    );
+    final scheme =
+        ColorScheme.fromSeed(
+          seedColor: primary,
+          brightness: Brightness.light,
+        ).copyWith(
+          primary: primary,
+          onPrimary: Colors.white,
+          secondary: secondary,
+          onSecondary: Colors.white,
+          surface: surface,
+          onSurface: ink,
+          error: error,
+          onError: Colors.white,
+          outline: const Color(0xFFD9D5F0),
+          outlineVariant: const Color(0xFFE7E4F7),
+          primaryContainer: const Color(0xFFE9E3FF),
+          onPrimaryContainer: const Color(0xFF2D156D),
+          surfaceContainerHighest: const Color(0xFFF2F0FD),
+          surfaceContainerHigh: const Color(0xFFF7F5FF),
+          onSurfaceVariant: const Color(0xFF667085),
+        );
 
     final base = ThemeData(
       useMaterial3: true,
@@ -84,15 +85,22 @@ abstract final class AdminTheme {
         focusedErrorBorder: border.copyWith(
           borderSide: BorderSide(color: scheme.error, width: 1.4),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           minimumSize: const Size(0, 50),
           backgroundColor: scheme.primary,
           foregroundColor: scheme.onPrimary,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          textStyle: base.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          textStyle: base.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -100,8 +108,12 @@ abstract final class AdminTheme {
           minimumSize: const Size(0, 50),
           foregroundColor: scheme.primary,
           side: BorderSide(color: scheme.outlineVariant),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          textStyle: base.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          textStyle: base.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
       chipTheme: base.chipTheme.copyWith(
@@ -110,7 +122,9 @@ abstract final class AdminTheme {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         side: BorderSide.none,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-        labelStyle: base.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+        labelStyle: base.textTheme.bodySmall?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
       ),
       dividerTheme: DividerThemeData(
         color: scheme.outlineVariant,
@@ -132,7 +146,9 @@ abstract final class AdminTheme {
           fontWeight: FontWeight.w700,
           color: scheme.onSurface,
         ),
-        dataTextStyle: base.textTheme.bodyMedium?.copyWith(color: scheme.onSurface),
+        dataTextStyle: base.textTheme.bodyMedium?.copyWith(
+          color: scheme.onSurface,
+        ),
       ),
     );
   }

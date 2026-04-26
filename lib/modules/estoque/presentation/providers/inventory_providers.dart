@@ -2,9 +2,13 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../app/core/app_context/app_operational_context.dart';
+import '../../../../app/core/app_context/data_access_policy.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/session/session_provider.dart';
+import '../../../produtos/presentation/providers/product_providers.dart';
 import '../../data/inventory_count_repository_impl.dart';
 import '../../data/inventory_repository_impl.dart';
 import '../../data/sqlite_inventory_count_repository.dart';
@@ -28,6 +32,10 @@ final localInventoryRepositoryProvider = Provider<SqliteInventoryRepository>((
 final inventoryRepositoryProvider = Provider<InventoryRepository>((ref) {
   return InventoryRepositoryImpl(
     localRepository: ref.read(localInventoryRepositoryProvider),
+    localProductRepository: ref.read(localProductRepositoryProvider),
+    productsRemoteDatasource: ref.read(productsRemoteDatasourceProvider),
+    operationalContext: ref.watch(appOperationalContextProvider),
+    dataAccessPolicy: ref.watch(appDataAccessPolicyProvider),
   );
 });
 
@@ -55,9 +63,13 @@ final inventoryItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(inventorySearchQueryProvider);
   final filter = ref.watch(inventoryFilterProvider);
-  return ref
-      .watch(inventoryRepositoryProvider)
-      .listItems(query: query, filter: filter);
+  return runProviderGuarded(
+    'inventoryItemsProvider',
+    () => ref
+        .watch(inventoryRepositoryProvider)
+        .listItems(query: query, filter: filter),
+    timeout: localProviderTimeout,
+  );
 });
 
 final inventoryItemOptionsProvider = FutureProvider<List<InventoryItem>>((
@@ -65,7 +77,11 @@ final inventoryItemOptionsProvider = FutureProvider<List<InventoryItem>>((
 ) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref.watch(inventoryRepositoryProvider).listItems();
+  return runProviderGuarded(
+    'inventoryItemOptionsProvider',
+    () => ref.watch(inventoryRepositoryProvider).listItems(),
+    timeout: localProviderTimeout,
+  );
 });
 
 final inventoryActiveItemOptionsProvider = FutureProvider<List<InventoryItem>>((
@@ -73,9 +89,13 @@ final inventoryActiveItemOptionsProvider = FutureProvider<List<InventoryItem>>((
 ) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref
-      .watch(inventoryRepositoryProvider)
-      .listItems(filter: InventoryListFilter.active);
+  return runProviderGuarded(
+    'inventoryActiveItemOptionsProvider',
+    () => ref
+        .watch(inventoryRepositoryProvider)
+        .listItems(filter: InventoryListFilter.active),
+    timeout: localProviderTimeout,
+  );
 });
 
 final inventoryMovementsProvider =
@@ -85,24 +105,32 @@ final inventoryMovementsProvider =
     ) async {
       ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
-      return ref
-          .watch(inventoryRepositoryProvider)
-          .listMovements(
-            productId: query.productId,
-            productVariantId: query.productVariantId,
-            includeVariantsForProduct: query.includeVariantsForProduct,
-            movementType: query.movementType,
-            createdFrom: query.createdFrom,
-            createdTo: query.createdTo,
-            limit: query.limit,
-          );
+      return runProviderGuarded(
+        'inventoryMovementsProvider',
+        () => ref
+            .watch(inventoryRepositoryProvider)
+            .listMovements(
+              productId: query.productId,
+              productVariantId: query.productVariantId,
+              includeVariantsForProduct: query.includeVariantsForProduct,
+              movementType: query.movementType,
+              createdFrom: query.createdFrom,
+              createdTo: query.createdTo,
+              limit: query.limit,
+            ),
+        timeout: localProviderTimeout,
+      );
     });
 
 final inventoryCountSessionsProvider =
     FutureProvider<List<InventoryCountSession>>((ref) async {
       ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
-      return ref.watch(inventoryCountRepositoryProvider).listSessions();
+      return runProviderGuarded(
+        'inventoryCountSessionsProvider',
+        () => ref.watch(inventoryCountRepositoryProvider).listSessions(),
+        timeout: localProviderTimeout,
+      );
     });
 
 final inventoryCountSessionDetailProvider =
@@ -112,9 +140,13 @@ final inventoryCountSessionDetailProvider =
     ) async {
       ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
-      return ref
-          .watch(inventoryCountRepositoryProvider)
-          .getSessionDetail(sessionId);
+      return runProviderGuarded(
+        'inventoryCountSessionDetailProvider',
+        () => ref
+            .watch(inventoryCountRepositoryProvider)
+            .getSessionDetail(sessionId),
+        timeout: localProviderTimeout,
+      );
     });
 
 final inventoryActionControllerProvider =

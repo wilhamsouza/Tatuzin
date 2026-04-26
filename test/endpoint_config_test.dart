@@ -3,10 +3,21 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('EndpointConfig', () {
-    test('usa a API publicada como fallback em release', () {
-      final baseUrl = EndpointConfig.resolveBuildBaseUrl(isReleaseBuild: true);
+    test('fixa a API oficial em release e ignora override de build', () {
+      final baseUrl = EndpointConfig.resolveBuildBaseUrl(
+        isReleaseBuild: true,
+        configuredBaseUrl: 'http://localhost:4000',
+      );
 
-      expect(baseUrl, EndpointConfig.productionBaseUrl);
+      expect(baseUrl, EndpointConfig.productionResolvedBaseUrl);
+      expect(EndpointConfig.productionApiUrl, 'https://api.tatuzin.com.br/api');
+      expect(
+        EndpointConfig(
+          baseUrl: baseUrl,
+          apiVersion: EndpointConfig.defaultApiVersion,
+        ).uriFor('/health')?.toString(),
+        'https://api.tatuzin.com.br/api/health',
+      );
     });
 
     test('mantem o endpoint local no fallback de debug', () {

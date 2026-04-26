@@ -130,6 +130,42 @@ class RemotePurchaseRecord {
   final List<RemotePurchaseItemRecord> items;
   final List<RemotePurchasePaymentRecord> payments;
 
+  RemotePurchaseRecord copyWith({
+    PurchaseStatus? status,
+    int? paidAmountCents,
+    int? pendingAmountCents,
+    DateTime? canceledAt,
+    DateTime? updatedAt,
+    List<RemotePurchasePaymentRecord>? payments,
+    String? notes,
+  }) {
+    return RemotePurchaseRecord(
+      remoteId: remoteId,
+      localUuid: localUuid,
+      remoteSupplierId: remoteSupplierId,
+      supplierLocalUuid: supplierLocalUuid,
+      supplierName: supplierName,
+      documentNumber: documentNumber,
+      notes: notes ?? this.notes,
+      purchasedAt: purchasedAt,
+      dueDate: dueDate,
+      paymentMethod: paymentMethod,
+      status: status ?? this.status,
+      subtotalCents: subtotalCents,
+      discountCents: discountCents,
+      surchargeCents: surchargeCents,
+      freightCents: freightCents,
+      finalAmountCents: finalAmountCents,
+      paidAmountCents: paidAmountCents ?? this.paidAmountCents,
+      pendingAmountCents: pendingAmountCents ?? this.pendingAmountCents,
+      canceledAt: canceledAt ?? this.canceledAt,
+      createdAt: createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      items: items,
+      payments: payments ?? this.payments,
+    );
+  }
+
   Map<String, dynamic> toUpsertBody() {
     return <String, dynamic>{
       'localUuid': localUuid,

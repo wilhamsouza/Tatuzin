@@ -19,6 +19,7 @@ import '../../domain/entities/report_sold_product_summary.dart';
 import '../../domain/entities/report_variant_summary.dart';
 import '../providers/report_providers.dart';
 import '../widgets/product_sales_summary_widget.dart';
+import '../widgets/report_data_origin_banner.dart';
 import '../widgets/report_donut_chart_card.dart';
 import '../widgets/report_filter_toolbar.dart';
 import '../widgets/report_kpi_grid.dart';
@@ -90,6 +91,7 @@ class SalesReportsPage extends ConsumerWidget {
               onExportPdf: (mode) => _exportPdf(ref, mode),
               onExportCsv: (mode) => _exportCsv(ref, mode),
             ),
+            const ReportDataOriginBanner(page: ReportPageKey.sales),
             SizedBox(height: layout.sectionGap),
             overviewAsync.when(
               data: (overview) => ReportKpiGrid(
@@ -202,6 +204,9 @@ class SalesReportsPage extends ConsumerWidget {
                 message: '$error',
                 tone: AppStateTone.error,
                 compact: true,
+                actionLabel: 'Tentar novamente',
+                onAction: () =>
+                    ref.read(appDataRefreshProvider.notifier).state++,
               ),
             ),
             SizedBox(height: layout.sectionGap),
@@ -230,6 +235,9 @@ class SalesReportsPage extends ConsumerWidget {
                   message: '$error',
                   tone: AppStateTone.error,
                   compact: true,
+                  actionLabel: 'Tentar novamente',
+                  onAction: () =>
+                      ref.read(appDataRefreshProvider.notifier).state++,
                 ),
               ),
             if (filter.focus == ReportFocus.salesProducts &&
@@ -266,6 +274,9 @@ class SalesReportsPage extends ConsumerWidget {
                   message: '$error',
                   tone: AppStateTone.error,
                   compact: true,
+                  actionLabel: 'Tentar novamente',
+                  onAction: () =>
+                      ref.read(appDataRefreshProvider.notifier).state++,
                 ),
               ),
               SizedBox(height: layout.sectionGap),
@@ -298,6 +309,9 @@ class SalesReportsPage extends ConsumerWidget {
                   message: '$error',
                   tone: AppStateTone.error,
                   compact: true,
+                  actionLabel: 'Tentar novamente',
+                  onAction: () =>
+                      ref.read(appDataRefreshProvider.notifier).state++,
                 ),
               ),
             ],
@@ -386,6 +400,9 @@ class SalesReportsPage extends ConsumerWidget {
                   message: '$error',
                   tone: AppStateTone.error,
                   compact: true,
+                  actionLabel: 'Tentar novamente',
+                  onAction: () =>
+                      ref.read(appDataRefreshProvider.notifier).state++,
                 ),
               ),
               SizedBox(height: layout.sectionGap),
@@ -418,6 +435,9 @@ class SalesReportsPage extends ConsumerWidget {
                   message: '$error',
                   tone: AppStateTone.error,
                   compact: true,
+                  actionLabel: 'Tentar novamente',
+                  onAction: () =>
+                      ref.read(appDataRefreshProvider.notifier).state++,
                 ),
               ),
             ],

@@ -78,7 +78,9 @@ void main() {
       await _insertDashboardSale(container, totalCents: 1000);
 
       final productsA = await container.read(productCatalogProvider.future);
-      final metricsA = await container.read(dashboardMetricsProvider.future);
+      final metricsA = await container.read(
+        operationalDashboardSnapshotProvider.future,
+      );
       expect(productsA.map((product) => product.name), [
         'Produto da empresa A',
       ]);
@@ -87,7 +89,9 @@ void main() {
       await _switchTo(container, sessionB);
 
       final productsB = await container.read(productCatalogProvider.future);
-      final metricsB = await container.read(dashboardMetricsProvider.future);
+      final metricsB = await container.read(
+        operationalDashboardSnapshotProvider.future,
+      );
       expect(productsB, isEmpty);
       expect(metricsB.soldTodayCents, 0);
 
@@ -97,7 +101,7 @@ void main() {
         productCatalogProvider.future,
       );
       final metricsAAgain = await container.read(
-        dashboardMetricsProvider.future,
+        operationalDashboardSnapshotProvider.future,
       );
       expect(productsAAgain.map((product) => product.name), [
         'Produto da empresa A',

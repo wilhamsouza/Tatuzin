@@ -138,7 +138,7 @@ final salesCatalogProvider = FutureProvider<List<SalesCatalogEntry>>((
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(salesSearchQueryProvider);
   final products = await ref
-      .watch(productRepositoryProvider)
+      .watch(localProductRepositoryProvider)
       .search(query: query);
 
   return products
@@ -299,7 +299,7 @@ class SalesQuickAddController {
     }
 
     final catalog = await _ref
-        .read(productRepositoryProvider)
+        .read(localProductRepositoryProvider)
         .searchAvailable(query: rawValue.trim());
 
     Product? matchedProduct;

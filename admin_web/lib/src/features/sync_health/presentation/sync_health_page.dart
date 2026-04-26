@@ -71,19 +71,21 @@ class _SyncHealthPageState extends ConsumerState<SyncHealthPage> {
                     ],
                   ),
                   const SizedBox(height: 14),
-                  ...summary.capabilities.notes.take(3).map(
-                    (note) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(note),
-                    ),
-                  ),
+                  ...summary.capabilities.notes
+                      .take(3)
+                      .map(
+                        (note) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(note),
+                        ),
+                      ),
                   if (summary.capabilities.unavailableSignals.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     Text(
                       'Sinais que o backend nao observa',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Wrap(
@@ -159,9 +161,8 @@ class _SyncHealthPageState extends ConsumerState<SyncHealthPage> {
         child: Align(
           alignment: Alignment.centerLeft,
           child: FilledButton.tonal(
-            onPressed: () => ref.invalidate(
-              adminSyncOperationalSummaryProvider(query),
-            ),
+            onPressed: () =>
+                ref.invalidate(adminSyncOperationalSummaryProvider(query)),
             child: const Text('Tentar novamente'),
           ),
         ),
@@ -244,8 +245,8 @@ class _OverviewGrid extends StatelessWidget {
         final crossAxisCount = constraints.maxWidth >= 1400
             ? 3
             : constraints.maxWidth >= 900
-                ? 2
-                : 1;
+            ? 2
+            : 1;
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -262,8 +263,9 @@ class _OverviewGrid extends StatelessWidget {
               child: Row(
                 children: [
                   CircleAvatar(
-                    backgroundColor:
-                        Theme.of(context).colorScheme.primaryContainer,
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer,
                     child: Icon(
                       item.icon,
                       color: Theme.of(context).colorScheme.primary,
@@ -278,9 +280,7 @@ class _OverviewGrid extends StatelessWidget {
                       const SizedBox(height: 8),
                       Text(
                         item.value,
-                        style: Theme.of(context)
-                            .textTheme
-                            .headlineSmall
+                        style: Theme.of(context).textTheme.headlineSmall
                             ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                     ],
@@ -381,8 +381,14 @@ class _SyncFiltersState extends State<_SyncFilters> {
                 decoration: const InputDecoration(labelText: 'Licenca'),
                 items: const [
                   DropdownMenuItem<String?>(value: null, child: Text('Todas')),
-                  DropdownMenuItem<String?>(value: 'trial', child: Text('Trial')),
-                  DropdownMenuItem<String?>(value: 'active', child: Text('Ativa')),
+                  DropdownMenuItem<String?>(
+                    value: 'trial',
+                    child: Text('Trial'),
+                  ),
+                  DropdownMenuItem<String?>(
+                    value: 'active',
+                    child: Text('Ativa'),
+                  ),
                   DropdownMenuItem<String?>(
                     value: 'suspended',
                     child: Text('Suspensa'),
@@ -406,7 +412,10 @@ class _SyncFiltersState extends State<_SyncFilters> {
                 decoration: const InputDecoration(labelText: 'Sync'),
                 items: const [
                   DropdownMenuItem<bool?>(value: null, child: Text('Todas')),
-                  DropdownMenuItem<bool?>(value: true, child: Text('Habilitada')),
+                  DropdownMenuItem<bool?>(
+                    value: true,
+                    child: Text('Habilitada'),
+                  ),
                   DropdownMenuItem<bool?>(
                     value: false,
                     child: Text('Desativada'),
@@ -487,10 +496,7 @@ class _SyncFiltersState extends State<_SyncFilters> {
               icon: const Icon(Icons.filter_alt_rounded),
               label: const Text('Aplicar'),
             ),
-            TextButton(
-              onPressed: widget.onClear,
-              child: const Text('Limpar'),
-            ),
+            TextButton(onPressed: widget.onClear, child: const Text('Limpar')),
           ],
         ),
       ],
@@ -605,7 +611,9 @@ class _OperationalCompanyCard extends StatelessWidget {
             runSpacing: 8,
             children: [
               _MutedChip(
-                label: company.syncEnabled ? 'Sync habilitada' : 'Sync desabilitada',
+                label: company.syncEnabled
+                    ? 'Sync habilitada'
+                    : 'Sync desabilitada',
               ),
               _MutedChip(
                 label:
@@ -674,9 +682,9 @@ class _TelemetrySummary extends StatelessWidget {
       children: [
         Text(
           'Disponibilidade de telemetria',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 8),
         Wrap(
@@ -692,10 +700,7 @@ class _TelemetrySummary extends StatelessWidget {
 }
 
 class _MiniMetric extends StatelessWidget {
-  const _MiniMetric({
-    required this.label,
-    required this.value,
-  });
+  const _MiniMetric({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -715,15 +720,15 @@ class _MiniMetric extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
             value,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
           ),
         ],
       ),
@@ -741,9 +746,9 @@ class _SourceBadge extends StatelessWidget {
     final (label, color) = switch (source) {
       'observed' => ('Observado', Theme.of(context).colorScheme.tertiary),
       'limited_inference' => (
-          'Inferencia limitada',
-          Theme.of(context).colorScheme.secondary,
-        ),
+        'Inferencia limitada',
+        Theme.of(context).colorScheme.secondary,
+      ),
       _ => ('Lacuna de telemetria', Theme.of(context).colorScheme.error),
     };
 
@@ -779,10 +784,10 @@ class _LicenseBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return _ColoredBadge(
       label: 'Licenca: ${AdminFormatters.formatLicenseStatus(status)}',
-      backgroundColor:
-          AdminFormatters.statusBackgroundColor(context, status).withValues(
-        alpha: 0.8,
-      ),
+      backgroundColor: AdminFormatters.statusBackgroundColor(
+        context,
+        status,
+      ).withValues(alpha: 0.8),
       foregroundColor: AdminFormatters.statusColor(context, status),
     );
   }
@@ -810,9 +815,9 @@ class _ColoredBadge extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: foregroundColor,
-              fontWeight: FontWeight.w700,
-            ),
+          color: foregroundColor,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -831,10 +836,7 @@ class _MutedChip extends StatelessWidget {
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
+      child: Text(label, style: Theme.of(context).textTheme.bodySmall),
     );
   }
 }

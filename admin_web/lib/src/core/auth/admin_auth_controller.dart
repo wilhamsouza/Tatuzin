@@ -85,15 +85,10 @@ class AdminAuthController extends ChangeNotifier {
     }
   }
 
-  Future<bool> login({
-    required String email,
-    required String password,
-  }) async {
+  Future<bool> login({required String email, required String password}) async {
     _isSubmitting = true;
     _errorMessage = null;
-    adminDebugLog('auth.controller.login.started', {
-      'email': email.trim(),
-    });
+    adminDebugLog('auth.controller.login.started', {'email': email.trim()});
     notifyListeners();
 
     try {

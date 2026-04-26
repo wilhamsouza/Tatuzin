@@ -354,8 +354,7 @@ class SqliteProductRepository implements ProductRepository {
   Future<void> seedPendingRecipeSyncIfNeeded() async {
     final database = await _appDatabase.database;
     await database.transaction((txn) async {
-      final productRows = await txn.rawQuery(
-        '''
+      final productRows = await txn.rawQuery('''
         SELECT DISTINCT
           p.id
         FROM ${TableNames.productRecipeItems} pri
@@ -365,8 +364,7 @@ class SqliteProductRepository implements ProductRepository {
           ON recipe_sync.feature_key = '$recipeFeatureKey'
           AND recipe_sync.local_id = p.id
         WHERE recipe_sync.local_id IS NULL
-      ''',
-      );
+      ''');
 
       for (final row in productRows) {
         await _markRecipeForSync(
@@ -378,7 +376,9 @@ class SqliteProductRepository implements ProductRepository {
     });
   }
 
-  Future<ProductRecipeSyncPayload?> findProductRecipeForSync(int productId) async {
+  Future<ProductRecipeSyncPayload?> findProductRecipeForSync(
+    int productId,
+  ) async {
     final database = await _appDatabase.database;
     final productRows = await database.rawQuery(
       '''
@@ -431,7 +431,8 @@ class SqliteProductRepository implements ProductRepository {
               .reduce((left, right) => left.isAfter(right) ? left : right);
     final productUpdatedAt = DateTime.parse(row['atualizado_em'] as String);
     final recipeUpdatedAt =
-        latestRecipeUpdatedAt == null || latestRecipeUpdatedAt.isBefore(productUpdatedAt)
+        latestRecipeUpdatedAt == null ||
+            latestRecipeUpdatedAt.isBefore(productUpdatedAt)
         ? productUpdatedAt
         : latestRecipeUpdatedAt;
 
@@ -1130,11 +1131,7 @@ class SqliteProductRepository implements ProductRepository {
       productId: productId,
       changedAt: changedAt,
     );
-    await _markRecipeForSync(
-      txn,
-      productId: productId,
-      changedAt: changedAt,
-    );
+    await _markRecipeForSync(txn, productId: productId, changedAt: changedAt);
   }
 
   Future<void> _refreshRecipeSnapshotIfPresent(
@@ -1219,7 +1216,8 @@ class SqliteProductRepository implements ProductRepository {
 
     if (recipeRows.isEmpty) {
       final remoteId =
-          recipeMetadata?.identity.remoteId ?? productMetadata?.identity.remoteId;
+          recipeMetadata?.identity.remoteId ??
+          productMetadata?.identity.remoteId;
       if (remoteId == null) {
         await _syncMetadataRepository.removeByLocalId(
           txn,
@@ -1283,7 +1281,8 @@ class SqliteProductRepository implements ProductRepository {
       localEntityId: productId,
       localUuid: productUuid,
       remoteId:
-          recipeMetadata?.identity.remoteId ?? productMetadata?.identity.remoteId,
+          recipeMetadata?.identity.remoteId ??
+          productMetadata?.identity.remoteId,
       operation: recipeMetadata?.identity.remoteId == null
           ? SyncQueueOperation.create
           : SyncQueueOperation.update,

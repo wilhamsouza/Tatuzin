@@ -26,7 +26,7 @@ http://127.0.0.1 {
 	@api path /api/*
 	handle @api {
 		reverse_proxy backend:4000 {
-			health_uri /api/health
+			health_uri /api/readiness
 			health_interval 30s
 			health_timeout 5s
 			transport http {

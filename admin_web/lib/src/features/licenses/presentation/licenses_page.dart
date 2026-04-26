@@ -69,7 +69,9 @@ class _LicensesPageState extends ConsumerState<LicensesPage> {
               ),
               const SizedBox(height: 20),
               if (result.items.isEmpty)
-                const _EmptyState(message: 'Nenhuma licenca encontrada para os filtros.')
+                const _EmptyState(
+                  message: 'Nenhuma licenca encontrada para os filtros.',
+                )
               else
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -100,10 +102,16 @@ class _LicensesPageState extends ConsumerState<LicensesPage> {
                               ],
                             ),
                           ),
-                          DataCell(Text(AdminFormatters.formatPlan(license.plan))),
+                          DataCell(
+                            Text(AdminFormatters.formatPlan(license.plan)),
+                          ),
                           DataCell(_StatusBadge(status: license.status)),
-                          DataCell(Text(AdminFormatters.formatDate(license.startsAt))),
-                          DataCell(Text(AdminFormatters.formatDate(license.expiresAt))),
+                          DataCell(
+                            Text(AdminFormatters.formatDate(license.startsAt)),
+                          ),
+                          DataCell(
+                            Text(AdminFormatters.formatDate(license.expiresAt)),
+                          ),
                           DataCell(
                             Text(
                               AdminFormatters.formatBool(
@@ -113,7 +121,9 @@ class _LicensesPageState extends ConsumerState<LicensesPage> {
                               ),
                             ),
                           ),
-                          DataCell(Text(license.maxDevices?.toString() ?? 'Livre')),
+                          DataCell(
+                            Text(license.maxDevices?.toString() ?? 'Livre'),
+                          ),
                           DataCell(
                             FilledButton.tonal(
                               onPressed: () => _editLicense(context, license),
@@ -159,13 +169,18 @@ class _LicensesPageState extends ConsumerState<LicensesPage> {
     BuildContext context,
     AdminLicenseSnapshot license,
   ) async {
-    final edit = await showLicenseEditorDialog(context: context, license: license);
+    final edit = await showLicenseEditorDialog(
+      context: context,
+      license: license,
+    );
     if (edit == null || !context.mounted) {
       return;
     }
 
     try {
-      await ref.read(adminApiServiceProvider).updateLicense(
+      await ref
+          .read(adminApiServiceProvider)
+          .updateLicense(
             companyId: license.companyId,
             plan: edit.plan,
             status: edit.status,
@@ -185,9 +200,9 @@ class _LicensesPageState extends ConsumerState<LicensesPage> {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -346,7 +361,10 @@ class _LicensesFiltersState extends State<_LicensesFilters> {
                 decoration: const InputDecoration(labelText: 'Sync'),
                 items: const [
                   DropdownMenuItem<bool?>(value: null, child: Text('Todas')),
-                  DropdownMenuItem<bool?>(value: true, child: Text('Habilitada')),
+                  DropdownMenuItem<bool?>(
+                    value: true,
+                    child: Text('Habilitada'),
+                  ),
                   DropdownMenuItem<bool?>(
                     value: false,
                     child: Text('Desativada'),
@@ -420,10 +438,7 @@ class _LicensesFiltersState extends State<_LicensesFilters> {
               icon: const Icon(Icons.filter_alt_rounded),
               label: const Text('Aplicar'),
             ),
-            TextButton(
-              onPressed: widget.onClear,
-              child: const Text('Limpar'),
-            ),
+            TextButton(onPressed: widget.onClear, child: const Text('Limpar')),
           ],
         ),
       ],
@@ -517,10 +532,7 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 32),
-      child: Text(
-        message,
-        style: Theme.of(context).textTheme.bodyMedium,
-      ),
+      child: Text(message, style: Theme.of(context).textTheme.bodyMedium),
     );
   }
 }
@@ -541,9 +553,9 @@ class _StatusBadge extends StatelessWidget {
       child: Text(
         AdminFormatters.formatLicenseStatus(status),
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AdminFormatters.statusColor(context, status),
-              fontWeight: FontWeight.w700,
-            ),
+          color: AdminFormatters.statusColor(context, status),
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

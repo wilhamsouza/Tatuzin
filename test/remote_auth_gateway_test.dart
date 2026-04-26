@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:erp_pdv_app/app/core/errors/app_exceptions.dart';
 import 'package:erp_pdv_app/app/core/network/contracts/api_client_contract.dart';
 import 'package:erp_pdv_app/app/core/network/real/remote_auth_gateway.dart';
@@ -58,6 +60,55 @@ void main() {
         expect(session.user.remoteId, 'user-1');
         expect(session.company.remoteId, 'company-1');
         expect(session.company.displayName, 'Tatuzin Foods');
+      },
+    );
+
+    test(
+      'login falha com timeout especifico quando /companies/current demora',
+      () async {
+        final apiClient = _RecordingApiClient();
+        final tokenStorage = _MemoryAuthTokenStorage(
+          clientContext: const AuthClientContext(
+            clientType: 'mobile_app',
+            clientInstanceId: 'device-123',
+          ),
+        );
+
+        apiClient.onPost('/auth/login', (body, options) {
+          return ApiResponse<Map<String, dynamic>>(
+            statusCode: 200,
+            data: _authPayload(),
+            headers: const <String, String>{},
+          );
+        });
+        apiClient.onGet('/companies/current', (options) async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return ApiResponse<Map<String, dynamic>>(
+            statusCode: 200,
+            data: <String, dynamic>{'company': _companyPayload()},
+            headers: const <String, String>{},
+          );
+        });
+
+        final gateway = RemoteAuthGateway(
+          apiClient: apiClient,
+          tokenStorage: tokenStorage,
+          currentCompanyTimeout: const Duration(milliseconds: 10),
+        );
+
+        await expectLater(
+          () => gateway.signIn(
+            identifier: 'owner@tatuzin.com.br',
+            password: 'secret-123',
+          ),
+          throwsA(
+            isA<NetworkRequestException>().having(
+              (error) => error.message,
+              'message',
+              contains('A API demorou demais para responder'),
+            ),
+          ),
+        );
       },
     );
 
@@ -286,13 +337,15 @@ class _MemoryAuthTokenStorage implements AuthTokenStorage {
 }
 
 typedef _JsonResponseBuilder =
-    ApiResponse<Map<String, dynamic>> Function(
+    FutureOr<ApiResponse<Map<String, dynamic>>> Function(
       Map<String, dynamic>? body,
       ApiRequestOptions options,
     );
 
 typedef _JsonGetResponseBuilder =
-    ApiResponse<Map<String, dynamic>> Function(ApiRequestOptions options);
+    FutureOr<ApiResponse<Map<String, dynamic>>> Function(
+      ApiRequestOptions options,
+    );
 
 class _RecordingApiClient implements ApiClientContract {
   final List<(String, String)> calls = <(String, String)>[];
@@ -332,7 +385,16 @@ class _RecordingApiClient implements ApiClientContract {
     if (handler == null) {
       throw StateError('GET inesperado: $path');
     }
-    return handler(options);
+    try {
+      return await Future<ApiResponse<Map<String, dynamic>>>.value(
+        handler(options),
+      ).timeout(options.timeout);
+    } on TimeoutException catch (error) {
+      throw NetworkRequestException(
+        'A API demorou demais para responder.',
+        cause: error,
+      );
+    }
   }
 
   @override
@@ -356,7 +418,16 @@ class _RecordingApiClient implements ApiClientContract {
     if (handler == null) {
       throw StateError('POST inesperado: $path');
     }
-    return handler(body, options);
+    try {
+      return await Future<ApiResponse<Map<String, dynamic>>>.value(
+        handler(body, options),
+      ).timeout(options.timeout);
+    } on TimeoutException catch (error) {
+      throw NetworkRequestException(
+        'A API demorou demais para responder.',
+        cause: error,
+      );
+    }
   }
 
   @override

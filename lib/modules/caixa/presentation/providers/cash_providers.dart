@@ -8,6 +8,7 @@ import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 import '../../../../app/core/session/session_provider.dart';
 import '../../data/cash_event_sync_processor.dart';
@@ -59,7 +60,11 @@ final currentCashOperatorNameProvider = Provider<String>((ref) {
 final currentCashSessionProvider = FutureProvider<CashSession?>((ref) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref.watch(cashRepositoryProvider).getCurrentSession();
+  return runProviderGuarded(
+    'currentCashSessionProvider',
+    () => ref.watch(cashRepositoryProvider).getCurrentSession(),
+    timeout: localProviderTimeout,
+  );
 });
 
 final currentCashMovementsProvider = FutureProvider<List<CashMovement>>((
@@ -67,7 +72,11 @@ final currentCashMovementsProvider = FutureProvider<List<CashMovement>>((
 ) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref.watch(cashRepositoryProvider).listCurrentSessionMovements();
+  return runProviderGuarded(
+    'currentCashMovementsProvider',
+    () => ref.watch(cashRepositoryProvider).listCurrentSessionMovements(),
+    timeout: localProviderTimeout,
+  );
 });
 
 final cashSessionHistoryProvider = FutureProvider<List<CashSession>>((
@@ -75,14 +84,22 @@ final cashSessionHistoryProvider = FutureProvider<List<CashSession>>((
 ) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref.watch(cashRepositoryProvider).listSessions();
+  return runProviderGuarded(
+    'cashSessionHistoryProvider',
+    () => ref.watch(cashRepositoryProvider).listSessions(),
+    timeout: localProviderTimeout,
+  );
 });
 
 final cashSessionDetailProvider = FutureProvider.family<CashSessionDetail, int>(
   (ref, sessionId) async {
     ref.watch(sessionRuntimeKeyProvider);
     ref.watch(appDataRefreshProvider);
-    return ref.watch(cashRepositoryProvider).fetchSessionDetail(sessionId);
+    return runProviderGuarded(
+      'cashSessionDetailProvider',
+      () => ref.watch(cashRepositoryProvider).fetchSessionDetail(sessionId),
+      timeout: localProviderTimeout,
+    );
   },
 );
 

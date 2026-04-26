@@ -8,6 +8,7 @@ import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
@@ -56,13 +57,21 @@ final categoryListProvider = FutureProvider<List<Category>>((ref) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(categorySearchQueryProvider);
-  return ref.watch(categoryRepositoryProvider).search(query: query);
+  return runProviderGuarded(
+    'categoryListProvider',
+    () => ref.watch(categoryRepositoryProvider).search(query: query),
+    timeout: localProviderTimeout,
+  );
 });
 
 final categoryOptionsProvider = FutureProvider<List<Category>>((ref) async {
   ref.watch(sessionRuntimeKeyProvider);
   ref.watch(appDataRefreshProvider);
-  return ref.watch(categoryRepositoryProvider).search();
+  return runProviderGuarded(
+    'categoryOptionsProvider',
+    () => ref.watch(categoryRepositoryProvider).search(),
+    timeout: localProviderTimeout,
+  );
 });
 
 final categorySyncControllerProvider =

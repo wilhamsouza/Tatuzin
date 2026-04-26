@@ -23,9 +23,7 @@ Future<List<T>> fetchAllPaginatedItems<T>({
       throw NetworkRequestException(invalidItemsMessage);
     }
 
-    collected.addAll(
-      items.whereType<Map<String, dynamic>>().map(fromJson),
-    );
+    collected.addAll(items.whereType<Map<String, dynamic>>().map(fromJson));
 
     if (!_hasNextPage(response.data, pageSize)) {
       break;
