@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:sqflite/sqflite.dart';
 
 import '../../../app/core/database/app_database.dart';
 import '../../../app/core/database/table_names.dart';
 import '../../../app/core/errors/app_exceptions.dart';
+import '../../../app/core/utils/app_logger.dart';
 import '../domain/entities/inventory_adjustment_input.dart';
 import '../domain/entities/inventory_item.dart';
 import '../domain/entities/inventory_movement.dart';
@@ -20,6 +23,7 @@ class SqliteInventoryRepository implements InventoryRepository {
   }) : _databaseLoader = databaseLoader;
 
   final Future<Database> Function() _databaseLoader;
+  static const _localQueryTimeout = Duration(seconds: 6);
 
   @override
   Future<void> adjustStock(InventoryAdjustmentInput input) async {
@@ -86,8 +90,16 @@ class SqliteInventoryRepository implements InventoryRepository {
     String query = '',
     InventoryListFilter filter = InventoryListFilter.all,
   }) async {
+    final stopwatch = Stopwatch()..start();
+    AppLogger.info('[EstoqueSQLite] listItems database started');
     final database = await _databaseLoader();
+    AppLogger.info(
+      '[EstoqueSQLite] listItems database finished | duration_ms=${stopwatch.elapsedMilliseconds}',
+    );
     final rows = await _loadItemRows(database, query: query);
+    AppLogger.info(
+      '[EstoqueSQLite] listItems rawQuery finished: ${rows.length} rows | duration_ms=${stopwatch.elapsedMilliseconds}',
+    );
     final items = rows.map(_mapInventoryItem).toList(growable: false);
     return InventoryAlertService.applyFilter(items, filter: filter);
   }
@@ -209,7 +221,32 @@ class SqliteInventoryRepository implements InventoryRepository {
       args.add(limit);
     }
 
-    return db.rawQuery(buffer.toString(), args);
+    final stopwatch = Stopwatch()..start();
+    AppLogger.info('[EstoqueSQLite] _loadItemRows sql_started');
+    try {
+      final rows = await db
+          .rawQuery(buffer.toString(), args)
+          .timeout(
+            _localQueryTimeout,
+            onTimeout: () {
+              throw TimeoutException(
+                'inventory_load_item_rows_timeout',
+                _localQueryTimeout,
+              );
+            },
+          );
+      AppLogger.info(
+        '[EstoqueSQLite] _loadItemRows sql_finished rows=${rows.length} | duration_ms=${stopwatch.elapsedMilliseconds}',
+      );
+      return rows;
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[EstoqueSQLite] _loadItemRows sql_failed | duration_ms=${stopwatch.elapsedMilliseconds}',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
   }
 
   InventoryItem _mapInventoryItem(Map<String, Object?> row) {

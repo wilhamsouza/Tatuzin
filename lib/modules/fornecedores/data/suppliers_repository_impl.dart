@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../../app/core/app_context/app_operational_context.dart';
 import '../../../app/core/app_context/data_access_policy.dart';
 import '../../../app/core/errors/app_exceptions.dart';
@@ -19,7 +21,7 @@ import 'sqlite_supplier_repository.dart';
 
 class SuppliersRepositoryImpl
     implements SupplierRepository, SyncFeatureProcessor {
-  const SuppliersRepositoryImpl({
+  SuppliersRepositoryImpl({
     required SqliteSupplierRepository localRepository,
     required SuppliersRemoteDatasource remoteDatasource,
     required AppOperationalContext operationalContext,
@@ -33,6 +35,7 @@ class SuppliersRepositoryImpl
   final SuppliersRemoteDatasource _remoteDatasource;
   final AppOperationalContext _operationalContext;
   final DataAccessPolicy _dataAccessPolicy;
+  Future<void>? _cacheMergeInFlight;
 
   @override
   String get featureKey => SqliteSupplierRepository.featureKey;
@@ -137,8 +140,12 @@ class SuppliersRepositoryImpl
   Future<List<Supplier>> search({String query = ''}) async {
     if (_shouldUseErpRemoteRead) {
       try {
+        AppLogger.info('[FornecedoresRepo] remote_list_started');
         final remoteSuppliers = await _remoteDatasource.listAll().timeout(
           const Duration(seconds: 15),
+        );
+        AppLogger.info(
+          '[FornecedoresRepo] remote_list_finished count=${remoteSuppliers.length}',
         );
         return _cacheAndResolveRemoteSuppliers(remoteSuppliers, query: query);
       } catch (error, stackTrace) {
@@ -387,20 +394,21 @@ class SuppliersRepositoryImpl
     List<RemoteSupplierRecord> remoteSuppliers, {
     required String query,
   }) async {
-    final suppliers = <Supplier>[];
-    for (final remoteSupplier in remoteSuppliers) {
-      final supplier = await _cacheAndFindRemoteSupplier(remoteSupplier);
-      if (supplier != null &&
-          supplier.deletedAt == null &&
-          _matchesQuery(supplier, query)) {
-        suppliers.add(supplier);
-      }
+    final mergeFuture = _scheduleCacheMerge(remoteSuppliers);
+    try {
+      await mergeFuture.timeout(const Duration(seconds: 2));
+      return _readCachedRemoteSuppliers(
+        remoteSuppliers,
+        query: query,
+      ).timeout(const Duration(seconds: 4));
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[FornecedoresRepo] cache_merge_failed error=$error',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return _remoteSuppliersToEntities(remoteSuppliers, query: query);
     }
-    suppliers.sort(
-      (left, right) =>
-          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
-    );
-    return suppliers;
   }
 
   Future<int> _cacheAndResolveRemoteSupplier(
@@ -422,6 +430,102 @@ class SuppliersRepositoryImpl
     return _localRepository
         .findByRemoteId(remote.remoteId)
         .timeout(const Duration(seconds: 8));
+  }
+
+  Future<void> _scheduleCacheMerge(List<RemoteSupplierRecord> remoteSuppliers) {
+    final activeMerge = _cacheMergeInFlight;
+    if (activeMerge != null) {
+      return activeMerge;
+    }
+
+    final stopwatch = Stopwatch()..start();
+    AppLogger.info(
+      '[FornecedoresRepo] cache_merge_started count=${remoteSuppliers.length}',
+    );
+    final merge = _cacheRemoteSuppliers(remoteSuppliers).whenComplete(() {
+      AppLogger.info(
+        '[FornecedoresRepo] cache_merge_finished duration_ms=${stopwatch.elapsedMilliseconds}',
+      );
+      _cacheMergeInFlight = null;
+    });
+    _cacheMergeInFlight = merge;
+    return merge;
+  }
+
+  Future<void> _cacheRemoteSuppliers(
+    List<RemoteSupplierRecord> remoteSuppliers,
+  ) async {
+    for (final remoteSupplier in remoteSuppliers) {
+      await _localRepository.upsertFromRemote(remoteSupplier);
+    }
+  }
+
+  Future<List<Supplier>> _readCachedRemoteSuppliers(
+    List<RemoteSupplierRecord> remoteSuppliers, {
+    required String query,
+  }) async {
+    final suppliers = <Supplier>[];
+    for (final remoteSupplier in remoteSuppliers) {
+      final supplier = await _localRepository.findByRemoteId(
+        remoteSupplier.remoteId,
+      );
+      if (supplier != null &&
+          supplier.deletedAt == null &&
+          _matchesQuery(supplier, query)) {
+        suppliers.add(supplier);
+      }
+    }
+    suppliers.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return suppliers;
+  }
+
+  List<Supplier> _remoteSuppliersToEntities(
+    List<RemoteSupplierRecord> records, {
+    required String query,
+  }) {
+    final suppliers = records
+        .map(_remoteSupplierToEntity)
+        .where((supplier) => supplier.deletedAt == null)
+        .where((supplier) => _matchesQuery(supplier, query))
+        .toList(growable: false);
+    suppliers.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return suppliers;
+  }
+
+  Supplier _remoteSupplierToEntity(RemoteSupplierRecord remote) {
+    return Supplier(
+      id: _remotePlaceholderId(remote.remoteId),
+      uuid: remote.localUuid,
+      name: remote.name,
+      tradeName: remote.tradeName,
+      phone: remote.phone,
+      email: remote.email,
+      address: remote.address,
+      document: remote.document,
+      contactPerson: remote.contactPerson,
+      notes: remote.notes,
+      isActive: remote.isActive,
+      createdAt: remote.createdAt,
+      updatedAt: remote.updatedAt,
+      deletedAt: remote.deletedAt,
+      remoteId: remote.remoteId,
+      syncStatus: SyncStatus.synced,
+      lastSyncedAt: DateTime.now(),
+    );
+  }
+
+  int _remotePlaceholderId(String remoteId) {
+    var hash = 0;
+    for (final codeUnit in remoteId.codeUnits) {
+      hash = (hash * 31 + codeUnit) & 0x3fffffff;
+    }
+    return hash == 0 ? -1 : -hash;
   }
 
   RemoteSupplierRecord _remoteSupplierFromInput(

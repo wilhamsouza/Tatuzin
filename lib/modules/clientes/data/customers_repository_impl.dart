@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../../app/core/app_context/app_operational_context.dart';
 import '../../../app/core/app_context/data_access_policy.dart';
 import '../../../app/core/errors/app_exceptions.dart';
@@ -19,7 +21,7 @@ import 'sqlite_client_repository.dart';
 
 class CustomersRepositoryImpl
     implements ClientRepository, SyncFeatureProcessor {
-  const CustomersRepositoryImpl({
+  CustomersRepositoryImpl({
     required SqliteClientRepository localRepository,
     required CustomersRemoteDatasource remoteDatasource,
     required AppOperationalContext operationalContext,
@@ -33,6 +35,7 @@ class CustomersRepositoryImpl
   final CustomersRemoteDatasource _remoteDatasource;
   final AppOperationalContext _operationalContext;
   final DataAccessPolicy _dataAccessPolicy;
+  Future<void>? _cacheMergeInFlight;
 
   @override
   String get featureKey => SqliteClientRepository.featureKey;
@@ -101,8 +104,12 @@ class CustomersRepositoryImpl
   Future<List<Client>> search({String query = ''}) async {
     if (_shouldUseCrmRemoteRead) {
       try {
+        AppLogger.info('[ClientesRepo] remote_list_started');
         final remoteClients = await _remoteDatasource.listAll().timeout(
           const Duration(seconds: 15),
+        );
+        AppLogger.info(
+          '[ClientesRepo] remote_list_finished count=${remoteClients.length}',
         );
         return _cacheAndResolveRemoteCustomers(remoteClients, query: query);
       } catch (error, stackTrace) {
@@ -368,20 +375,21 @@ class CustomersRepositoryImpl
     List<RemoteCustomerRecord> remoteClients, {
     required String query,
   }) async {
-    final clients = <Client>[];
-    for (final remoteClient in remoteClients) {
-      final client = await _cacheAndFindRemoteCustomer(remoteClient);
-      if (client != null &&
-          client.deletedAt == null &&
-          _matchesQuery(client, query)) {
-        clients.add(client);
-      }
+    final mergeFuture = _scheduleCacheMerge(remoteClients);
+    try {
+      await mergeFuture.timeout(const Duration(seconds: 2));
+      return _readCachedRemoteCustomers(
+        remoteClients,
+        query: query,
+      ).timeout(const Duration(seconds: 4));
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[ClientesRepo] cache_merge_failed error=$error',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return _remoteCustomersToEntities(remoteClients, query: query);
     }
-    clients.sort(
-      (left, right) =>
-          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
-    );
-    return clients;
   }
 
   Future<int> _cacheAndResolveRemoteCustomer(
@@ -406,6 +414,103 @@ class CustomersRepositoryImpl
     return _localRepository
         .findByRemoteId(remote.remoteId)
         .timeout(const Duration(seconds: 8));
+  }
+
+  Future<void> _scheduleCacheMerge(List<RemoteCustomerRecord> remoteClients) {
+    final activeMerge = _cacheMergeInFlight;
+    if (activeMerge != null) {
+      return activeMerge;
+    }
+
+    final stopwatch = Stopwatch()..start();
+    AppLogger.info(
+      '[ClientesRepo] cache_merge_started count=${remoteClients.length}',
+    );
+    final merge = _cacheRemoteCustomers(remoteClients).whenComplete(() {
+      AppLogger.info(
+        '[ClientesRepo] cache_merge_finished duration_ms=${stopwatch.elapsedMilliseconds}',
+      );
+      _cacheMergeInFlight = null;
+    });
+    _cacheMergeInFlight = merge;
+    return merge;
+  }
+
+  Future<void> _cacheRemoteCustomers(
+    List<RemoteCustomerRecord> remoteClients,
+  ) async {
+    for (final remoteClient in remoteClients) {
+      await _localRepository.upsertFromRemote(
+        remoteClient,
+        preserveLocalPendingChanges: false,
+      );
+    }
+  }
+
+  Future<List<Client>> _readCachedRemoteCustomers(
+    List<RemoteCustomerRecord> remoteClients, {
+    required String query,
+  }) async {
+    final clients = <Client>[];
+    for (final remoteClient in remoteClients) {
+      final client = await _localRepository.findByRemoteId(
+        remoteClient.remoteId,
+      );
+      if (client != null &&
+          client.deletedAt == null &&
+          _matchesQuery(client, query)) {
+        clients.add(client);
+      }
+    }
+    clients.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return clients;
+  }
+
+  List<Client> _remoteCustomersToEntities(
+    List<RemoteCustomerRecord> records, {
+    required String query,
+  }) {
+    final clients = records
+        .map(_remoteCustomerToEntity)
+        .where((client) => client.deletedAt == null)
+        .where((client) => _matchesQuery(client, query))
+        .toList(growable: false);
+    clients.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return clients;
+  }
+
+  Client _remoteCustomerToEntity(RemoteCustomerRecord remote) {
+    return Client(
+      id: _remotePlaceholderId(remote.remoteId),
+      uuid: remote.localUuid,
+      name: remote.name,
+      phone: remote.phone,
+      address: remote.address,
+      notes: remote.notes,
+      debtorBalanceCents: 0,
+      creditBalanceCents: 0,
+      isActive: remote.isActive,
+      createdAt: remote.createdAt,
+      updatedAt: remote.updatedAt,
+      deletedAt: remote.deletedAt,
+      remoteId: remote.remoteId,
+      syncStatus: SyncStatus.synced,
+      lastSyncedAt: DateTime.now(),
+    );
+  }
+
+  int _remotePlaceholderId(String remoteId) {
+    var hash = 0;
+    for (final codeUnit in remoteId.codeUnits) {
+      hash = (hash * 31 + codeUnit) & 0x3fffffff;
+    }
+    return hash == 0 ? -1 : -hash;
   }
 
   RemoteCustomerRecord _remoteCustomerFromInput(

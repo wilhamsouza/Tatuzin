@@ -1,3 +1,4 @@
+import '../../../app/core/errors/app_exceptions.dart';
 import '../../../app/core/utils/app_logger.dart';
 import '../../vendas/domain/entities/sale_enums.dart';
 import '../domain/entities/report_breakdown_row.dart';
@@ -23,14 +24,14 @@ class AnalyticsReportRepository implements ReportRepository {
   const AnalyticsReportRepository({
     required AnalyticsReportsRemoteDatasource remoteDatasource,
     required ReportRepository localFallbackRepository,
-    void Function(ReportDataOriginNotice notice)? onDataOriginNotice,
+    bool canUseRemoteAnalytics = true,
   }) : _remoteDatasource = remoteDatasource,
        _localFallbackRepository = localFallbackRepository,
-       _onDataOriginNotice = onDataOriginNotice;
+       _canUseRemoteAnalytics = canUseRemoteAnalytics;
 
   final AnalyticsReportsRemoteDatasource _remoteDatasource;
   final ReportRepository _localFallbackRepository;
-  final void Function(ReportDataOriginNotice notice)? _onDataOriginNotice;
+  final bool _canUseRemoteAnalytics;
 
   static const Duration remoteTimeout = Duration(seconds: 15);
   static const Duration localFallbackTimeout = Duration(seconds: 12);
@@ -39,7 +40,14 @@ class AnalyticsReportRepository implements ReportRepository {
   Future<ReportCashflowSummary> fetchCashflow({
     required ReportFilter filter,
   }) async {
-    return _remoteFirst(
+    final result = await fetchCashflowResult(filter: filter);
+    return result.data;
+  }
+
+  Future<ReportResult<ReportCashflowSummary>> fetchCashflowResult({
+    required ReportFilter filter,
+  }) async {
+    return _remoteFirstResult(
       label: 'management.cashflow',
       scope: ReportDataOriginScope.cash,
       remote: () async {
@@ -82,7 +90,19 @@ class AnalyticsReportRepository implements ReportRepository {
     required ReportFilter filter,
     int limit = 20,
   }) async {
-    return _localOnlyForMissingContract(
+    final result = await fetchCustomerRankingResult(
+      filter: filter,
+      limit: limit,
+    );
+    return result.data;
+  }
+
+  Future<ReportResult<List<ReportCustomerRankingRow>>>
+  fetchCustomerRankingResult({
+    required ReportFilter filter,
+    int limit = 20,
+  }) async {
+    return _localOnlyForMissingContractResult(
       label: 'management.customerRanking',
       scope: ReportDataOriginScope.customers,
       fallback: () => _localFallbackRepository
@@ -95,7 +115,13 @@ class AnalyticsReportRepository implements ReportRepository {
   Future<ReportInventoryHealthSummary> fetchInventoryHealth({
     required ReportFilter filter,
   }) async {
-    return _localOnlyForMissingContract(
+    final result = await fetchInventoryHealthResult(filter: filter);
+    return result.data;
+  }
+
+  Future<ReportResult<ReportInventoryHealthSummary>>
+  fetchInventoryHealthResult({required ReportFilter filter}) async {
+    return _localOnlyForMissingContractResult(
       label: 'management.inventoryHealth',
       scope: ReportDataOriginScope.inventory,
       fallback: () => _localFallbackRepository
@@ -108,7 +134,14 @@ class AnalyticsReportRepository implements ReportRepository {
   Future<ReportOverviewSummary> fetchOverview({
     required ReportFilter filter,
   }) async {
-    return _remoteFirst(
+    final result = await fetchOverviewResult(filter: filter);
+    return result.data;
+  }
+
+  Future<ReportResult<ReportOverviewSummary>> fetchOverviewResult({
+    required ReportFilter filter,
+  }) async {
+    return _remoteFirstResult(
       label: 'management.overview',
       scope: ReportDataOriginScope.overview,
       remote: () async {
@@ -171,11 +204,19 @@ class AnalyticsReportRepository implements ReportRepository {
     required ReportFilter filter,
     int limit = 20,
   }) async {
+    final result = await fetchProfitabilityResult(filter: filter, limit: limit);
+    return result.data;
+  }
+
+  Future<ReportResult<List<ReportProfitabilityRow>>> fetchProfitabilityResult({
+    required ReportFilter filter,
+    int limit = 20,
+  }) async {
     if (filter.grouping != ReportGrouping.product ||
         filter.categoryId != null ||
         filter.productId != null ||
         filter.variantId != null) {
-      return _localOnlyForMissingContract(
+      return _localOnlyForMissingContractResult(
         label: 'management.profitability.${filter.grouping.name}',
         scope: ReportDataOriginScope.profitability,
         fallback: () => _localFallbackRepository
@@ -184,7 +225,7 @@ class AnalyticsReportRepository implements ReportRepository {
       );
     }
 
-    return _remoteFirst(
+    return _remoteFirstResult(
       label: 'management.profitability.product',
       scope: ReportDataOriginScope.profitability,
       remote: () async {
@@ -219,7 +260,18 @@ class AnalyticsReportRepository implements ReportRepository {
     required ReportFilter filter,
     int limit = 20,
   }) async {
-    return _localOnlyForMissingContract(
+    final result = await fetchPurchaseSummaryResult(
+      filter: filter,
+      limit: limit,
+    );
+    return result.data;
+  }
+
+  Future<ReportResult<ReportPurchaseSummary>> fetchPurchaseSummaryResult({
+    required ReportFilter filter,
+    int limit = 20,
+  }) async {
+    return _localOnlyForMissingContractResult(
       label: 'management.purchaseSummary',
       scope: ReportDataOriginScope.purchases,
       fallback: () => _localFallbackRepository
@@ -232,6 +284,13 @@ class AnalyticsReportRepository implements ReportRepository {
   Future<List<ReportSalesTrendPoint>> fetchSalesTrend({
     required ReportFilter filter,
   }) async {
+    final result = await fetchSalesTrendResult(filter: filter);
+    return result.data;
+  }
+
+  Future<ReportResult<List<ReportSalesTrendPoint>>> fetchSalesTrendResult({
+    required ReportFilter filter,
+  }) async {
     if (filter.customerId != null ||
         filter.categoryId != null ||
         filter.productId != null ||
@@ -239,7 +298,7 @@ class AnalyticsReportRepository implements ReportRepository {
         filter.paymentMethod != null ||
         filter.includeCanceled ||
         filter.onlyCanceled) {
-      return _localOnlyForMissingContract(
+      return _localOnlyForMissingContractResult(
         label: 'management.salesTrend.filtered',
         scope: ReportDataOriginScope.sales,
         fallback: () => _localFallbackRepository
@@ -248,7 +307,7 @@ class AnalyticsReportRepository implements ReportRepository {
       );
     }
 
-    return _remoteFirst(
+    return _remoteFirstResult(
       label: 'management.salesTrend',
       scope: ReportDataOriginScope.sales,
       remote: () async {
@@ -325,6 +384,14 @@ class AnalyticsReportRepository implements ReportRepository {
     required ReportFilter filter,
     int limit = 10,
   }) async {
+    final result = await fetchTopProductsResult(filter: filter, limit: limit);
+    return result.data;
+  }
+
+  Future<ReportResult<List<ReportSoldProductSummary>>> fetchTopProductsResult({
+    required ReportFilter filter,
+    int limit = 10,
+  }) async {
     if (filter.customerId != null ||
         filter.categoryId != null ||
         filter.productId != null ||
@@ -332,7 +399,7 @@ class AnalyticsReportRepository implements ReportRepository {
         filter.paymentMethod != null ||
         filter.includeCanceled ||
         filter.onlyCanceled) {
-      return _localOnlyForMissingContract(
+      return _localOnlyForMissingContractResult(
         label: 'management.topProducts.filtered',
         scope: ReportDataOriginScope.sales,
         fallback: () => _localFallbackRepository
@@ -341,7 +408,7 @@ class AnalyticsReportRepository implements ReportRepository {
       );
     }
 
-    return _remoteFirst(
+    return _remoteFirstResult(
       label: 'management.topProducts',
       scope: ReportDataOriginScope.sales,
       remote: () async {
@@ -372,7 +439,15 @@ class AnalyticsReportRepository implements ReportRepository {
     required ReportFilter filter,
     int limit = 10,
   }) async {
-    return _localOnlyForMissingContract(
+    final result = await fetchTopVariantsResult(filter: filter, limit: limit);
+    return result.data;
+  }
+
+  Future<ReportResult<List<ReportVariantSummary>>> fetchTopVariantsResult({
+    required ReportFilter filter,
+    int limit = 10,
+  }) async {
+    return _localOnlyForMissingContractResult(
       label: 'management.topVariants',
       scope: ReportDataOriginScope.sales,
       fallback: () => _localFallbackRepository
@@ -381,50 +456,77 @@ class AnalyticsReportRepository implements ReportRepository {
     );
   }
 
-  Future<T> _remoteFirst<T>({
+  Future<ReportResult<T>> _remoteFirstResult<T>({
     required String label,
     required ReportDataOriginScope scope,
     required Future<T> Function() remote,
     required Future<T> Function() fallback,
   }) async {
+    if (!_canUseRemoteAnalytics) {
+      AppLogger.warn(
+        'report.$label remote skipped; tenant analytics endpoint unavailable',
+      );
+      return ReportResult<T>(
+        data: await fallback(),
+        notice: ReportDataOriginNotice(
+          scope: scope,
+          title: 'Dados gerenciais parciais',
+          message:
+              'Relatorio gerencial usando dados locais/cache. Endpoint tenant indisponivel.',
+        ),
+      );
+    }
+
     try {
       AppLogger.info('report.$label remote-first started');
       final result = await remote();
       AppLogger.info('report.$label remote-first finished');
-      return result;
+      return ReportResult<T>(data: result);
     } catch (error, stackTrace) {
-      AppLogger.error(
-        'report.$label remote failed; using local cache fallback',
-        error: error,
-        stackTrace: stackTrace,
-      );
-      _onDataOriginNotice?.call(
-        ReportDataOriginNotice(
+      final isForbiddenAdminEndpoint =
+          error is NetworkRequestException && error.cause == 403;
+      if (isForbiddenAdminEndpoint) {
+        AppLogger.warn(
+          'report.$label remote forbidden; using local cache fallback',
+        );
+      } else {
+        AppLogger.error(
+          'report.$label remote failed; using local cache fallback',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+      return ReportResult<T>(
+        data: await fallback(),
+        notice: ReportDataOriginNotice(
           scope: scope,
-          title: 'Dados locais/cache',
-          message: 'Servidor indisponivel, mostrando cache local.',
+          title: isForbiddenAdminEndpoint
+              ? 'Dados gerenciais parciais'
+              : 'Dados locais/cache',
+          message: isForbiddenAdminEndpoint
+              ? 'Relatorio gerencial usando dados locais/cache. Endpoint tenant indisponivel.'
+              : 'Servidor indisponivel, mostrando cache local.',
         ),
       );
-      return fallback();
     }
   }
 
-  Future<T> _localOnlyForMissingContract<T>({
+  Future<ReportResult<T>> _localOnlyForMissingContractResult<T>({
     required String label,
     required ReportDataOriginScope scope,
     required Future<T> Function() fallback,
-  }) {
+  }) async {
     AppLogger.info(
       'report.$label using local fallback; remote contract absent',
     );
-    _onDataOriginNotice?.call(
-      ReportDataOriginNotice(
+    return ReportResult<T>(
+      data: await fallback(),
+      notice: ReportDataOriginNotice(
         scope: scope,
         title: 'Dados gerenciais parciais',
         message: 'Endpoint gerencial ausente; exibindo dados locais/cache.',
       ),
     );
-    return fallback();
   }
 
   ReportCashflowPoint _cashPointFromRemote(RemoteCashConsolidatedPoint point) {

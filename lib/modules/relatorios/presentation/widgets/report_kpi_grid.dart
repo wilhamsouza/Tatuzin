@@ -34,6 +34,8 @@ class ReportKpiGrid extends StatelessWidget {
         ? 3
         : 2;
 
+    final itemHeight = width >= 760 ? 154.0 : 166.0;
+
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -42,7 +44,7 @@ class ReportKpiGrid extends StatelessWidget {
         crossAxisCount: crossAxisCount,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
-        childAspectRatio: width >= 760 ? 1.28 : 1.18,
+        mainAxisExtent: itemHeight,
       ),
       itemBuilder: (context, index) {
         final item = items[index];

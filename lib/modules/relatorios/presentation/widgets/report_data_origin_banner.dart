@@ -18,14 +18,21 @@ class ReportDataOriginBanner extends ConsumerWidget {
     }
 
     final colors = Theme.of(context).colorScheme;
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: ReportContextBadge(
-        label: notice.message,
-        icon: Icons.cloud_off_outlined,
-        backgroundColor: colors.tertiaryContainer.withValues(alpha: 0.56),
-        foregroundColor: colors.onTertiaryContainer,
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+            child: ReportContextBadge(
+              label: notice.message,
+              icon: Icons.cloud_off_outlined,
+              backgroundColor: colors.tertiaryContainer.withValues(alpha: 0.56),
+              foregroundColor: colors.onTertiaryContainer,
+            ),
+          ),
+        );
+      },
     );
   }
 }

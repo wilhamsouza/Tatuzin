@@ -194,6 +194,13 @@ class ProductBaseInfoSection extends StatelessWidget {
                   helperText: 'Valor interno',
                   prefixText: 'R\$ ',
                 ),
+                validator: (value) {
+                  final cents = MoneyParser.parseToCents(value ?? '');
+                  if (cents < 0) {
+                    return 'Informe um custo valido';
+                  }
+                  return null;
+                },
               ),
               TextFormField(
                 controller: priceController,

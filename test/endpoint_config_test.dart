@@ -20,11 +20,23 @@ void main() {
       );
     });
 
-    test('mantem o endpoint local no fallback de debug', () {
+    test('usa a API oficial no fallback de debug', () {
       final baseUrl = EndpointConfig.resolveBuildBaseUrl(isReleaseBuild: false);
 
-      expect(baseUrl, EndpointConfig.localDevelopmentBaseUrl);
+      expect(baseUrl, EndpointConfig.productionResolvedBaseUrl);
     });
+
+    test(
+      'permite endpoint local apenas por dart-define explicito em debug',
+      () {
+        final baseUrl = EndpointConfig.resolveBuildBaseUrl(
+          isReleaseBuild: false,
+          configuredBaseUrl: EndpointConfig.localDevelopmentBaseUrl,
+        );
+
+        expect(baseUrl, EndpointConfig.localDevelopmentBaseUrl);
+      },
+    );
 
     test('remove o prefixo /api de uma base ja configurada', () {
       final normalized = EndpointConfig.normalizeBaseUrl(

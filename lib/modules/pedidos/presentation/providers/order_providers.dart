@@ -4,8 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_context_logger.dart';
 import '../../../../app/core/providers/provider_guard.dart';
-import '../../../../app/core/session/session_provider.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../carrinho/domain/entities/cart_item.dart';
 import '../../../produtos/domain/entities/product.dart';
 import '../../../produtos/presentation/providers/product_providers.dart';
@@ -53,7 +54,8 @@ class OperationalOrderBoardData {
 
 final operationalOrderBoardProvider = FutureProvider<OperationalOrderBoardData>(
   (ref) async {
-    ref.watch(sessionRuntimeKeyProvider);
+    await requireTenantBootstrapReady(ref, 'operationalOrderBoardProvider');
+    logProviderContext(ref, 'operationalOrderBoardProvider');
     final query = ref.watch(operationalOrderSearchQueryProvider);
     final orders = await runProviderGuarded(
       'operationalOrderBoardProvider',
@@ -68,7 +70,7 @@ final operationalOrderBoardProvider = FutureProvider<OperationalOrderBoardData>(
 
 final operationalOrderDetailProvider =
     FutureProvider.family<OperationalOrderDetail?, int>((ref, orderId) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(ref, 'operationalOrderDetailProvider');
       final repository = ref.read(operationalOrderRepositoryProvider);
       return runProviderGuarded('operationalOrderDetailProvider', () async {
         final order = await repository.findById(orderId);
@@ -107,8 +109,8 @@ final operationalOrderDetailProvider =
 final orderCatalogProvider = FutureProvider.family<List<Product>, String>((
   ref,
   query,
-) {
-  ref.watch(sessionRuntimeKeyProvider);
+) async {
+  await requireTenantBootstrapReady(ref, 'orderCatalogProvider');
   return runProviderGuarded(
     'orderCatalogProvider',
     () =>

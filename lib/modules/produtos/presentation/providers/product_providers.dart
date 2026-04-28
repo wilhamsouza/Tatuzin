@@ -9,8 +9,8 @@ import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/provider_guard.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
-import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
 import '../../../categorias/presentation/providers/category_providers.dart';
 import '../../data/datasources/products_remote_datasource.dart';
@@ -67,7 +67,7 @@ final productMediaStorageProvider = Provider<ProductMediaStorage>((ref) {
 final baseProductOptionsProvider = FutureProvider<List<BaseProduct>>((
   ref,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'baseProductOptionsProvider');
   return runProviderGuarded(
     'baseProductOptionsProvider',
     () => ref.read(localCatalogRepositoryProvider).listBaseProducts(),
@@ -103,7 +103,7 @@ final productRepositoryProvider = Provider<ProductRepository>((ref) {
 final productSearchQueryProvider = StateProvider<String>((ref) => '');
 
 final productListProvider = FutureProvider<List<Product>>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'productListProvider');
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(productSearchQueryProvider);
   return runProviderGuarded(
@@ -113,7 +113,7 @@ final productListProvider = FutureProvider<List<Product>>((ref) async {
 });
 
 final productCatalogProvider = FutureProvider<List<Product>>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'productCatalogProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'productCatalogProvider',
@@ -135,7 +135,10 @@ final productProfitabilitySortProvider =
 
 final productProfitabilityRowsProvider =
     FutureProvider<List<ProductProfitabilityRow>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(
+        ref,
+        'productProfitabilityRowsProvider',
+      );
       ref.watch(appDataRefreshProvider);
       final query = ref.watch(productProfitabilitySearchQueryProvider);
       final filter = ref.watch(productProfitabilityFilterProvider);

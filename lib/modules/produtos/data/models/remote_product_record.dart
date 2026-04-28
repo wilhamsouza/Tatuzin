@@ -222,14 +222,18 @@ class RemoteProductRecord {
       'estimatedGrossMarginCents': estimatedGrossMarginCents,
       'estimatedGrossMarginPercentBasisPoints':
           estimatedGrossMarginPercentBasisPoints,
-      'lastCostUpdatedAt': lastCostUpdatedAt?.toIso8601String(),
+      'lastCostUpdatedAt': _toApiDateTime(lastCostUpdatedAt),
       'salePriceCents': salePriceCents,
       'stockMil': stockMil,
       'variants': variants.map((variant) => variant.toJson()).toList(),
       'modifierGroups': modifierGroups.map((group) => group.toJson()).toList(),
       'isActive': isActive,
-      'deletedAt': deletedAt?.toIso8601String(),
+      'deletedAt': _toApiDateTime(deletedAt),
     };
+  }
+
+  String? _toApiDateTime(DateTime? value) {
+    return value?.toUtc().toIso8601String();
   }
 }
 

@@ -72,20 +72,15 @@ class EndpointConfig {
     bool isReleaseBuild = _isReleaseBuild,
     String apiVersion = defaultApiVersion,
   }) {
-    if (isReleaseBuild) {
-      return normalizeBaseUrl(productionApiUrl, apiVersion: apiVersion)!;
-    }
-
     final explicitBaseUrl = normalizeBaseUrl(
       configuredBaseUrl,
       apiVersion: apiVersion,
     );
-    if (explicitBaseUrl != null) {
+    if (!isReleaseBuild && explicitBaseUrl != null) {
       return explicitBaseUrl;
     }
 
-    const fallbackBaseUrl = localDevelopmentBaseUrl;
-    return normalizeBaseUrl(fallbackBaseUrl, apiVersion: apiVersion)!;
+    return normalizeBaseUrl(productionApiUrl, apiVersion: apiVersion)!;
   }
 
   static bool isLocalNetworkBaseUrl(String? value) {

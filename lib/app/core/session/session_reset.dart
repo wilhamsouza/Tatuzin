@@ -36,6 +36,8 @@ final sessionContextResetProvider = Provider<void>((ref) {
 void resetSessionScopedProviders(Ref ref) {
   ref.read(syncBatchActivityProvider.notifier).state = false;
 
+  ref.invalidate(sessionIsolationKeyProvider);
+  ref.invalidate(sessionRuntimeKeyProvider);
   ref.invalidate(appDatabaseProvider);
   ref.invalidate(appStartupProvider);
   ref.invalidate(appDataRefreshProvider);
@@ -50,6 +52,7 @@ void resetSessionScopedProviders(Ref ref) {
   ref.invalidate(categoryHybridRepositoryProvider);
   ref.invalidate(categoryRepositoryProvider);
   ref.invalidate(categorySearchQueryProvider);
+  ref.invalidate(categoryAllProvider);
   ref.invalidate(categoryListProvider);
   ref.invalidate(categoryOptionsProvider);
   ref.invalidate(categorySyncControllerProvider);
@@ -137,6 +140,7 @@ void resetSessionScopedProviders(Ref ref) {
   ref.invalidate(supplierHybridRepositoryProvider);
   ref.invalidate(supplierRepositoryProvider);
   ref.invalidate(supplierSearchQueryProvider);
+  ref.invalidate(supplierAllProvider);
   ref.invalidate(supplierListProvider);
   ref.invalidate(supplierOptionsProvider);
   ref.invalidate(supplierLookupProvider);

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../../app/core/app_context/app_operational_context.dart';
 import '../../../app/core/app_context/data_access_policy.dart';
 import '../../../app/core/utils/app_logger.dart';
@@ -38,7 +40,7 @@ class InventoryRepositoryImpl implements InventoryRepository {
     required int productId,
     int? productVariantId,
   }) async {
-    await _refreshRemoteProductStockSnapshotIfAvailable();
+    _refreshRemoteProductStockSnapshotInBackground();
     return _localRepository
         .findItem(productId: productId, productVariantId: productVariantId)
         .timeout(const Duration(seconds: 8));
@@ -49,7 +51,8 @@ class InventoryRepositoryImpl implements InventoryRepository {
     String query = '',
     InventoryListFilter filter = InventoryListFilter.all,
   }) async {
-    await _refreshRemoteProductStockSnapshotIfAvailable();
+    AppLogger.info('[Estoque] listItems local read started');
+    _refreshRemoteProductStockSnapshotInBackground();
     return _localRepository
         .listItems(query: query, filter: filter)
         .timeout(const Duration(seconds: 8));
@@ -93,6 +96,7 @@ class InventoryRepositoryImpl implements InventoryRepository {
     }
 
     try {
+      AppLogger.info('[Estoque] remote product stock snapshot refresh started');
       final remoteProducts = await _productsRemoteDatasource.listAll().timeout(
         const Duration(seconds: 15),
       );
@@ -101,6 +105,9 @@ class InventoryRepositoryImpl implements InventoryRepository {
             .upsertFromRemote(remoteProduct)
             .timeout(const Duration(seconds: 8));
       }
+      AppLogger.info(
+        '[Estoque] remote product stock snapshot refresh finished: ${remoteProducts.length} products',
+      );
     } catch (error, stackTrace) {
       AppLogger.error(
         'Estoque ERP server-first sem endpoint dedicado; falha ao atualizar snapshot remoto de produtos. Usando cache local.',
@@ -108,5 +115,9 @@ class InventoryRepositoryImpl implements InventoryRepository {
         stackTrace: stackTrace,
       );
     }
+  }
+
+  void _refreshRemoteProductStockSnapshotInBackground() {
+    unawaited(_refreshRemoteProductStockSnapshotIfAvailable());
   }
 }

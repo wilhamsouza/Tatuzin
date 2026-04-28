@@ -22,6 +22,13 @@ class ReportDataOriginNotice {
   final String message;
 }
 
+class ReportResult<T> {
+  const ReportResult({required this.data, this.notice});
+
+  final T data;
+  final ReportDataOriginNotice? notice;
+}
+
 ReportDataOriginScope reportDataOriginScopeForPage(ReportPageKey page) {
   switch (page) {
     case ReportPageKey.overview:

@@ -8,9 +8,10 @@ import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_context_logger.dart';
 import '../../../../app/core/providers/provider_guard.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
-import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
 import '../../../../app/core/utils/app_logger.dart';
 import '../../data/customers_repository_impl.dart';
@@ -65,8 +66,9 @@ final customerCreditRepositoryProvider = Provider<CustomerCreditRepository>((
 final clientSearchQueryProvider = StateProvider<String>((ref) => '');
 
 final clientListProvider = FutureProvider<List<Client>>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'clientListProvider');
   ref.watch(appDataRefreshProvider);
+  logProviderContext(ref, 'clientListProvider');
   final query = ref.watch(clientSearchQueryProvider);
   return runProviderGuarded(
     'clientListProvider',
@@ -78,7 +80,7 @@ final clientLookupProvider = FutureProvider.family<List<Client>, String>((
   ref,
   query,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'clientLookupProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'clientLookupProvider',
@@ -90,8 +92,9 @@ final pdvCustomerLookupProvider = FutureProvider.family<List<Client>, String>((
   ref,
   query,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'pdvCustomerLookupProvider');
   ref.watch(appDataRefreshProvider);
+  logProviderContext(ref, 'pdvCustomerLookupProvider');
   AppLogger.info(
     'PDV customer lookup using local cache | has_query=${query.trim().isNotEmpty}',
   );
@@ -106,7 +109,7 @@ final customerCreditBalanceProvider = FutureProvider.family<int, int>((
   ref,
   customerId,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'customerCreditBalanceProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'customerCreditBalanceProvider',
@@ -122,7 +125,10 @@ final customerCreditTransactionsProvider =
       ref,
       customerId,
     ) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(
+        ref,
+        'customerCreditTransactionsProvider',
+      );
       ref.watch(appDataRefreshProvider);
       return runProviderGuarded(
         'customerCreditTransactionsProvider',
@@ -138,7 +144,10 @@ final customerCreditTransactionProvider =
       ref,
       transactionId,
     ) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(
+        ref,
+        'customerCreditTransactionProvider',
+      );
       ref.watch(appDataRefreshProvider);
       return runProviderGuarded(
         'customerCreditTransactionProvider',

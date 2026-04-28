@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/utils/money_parser.dart';
@@ -786,9 +787,9 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Falha ao salvar produto: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_productSaveErrorMessage(error))));
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
@@ -962,6 +963,43 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   String? _cleanNullable(String? value) {
     final trimmed = value?.trim();
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
+  String _productSaveErrorMessage(Object error) {
+    if (error is NetworkRequestException && error.cause == 422) {
+      return _friendlyProductValidationMessage(error.message);
+    }
+    if (error is ValidationException) {
+      return error.message;
+    }
+    return 'Falha ao salvar produto: $error';
+  }
+
+  String _friendlyProductValidationMessage(String message) {
+    final normalized = message.toLowerCase();
+    if (normalized.contains('name')) {
+      return 'Nao foi possivel criar o produto. Informe o nome do produto.';
+    }
+    if (normalized.contains('categoryid')) {
+      return 'Nao foi possivel criar o produto. Selecione uma categoria valida ou salve sem categoria.';
+    }
+    if (normalized.contains('unitmeasure')) {
+      return 'Nao foi possivel criar o produto. Verifique a unidade de medida.';
+    }
+    if (normalized.contains('salepricecents')) {
+      return 'Nao foi possivel criar o produto. Verifique o preco de venda.';
+    }
+    if (normalized.contains('costpricecents') ||
+        normalized.contains('manualcostcents')) {
+      return 'Nao foi possivel criar o produto. Verifique o custo informado.';
+    }
+    if (normalized.contains('stockmil')) {
+      return 'Nao foi possivel criar o produto. Verifique o estoque inicial.';
+    }
+    if (normalized.contains('lastcostupdatedat')) {
+      return 'Nao foi possivel criar o produto. O app ajustou o formato da data de custo; tente novamente.';
+    }
+    return 'Nao foi possivel criar o produto. Verifique nome, categoria, unidade, preco e estoque.';
   }
 }
 

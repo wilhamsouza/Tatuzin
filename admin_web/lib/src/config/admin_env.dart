@@ -4,7 +4,7 @@ abstract final class AdminEnv {
   static final String apiBaseUrl = _normalizeBaseUrl(
     const String.fromEnvironment(
       'TATUZIN_ADMIN_API_URL',
-      defaultValue: kReleaseMode ? '' : 'http://localhost:4000/api',
+      defaultValue: 'https://api.tatuzin.com.br/api',
     ),
   );
 
@@ -16,7 +16,7 @@ abstract final class AdminEnv {
           'TATUZIN_ADMIN_API_URL precisa ser informado no build de producao do Tatuzin Admin.',
         );
       }
-      return 'http://localhost:4000/api';
+      return 'https://api.tatuzin.com.br/api';
     }
     return trimmed.endsWith('/')
         ? trimmed.substring(0, trimmed.length - 1)

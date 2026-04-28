@@ -171,6 +171,8 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                       title: 'Falha ao carregar catalogo',
                       message: '$error',
                       tone: AppStateTone.error,
+                      actionLabel: 'Tentar novamente',
+                      onAction: () => ref.invalidate(salesCatalogProvider),
                       compact: true,
                     ),
                   ),

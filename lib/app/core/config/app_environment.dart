@@ -208,10 +208,15 @@ class AppEnvironmentStorage {
     final defaultEndpoint = mode == AppDataMode.localOnly
         ? const EndpointConfig()
         : resolvedRemoteDefaultEndpoint;
+    final persistedRawBaseUrl = preferences.getString(_endpointBaseUrlKey);
 
     if (!canUseTechnicalEndpointOverride) {
       await _clearLegacyEndpointOverride(preferences);
       return _buildEnvironment(mode: mode, endpointConfig: defaultEndpoint);
+    }
+
+    if (_isLegacyLocalEndpointOverride(persistedRawBaseUrl)) {
+      await _clearLegacyEndpointOverride(preferences);
     }
 
     final apiVersion =
@@ -308,11 +313,18 @@ class AppEnvironmentStorage {
       return null;
     }
 
-    if (EndpointConfig.isReleaseBuild &&
-        EndpointConfig.isLocalNetworkBaseUrl(normalized)) {
+    if (EndpointConfig.isLocalNetworkBaseUrl(normalized)) {
       return null;
     }
 
     return normalized;
+  }
+
+  static bool _isLegacyLocalEndpointOverride(String? rawValue) {
+    final normalized = EndpointConfig.normalizeBaseUrl(
+      rawValue,
+      apiVersion: EndpointConfig.defaultApiVersion,
+    );
+    return EndpointConfig.isLocalNetworkBaseUrl(normalized);
   }
 }
