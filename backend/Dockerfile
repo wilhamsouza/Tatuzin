@@ -10,7 +10,7 @@ ENV NODE_ENV=production \
 FROM base AS deps
 
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --include=dev
 
 FROM deps AS build
 ENV NODE_ENV=development
