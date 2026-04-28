@@ -11,6 +11,7 @@ import '../../../app/core/sync/sync_queue_item.dart';
 import '../../../app/core/sync/sync_queue_operation.dart';
 import '../../../app/core/sync/sync_remote_identity_recovery.dart';
 import '../../../app/core/sync/sync_status.dart';
+import '../../../app/core/utils/app_logger.dart';
 import '../../../app/core/utils/id_generator.dart';
 import '../../categorias/data/sqlite_category_repository.dart';
 import 'support/product_cost_database_support.dart';
@@ -486,72 +487,104 @@ class SqliteProductRepository implements ProductRepository {
 
   Future<void> upsertFromRemote(RemoteProductRecord remote) async {
     final database = await _appDatabase.database;
-    await database.transaction((txn) async {
-      final metadataByRemoteId = await _syncMetadataRepository.findByRemoteId(
-        txn,
-        featureKey: featureKey,
-        remoteId: remote.remoteId,
-      );
-      final metadataByLocalUuid = await _syncMetadataRepository.findByLocalUuid(
-        txn,
-        featureKey: featureKey,
-        localUuid: remote.localUuid,
-      );
-      final metadata = metadataByRemoteId ?? metadataByLocalUuid;
-
-      final mappedCategoryId = await _resolveLocalCategoryId(remote);
-
-      int localId;
-      String localUuid;
-      DateTime createdAt;
-      final syncedAt = DateTime.now();
-      Map<String, Object?>? existing;
-
-      if (metadata != null && metadata.identity.localId != null) {
-        localId = metadata.identity.localId!;
-        existing = await _findRowById(txn, localId);
-      } else {
-        existing = await _findRowByUuid(txn, remote.localUuid);
-        localId = (existing?['id'] as int?) ?? -1;
-      }
-
-      if (existing != null) {
-        final localUpdatedAt = DateTime.parse(
-          existing['atualizado_em'] as String,
+    final stopwatch = Stopwatch()..start();
+    AppLogger.info(
+      '[ProdutosSQLite] upsertFromRemote transaction_started | remote_id=${remote.remoteId}',
+    );
+    try {
+      await database.transaction((txn) async {
+        final metadataByRemoteId = await _syncMetadataRepository.findByRemoteId(
+          txn,
+          featureKey: featureKey,
+          remoteId: remote.remoteId,
         );
-        if (localUpdatedAt.isAfter(remote.updatedAt)) {
-          await _syncMetadataRepository.markPendingUpdate(
-            txn,
-            featureKey: featureKey,
-            localId: existing['id'] as int,
-            localUuid: existing['uuid'] as String,
-            remoteId: remote.remoteId,
-            createdAt: DateTime.parse(existing['criado_em'] as String),
-            updatedAt: localUpdatedAt,
-          );
-          await _syncQueueRepository.enqueueMutation(
-            txn,
-            featureKey: featureKey,
-            entityType: 'product',
-            localEntityId: existing['id'] as int,
-            localUuid: existing['uuid'] as String,
-            remoteId: remote.remoteId,
-            operation: SyncQueueOperation.update,
-            localUpdatedAt: localUpdatedAt,
-          );
-          return;
+        final metadataByLocalUuid = await _syncMetadataRepository
+            .findByLocalUuid(
+              txn,
+              featureKey: featureKey,
+              localUuid: remote.localUuid,
+            );
+        final metadata = metadataByRemoteId ?? metadataByLocalUuid;
+
+        final mappedCategoryId = await _resolveLocalCategoryId(remote, db: txn);
+
+        int localId;
+        String localUuid;
+        DateTime createdAt;
+        final syncedAt = DateTime.now();
+        Map<String, Object?>? existing;
+
+        if (metadata != null && metadata.identity.localId != null) {
+          localId = metadata.identity.localId!;
+          existing = await _findRowById(txn, localId);
+        } else {
+          existing = await _findRowByUuid(txn, remote.localUuid);
+          localId = (existing?['id'] as int?) ?? -1;
         }
 
-        localUuid = existing['uuid'] as String;
-        createdAt = DateTime.parse(existing['criado_em'] as String);
-        localId = existing['id'] as int;
+        if (existing != null) {
+          final localUpdatedAt = DateTime.parse(
+            existing['atualizado_em'] as String,
+          );
+          if (localUpdatedAt.isAfter(remote.updatedAt)) {
+            await _syncMetadataRepository.markPendingUpdate(
+              txn,
+              featureKey: featureKey,
+              localId: existing['id'] as int,
+              localUuid: existing['uuid'] as String,
+              remoteId: remote.remoteId,
+              createdAt: DateTime.parse(existing['criado_em'] as String),
+              updatedAt: localUpdatedAt,
+            );
+            await _syncQueueRepository.enqueueMutation(
+              txn,
+              featureKey: featureKey,
+              entityType: 'product',
+              localEntityId: existing['id'] as int,
+              localUuid: existing['uuid'] as String,
+              remoteId: remote.remoteId,
+              operation: SyncQueueOperation.update,
+              localUpdatedAt: localUpdatedAt,
+            );
+            return;
+          }
 
-        await txn.update(
-          TableNames.produtos,
-          {
+          localUuid = existing['uuid'] as String;
+          createdAt = DateTime.parse(existing['criado_em'] as String);
+          localId = existing['id'] as int;
+
+          await txn.update(
+            TableNames.produtos,
+            {
+              'nome': remote.displayName,
+              'descricao': remote.description,
+              'categoria_id': mappedCategoryId,
+              'codigo_barras': remote.barcode,
+              'tipo_produto': remote.productType,
+              'nicho': _normalizeNiche(remote.niche),
+              'catalog_type': remote.catalogType,
+              'model_name': remote.modelName,
+              'variant_label': remote.variantLabel,
+              'unidade_medida': remote.unitMeasure,
+              ..._resolveRemoteCostColumns(remote),
+              'preco_venda_centavos': remote.salePriceCents,
+              'estoque_mil': _resolveRemoteStockMil(remote),
+              'ativo': remote.isActive ? 1 : 0,
+              'atualizado_em': remote.updatedAt.toIso8601String(),
+              'deletado_em': remote.deletedAt?.toIso8601String(),
+            },
+            where: 'id = ?',
+            whereArgs: [localId],
+          );
+        } else {
+          localUuid = remote.localUuid;
+          createdAt = remote.createdAt;
+          localId = await txn.insert(TableNames.produtos, {
+            'uuid': localUuid,
             'nome': remote.displayName,
             'descricao': remote.description,
             'categoria_id': mappedCategoryId,
+            'foto_path': null,
             'codigo_barras': remote.barcode,
             'tipo_produto': remote.productType,
             'nicho': _normalizeNiche(remote.niche),
@@ -563,67 +596,57 @@ class SqliteProductRepository implements ProductRepository {
             'preco_venda_centavos': remote.salePriceCents,
             'estoque_mil': _resolveRemoteStockMil(remote),
             'ativo': remote.isActive ? 1 : 0,
+            'criado_em': remote.createdAt.toIso8601String(),
             'atualizado_em': remote.updatedAt.toIso8601String(),
             'deletado_em': remote.deletedAt?.toIso8601String(),
-          },
-          where: 'id = ?',
-          whereArgs: [localId],
-        );
-      } else {
-        localUuid = remote.localUuid;
-        createdAt = remote.createdAt;
-        localId = await txn.insert(TableNames.produtos, {
-          'uuid': localUuid,
-          'nome': remote.displayName,
-          'descricao': remote.description,
-          'categoria_id': mappedCategoryId,
-          'foto_path': null,
-          'codigo_barras': remote.barcode,
-          'tipo_produto': remote.productType,
-          'nicho': _normalizeNiche(remote.niche),
-          'catalog_type': remote.catalogType,
-          'model_name': remote.modelName,
-          'variant_label': remote.variantLabel,
-          'unidade_medida': remote.unitMeasure,
-          ..._resolveRemoteCostColumns(remote),
-          'preco_venda_centavos': remote.salePriceCents,
-          'estoque_mil': _resolveRemoteStockMil(remote),
-          'ativo': remote.isActive ? 1 : 0,
-          'criado_em': remote.createdAt.toIso8601String(),
-          'atualizado_em': remote.updatedAt.toIso8601String(),
-          'deletado_em': remote.deletedAt?.toIso8601String(),
-        });
-      }
+          });
+        }
 
-      final remoteInput = _buildRemoteInput(remote, mappedCategoryId);
-      await _persistLocalCatalogStructure(
-        txn: txn,
-        productId: localId,
-        productUuid: localUuid,
-        input: remoteInput,
+        final remoteInput = _buildRemoteInput(remote, mappedCategoryId);
+        await _persistRemoteCostSnapshot(
+          txn,
+          productId: localId,
+          remote: remote,
+        );
+        await _persistLocalCatalogStructure(
+          txn: txn,
+          productId: localId,
+          productUuid: localUuid,
+          input: remoteInput,
+        );
+        await _replaceProductVariants(
+          txn: txn,
+          productId: localId,
+          variants: remoteInput.variants,
+        );
+        await _refreshRecipeSnapshotIfPresent(
+          txn,
+          productId: localId,
+          changedAt: remote.updatedAt,
+        );
+        await _syncMetadataRepository.markSynced(
+          txn,
+          featureKey: featureKey,
+          localId: localId,
+          localUuid: localUuid,
+          remoteId: remote.remoteId,
+          origin: existing == null ? RecordOrigin.remote : RecordOrigin.merged,
+          createdAt: createdAt,
+          updatedAt: remote.updatedAt,
+          syncedAt: syncedAt,
+        );
+      });
+      AppLogger.info(
+        '[ProdutosSQLite] upsertFromRemote transaction_finished | remote_id=${remote.remoteId} | duration_ms=${stopwatch.elapsedMilliseconds}',
       );
-      await _replaceProductVariants(
-        txn: txn,
-        productId: localId,
-        variants: remoteInput.variants,
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[ProdutosSQLite] upsertFromRemote transaction_failed | remote_id=${remote.remoteId} | duration_ms=${stopwatch.elapsedMilliseconds}',
+        error: error,
+        stackTrace: stackTrace,
       );
-      await _refreshRecipeSnapshotIfPresent(
-        txn,
-        productId: localId,
-        changedAt: remote.updatedAt,
-      );
-      await _syncMetadataRepository.markSynced(
-        txn,
-        featureKey: featureKey,
-        localId: localId,
-        localUuid: localUuid,
-        remoteId: remote.remoteId,
-        origin: existing == null ? RecordOrigin.remote : RecordOrigin.merged,
-        createdAt: createdAt,
-        updatedAt: remote.updatedAt,
-        syncedAt: syncedAt,
-      );
-    });
+      rethrow;
+    }
   }
 
   Future<void> applyPushResult({
@@ -672,6 +695,11 @@ class SqliteProductRepository implements ProductRepository {
       );
 
       final remoteInput = _buildRemoteInput(remote, mappedCategoryId);
+      await _persistRemoteCostSnapshot(
+        txn,
+        productId: product.id,
+        remote: remote,
+      );
       await _persistLocalCatalogStructure(
         txn: txn,
         productId: product.id,
@@ -937,7 +965,12 @@ class SqliteProductRepository implements ProductRepository {
     required bool includeDeleted,
     bool flattenSellableVariants = false,
   }) async {
+    final stopwatch = Stopwatch()..start();
+    AppLogger.info('[ProdutosSQLite] _searchInternal database started');
     final database = await _appDatabase.database;
+    AppLogger.info(
+      '[ProdutosSQLite] _searchInternal database finished | duration_ms=${stopwatch.elapsedMilliseconds}',
+    );
     final trimmedQuery = query.trim();
     final args = <Object?>[];
     final buffer = StringBuffer(_selectQuery(includeDeleted: includeDeleted));
@@ -975,11 +1008,18 @@ class SqliteProductRepository implements ProductRepository {
       'p.id ASC',
     );
 
+    AppLogger.info('[ProdutosSQLite] _searchInternal rawQuery started');
     final rows = await database.rawQuery(buffer.toString(), args);
+    AppLogger.info(
+      '[ProdutosSQLite] _searchInternal rawQuery finished: ${rows.length} rows | duration_ms=${stopwatch.elapsedMilliseconds}',
+    );
     final products = <Product>[];
     for (final row in rows) {
       products.add(await _mapProduct(database, row));
     }
+    AppLogger.info(
+      '[ProdutosSQLite] _searchInternal mapping finished: ${products.length} products | duration_ms=${stopwatch.elapsedMilliseconds}',
+    );
 
     if (!flattenSellableVariants) {
       return products;
@@ -1350,9 +1390,21 @@ class SqliteProductRepository implements ProductRepository {
     return null;
   }
 
-  Future<int?> _resolveLocalCategoryId(RemoteProductRecord remote) async {
+  Future<int?> _resolveLocalCategoryId(
+    RemoteProductRecord remote, {
+    DatabaseExecutor? db,
+  }) async {
     if (remote.remoteCategoryId == null || remote.remoteCategoryId!.isEmpty) {
       return null;
+    }
+
+    if (db != null) {
+      final metadata = await _syncMetadataRepository.findByRemoteId(
+        db,
+        featureKey: SyncFeatureKeys.categories,
+        remoteId: remote.remoteCategoryId!,
+      );
+      return metadata?.identity.localId;
     }
 
     final category = await _categoryRepository.findByRemoteId(
@@ -1680,6 +1732,10 @@ class SqliteProductRepository implements ProductRepository {
     DatabaseExecutor db,
     Map<String, Object?> row,
   ) async {
+    final productId = row['id'] as int?;
+    AppLogger.info(
+      '[ProdutosSQLite] _mapProduct started | product_id=$productId',
+    );
     final variantAttributes = _parseVariantAttributes(
       row['variant_attributes_serialized'] as String?,
     );
@@ -1689,7 +1745,7 @@ class SqliteProductRepository implements ProductRepository {
     );
     final variants = await _loadProductVariants(db, row['id'] as int);
 
-    return Product(
+    final product = Product(
       id: row['id'] as int,
       uuid: row['uuid'] as String,
       name: row['nome'] as String,
@@ -1737,6 +1793,10 @@ class SqliteProductRepository implements ProductRepository {
           ? null
           : DateTime.parse(row['sync_last_synced_at'] as String),
     );
+    AppLogger.info(
+      '[ProdutosSQLite] _mapProduct finished | product_id=$productId',
+    );
+    return product;
   }
 
   ProductRecipeItem _mapProductRecipeItem(Map<String, Object?> row) {
@@ -1950,12 +2010,67 @@ class SqliteProductRepository implements ProductRepository {
       'custo_centavos': remote.costCents,
       'manual_cost_centavos': remote.manualCostCents,
       'cost_source': remote.costSource.storageValue,
-      'variable_cost_snapshot_cents': remote.variableCostSnapshotCents,
-      'estimated_gross_margin_cents': remote.estimatedGrossMarginCents,
-      'estimated_gross_margin_percent_basis_points':
-          remote.estimatedGrossMarginPercentBasisPoints,
-      'last_cost_updated_at': remote.lastCostUpdatedAt?.toIso8601String(),
     };
+  }
+
+  Future<void> _persistRemoteCostSnapshot(
+    DatabaseExecutor txn, {
+    required int productId,
+    required RemoteProductRecord remote,
+  }) async {
+    final hasRemoteSnapshot =
+        remote.variableCostSnapshotCents != null ||
+        remote.estimatedGrossMarginCents != null ||
+        remote.estimatedGrossMarginPercentBasisPoints != null ||
+        remote.lastCostUpdatedAt != null ||
+        remote.costSource == ProductCostSource.recipeSnapshot;
+
+    if (!hasRemoteSnapshot) {
+      await txn.delete(
+        TableNames.productCostSnapshot,
+        where: 'product_id = ?',
+        whereArgs: [productId],
+      );
+      return;
+    }
+
+    final nowIso = DateTime.now().toIso8601String();
+    final lastCostUpdatedAt = remote.lastCostUpdatedAt ?? remote.updatedAt;
+    final values = {
+      'variable_cost_snapshot_cents':
+          remote.variableCostSnapshotCents ?? remote.costCents,
+      'estimated_gross_margin_cents':
+          remote.estimatedGrossMarginCents ??
+          (remote.salePriceCents -
+              (remote.variableCostSnapshotCents ?? remote.costCents)),
+      'estimated_gross_margin_percent_basis_points':
+          remote.estimatedGrossMarginPercentBasisPoints ?? 0,
+      'last_cost_updated_at': lastCostUpdatedAt.toIso8601String(),
+      'updated_at': nowIso,
+    };
+
+    final existing = await txn.query(
+      TableNames.productCostSnapshot,
+      columns: const ['product_id'],
+      where: 'product_id = ?',
+      whereArgs: [productId],
+      limit: 1,
+    );
+    if (existing.isEmpty) {
+      await txn.insert(TableNames.productCostSnapshot, {
+        'product_id': productId,
+        ...values,
+        'created_at': nowIso,
+      });
+      return;
+    }
+
+    await txn.update(
+      TableNames.productCostSnapshot,
+      values,
+      where: 'product_id = ?',
+      whereArgs: [productId],
+    );
   }
 
   String? _cleanNullable(String? value) {

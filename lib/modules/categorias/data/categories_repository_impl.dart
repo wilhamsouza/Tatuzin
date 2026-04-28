@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../../app/core/app_context/app_operational_context.dart';
 import '../../../app/core/app_context/data_access_policy.dart';
 import '../../../app/core/errors/app_exceptions.dart';
@@ -19,7 +21,7 @@ import 'sqlite_category_repository.dart';
 
 class CategoriesRepositoryImpl
     implements CategoryRepository, SyncFeatureProcessor {
-  const CategoriesRepositoryImpl({
+  CategoriesRepositoryImpl({
     required SqliteCategoryRepository localRepository,
     required CategoriesRemoteDatasource remoteDatasource,
     required AppOperationalContext operationalContext,
@@ -33,6 +35,7 @@ class CategoriesRepositoryImpl
   final CategoriesRemoteDatasource _remoteDatasource;
   final AppOperationalContext _operationalContext;
   final DataAccessPolicy _dataAccessPolicy;
+  Future<void>? _cacheMergeInFlight;
 
   @override
   String get featureKey => SqliteCategoryRepository.featureKey;
@@ -107,8 +110,12 @@ class CategoriesRepositoryImpl
   Future<List<Category>> search({String query = ''}) async {
     if (_shouldUseErpRemoteRead) {
       try {
+        AppLogger.info('[CategoriasRepo] remote_list_started');
         final remoteCategories = await _remoteDatasource.listAll().timeout(
           const Duration(seconds: 15),
+        );
+        AppLogger.info(
+          '[CategoriasRepo] remote_list_finished count=${remoteCategories.length}',
         );
         return _cacheAndResolveRemoteCategories(remoteCategories, query: query);
       } catch (error, stackTrace) {
@@ -360,20 +367,21 @@ class CategoriesRepositoryImpl
     List<RemoteCategoryRecord> remoteCategories, {
     required String query,
   }) async {
-    final categories = <Category>[];
-    for (final remoteCategory in remoteCategories) {
-      final category = await _cacheAndFindRemoteCategory(remoteCategory);
-      if (category != null &&
-          category.deletedAt == null &&
-          _matchesQuery(category, query)) {
-        categories.add(category);
-      }
+    final mergeFuture = _scheduleCacheMerge(remoteCategories);
+    try {
+      await mergeFuture.timeout(const Duration(seconds: 2));
+      return _readCachedRemoteCategories(
+        remoteCategories,
+        query: query,
+      ).timeout(const Duration(seconds: 4));
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[CategoriasRepo] cache_merge_failed error=$error',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return _remoteCategoriesToEntities(remoteCategories, query: query);
     }
-    categories.sort(
-      (left, right) =>
-          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
-    );
-    return categories;
   }
 
   Future<int> _cacheAndResolveRemoteCategory(
@@ -395,6 +403,98 @@ class CategoriesRepositoryImpl
     return _localRepository
         .findByRemoteId(remote.remoteId)
         .timeout(const Duration(seconds: 8));
+  }
+
+  Future<void> _scheduleCacheMerge(
+    List<RemoteCategoryRecord> remoteCategories,
+  ) {
+    final activeMerge = _cacheMergeInFlight;
+    if (activeMerge != null) {
+      return activeMerge;
+    }
+
+    final stopwatch = Stopwatch()..start();
+    AppLogger.info(
+      '[CategoriasRepo] cache_merge_started count=${remoteCategories.length}',
+    );
+    final merge = _cacheRemoteCategories(remoteCategories).whenComplete(() {
+      AppLogger.info(
+        '[CategoriasRepo] cache_merge_finished duration_ms=${stopwatch.elapsedMilliseconds}',
+      );
+      _cacheMergeInFlight = null;
+    });
+    _cacheMergeInFlight = merge;
+    return merge;
+  }
+
+  Future<void> _cacheRemoteCategories(
+    List<RemoteCategoryRecord> remoteCategories,
+  ) async {
+    for (final remoteCategory in remoteCategories) {
+      await _localRepository.upsertFromRemote(remoteCategory);
+    }
+  }
+
+  Future<List<Category>> _readCachedRemoteCategories(
+    List<RemoteCategoryRecord> remoteCategories, {
+    required String query,
+  }) async {
+    final categories = <Category>[];
+    for (final remoteCategory in remoteCategories) {
+      final category = await _localRepository.findByRemoteId(
+        remoteCategory.remoteId,
+      );
+      if (category != null &&
+          category.deletedAt == null &&
+          _matchesQuery(category, query)) {
+        categories.add(category);
+      }
+    }
+    categories.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return categories;
+  }
+
+  List<Category> _remoteCategoriesToEntities(
+    List<RemoteCategoryRecord> records, {
+    required String query,
+  }) {
+    final categories = records
+        .map(_remoteCategoryToEntity)
+        .where((category) => category.deletedAt == null)
+        .where((category) => _matchesQuery(category, query))
+        .toList(growable: false);
+    categories.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return categories;
+  }
+
+  Category _remoteCategoryToEntity(RemoteCategoryRecord remote) {
+    return Category(
+      id: _remotePlaceholderId(remote.remoteId),
+      uuid: remote.localUuid,
+      name: remote.name,
+      description: remote.description,
+      isActive: remote.isActive,
+      createdAt: remote.createdAt,
+      updatedAt: remote.updatedAt,
+      deletedAt: remote.deletedAt,
+      remoteId: remote.remoteId,
+      syncStatus: SyncStatus.synced,
+      lastSyncedAt: DateTime.now(),
+    );
+  }
+
+  int _remotePlaceholderId(String remoteId) {
+    var hash = 0;
+    for (final codeUnit in remoteId.codeUnits) {
+      hash = (hash * 31 + codeUnit) & 0x3fffffff;
+    }
+    return hash == 0 ? -1 : -hash;
   }
 
   RemoteCategoryRecord _remoteCategoryFromInput(

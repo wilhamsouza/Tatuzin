@@ -8,6 +8,7 @@ import '../../../app/core/sync/sqlite_sync_queue_repository.dart';
 import '../../../app/core/sync/sync_feature_keys.dart';
 import '../../../app/core/sync/sync_queue_operation.dart';
 import '../../../app/core/sync/sync_status.dart';
+import '../../../app/core/utils/app_logger.dart';
 import '../../../app/core/utils/id_generator.dart';
 import '../../../app/core/utils/payment_method_note_codec.dart';
 import '../../caixa/data/cash_database_support.dart';
@@ -38,7 +39,13 @@ class SqliteFiadoRepository implements FiadoRepository {
 
   @override
   Future<FiadoDetail> fetchDetail(int fiadoId) async {
+    final stopwatch = Stopwatch()..start();
+    AppLogger.info('[FiadoSQLite] fetchDetail database started');
     final database = await _appDatabase.database;
+    AppLogger.info(
+      '[FiadoSQLite] fetchDetail database finished | duration_ms=${stopwatch.elapsedMilliseconds}',
+    );
+    AppLogger.info('[FiadoSQLite] fetchDetail account rawQuery started');
     final accountRows = await database.rawQuery(
       '''
       SELECT
@@ -53,16 +60,23 @@ class SqliteFiadoRepository implements FiadoRepository {
     ''',
       [fiadoId],
     );
+    AppLogger.info(
+      '[FiadoSQLite] fetchDetail account rawQuery finished: ${accountRows.length} rows | duration_ms=${stopwatch.elapsedMilliseconds}',
+    );
 
     if (accountRows.isEmpty) {
       throw const ValidationException('Nota de fiado nao encontrada.');
     }
 
+    AppLogger.info('[FiadoSQLite] fetchDetail entries query started');
     final entryRows = await database.query(
       TableNames.fiadoLancamentos,
       where: 'fiado_id = ?',
       whereArgs: [fiadoId],
       orderBy: 'data_lancamento DESC, id DESC',
+    );
+    AppLogger.info(
+      '[FiadoSQLite] fetchDetail entries query finished: ${entryRows.length} rows | duration_ms=${stopwatch.elapsedMilliseconds}',
     );
 
     return FiadoDetail(
@@ -240,7 +254,12 @@ class SqliteFiadoRepository implements FiadoRepository {
     String? status,
     bool overdueOnly = false,
   }) async {
+    final stopwatch = Stopwatch()..start();
+    AppLogger.info('[FiadoSQLite] search database started');
     final database = await _appDatabase.database;
+    AppLogger.info(
+      '[FiadoSQLite] search database finished | duration_ms=${stopwatch.elapsedMilliseconds}',
+    );
     final args = <Object?>[];
     final buffer = StringBuffer('''
       SELECT
@@ -279,7 +298,11 @@ class SqliteFiadoRepository implements FiadoRepository {
 
     buffer.write(' ORDER BY f.vencimento ASC, f.id DESC');
 
+    AppLogger.info('[FiadoSQLite] search rawQuery started');
     final rows = await database.rawQuery(buffer.toString(), args);
+    AppLogger.info(
+      '[FiadoSQLite] search rawQuery finished: ${rows.length} rows | duration_ms=${stopwatch.elapsedMilliseconds}',
+    );
     return rows.map(_mapAccount).toList();
   }
 

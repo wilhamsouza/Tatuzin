@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
+import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../domain/entities/fiado_account.dart';
@@ -112,11 +113,25 @@ class FiadoPage extends ConsumerWidget {
                   ),
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => const Center(
+                child: AppStateCard(
+                  title: 'Carregando fiado',
+                  message: 'Buscando notas locais do PDV.',
+                  tone: AppStateTone.loading,
+                  compact: true,
+                ),
+              ),
               error: (error, _) => Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text('Falha ao carregar notas: $error'),
+                  child: AppStateCard(
+                    title: 'Falha ao carregar notas',
+                    message: '$error',
+                    tone: AppStateTone.error,
+                    compact: true,
+                    actionLabel: 'Tentar novamente',
+                    onAction: () => ref.invalidate(fiadoListProvider),
+                  ),
                 ),
               ),
             ),

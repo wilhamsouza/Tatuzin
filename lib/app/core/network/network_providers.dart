@@ -4,6 +4,7 @@ import '../config/app_data_mode.dart';
 import '../config/app_environment.dart';
 import '../session/auth_token_storage.dart';
 import '../session/session_provider.dart';
+import '../utils/app_logger.dart';
 import 'contracts/api_client_contract.dart';
 import 'fakes/fake_api_client.dart';
 import 'real/real_api_client.dart';
@@ -13,8 +14,12 @@ final fakeApiClientProvider = Provider<ApiClientContract>((ref) {
 });
 
 final realApiClientProvider = Provider<ApiClientContract>((ref) {
+  final endpointConfig = ref.watch(appEnvironmentProvider).endpointConfig;
+  AppLogger.info(
+    '[API] baseUrl configurada: ${endpointConfig.baseUrl ?? 'nao configurada'}',
+  );
   return RealApiClient(
-    ref.watch(appEnvironmentProvider).endpointConfig,
+    endpointConfig,
     tokenStorage: ref.watch(authTokenStorageProvider),
     onSessionInvalidated: () async {
       ref.read(appSessionProvider.notifier).signOutToLocalMode();

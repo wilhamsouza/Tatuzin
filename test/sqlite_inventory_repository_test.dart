@@ -32,6 +32,41 @@ void main() {
     await database.close();
   });
 
+  test('lista estoque vazio rapidamente', () async {
+    final items = await repository.listItems().timeout(
+      const Duration(seconds: 2),
+    );
+
+    expect(items, isEmpty);
+  });
+
+  test('lista produto simples rapidamente', () async {
+    await _insertProduct(
+      database,
+      id: 1,
+      name: 'Camiseta Basica',
+      stockMil: 2500,
+    );
+
+    final items = await repository.listItems().timeout(
+      const Duration(seconds: 2),
+    );
+
+    expect(items, hasLength(1));
+    expect(items.single.productId, 1);
+    expect(items.single.productName, 'Camiseta Basica');
+    expect(items.single.currentStockMil, 2500);
+  });
+
+  test('falha SQLite no estoque propaga erro', () async {
+    await database.execute('DROP TABLE ${TableNames.produtos}');
+
+    await expectLater(
+      repository.listItems(),
+      throwsA(isA<DatabaseException>()),
+    );
+  });
+
   test(
     'ajuste manual de saida bloqueia estoque negativo quando nao ha configuracao',
     () async {

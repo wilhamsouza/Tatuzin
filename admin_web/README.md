@@ -55,20 +55,26 @@ Se o backend nao estiver disponivel, o painel nao opera.
 
 ## Como rodar localmente
 
-1. garanta que o backend esteja rodando em `http://localhost:4000`
+1. por padrao o painel usa `https://api.tatuzin.com.br/api`
 2. no diretorio `admin_web`, execute:
 
 ```powershell
 flutter pub get
-flutter run -d chrome --web-port 3000 --dart-define=TATUZIN_ADMIN_API_URL=http://localhost:4000/api
+flutter run -d chrome --web-port 3000
 ```
 
 ## Como gerar build web
 
-Build local apontando para backend local:
+Build local apontando para a API oficial:
 
 ```powershell
-flutter build web --dart-define=TATUZIN_ADMIN_API_URL=http://localhost:4000/api
+flutter build web
+```
+
+Para desenvolvimento contra backend local, informe explicitamente:
+
+```powershell
+flutter run -d chrome --web-port 3000 --dart-define=TATUZIN_ADMIN_API_URL=http://localhost:4000/api
 ```
 
 Build de producao para publicar o admin em `https://admin.tatuzin.com.br` consumindo a API em `https://api.tatuzin.com.br`:

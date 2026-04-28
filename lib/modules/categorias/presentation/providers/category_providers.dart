@@ -9,8 +9,8 @@ import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/provider_guard.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
-import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
 import '../../data/categories_repository_impl.dart';
 import '../../data/datasources/categories_remote_datasource.dart';
@@ -53,26 +53,45 @@ final categoryRepositoryProvider = Provider<CategoryRepository>((ref) {
 
 final categorySearchQueryProvider = StateProvider<String>((ref) => '');
 
-final categoryListProvider = FutureProvider<List<Category>>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
-  ref.watch(appDataRefreshProvider);
-  final query = ref.watch(categorySearchQueryProvider);
-  return runProviderGuarded(
-    'categoryListProvider',
-    () => ref.watch(categoryRepositoryProvider).search(query: query),
-    timeout: localProviderTimeout,
-  );
-});
-
-final categoryOptionsProvider = FutureProvider<List<Category>>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
+final categoryAllProvider = FutureProvider<List<Category>>((ref) async {
+  await requireTenantBootstrapReady(ref, 'categoryAllProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
-    'categoryOptionsProvider',
+    'categoryAllProvider',
     () => ref.watch(categoryRepositoryProvider).search(),
     timeout: localProviderTimeout,
   );
 });
+
+final categoryListProvider = FutureProvider<List<Category>>((ref) async {
+  await requireTenantBootstrapReady(ref, 'categoryListProvider');
+  final query = ref.watch(categorySearchQueryProvider);
+  final categories = await ref.watch(categoryAllProvider.future);
+  return _filterCategories(categories, query);
+});
+
+final categoryOptionsProvider = FutureProvider<List<Category>>((ref) async {
+  await requireTenantBootstrapReady(ref, 'categoryOptionsProvider');
+  return runProviderGuarded(
+    'categoryOptionsProvider',
+    () => ref.watch(categoryAllProvider.future),
+    timeout: localProviderTimeout,
+  );
+});
+
+List<Category> _filterCategories(List<Category> categories, String query) {
+  final normalized = query.trim().toLowerCase();
+  if (normalized.isEmpty) {
+    return categories;
+  }
+  return categories
+      .where(
+        (category) =>
+            category.name.toLowerCase().contains(normalized) ||
+            (category.description?.toLowerCase().contains(normalized) ?? false),
+      )
+      .toList(growable: false);
+}
 
 final categorySyncControllerProvider =
     AsyncNotifierProvider<CategorySyncController, void>(

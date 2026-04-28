@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:erp_pdv_app/app/core/app_context/app_operational_context.dart';
 import 'package:erp_pdv_app/app/core/app_context/data_access_policy.dart';
 import 'package:erp_pdv_app/app/core/config/app_data_mode.dart';
@@ -34,6 +36,8 @@ import 'package:erp_pdv_app/modules/produtos/presentation/providers/product_prov
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+const _categoryRemoteId = '00000000-0000-4000-8000-000000000001';
+
 void main() {
   test('Produtos lista retorna remoto quando API responde', () async {
     final localProducts = _FakeLocalProductRepository([
@@ -65,7 +69,7 @@ void main() {
     final repository = ProductsRepositoryImpl(
       localRepository: localProducts,
       localCategoryRepository: _FakeLocalCategoryRepository(),
-      remoteDatasource: const _FakeProductsRemoteDatasource(throwOnList: true),
+      remoteDatasource: _FakeProductsRemoteDatasource(throwOnList: true),
       operationalContext: _remoteOperationalContext(),
       dataAccessPolicy: DataAccessPolicy.fromMode(
         AppDataMode.futureRemoteReady,
@@ -77,6 +81,49 @@ void main() {
     expect(products.map((product) => product.name), ['Produto em cache']);
     expect(localProducts.searchCount, 1);
   });
+
+  test(
+    'Produtos escrita cria remoto primeiro e atualiza cache com remoteId',
+    () async {
+      final localProducts = _FakeLocalProductRepository();
+      final localCategories = _FakeLocalCategoryRepository([
+        _category(id: 7, name: 'Categoria remota', remoteId: _categoryRemoteId),
+      ]);
+      final remoteProducts = _FakeProductsRemoteDatasource();
+      final repository = ProductsRepositoryImpl(
+        localRepository: localProducts,
+        localCategoryRepository: localCategories,
+        remoteDatasource: remoteProducts,
+        operationalContext: _remoteOperationalContext(),
+        dataAccessPolicy: DataAccessPolicy.fromMode(
+          AppDataMode.futureRemoteReady,
+        ),
+      );
+
+      final id = await repository.create(
+        const ProductInput(
+          name: 'Produto simples',
+          categoryId: 7,
+          unitMeasure: 'un',
+          costCents: 1000,
+          salePriceCents: 1500,
+          stockMil: 6000,
+        ),
+      );
+
+      final created = remoteProducts.createdRecords.single;
+      final body = created.toUpsertBody();
+
+      expect(id, greaterThan(0));
+      expect(created.remoteCategoryId, _categoryRemoteId);
+      expect(created.variants, isEmpty);
+      expect(body['costPriceCents'], 1000);
+      expect(body['salePriceCents'], 1500);
+      expect(body['stockMil'], 6000);
+      expect(body['lastCostUpdatedAt'], endsWith('Z'));
+      expect(localProducts.upsertedRemoteIds, ['created-product-1']);
+    },
+  );
 
   test('Categorias leitura e escrita usam API primeiro', () async {
     final localCategories = _FakeLocalCategoryRepository();
@@ -103,6 +150,28 @@ void main() {
     expect(remoteCategories.createCalls, 1);
     expect(localCategories.createCount, 0);
   });
+
+  test(
+    'Categorias retorna remoto quando cache merge local nao completa',
+    () async {
+      final repository = CategoriesRepositoryImpl(
+        localRepository: _HangingCacheCategoryRepository(),
+        remoteDatasource: _FakeCategoriesRemoteDatasource(
+          records: [_remoteCategory('category-remote', 'Categoria remota')],
+        ),
+        operationalContext: _remoteOperationalContext(),
+        dataAccessPolicy: DataAccessPolicy.fromMode(
+          AppDataMode.futureRemoteReady,
+        ),
+      );
+
+      final categories = await repository.search();
+
+      expect(categories.map((category) => category.name), ['Categoria remota']);
+      expect(categories.single.remoteId, 'category-remote');
+    },
+    timeout: const Timeout(Duration(seconds: 8)),
+  );
 
   test('Falha de API em escrita ERP nao vira sucesso local falso', () async {
     final localCategories = _FakeLocalCategoryRepository();
@@ -443,9 +512,11 @@ class _FakeLocalCategoryRepository extends SqliteCategoryRepository {
     : _categoriesByRemoteId = {
         for (final category in initial) category.remoteId!: category,
       },
+      _categoriesById = {for (final category in initial) category.id: category},
       super(AppDatabase.instance);
 
   final Map<String, Category> _categoriesByRemoteId;
+  final Map<int, Category> _categoriesById;
   final upsertedRemoteIds = <String>[];
   int createCount = 0;
 
@@ -474,6 +545,17 @@ class _FakeLocalCategoryRepository extends SqliteCategoryRepository {
   Future<Category?> findByRemoteId(String remoteId) async {
     return _categoriesByRemoteId[remoteId];
   }
+
+  @override
+  Future<Category?> findById(int id, {bool includeDeleted = false}) async {
+    return _categoriesById[id];
+  }
+}
+
+class _HangingCacheCategoryRepository extends _FakeLocalCategoryRepository {
+  @override
+  Future<void> upsertFromRemote(RemoteCategoryRecord remote) =>
+      Completer<void>().future;
 }
 
 class _FakeLocalSupplierRepository extends SqliteSupplierRepository {
@@ -533,13 +615,14 @@ class _FakeLocalSupplyRepository extends SqliteSupplyRepository {
 }
 
 class _FakeProductsRemoteDatasource implements ProductsRemoteDatasource {
-  const _FakeProductsRemoteDatasource({
+  _FakeProductsRemoteDatasource({
     this.records = const <RemoteProductRecord>[],
     this.throwOnList = false,
   });
 
   final List<RemoteProductRecord> records;
   final bool throwOnList;
+  final createdRecords = <RemoteProductRecord>[];
 
   @override
   String get featureKey => 'products';
@@ -566,8 +649,40 @@ class _FakeProductsRemoteDatasource implements ProductsRemoteDatasource {
       records.firstWhere((record) => record.remoteId == remoteId);
 
   @override
-  Future<RemoteProductRecord> create(RemoteProductRecord record) async =>
-      record;
+  Future<RemoteProductRecord> create(RemoteProductRecord record) async {
+    final created = RemoteProductRecord(
+      remoteId: 'created-product-${createdRecords.length + 1}',
+      localUuid: record.localUuid,
+      remoteCategoryId: record.remoteCategoryId,
+      name: record.name,
+      description: record.description,
+      barcode: record.barcode,
+      productType: record.productType,
+      niche: record.niche,
+      catalogType: record.catalogType,
+      modelName: record.modelName,
+      variantLabel: record.variantLabel,
+      unitMeasure: record.unitMeasure,
+      costCents: record.costCents,
+      manualCostCents: record.manualCostCents,
+      costSource: record.costSource,
+      variableCostSnapshotCents: record.variableCostSnapshotCents,
+      estimatedGrossMarginCents: record.estimatedGrossMarginCents,
+      estimatedGrossMarginPercentBasisPoints:
+          record.estimatedGrossMarginPercentBasisPoints,
+      lastCostUpdatedAt: record.lastCostUpdatedAt,
+      salePriceCents: record.salePriceCents,
+      stockMil: record.stockMil,
+      variants: record.variants,
+      modifierGroups: record.modifierGroups,
+      isActive: record.isActive,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      deletedAt: record.deletedAt,
+    );
+    createdRecords.add(created);
+    return created;
+  }
 
   @override
   Future<RemoteProductRecord> update(

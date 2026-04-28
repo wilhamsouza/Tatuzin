@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../../app/core/app_context/app_operational_context.dart';
 import '../../../app/core/app_context/data_access_policy.dart';
 import '../../../app/core/errors/app_exceptions.dart';
@@ -22,7 +24,7 @@ import 'models/supply_sync_payload.dart';
 import 'sqlite_supply_repository.dart';
 
 class SuppliesRepositoryImpl implements SupplyRepository, SyncFeatureProcessor {
-  const SuppliesRepositoryImpl({
+  SuppliesRepositoryImpl({
     required SqliteSupplyRepository localRepository,
     required SuppliesRemoteDatasource remoteDatasource,
     required AppOperationalContext operationalContext,
@@ -36,6 +38,7 @@ class SuppliesRepositoryImpl implements SupplyRepository, SyncFeatureProcessor {
   final SuppliesRemoteDatasource _remoteDatasource;
   final AppOperationalContext _operationalContext;
   final DataAccessPolicy _dataAccessPolicy;
+  Future<void>? _cacheMergeInFlight;
 
   @override
   String get featureKey => SqliteSupplyRepository.featureKey;
@@ -186,8 +189,12 @@ class SuppliesRepositoryImpl implements SupplyRepository, SyncFeatureProcessor {
   }) async {
     if (_shouldUseErpRemoteRead) {
       try {
+        AppLogger.info('[InsumosRepo] remote_list_started');
         final remoteSupplies = await _remoteDatasource.listAll().timeout(
           const Duration(seconds: 15),
+        );
+        AppLogger.info(
+          '[InsumosRepo] remote_list_finished count=${remoteSupplies.length}',
         );
         return _cacheAndResolveRemoteSupplies(
           remoteSupplies,
@@ -429,20 +436,26 @@ class SuppliesRepositoryImpl implements SupplyRepository, SyncFeatureProcessor {
     required String query,
     required bool activeOnly,
   }) async {
-    final supplies = <Supply>[];
-    for (final remoteSupply in remoteSupplies) {
-      final supply = await _cacheAndFindRemoteSupply(remoteSupply);
-      if (supply != null &&
-          (!activeOnly || supply.isActive) &&
-          _matchesQuery(supply, query)) {
-        supplies.add(supply);
-      }
+    final mergeFuture = _scheduleCacheMerge(remoteSupplies);
+    try {
+      await mergeFuture.timeout(const Duration(seconds: 2));
+      return _readCachedRemoteSupplies(
+        remoteSupplies,
+        query: query,
+        activeOnly: activeOnly,
+      ).timeout(const Duration(seconds: 4));
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[InsumosRepo] cache_merge_failed error=$error',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return _remoteSuppliesToEntities(
+        remoteSupplies,
+        query: query,
+        activeOnly: activeOnly,
+      );
     }
-    supplies.sort(
-      (left, right) =>
-          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
-    );
-    return supplies;
   }
 
   Future<int> _cacheAndResolveRemoteSupply(RemoteSupplyRecord remote) async {
@@ -460,6 +473,103 @@ class SuppliesRepositoryImpl implements SupplyRepository, SyncFeatureProcessor {
     return _localRepository
         .findByRemoteId(remote.remoteId)
         .timeout(const Duration(seconds: 8));
+  }
+
+  Future<void> _scheduleCacheMerge(List<RemoteSupplyRecord> remoteSupplies) {
+    final activeMerge = _cacheMergeInFlight;
+    if (activeMerge != null) {
+      return activeMerge;
+    }
+
+    final stopwatch = Stopwatch()..start();
+    AppLogger.info(
+      '[InsumosRepo] cache_merge_started count=${remoteSupplies.length}',
+    );
+    final merge = _cacheRemoteSupplies(remoteSupplies).whenComplete(() {
+      AppLogger.info(
+        '[InsumosRepo] cache_merge_finished duration_ms=${stopwatch.elapsedMilliseconds}',
+      );
+      _cacheMergeInFlight = null;
+    });
+    _cacheMergeInFlight = merge;
+    return merge;
+  }
+
+  Future<void> _cacheRemoteSupplies(
+    List<RemoteSupplyRecord> remoteSupplies,
+  ) async {
+    for (final remoteSupply in remoteSupplies) {
+      await _localRepository.upsertFromRemote(remoteSupply);
+    }
+  }
+
+  Future<List<Supply>> _readCachedRemoteSupplies(
+    List<RemoteSupplyRecord> remoteSupplies, {
+    required String query,
+    required bool activeOnly,
+  }) async {
+    final supplies = <Supply>[];
+    for (final remoteSupply in remoteSupplies) {
+      final supply = await _localRepository.findByRemoteId(
+        remoteSupply.remoteId,
+      );
+      if (supply != null &&
+          (!activeOnly || supply.isActive) &&
+          _matchesQuery(supply, query)) {
+        supplies.add(supply);
+      }
+    }
+    supplies.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return supplies;
+  }
+
+  List<Supply> _remoteSuppliesToEntities(
+    List<RemoteSupplyRecord> records, {
+    required String query,
+    required bool activeOnly,
+  }) {
+    final supplies = records
+        .map(_remoteSupplyToEntity)
+        .where((supply) => !activeOnly || supply.isActive)
+        .where((supply) => _matchesQuery(supply, query))
+        .toList(growable: false);
+    supplies.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return supplies;
+  }
+
+  Supply _remoteSupplyToEntity(RemoteSupplyRecord remote) {
+    return Supply(
+      id: _remotePlaceholderId(remote.remoteId),
+      uuid: remote.localUuid,
+      name: remote.name,
+      sku: remote.sku,
+      unitType: remote.unitType,
+      purchaseUnitType: remote.purchaseUnitType,
+      conversionFactor: remote.conversionFactor,
+      lastPurchasePriceCents: remote.lastPurchasePriceCents,
+      averagePurchasePriceCents: remote.averagePurchasePriceCents,
+      currentStockMil: remote.currentStockMil,
+      minimumStockMil: remote.minimumStockMil,
+      defaultSupplierId: null,
+      defaultSupplierName: remote.defaultSupplierName,
+      isActive: remote.isActive,
+      createdAt: remote.createdAt,
+      updatedAt: remote.updatedAt,
+    );
+  }
+
+  int _remotePlaceholderId(String remoteId) {
+    var hash = 0;
+    for (final codeUnit in remoteId.codeUnits) {
+      hash = (hash * 31 + codeUnit) & 0x3fffffff;
+    }
+    return hash == 0 ? -1 : -hash;
   }
 
   RemoteSupplyRecord _remoteSupplyFromInput(

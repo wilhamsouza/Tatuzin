@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../../app/core/app_context/app_operational_context.dart';
 import '../../../app/core/app_context/data_access_policy.dart';
 import '../../../app/core/errors/app_exceptions.dart';
@@ -20,7 +22,7 @@ import 'sqlite_product_repository.dart';
 
 class ProductsRepositoryImpl
     implements ProductRepository, SyncFeatureProcessor {
-  const ProductsRepositoryImpl({
+  ProductsRepositoryImpl({
     required SqliteProductRepository localRepository,
     required SqliteCategoryRepository localCategoryRepository,
     required ProductsRemoteDatasource remoteDatasource,
@@ -37,6 +39,7 @@ class ProductsRepositoryImpl
   final ProductsRemoteDatasource _remoteDatasource;
   final AppOperationalContext _operationalContext;
   final DataAccessPolicy _dataAccessPolicy;
+  Future<void>? _cacheMergeInFlight;
 
   @override
   String get featureKey => SqliteProductRepository.featureKey;
@@ -106,8 +109,12 @@ class ProductsRepositoryImpl
   Future<List<Product>> search({String query = ''}) async {
     if (_shouldUseErpRemoteRead) {
       try {
+        AppLogger.info('[ProdutosRepo] remote_list_started');
         final remoteProducts = await _remoteDatasource.listAll().timeout(
           const Duration(seconds: 15),
+        );
+        AppLogger.info(
+          '[ProdutosRepo] remote_list_finished count=${remoteProducts.length}',
         );
         return _cacheAndResolveRemoteProducts(remoteProducts, query: query);
       } catch (error, stackTrace) {
@@ -367,20 +374,21 @@ class ProductsRepositoryImpl
     List<RemoteProductRecord> remoteProducts, {
     required String query,
   }) async {
-    final products = <Product>[];
-    for (final remoteProduct in remoteProducts) {
-      final product = await _cacheAndFindRemoteProduct(remoteProduct);
-      if (product != null &&
-          product.deletedAt == null &&
-          _matchesQuery(product, query)) {
-        products.add(product);
-      }
+    final mergeFuture = _scheduleCacheMerge(remoteProducts);
+    try {
+      await mergeFuture.timeout(const Duration(seconds: 2));
+      return _readCachedRemoteProducts(
+        remoteProducts,
+        query: query,
+      ).timeout(const Duration(seconds: 4));
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[ProdutosRepo] cache_merge_failed error=$error',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return _remoteProductsToEntities(remoteProducts, query: query);
     }
-    products.sort(
-      (left, right) =>
-          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
-    );
-    return products;
   }
 
   Future<int> _cacheAndResolveRemoteProduct(RemoteProductRecord remote) async {
@@ -400,6 +408,118 @@ class ProductsRepositoryImpl
     return _localRepository
         .findByRemoteId(remote.remoteId)
         .timeout(const Duration(seconds: 8));
+  }
+
+  Future<void> _scheduleCacheMerge(List<RemoteProductRecord> remoteProducts) {
+    final activeMerge = _cacheMergeInFlight;
+    if (activeMerge != null) {
+      return activeMerge;
+    }
+
+    final stopwatch = Stopwatch()..start();
+    AppLogger.info(
+      '[ProdutosRepo] cache_merge_started count=${remoteProducts.length}',
+    );
+    final merge = _cacheRemoteProducts(remoteProducts).whenComplete(() {
+      AppLogger.info(
+        '[ProdutosRepo] cache_merge_finished duration_ms=${stopwatch.elapsedMilliseconds}',
+      );
+      _cacheMergeInFlight = null;
+    });
+    _cacheMergeInFlight = merge;
+    return merge;
+  }
+
+  Future<void> _cacheRemoteProducts(
+    List<RemoteProductRecord> remoteProducts,
+  ) async {
+    for (final remoteProduct in remoteProducts) {
+      await _localRepository.upsertFromRemote(remoteProduct);
+    }
+  }
+
+  Future<List<Product>> _readCachedRemoteProducts(
+    List<RemoteProductRecord> remoteProducts, {
+    required String query,
+  }) async {
+    final products = <Product>[];
+    for (final remoteProduct in remoteProducts) {
+      final product = await _localRepository.findByRemoteId(
+        remoteProduct.remoteId,
+      );
+      if (product != null &&
+          product.deletedAt == null &&
+          _matchesQuery(product, query)) {
+        products.add(product);
+      }
+    }
+    products.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return products;
+  }
+
+  List<Product> _remoteProductsToEntities(
+    List<RemoteProductRecord> records, {
+    required String query,
+  }) {
+    final products = records
+        .map(_remoteProductToEntity)
+        .where((product) => product.deletedAt == null)
+        .where((product) => _matchesQuery(product, query))
+        .toList(growable: false);
+    products.sort(
+      (left, right) =>
+          left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+    );
+    return products;
+  }
+
+  Product _remoteProductToEntity(RemoteProductRecord remote) {
+    return Product(
+      id: _remotePlaceholderId(remote.remoteId),
+      uuid: remote.localUuid,
+      name: remote.name,
+      description: remote.description,
+      categoryId: null,
+      categoryName: null,
+      barcode: remote.barcode,
+      primaryPhotoPath: null,
+      productType: remote.productType,
+      niche: remote.niche,
+      catalogType: remote.catalogType,
+      modelName: remote.modelName,
+      variantLabel: remote.variantLabel,
+      baseProductId: null,
+      baseProductName: null,
+      unitMeasure: remote.unitMeasure,
+      costCents: remote.costCents,
+      manualCostCents: remote.manualCostCents,
+      costSource: remote.costSource,
+      variableCostSnapshotCents: remote.variableCostSnapshotCents,
+      estimatedGrossMarginCents: remote.estimatedGrossMarginCents,
+      estimatedGrossMarginPercentBasisPoints:
+          remote.estimatedGrossMarginPercentBasisPoints,
+      lastCostUpdatedAt: remote.lastCostUpdatedAt,
+      salePriceCents: remote.salePriceCents,
+      stockMil: remote.stockMil,
+      isActive: remote.isActive,
+      createdAt: remote.createdAt,
+      updatedAt: remote.updatedAt,
+      deletedAt: remote.deletedAt,
+      remoteId: remote.remoteId,
+      syncStatus: SyncStatus.synced,
+      lastSyncedAt: DateTime.now(),
+    );
+  }
+
+  int _remotePlaceholderId(String remoteId) {
+    var hash = 0;
+    for (final codeUnit in remoteId.codeUnits) {
+      hash = (hash * 31 + codeUnit) & 0x3fffffff;
+    }
+    return hash == 0 ? -1 : -hash;
   }
 
   Future<RemoteProductRecord> _remoteProductFromInput(

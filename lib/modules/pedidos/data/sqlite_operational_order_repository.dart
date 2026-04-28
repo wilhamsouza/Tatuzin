@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../../app/core/database/app_database.dart';
 import '../../../app/core/database/table_names.dart';
 import '../../../app/core/errors/app_exceptions.dart';
+import '../../../app/core/utils/app_logger.dart';
 import '../../../app/core/utils/id_generator.dart';
 import '../domain/entities/operational_order.dart';
 import '../domain/entities/operational_order_item.dart';
@@ -53,7 +54,12 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
     String query = '',
     OperationalOrderStatus? status,
   }) async {
+    final stopwatch = Stopwatch()..start();
+    AppLogger.info('[PedidosSQLite] listSummaries database started');
     final database = await _appDatabase.database;
+    AppLogger.info(
+      '[PedidosSQLite] listSummaries database finished | duration_ms=${stopwatch.elapsedMilliseconds}',
+    );
     final trimmed = query.trim();
     final like = '%$trimmed%';
     final args = <Object?>[];
@@ -89,6 +95,7 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       args.add(status.dbValue);
     }
 
+    AppLogger.info('[PedidosSQLite] listSummaries rawQuery started');
     final rows = await database.rawQuery('''
       SELECT
         p.*,
@@ -148,6 +155,9 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
         END DESC,
         p.id DESC
     ''', args);
+    AppLogger.info(
+      '[PedidosSQLite] listSummaries rawQuery finished: ${rows.length} rows | duration_ms=${stopwatch.elapsedMilliseconds}',
+    );
 
     return rows.map(_mapSummary).toList(growable: false);
   }

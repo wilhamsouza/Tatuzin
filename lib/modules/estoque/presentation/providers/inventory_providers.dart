@@ -6,8 +6,9 @@ import '../../../../app/core/app_context/app_operational_context.dart';
 import '../../../../app/core/app_context/data_access_policy.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_context_logger.dart';
 import '../../../../app/core/providers/provider_guard.dart';
-import '../../../../app/core/session/session_provider.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../produtos/presentation/providers/product_providers.dart';
 import '../../data/inventory_count_repository_impl.dart';
 import '../../data/inventory_repository_impl.dart';
@@ -59,8 +60,9 @@ final inventoryFilterProvider = StateProvider<InventoryListFilter>(
 );
 
 final inventoryItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'inventoryItemsProvider');
   ref.watch(appDataRefreshProvider);
+  logProviderContext(ref, 'inventoryItemsProvider');
   final query = ref.watch(inventorySearchQueryProvider);
   final filter = ref.watch(inventoryFilterProvider);
   return runProviderGuarded(
@@ -75,7 +77,7 @@ final inventoryItemsProvider = FutureProvider<List<InventoryItem>>((ref) async {
 final inventoryItemOptionsProvider = FutureProvider<List<InventoryItem>>((
   ref,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'inventoryItemOptionsProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'inventoryItemOptionsProvider',
@@ -87,7 +89,7 @@ final inventoryItemOptionsProvider = FutureProvider<List<InventoryItem>>((
 final inventoryActiveItemOptionsProvider = FutureProvider<List<InventoryItem>>((
   ref,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'inventoryActiveItemOptionsProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'inventoryActiveItemOptionsProvider',
@@ -103,7 +105,7 @@ final inventoryMovementsProvider =
       ref,
       query,
     ) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(ref, 'inventoryMovementsProvider');
       ref.watch(appDataRefreshProvider);
       return runProviderGuarded(
         'inventoryMovementsProvider',
@@ -124,7 +126,7 @@ final inventoryMovementsProvider =
 
 final inventoryCountSessionsProvider =
     FutureProvider<List<InventoryCountSession>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(ref, 'inventoryCountSessionsProvider');
       ref.watch(appDataRefreshProvider);
       return runProviderGuarded(
         'inventoryCountSessionsProvider',
@@ -138,7 +140,10 @@ final inventoryCountSessionDetailProvider =
       ref,
       sessionId,
     ) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(
+        ref,
+        'inventoryCountSessionDetailProvider',
+      );
       ref.watch(appDataRefreshProvider);
       return runProviderGuarded(
         'inventoryCountSessionDetailProvider',

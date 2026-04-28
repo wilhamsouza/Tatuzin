@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:sqflite/sqflite.dart';
 
 import '../../../app/core/app_context/app_operational_context.dart';
@@ -7,6 +9,7 @@ import '../../../app/core/errors/app_exceptions.dart';
 import '../../../app/core/sync/sqlite_sync_metadata_repository.dart';
 import '../../../app/core/sync/sqlite_sync_queue_repository.dart';
 import '../../../app/core/sync/sync_queue_operation.dart';
+import '../../../app/core/utils/app_logger.dart';
 import '../../../app/core/utils/id_generator.dart';
 import '../../caixa/data/cash_database_support.dart';
 import '../../caixa/data/sqlite_cash_repository.dart';
@@ -21,23 +24,54 @@ import '../domain/repositories/cost_repository.dart';
 class SqliteCostRepository implements CostRepository {
   SqliteCostRepository(this._appDatabase, this._operationalContext)
     : _syncMetadataRepository = SqliteSyncMetadataRepository(_appDatabase),
-      _syncQueueRepository = SqliteSyncQueueRepository(_appDatabase);
+      _syncQueueRepository = SqliteSyncQueueRepository(_appDatabase),
+      _databaseLoader = null;
+
+  SqliteCostRepository.forDatabase({
+    required Future<Database> Function() databaseLoader,
+    required AppOperationalContext operationalContext,
+  }) : _appDatabase = AppDatabase.instance,
+       _operationalContext = operationalContext,
+       _syncMetadataRepository = SqliteSyncMetadataRepository(
+         AppDatabase.instance,
+       ),
+       _syncQueueRepository = SqliteSyncQueueRepository(AppDatabase.instance),
+       _databaseLoader = databaseLoader;
 
   final AppDatabase _appDatabase;
   final AppOperationalContext _operationalContext;
   final SqliteSyncMetadataRepository _syncMetadataRepository;
   final SqliteSyncQueueRepository _syncQueueRepository;
+  final Future<Database> Function()? _databaseLoader;
+  static const _localQueryTimeout = Duration(seconds: 6);
+
+  Future<Database> _loadDatabase() {
+    final databaseLoader = _databaseLoader;
+    if (databaseLoader != null) {
+      return databaseLoader();
+    }
+    return _appDatabase.database;
+  }
 
   @override
   Future<CostOverview> fetchOverview() async {
-    final database = await _appDatabase.database;
+    final stopwatch = Stopwatch()..start();
+    AppLogger.info('[CustosSQLite] fetchOverview database started');
+    final database = await _loadDatabase();
+    AppLogger.info(
+      '[CustosSQLite] fetchOverview database finished | duration_ms=${stopwatch.elapsedMilliseconds}',
+    );
     final now = DateTime.now();
     final today = _normalizeDay(now).toIso8601String();
     final monthStart = DateTime(now.year, now.month).toIso8601String();
     final nextMonth = DateTime(now.year, now.month + 1).toIso8601String();
 
-    final rows = await database.rawQuery(
-      '''
+    AppLogger.info('[CustosSQLite] fetchOverview sql_started');
+    final List<Map<String, Object?>> rows;
+    try {
+      rows = await database
+          .rawQuery(
+            '''
       SELECT
         COALESCE(SUM(CASE WHEN tipo_custo = 'fixed' AND status = 'pending' THEN valor_centavos ELSE 0 END), 0) AS pendente_fixo,
         COALESCE(SUM(CASE WHEN tipo_custo = 'variable' AND status = 'pending' THEN valor_centavos ELSE 0 END), 0) AS pendente_variavel,
@@ -49,8 +83,28 @@ class SqliteCostRepository implements CostRepository {
         COALESCE(SUM(CASE WHEN tipo_custo = 'variable' AND status = 'pending' THEN 1 ELSE 0 END), 0) AS quantidade_variavel
       FROM ${TableNames.custos}
     ''',
-      [today, today, monthStart, nextMonth, monthStart, nextMonth],
-    );
+            [today, today, monthStart, nextMonth, monthStart, nextMonth],
+          )
+          .timeout(
+            _localQueryTimeout,
+            onTimeout: () {
+              throw TimeoutException(
+                'cost_fetch_overview_timeout',
+                _localQueryTimeout,
+              );
+            },
+          );
+      AppLogger.info(
+        '[CustosSQLite] fetchOverview sql_finished rows=${rows.length} | duration_ms=${stopwatch.elapsedMilliseconds}',
+      );
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[CustosSQLite] fetchOverview sql_failed | duration_ms=${stopwatch.elapsedMilliseconds}',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
 
     final row = rows.first;
     return CostOverview(
@@ -74,7 +128,12 @@ class SqliteCostRepository implements CostRepository {
     DateTime? to,
     bool overdueOnly = false,
   }) async {
-    final database = await _appDatabase.database;
+    final stopwatch = Stopwatch()..start();
+    AppLogger.info('[CustosSQLite] searchCosts database started');
+    final database = await _loadDatabase();
+    AppLogger.info(
+      '[CustosSQLite] searchCosts database finished | duration_ms=${stopwatch.elapsedMilliseconds}',
+    );
     final args = <Object?>[type.dbValue];
     final buffer = StringBuffer('''
       SELECT *
@@ -134,13 +193,37 @@ class SqliteCostRepository implements CostRepository {
     ''');
     args.add(today);
 
-    final rows = await database.rawQuery(buffer.toString(), args);
+    AppLogger.info('[CustosSQLite] searchCosts sql_started');
+    final List<Map<String, Object?>> rows;
+    try {
+      rows = await database
+          .rawQuery(buffer.toString(), args)
+          .timeout(
+            _localQueryTimeout,
+            onTimeout: () {
+              throw TimeoutException(
+                'cost_search_costs_timeout',
+                _localQueryTimeout,
+              );
+            },
+          );
+      AppLogger.info(
+        '[CustosSQLite] searchCosts sql_finished rows=${rows.length} | duration_ms=${stopwatch.elapsedMilliseconds}',
+      );
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[CustosSQLite] searchCosts sql_failed | duration_ms=${stopwatch.elapsedMilliseconds}',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
     return rows.map(_mapCost).toList(growable: false);
   }
 
   @override
   Future<CostEntry> fetchCost(int costId) async {
-    final database = await _appDatabase.database;
+    final database = await _loadDatabase();
     final rows = await database.query(
       TableNames.custos,
       where: 'id = ?',
@@ -157,7 +240,7 @@ class SqliteCostRepository implements CostRepository {
 
   @override
   Future<int> createCost(CreateCostInput input) async {
-    final database = await _appDatabase.database;
+    final database = await _loadDatabase();
     return database.transaction((txn) async {
       _validateCostInput(
         description: input.description,
@@ -191,7 +274,7 @@ class SqliteCostRepository implements CostRepository {
     required int costId,
     required UpdateCostInput input,
   }) async {
-    final database = await _appDatabase.database;
+    final database = await _loadDatabase();
     await database.transaction((txn) async {
       _validateCostInput(
         description: input.description,
@@ -234,7 +317,7 @@ class SqliteCostRepository implements CostRepository {
 
   @override
   Future<CostEntry> markCostPaid(MarkCostPaidInput input) async {
-    final database = await _appDatabase.database;
+    final database = await _loadDatabase();
     await database.transaction((txn) async {
       final existing = await _findCostRow(txn, input.costId);
       if (existing == null) {
@@ -326,7 +409,7 @@ class SqliteCostRepository implements CostRepository {
 
   @override
   Future<CostEntry> cancelCost({required int costId, String? notes}) async {
-    final database = await _appDatabase.database;
+    final database = await _loadDatabase();
     await database.transaction((txn) async {
       final existing = await _findCostRow(txn, costId);
       if (existing == null) {

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/app_data_mode.dart';
 import '../config/app_environment.dart';
+import '../utils/app_logger.dart';
 import 'app_session.dart';
 import 'app_user.dart';
 import 'company_context.dart';
@@ -56,17 +57,37 @@ class SessionController extends Notifier<AppSession> {
     required CompanyContext company,
     bool isOfflineFallback = false,
   }) {
-    state = state.copyWith(
+    final oldRuntimeKey = _safeRuntimeKeyFor(state);
+    final nextState = state.copyWith(
       scope: scope,
       user: user,
       company: company,
       startedAt: DateTime.now(),
       isOfflineFallback: isOfflineFallback,
     );
+    final newRuntimeKey = _safeRuntimeKeyFor(nextState);
+    AppLogger.info(
+      '[Session] runtime_key_resolved old=$oldRuntimeKey new=$newRuntimeKey',
+    );
+    state = nextState;
   }
 
   void signOutToLocalMode() {
-    state = AppSession.localDefault();
+    final oldRuntimeKey = _safeRuntimeKeyFor(state);
+    final nextState = AppSession.localDefault();
+    final newRuntimeKey = _safeRuntimeKeyFor(nextState);
+    AppLogger.info(
+      '[Session] runtime_key_resolved old=$oldRuntimeKey new=$newRuntimeKey',
+    );
+    state = nextState;
+  }
+
+  String _safeRuntimeKeyFor(AppSession session) {
+    try {
+      return SessionIsolation.runtimeKeyFor(session);
+    } catch (_) {
+      return 'invalid_session_runtime_key';
+    }
   }
 }
 

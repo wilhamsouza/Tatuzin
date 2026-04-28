@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../../errors/app_exceptions.dart';
 import '../../session/auth_token_storage.dart';
+import '../../utils/app_logger.dart';
 import '../contracts/api_client_contract.dart';
 import '../endpoint_config.dart';
 
@@ -123,6 +124,12 @@ class RealApiClient implements ApiClientContract {
               allowRefreshRetry: false,
             );
           }
+        }
+
+        if (response.statusCode == 422) {
+          AppLogger.warn(
+            '[API] validation_failed path=${uri.path} details=${_extractValidationDetails(payload) ?? 'n/a'}',
+          );
         }
 
         final message = _extractErrorMessage(payload, response.statusCode);
@@ -333,12 +340,56 @@ class RealApiClient implements ApiClientContract {
   String _extractErrorMessage(dynamic payload, int statusCode) {
     if (payload is Map<String, dynamic>) {
       final message = payload['message'];
+      final details = _extractValidationDetails(payload);
       if (message is String && message.trim().isNotEmpty) {
-        return message.trim();
+        return details == null ? message.trim() : '${message.trim()} $details';
       }
     }
 
     return 'Resposta HTTP $statusCode';
+  }
+
+  String? _extractValidationDetails(dynamic payload) {
+    if (payload is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final details = payload['details'] is Map<String, dynamic>
+        ? payload['details'] as Map<String, dynamic>
+        : payload['error'] is Map<String, dynamic> &&
+              (payload['error'] as Map<String, dynamic>)['details']
+                  is Map<String, dynamic>
+        ? (payload['error'] as Map<String, dynamic>)['details']
+              as Map<String, dynamic>
+        : null;
+    if (details == null) {
+      return null;
+    }
+
+    final messages = <String>[];
+    final fieldErrors = details['fieldErrors'];
+    if (fieldErrors is Map<String, dynamic>) {
+      for (final entry in fieldErrors.entries) {
+        final value = entry.value;
+        if (value is List && value.isNotEmpty) {
+          messages.add('${entry.key}: ${value.first}');
+        } else if (value is String && value.trim().isNotEmpty) {
+          messages.add('${entry.key}: ${value.trim()}');
+        }
+      }
+    }
+
+    final formErrors = details['formErrors'];
+    if (formErrors is List) {
+      messages.addAll(
+        formErrors.whereType<String>().where((item) => item.trim().isNotEmpty),
+      );
+    }
+
+    if (messages.isEmpty) {
+      return null;
+    }
+    return messages.take(3).join(' | ');
   }
 
   String _readRequiredString(

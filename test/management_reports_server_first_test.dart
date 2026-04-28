@@ -58,20 +58,19 @@ void main() {
     test('usa fallback local somente quando analytics falha', () async {
       final remote = _FakeAnalyticsRemoteDatasource(shouldFail: true);
       final local = _FakeReportRepository();
-      final notices = <ReportDataOriginNotice>[];
       final repository = AnalyticsReportRepository(
         remoteDatasource: remote,
         localFallbackRepository: local,
-        onDataOriginNotice: notices.add,
       );
 
-      final products = await repository.fetchTopProducts(filter: _filter());
+      final result = await repository.fetchTopProductsResult(filter: _filter());
+      final products = result.data;
 
       expect(remote.salesByProductCalls, 1);
       expect(local.topProductsCalls, 1);
       expect(products.single.productName, 'Produto local');
-      expect(notices.single.scope, ReportDataOriginScope.sales);
-      expect(notices.single.message, contains('cache local'));
+      expect(result.notice!.scope, ReportDataOriginScope.sales);
+      expect(result.notice!.message, contains('cache local'));
     });
 
     test('propaga erro quando API e cache falham', () async {
@@ -117,29 +116,28 @@ void main() {
       () async {
         final remote = _FakeAnalyticsRemoteDatasource();
         final local = _FakeReportRepository();
-        final notices = <ReportDataOriginNotice>[];
         final repository = AnalyticsReportRepository(
           remoteDatasource: remote,
           localFallbackRepository: local,
-          onDataOriginNotice: notices.add,
         );
 
-        final summary = await repository.fetchInventoryHealth(
+        final result = await repository.fetchInventoryHealthResult(
           filter: _filter(),
         );
+        final summary = result.data;
 
         expect(remote.salesByDayCalls, 0);
         expect(local.inventoryCalls, 1);
         expect(summary.totalItemsCount, 2);
-        expect(notices.single.scope, ReportDataOriginScope.inventory);
-        expect(notices.single.message, contains('Endpoint gerencial ausente'));
+        expect(result.notice!.scope, ReportDataOriginScope.inventory);
+        expect(result.notice!.message, contains('Endpoint gerencial ausente'));
       },
     );
 
     test(
-      'provider identifica fallback/cache quando permissao admin falha',
+      'usuario comum nao chama endpoint admin e usa fallback sinalizado',
       () async {
-        final remote = _FakeAnalyticsRemoteDatasource(shouldFail: true);
+        final remote = _FakeAnalyticsRemoteDatasource();
         final local = _FakeReportRepository();
         final container = ProviderContainer(
           overrides: [
@@ -149,13 +147,39 @@ void main() {
         );
         addTearDown(container.dispose);
 
-        await container.read(topProductsReportProvider.future);
+        final result = await container.read(
+          topProductsReportResultProvider.future,
+        );
+        final notice = result.notice;
+
+        expect(remote.salesByProductCalls, 0);
+        expect(local.topProductsCalls, 1);
+        expect(notice, isNotNull);
+        expect(notice!.message, contains('Endpoint tenant indisponivel'));
+      },
+    );
+
+    test(
+      'provider de variantes retorna notice sem modificar StateProvider no build',
+      () async {
+        final remote = _FakeAnalyticsRemoteDatasource();
+        final local = _FakeReportRepository();
+        final container = ProviderContainer(
+          overrides: [
+            pdvOperationalReportRepositoryProvider.overrideWithValue(local),
+            reportRemoteDatasourceProvider.overrideWithValue(remote),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        final variants = await container.read(topVariantsReportProvider.future);
         final notice = container.read(
-          reportDataOriginNoticeProvider(ReportDataOriginScope.sales),
+          reportPageDataOriginNoticeProvider(ReportPageKey.sales),
         );
 
+        expect(variants, isEmpty);
         expect(notice, isNotNull);
-        expect(notice!.message, contains('cache local'));
+        expect(notice!.message, contains('Endpoint gerencial ausente'));
       },
     );
   });

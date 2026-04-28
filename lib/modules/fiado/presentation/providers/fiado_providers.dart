@@ -8,9 +8,10 @@ import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_context_logger.dart';
 import '../../../../app/core/providers/provider_guard.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
-import '../../../../app/core/session/session_provider.dart';
 import '../../data/datasources/fiado_remote_datasource.dart';
 import '../../data/fiado_payment_sync_processor.dart';
 import '../../data/real/real_fiado_remote_datasource.dart';
@@ -57,8 +58,9 @@ final fiadoStatusFilterProvider = StateProvider<String?>((ref) => null);
 final fiadoOverdueOnlyProvider = StateProvider<bool>((ref) => false);
 
 final fiadoListProvider = FutureProvider<List<FiadoAccount>>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'fiadoListProvider');
   ref.watch(appDataRefreshProvider);
+  logProviderContext(ref, 'fiadoListProvider');
   final query = ref.watch(fiadoSearchQueryProvider);
   final status = ref.watch(fiadoStatusFilterProvider);
   final overdueOnly = ref.watch(fiadoOverdueOnlyProvider);
@@ -75,7 +77,7 @@ final fiadoDetailProvider = FutureProvider.family<FiadoDetail, int>((
   ref,
   fiadoId,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'fiadoDetailProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'fiadoDetailProvider',

@@ -7,6 +7,7 @@ import '../../../../app/core/network/endpoint_config.dart';
 import '../../../../app/core/network/paginated_remote_fetch.dart';
 import '../../../../app/core/network/remote_feature_diagnostic.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
+import '../../../../app/core/utils/app_logger.dart';
 import '../datasources/products_remote_datasource.dart';
 import '../models/remote_product_record.dart';
 
@@ -47,9 +48,11 @@ class RealProductsRemoteDatasource implements ProductsRemoteDatasource {
 
   @override
   Future<RemoteProductRecord> create(RemoteProductRecord record) async {
+    final body = record.toUpsertBody();
+    AppLogger.info('[ProdutosAPI] create payload=${_safePayloadForLog(body)}');
     final response = await _apiClient.postJson(
       '/products',
-      body: record.toUpsertBody(),
+      body: body,
       options: await _authorizedOptions(),
     );
 
@@ -208,5 +211,44 @@ class RealProductsRemoteDatasource implements ProductsRemoteDatasource {
       headers: <String, String>{'Authorization': 'Bearer $token'},
       queryParameters: queryParameters,
     );
+  }
+
+  Map<String, Object?> _safePayloadForLog(Map<String, dynamic> body) {
+    return <String, Object?>{
+      'name': body['name'],
+      'description_present': (body['description'] as String?)?.isNotEmpty,
+      'categoryId': body['categoryId'],
+      'unitMeasure': body['unitMeasure'],
+      'productType': body['productType'],
+      'niche': body['niche'],
+      'catalogType': body['catalogType'],
+      'barcode': body['barcode'],
+      'costPriceCents': body['costPriceCents'],
+      'manualCostCents': body['manualCostCents'],
+      'costSource': body['costSource'],
+      'lastCostUpdatedAt': body['lastCostUpdatedAt'],
+      'salePriceCents': body['salePriceCents'],
+      'stockMil': body['stockMil'],
+      'isActive': body['isActive'],
+      'deletedAt': body['deletedAt'],
+      'variants': (body['variants'] as List<dynamic>? ?? const [])
+          .map((variant) {
+            if (variant is! Map<String, dynamic>) {
+              return variant;
+            }
+            return <String, Object?>{
+              'sku': variant['sku'],
+              'colorLabel': variant['colorLabel'],
+              'sizeLabel': variant['sizeLabel'],
+              'priceAdditionalCents': variant['priceAdditionalCents'],
+              'stockMil': variant['stockMil'],
+              'sortOrder': variant['sortOrder'],
+              'isActive': variant['isActive'],
+            };
+          })
+          .toList(growable: false),
+      'modifierGroupCount':
+          (body['modifierGroups'] as List<dynamic>? ?? const []).length,
+    };
   }
 }

@@ -56,16 +56,17 @@ final reportRemoteDatasourceProvider =
       );
     });
 
-final erpManagementReportRepositoryProvider = Provider<ReportRepository>((ref) {
-  return AnalyticsReportRepository(
-    remoteDatasource: ref.watch(reportRemoteDatasourceProvider),
-    localFallbackRepository: ref.watch(pdvOperationalReportRepositoryProvider),
-    onDataOriginNotice: (notice) {
-      ref.read(reportDataOriginNoticeProvider(notice.scope).notifier).state =
-          notice;
-    },
-  );
-});
+final erpManagementReportRepositoryProvider =
+    Provider<AnalyticsReportRepository>((ref) {
+      final operationalContext = ref.watch(appOperationalContextProvider);
+      return AnalyticsReportRepository(
+        remoteDatasource: ref.watch(reportRemoteDatasourceProvider),
+        localFallbackRepository: ref.watch(
+          pdvOperationalReportRepositoryProvider,
+        ),
+        canUseRemoteAnalytics: operationalContext.session.user.isPlatformAdmin,
+      );
+    });
 
 final reportRepositoryProvider = Provider<ReportRepository>((ref) {
   return ref.watch(erpManagementReportRepositoryProvider);
@@ -76,45 +77,40 @@ final reportDataSourceStrategyProvider =
       return reportStrategyForPage(page);
     });
 
-final reportDataOriginNoticeProvider =
-    StateProvider.family<ReportDataOriginNotice?, ReportDataOriginScope>(
-      (ref, scope) => null,
-    );
-
 final reportPageDataOriginNoticeProvider =
     Provider.family<ReportDataOriginNotice?, ReportPageKey>((ref, page) {
-      final scopes = switch (page) {
-        ReportPageKey.overview => const <ReportDataOriginScope>[
-          ReportDataOriginScope.overview,
-          ReportDataOriginScope.sales,
-          ReportDataOriginScope.inventory,
-        ],
-        ReportPageKey.sales => const <ReportDataOriginScope>[
-          ReportDataOriginScope.sales,
-        ],
-        ReportPageKey.cash => const <ReportDataOriginScope>[
-          ReportDataOriginScope.cash,
-        ],
-        ReportPageKey.inventory => const <ReportDataOriginScope>[
-          ReportDataOriginScope.inventory,
-        ],
-        ReportPageKey.customers => const <ReportDataOriginScope>[
-          ReportDataOriginScope.customers,
-        ],
-        ReportPageKey.purchases => const <ReportDataOriginScope>[
-          ReportDataOriginScope.purchases,
-        ],
-        ReportPageKey.profitability => const <ReportDataOriginScope>[
-          ReportDataOriginScope.profitability,
-        ],
-      };
-      for (final scope in scopes) {
-        final notice = ref.watch(reportDataOriginNoticeProvider(scope));
-        if (notice != null) {
-          return notice;
+      ReportDataOriginNotice? noticeOf<T>(
+        ProviderBase<AsyncValue<ReportResult<T>>> provider,
+      ) {
+        if (!ref.exists(provider)) {
+          return null;
         }
+        return ref.watch(provider).asData?.value.notice;
       }
-      return null;
+
+      return switch (page) {
+        ReportPageKey.overview =>
+          noticeOf(reportOverviewResultProvider) ??
+              noticeOf(topProductsReportResultProvider) ??
+              noticeOf(inventoryHealthReportResultProvider),
+        ReportPageKey.sales =>
+          noticeOf(salesTrendResultProvider) ??
+              noticeOf(topProductsReportResultProvider) ??
+              noticeOf(topVariantsReportResultProvider),
+        ReportPageKey.cash => noticeOf(cashflowReportResultProvider),
+        ReportPageKey.inventory => noticeOf(
+          inventoryHealthReportResultProvider,
+        ),
+        ReportPageKey.customers => noticeOf(
+          customerRankingReportResultProvider,
+        ),
+        ReportPageKey.purchases => noticeOf(
+          purchaseSummaryReportResultProvider,
+        ),
+        ReportPageKey.profitability =>
+          noticeOf(profitabilityReportResultProvider) ??
+              noticeOf(profitabilityCategoryReportResultProvider),
+      };
     });
 
 final reportExportCsvSupportProvider = Provider<ReportExportCsvSupport>((ref) {
@@ -150,55 +146,99 @@ final reportPreviousFilterProvider = Provider<ReportFilter>((ref) {
   return currentFilter.copyWithRange(previousRange);
 });
 
-final reportOverviewProvider = FutureProvider<ReportOverviewSummary>((
-  ref,
-) async {
-  ref.watch(sessionRuntimeKeyProvider);
-  ref.watch(appDataRefreshProvider);
-  final filter = ref.watch(reportFilterProvider);
-  return runProviderGuarded(
-    'reportOverviewProvider',
-    () => ref.watch(reportRepositoryProvider).fetchOverview(filter: filter),
-    timeout: localProviderTimeout,
-  );
-});
-
-final reportPreviousOverviewProvider = FutureProvider<ReportOverviewSummary>((
-  ref,
-) async {
-  ref.watch(sessionRuntimeKeyProvider);
-  ref.watch(appDataRefreshProvider);
-  final filter = ref.watch(reportPreviousFilterProvider);
-  return runProviderGuarded(
-    'reportPreviousOverviewProvider',
-    () => ref.watch(reportRepositoryProvider).fetchOverview(filter: filter),
-    timeout: localProviderTimeout,
-  );
-});
-
-final salesTrendProvider = FutureProvider<List<ReportSalesTrendPoint>>((
-  ref,
-) async {
-  ref.watch(sessionRuntimeKeyProvider);
-  ref.watch(appDataRefreshProvider);
-  final filter = ref.watch(reportFilterProvider);
-  return runProviderGuarded(
-    'salesTrendProvider',
-    () => ref.watch(reportRepositoryProvider).fetchSalesTrend(filter: filter),
-    timeout: localProviderTimeout,
-  );
-});
-
-final topProductsReportProvider =
-    FutureProvider<List<ReportSoldProductSummary>>((ref) async {
+final reportOverviewResultProvider =
+    FutureProvider<ReportResult<ReportOverviewSummary>>((ref) async {
       ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
-        'topProductsReportProvider',
+        'reportOverviewResultProvider',
         () => ref
-            .watch(reportRepositoryProvider)
-            .fetchTopProducts(filter: filter),
+            .watch(erpManagementReportRepositoryProvider)
+            .fetchOverviewResult(filter: filter),
+        timeout: localProviderTimeout,
+      );
+    });
+
+final reportOverviewProvider = FutureProvider<ReportOverviewSummary>((
+  ref,
+) async {
+  final result = await ref.watch(reportOverviewResultProvider.future);
+  return result.data;
+});
+
+final reportPreviousOverviewResultProvider =
+    FutureProvider<ReportResult<ReportOverviewSummary>>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
+      ref.watch(appDataRefreshProvider);
+      final filter = ref.watch(reportPreviousFilterProvider);
+      return runProviderGuarded(
+        'reportPreviousOverviewResultProvider',
+        () => ref
+            .watch(erpManagementReportRepositoryProvider)
+            .fetchOverviewResult(filter: filter),
+        timeout: localProviderTimeout,
+      );
+    });
+
+final reportPreviousOverviewProvider = FutureProvider<ReportOverviewSummary>((
+  ref,
+) async {
+  final result = await ref.watch(reportPreviousOverviewResultProvider.future);
+  return result.data;
+});
+
+final salesTrendResultProvider =
+    FutureProvider<ReportResult<List<ReportSalesTrendPoint>>>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
+      ref.watch(appDataRefreshProvider);
+      final filter = ref.watch(reportFilterProvider);
+      return runProviderGuarded(
+        'salesTrendResultProvider',
+        () => ref
+            .watch(erpManagementReportRepositoryProvider)
+            .fetchSalesTrendResult(filter: filter),
+        timeout: localProviderTimeout,
+      );
+    });
+
+final salesTrendProvider = FutureProvider<List<ReportSalesTrendPoint>>((
+  ref,
+) async {
+  final result = await ref.watch(salesTrendResultProvider.future);
+  return result.data;
+});
+
+final topProductsReportResultProvider =
+    FutureProvider<ReportResult<List<ReportSoldProductSummary>>>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
+      ref.watch(appDataRefreshProvider);
+      final filter = ref.watch(reportFilterProvider);
+      return runProviderGuarded(
+        'topProductsReportResultProvider',
+        () => ref
+            .watch(erpManagementReportRepositoryProvider)
+            .fetchTopProductsResult(filter: filter),
+        timeout: localProviderTimeout,
+      );
+    });
+
+final topProductsReportProvider =
+    FutureProvider<List<ReportSoldProductSummary>>((ref) async {
+      final result = await ref.watch(topProductsReportResultProvider.future);
+      return result.data;
+    });
+
+final topVariantsReportResultProvider =
+    FutureProvider<ReportResult<List<ReportVariantSummary>>>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
+      ref.watch(appDataRefreshProvider);
+      final filter = ref.watch(reportFilterProvider);
+      return runProviderGuarded(
+        'topVariantsReportResultProvider',
+        () => ref
+            .watch(erpManagementReportRepositoryProvider)
+            .fetchTopVariantsResult(filter: filter),
         timeout: localProviderTimeout,
       );
     });
@@ -206,32 +246,32 @@ final topProductsReportProvider =
 final topVariantsReportProvider = FutureProvider<List<ReportVariantSummary>>((
   ref,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
-  ref.watch(appDataRefreshProvider);
-  final filter = ref.watch(reportFilterProvider);
-  return runProviderGuarded(
-    'topVariantsReportProvider',
-    () => ref.watch(reportRepositoryProvider).fetchTopVariants(filter: filter),
-    timeout: localProviderTimeout,
-  );
+  final result = await ref.watch(topVariantsReportResultProvider.future);
+  return result.data;
 });
 
-final profitabilityReportProvider =
-    FutureProvider<List<ReportProfitabilityRow>>((ref) async {
+final profitabilityReportResultProvider =
+    FutureProvider<ReportResult<List<ReportProfitabilityRow>>>((ref) async {
       ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
-        'profitabilityReportProvider',
+        'profitabilityReportResultProvider',
         () => ref
-            .watch(reportRepositoryProvider)
-            .fetchProfitability(filter: filter),
+            .watch(erpManagementReportRepositoryProvider)
+            .fetchProfitabilityResult(filter: filter),
         timeout: localProviderTimeout,
       );
     });
 
-final profitabilityCategoryReportProvider =
+final profitabilityReportProvider =
     FutureProvider<List<ReportProfitabilityRow>>((ref) async {
+      final result = await ref.watch(profitabilityReportResultProvider.future);
+      return result.data;
+    });
+
+final profitabilityCategoryReportResultProvider =
+    FutureProvider<ReportResult<List<ReportProfitabilityRow>>>((ref) async {
       ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(
@@ -240,10 +280,34 @@ final profitabilityCategoryReportProvider =
         ),
       );
       return runProviderGuarded(
-        'profitabilityCategoryReportProvider',
+        'profitabilityCategoryReportResultProvider',
         () => ref
-            .watch(reportRepositoryProvider)
-            .fetchProfitability(filter: filter, limit: 10),
+            .watch(erpManagementReportRepositoryProvider)
+            .fetchProfitabilityResult(filter: filter, limit: 10),
+        timeout: localProviderTimeout,
+      );
+    });
+
+final profitabilityCategoryReportProvider =
+    FutureProvider<List<ReportProfitabilityRow>>((ref) async {
+      final result = await ref.watch(
+        profitabilityCategoryReportResultProvider.future,
+      );
+      return result.data;
+    });
+
+final cashflowReportResultProvider =
+    FutureProvider<ReportResult<ReportCashflowSummary>>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
+      ref.watch(appDataRefreshProvider);
+      final filter = ref.watch(reportFilterProvider);
+      return runProviderGuarded(
+        'cashflowReportResultProvider',
+        () async => ReportResult<ReportCashflowSummary>(
+          data: await ref
+              .watch(pdvOperationalReportRepositoryProvider)
+              .fetchCashflow(filter: filter),
+        ),
         timeout: localProviderTimeout,
       );
     });
@@ -251,42 +315,64 @@ final profitabilityCategoryReportProvider =
 final cashflowReportProvider = FutureProvider<ReportCashflowSummary>((
   ref,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
-  ref.watch(appDataRefreshProvider);
-  final filter = ref.watch(reportFilterProvider);
-  return runProviderGuarded(
-    'cashflowReportProvider',
-    () => ref
-        .watch(pdvOperationalReportRepositoryProvider)
-        .fetchCashflow(filter: filter),
-    timeout: localProviderTimeout,
-  );
+  final result = await ref.watch(cashflowReportResultProvider.future);
+  return result.data;
 });
 
-final inventoryHealthReportProvider =
-    FutureProvider<ReportInventoryHealthSummary>((ref) async {
+final inventoryHealthReportResultProvider =
+    FutureProvider<ReportResult<ReportInventoryHealthSummary>>((ref) async {
       ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
-        'inventoryHealthReportProvider',
+        'inventoryHealthReportResultProvider',
         () => ref
-            .watch(reportRepositoryProvider)
-            .fetchInventoryHealth(filter: filter),
+            .watch(erpManagementReportRepositoryProvider)
+            .fetchInventoryHealthResult(filter: filter),
+        timeout: localProviderTimeout,
+      );
+    });
+
+final inventoryHealthReportProvider =
+    FutureProvider<ReportInventoryHealthSummary>((ref) async {
+      final result = await ref.watch(
+        inventoryHealthReportResultProvider.future,
+      );
+      return result.data;
+    });
+
+final customerRankingReportResultProvider =
+    FutureProvider<ReportResult<List<ReportCustomerRankingRow>>>((ref) async {
+      ref.watch(sessionRuntimeKeyProvider);
+      ref.watch(appDataRefreshProvider);
+      final filter = ref.watch(reportFilterProvider);
+      return runProviderGuarded(
+        'customerRankingReportResultProvider',
+        () => ref
+            .watch(erpManagementReportRepositoryProvider)
+            .fetchCustomerRankingResult(filter: filter, limit: 100),
         timeout: localProviderTimeout,
       );
     });
 
 final customerRankingReportProvider =
     FutureProvider<List<ReportCustomerRankingRow>>((ref) async {
+      final result = await ref.watch(
+        customerRankingReportResultProvider.future,
+      );
+      return result.data;
+    });
+
+final purchaseSummaryReportResultProvider =
+    FutureProvider<ReportResult<ReportPurchaseSummary>>((ref) async {
       ref.watch(sessionRuntimeKeyProvider);
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
-        'customerRankingReportProvider',
+        'purchaseSummaryReportResultProvider',
         () => ref
-            .watch(reportRepositoryProvider)
-            .fetchCustomerRanking(filter: filter, limit: 100),
+            .watch(erpManagementReportRepositoryProvider)
+            .fetchPurchaseSummaryResult(filter: filter),
         timeout: localProviderTimeout,
       );
     });
@@ -294,16 +380,8 @@ final customerRankingReportProvider =
 final purchaseSummaryReportProvider = FutureProvider<ReportPurchaseSummary>((
   ref,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
-  ref.watch(appDataRefreshProvider);
-  final filter = ref.watch(reportFilterProvider);
-  return runProviderGuarded(
-    'purchaseSummaryReportProvider',
-    () => ref
-        .watch(reportRepositoryProvider)
-        .fetchPurchaseSummary(filter: filter),
-    timeout: localProviderTimeout,
-  );
+  final result = await ref.watch(purchaseSummaryReportResultProvider.future);
+  return result.data;
 });
 
 final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {

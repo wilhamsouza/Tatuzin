@@ -8,10 +8,14 @@ import '../../../../app/core/config/app_environment.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_context_logger.dart';
+import '../../../../app/core/providers/provider_guard.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
-import '../../../../app/core/session/session_provider.dart';
+import '../../../../app/core/utils/app_logger.dart';
 import '../../../carrinho/presentation/providers/cart_provider.dart';
 import '../../../produtos/domain/entities/product.dart';
+import '../../../produtos/domain/repositories/product_repository.dart';
 import '../../../produtos/presentation/providers/product_providers.dart';
 import '../../data/datasources/sales_remote_datasource.dart';
 import '../../data/real/real_sales_remote_datasource.dart';
@@ -27,6 +31,10 @@ import '../../domain/usecases/finalize_cash_sale_use_case.dart';
 import '../../domain/usecases/finalize_credit_sale_use_case.dart';
 
 final salesSearchQueryProvider = StateProvider<String>((ref) => '');
+
+final salesCatalogRepositoryProvider = Provider<ProductRepository>((ref) {
+  return ref.watch(localProductRepositoryProvider);
+});
 
 class SalesCatalogEntry {
   const SalesCatalogEntry({
@@ -134,12 +142,23 @@ class SalesCatalogEntry {
 final salesCatalogProvider = FutureProvider<List<SalesCatalogEntry>>((
   ref,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'salesCatalogProvider');
   ref.watch(appDataRefreshProvider);
+  logProviderContext(ref, 'salesCatalogProvider');
   final query = ref.watch(salesSearchQueryProvider);
-  final products = await ref
-      .watch(localProductRepositoryProvider)
-      .search(query: query);
+  final repository = ref.watch(salesCatalogRepositoryProvider);
+  final products = await runProviderGuarded(
+    '[Vendas] salesCatalogProvider',
+    () async {
+      AppLogger.info('[Vendas] local product search started');
+      final result = await repository.search(query: query);
+      AppLogger.info(
+        '[Vendas] local product search finished: ${result.length} products',
+      );
+      return result;
+    },
+    timeout: localProviderTimeout,
+  );
 
   return products
       .where((product) {

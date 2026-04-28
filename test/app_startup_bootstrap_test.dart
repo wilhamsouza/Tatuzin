@@ -17,6 +17,7 @@ void main() {
   test('signInRemote with trial company completes bootstrap', () async {
     final session = _remoteSession(licenseStatus: 'trial');
     final syncKickoffs = <String>[];
+    final openedDatabases = <String>[];
     final container = ProviderContainer(
       overrides: [
         initialAppEnvironmentProvider.overrideWith((ref) => _remoteEnvironment),
@@ -24,7 +25,9 @@ void main() {
           return _FakeAuthGateway(signInSession: session);
         }),
         appStartupOpenDatabaseProvider.overrideWith((ref) {
-          return (isolationKey) async {};
+          return (isolationKey) async {
+            openedDatabases.add(isolationKey);
+          };
         }),
         appStartupSyncKickoffProvider.overrideWith((ref) {
           return (bootSession) async {
@@ -45,6 +48,7 @@ void main() {
       session.company.remoteId,
     );
     expect(syncKickoffs, [session.company.remoteId]);
+    expect(openedDatabases, ['remote:${session.company.remoteId}']);
     expect((await container.read(appStartupProvider.future)).isSuccess, isTrue);
   });
 
@@ -119,59 +123,66 @@ void main() {
     expect(state.status, AppStartupStatus.needsCompany);
   });
 
-  test('startup shell does not block when sqlite open fails', () async {
-    final container = ProviderContainer(
-      overrides: [
-        appStartupOpenDatabaseProvider.overrideWith((ref) {
-          return (isolationKey) async {
-            throw const DatabaseInitializationException('sqlite exploded');
-          };
-        }),
-      ],
-    );
-    addTearDown(container.dispose);
+  test(
+    'startup returns localDatabaseError when tenant sqlite open fails',
+    () async {
+      final container = ProviderContainer(
+        overrides: [
+          appStartupOpenDatabaseProvider.overrideWith((ref) {
+            return (isolationKey) async {
+              throw const DatabaseInitializationException('sqlite exploded');
+            };
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    container
-        .read(appSessionProvider.notifier)
-        .setAuthenticatedSession(
-          scope: SessionScope.authenticatedRemote,
-          user: _remoteUser(),
-          company: _remoteCompany(),
-          isOfflineFallback: false,
-        );
+      container
+          .read(appSessionProvider.notifier)
+          .setAuthenticatedSession(
+            scope: SessionScope.authenticatedRemote,
+            user: _remoteUser(),
+            company: _remoteCompany(),
+            isOfflineFallback: false,
+          );
 
-    final state = await container.read(appStartupProvider.future);
-    expect(state.status, AppStartupStatus.success);
-    expect(state.lastCompletedStep, 'navigation_shell_ready');
-  });
+      final state = await container.read(appStartupProvider.future);
+      expect(state.status, AppStartupStatus.localDatabaseError);
+      expect(state.lastCompletedStep, 'tenant_key_resolved');
+      expect(state.pendingStep, 'tenant_database_open_started');
+    },
+  );
 
-  test('startup shell does not wait for sqlite open timeout', () async {
-    final container = ProviderContainer(
-      overrides: [
-        appStartupLocalDatabaseTimeoutProvider.overrideWith((ref) {
-          return const Duration(milliseconds: 50);
-        }),
-        appStartupOpenDatabaseProvider.overrideWith((ref) {
-          return (isolationKey) => Completer<void>().future;
-        }),
-      ],
-    );
-    addTearDown(container.dispose);
+  test(
+    'startup returns localDatabaseError when tenant sqlite open times out',
+    () async {
+      final container = ProviderContainer(
+        overrides: [
+          appStartupLocalDatabaseTimeoutProvider.overrideWith((ref) {
+            return const Duration(milliseconds: 50);
+          }),
+          appStartupOpenDatabaseProvider.overrideWith((ref) {
+            return (isolationKey) => Completer<void>().future;
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
 
-    container
-        .read(appSessionProvider.notifier)
-        .setAuthenticatedSession(
-          scope: SessionScope.authenticatedRemote,
-          user: _remoteUser(),
-          company: _remoteCompany(),
-          isOfflineFallback: false,
-        );
+      container
+          .read(appSessionProvider.notifier)
+          .setAuthenticatedSession(
+            scope: SessionScope.authenticatedRemote,
+            user: _remoteUser(),
+            company: _remoteCompany(),
+            isOfflineFallback: false,
+          );
 
-    final state = await container.read(appStartupProvider.future);
-    expect(state.status, AppStartupStatus.success);
-    expect(state.lastCompletedStep, 'navigation_shell_ready');
-    expect(state.pendingStep, isNull);
-  });
+      final state = await container.read(appStartupProvider.future);
+      expect(state.status, AppStartupStatus.localDatabaseError);
+      expect(state.lastCompletedStep, 'tenant_key_resolved');
+      expect(state.pendingStep, 'tenant_database_open_started');
+    },
+  );
 
   test('startup returns apiError when post-login API responds 500', () async {
     final container = ProviderContainer(
@@ -286,6 +297,17 @@ void main() {
       expect(state.isSuccess, isTrue);
     },
   );
+
+  test('database name differs between offline and authenticated tenant', () {
+    expect(
+      AppDatabase.databaseNameForIsolationKey(SessionIsolation.localKey),
+      'simples_erp_pdv.db',
+    );
+    expect(
+      AppDatabase.databaseNameForIsolationKey('remote:company-1'),
+      'simples_erp_pdv_remote_company-1.db',
+    );
+  });
 }
 
 AppEnvironment get _remoteEnvironment {

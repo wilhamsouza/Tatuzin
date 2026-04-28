@@ -82,6 +82,39 @@ void main() {
     );
 
     test(
+      'migra override local salvo em debug para o endpoint oficial',
+      () async {
+        SharedPreferences.setMockInitialValues(<String, Object>{
+          'app.environment.data_mode': AppDataMode.futureRemoteReady.name,
+          'app.environment.endpoint_base_url': 'http://192.168.1.152:4000/api',
+          'app.environment.endpoint_api_version': 'api',
+        });
+
+        final environment = await AppEnvironmentStorage.load(
+          allowTechnicalEndpointOverride: true,
+        );
+        final preferences = await SharedPreferences.getInstance();
+
+        expect(
+          environment.endpointConfig.baseUrl,
+          EndpointConfig.productionBaseUrl,
+        );
+        expect(
+          environment.endpointConfig.uriFor('/auth/login')?.toString(),
+          'https://api.tatuzin.com.br/api/auth/login',
+        );
+        expect(
+          preferences.containsKey('app.environment.endpoint_base_url'),
+          isFalse,
+        );
+        expect(
+          preferences.containsKey('app.environment.endpoint_api_version'),
+          isFalse,
+        );
+      },
+    );
+
+    test(
       'nao persiste override tecnico quando o build nao permite editar endpoint',
       () async {
         final environment = AppEnvironment.remoteDefault().copyWith(

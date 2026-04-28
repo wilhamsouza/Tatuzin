@@ -39,4 +39,49 @@ void main() {
       ProductCostSource.recipeSnapshot.storageValue,
     );
   });
+
+  test('product upsert body uses backend datetime and numeric contract', () {
+    final record = RemoteProductRecord(
+      remoteId: '',
+      localUuid: 'local-product-1',
+      remoteCategoryId: '00000000-0000-4000-8000-000000000001',
+      name: 'Produto simples',
+      description: null,
+      barcode: null,
+      productType: 'unidade',
+      niche: ProductNiches.food,
+      catalogType: ProductCatalogTypes.simple,
+      modelName: null,
+      variantLabel: null,
+      unitMeasure: 'un',
+      costCents: 1000,
+      manualCostCents: 1000,
+      costSource: ProductCostSource.manual,
+      variableCostSnapshotCents: null,
+      estimatedGrossMarginCents: null,
+      estimatedGrossMarginPercentBasisPoints: null,
+      lastCostUpdatedAt: DateTime(2026, 4, 27, 20, 10, 30),
+      salePriceCents: 1500,
+      stockMil: 6000,
+      variants: const [],
+      modifierGroups: const [],
+      isActive: true,
+      createdAt: DateTime(2026, 4, 27, 20, 10),
+      updatedAt: DateTime(2026, 4, 27, 20, 10),
+      deletedAt: null,
+    );
+
+    final body = record.toUpsertBody();
+
+    expect(body['costPriceCents'], 1000);
+    expect(body['manualCostCents'], 1000);
+    expect(body['salePriceCents'], 1500);
+    expect(body['stockMil'], 6000);
+    expect(body['categoryId'], record.remoteCategoryId);
+    expect(body['unitMeasure'], 'un');
+    expect(body['catalogType'], ProductCatalogTypes.simple);
+    expect(body['variants'], isEmpty);
+    expect(body['lastCostUpdatedAt'], endsWith('Z'));
+    expect(body['lastCostUpdatedAt'], contains('T'));
+  });
 }

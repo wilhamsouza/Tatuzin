@@ -108,6 +108,64 @@ void main() {
         ),
       );
     });
+
+    test('monta login na API oficial sem duplicar /api', () async {
+      final client = MockClient((request) async {
+        expect(
+          request.url.toString(),
+          'https://api.tatuzin.com.br/api/auth/login',
+        );
+        return http.Response('{"accessToken":"a","refreshToken":"r"}', 200);
+      });
+      final apiClient = RealApiClient(
+        const EndpointConfig(
+          baseUrl: EndpointConfig.productionBaseUrl,
+          apiVersion: EndpointConfig.defaultApiVersion,
+        ),
+        httpClient: client,
+      );
+
+      final response = await apiClient.postJson('/auth/login');
+
+      expect(response.statusCode, 200);
+    });
+
+    test('inclui detalhes de validacao 422 na mensagem de erro', () async {
+      final apiClient = RealApiClient(
+        const EndpointConfig(
+          baseUrl: EndpointConfig.productionBaseUrl,
+          apiVersion: EndpointConfig.defaultApiVersion,
+        ),
+        httpClient: MockClient((request) async {
+          return http.Response(
+            jsonEncode({
+              'message': 'Dados invalidos enviados para a API.',
+              'code': 'VALIDATION_ERROR',
+              'details': {
+                'fieldErrors': {
+                  'lastCostUpdatedAt': ['Invalid datetime'],
+                },
+                'formErrors': [],
+              },
+            }),
+            422,
+          );
+        }),
+      );
+
+      await expectLater(
+        () => apiClient.postJson('/products', body: const <String, dynamic>{}),
+        throwsA(
+          isA<NetworkRequestException>()
+              .having((error) => error.cause, 'cause', 422)
+              .having(
+                (error) => error.message,
+                'message',
+                contains('lastCostUpdatedAt: Invalid datetime'),
+              ),
+        ),
+      );
+    });
   });
 }
 

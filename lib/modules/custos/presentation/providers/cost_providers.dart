@@ -5,8 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/core/app_context/app_operational_context.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/provider_context_logger.dart';
 import '../../../../app/core/providers/provider_guard.dart';
-import '../../../../app/core/session/session_provider.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../data/cost_repository_impl.dart';
 import '../../data/sqlite_cost_repository.dart';
 import '../../domain/entities/cost_entry.dart';
@@ -29,8 +30,9 @@ final costRepositoryProvider = Provider<CostRepository>((ref) {
 });
 
 final costOverviewProvider = FutureProvider<CostOverview>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'costOverviewProvider');
   ref.watch(appDataRefreshProvider);
+  logProviderContext(ref, 'costOverviewProvider');
   return runProviderGuarded(
     'costOverviewProvider',
     () => ref.watch(costRepositoryProvider).fetchOverview(),
@@ -62,8 +64,9 @@ final costsProvider = FutureProvider.family<List<CostEntry>, CostType>((
   ref,
   type,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'costsProvider');
   ref.watch(appDataRefreshProvider);
+  logProviderContext(ref, 'costsProvider');
   final query = ref.watch(costSearchQueryProvider(type));
   final status = ref.watch(costStatusFilterProvider(type));
   final from = ref.watch(costDateFromFilterProvider(type));
@@ -89,7 +92,7 @@ final costDetailProvider = FutureProvider.family<CostEntry, int>((
   ref,
   costId,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'costDetailProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'costDetailProvider',

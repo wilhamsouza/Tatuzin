@@ -9,8 +9,8 @@ import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/provider_guard.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
-import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
 import '../../data/datasources/suppliers_remote_datasource.dart';
 import '../../data/real/real_suppliers_remote_datasource.dart';
@@ -53,23 +53,28 @@ final supplierRepositoryProvider = Provider<SupplierRepository>((ref) {
 
 final supplierSearchQueryProvider = StateProvider<String>((ref) => '');
 
-final supplierListProvider = FutureProvider<List<Supplier>>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
+final supplierAllProvider = FutureProvider<List<Supplier>>((ref) async {
+  await requireTenantBootstrapReady(ref, 'supplierAllProvider');
   ref.watch(appDataRefreshProvider);
-  final query = ref.watch(supplierSearchQueryProvider);
   return runProviderGuarded(
-    'supplierListProvider',
-    () => ref.watch(supplierRepositoryProvider).search(query: query),
+    'supplierAllProvider',
+    () => ref.watch(supplierRepositoryProvider).search(),
     timeout: localProviderTimeout,
   );
 });
 
+final supplierListProvider = FutureProvider<List<Supplier>>((ref) async {
+  await requireTenantBootstrapReady(ref, 'supplierListProvider');
+  final query = ref.watch(supplierSearchQueryProvider);
+  final suppliers = await ref.watch(supplierAllProvider.future);
+  return _filterSuppliers(suppliers, query);
+});
+
 final supplierOptionsProvider = FutureProvider<List<Supplier>>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
-  ref.watch(appDataRefreshProvider);
+  await requireTenantBootstrapReady(ref, 'supplierOptionsProvider');
   return runProviderGuarded(
     'supplierOptionsProvider',
-    () => ref.watch(supplierRepositoryProvider).search(),
+    () => ref.watch(supplierAllProvider.future),
     timeout: localProviderTimeout,
   );
 });
@@ -78,7 +83,7 @@ final supplierLookupProvider = FutureProvider.family<List<Supplier>, String>((
   ref,
   query,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'supplierLookupProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'supplierLookupProvider',
@@ -87,11 +92,27 @@ final supplierLookupProvider = FutureProvider.family<List<Supplier>, String>((
   );
 });
 
+List<Supplier> _filterSuppliers(List<Supplier> suppliers, String query) {
+  final normalized = query.trim().toLowerCase();
+  if (normalized.isEmpty) {
+    return suppliers;
+  }
+  return suppliers
+      .where(
+        (supplier) =>
+            supplier.name.toLowerCase().contains(normalized) ||
+            (supplier.tradeName?.toLowerCase().contains(normalized) ?? false) ||
+            (supplier.phone?.toLowerCase().contains(normalized) ?? false) ||
+            (supplier.document?.toLowerCase().contains(normalized) ?? false),
+      )
+      .toList(growable: false);
+}
+
 final supplierDetailProvider = FutureProvider.family<Supplier?, int>((
   ref,
   supplierId,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'supplierDetailProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'supplierDetailProvider',

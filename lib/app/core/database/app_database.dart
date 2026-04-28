@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 
+import '../config/app_environment.dart';
 import '../constants/app_constants.dart';
 import '../errors/app_exceptions.dart';
+import '../providers/app_data_refresh_provider.dart';
 import '../session/app_session.dart';
 import '../session/company_context.dart';
 import '../session/session_provider.dart';
@@ -21,13 +23,42 @@ class _AppStartupTrace {
   String? companyRemoteId;
   String? tenantIsolationKey;
 
-  void logBootstrapStarted(AppSession session) {
+  void logBootstrapStarted({
+    required AppSession session,
+    required AppEnvironment environment,
+    required String sessionRuntimeKey,
+    required int appDataRefreshKey,
+  }) {
     companyRemoteId = session.company.remoteId?.trim();
+    final isolationKey = _safeIsolationKeyFor(session);
     AppLogger.info(
       'bootstrap_started | duration_ms=0 | scope=${session.scope.name} | '
       'authenticated=${session.isAuthenticated} | '
-      'company_remote_id=${_valueOrNotAvailable(companyRemoteId)}',
+      'mode=${environment.dataMode.name} | '
+      'remote_sync_enabled=${environment.remoteSyncEnabled} | '
+      'user_present=${session.user.hasRemoteIdentity} | '
+      'company_present=${session.company.hasRemoteIdentity} | '
+      'company_remote_id=${_valueOrNotAvailable(companyRemoteId)} | '
+      'tenant_key=${_valueOrNotAvailable(isolationKey)} | '
+      'session_runtime_key=$sessionRuntimeKey | '
+      'app_data_refresh_key=$appDataRefreshKey | '
+      'database_name=${_safeDatabaseNameFor(isolationKey)}',
     );
+  }
+
+  String? _safeIsolationKeyFor(AppSession session) {
+    try {
+      return SessionIsolation.keyFor(session);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _safeDatabaseNameFor(String? isolationKey) {
+    if (isolationKey == null || isolationKey.trim().isEmpty) {
+      return 'n/a';
+    }
+    return AppDatabase.databaseNameForIsolationKey(isolationKey);
   }
 
   void logStepStarted(
@@ -135,23 +166,51 @@ final appStartupRemotePreflightProvider = Provider<AppStartupRemotePreflight>((
 });
 
 final appStartupOpenDatabaseProvider = Provider<AppStartupOpenDatabase>((ref) {
+  final inFlight = <String, Future<void>>{};
   return (isolationKey) async {
-    await AppDatabase.openForIsolationKey(isolationKey);
+    final existing = inFlight[isolationKey];
+    if (existing != null) {
+      AppLogger.info(
+        'tenant_database_open_joined | tenant_key=$isolationKey | '
+        'database_name=${AppDatabase.databaseNameForIsolationKey(isolationKey)}',
+      );
+      return existing;
+    }
+
+    final future = AppDatabase.openForIsolationKey(isolationKey);
+    inFlight[isolationKey] = future;
+    try {
+      await future;
+    } finally {
+      inFlight.remove(isolationKey);
+    }
   };
 });
 
 final appStartupProvider = FutureProvider<AppStartupState>((ref) async {
   final session = ref.watch(appSessionProvider);
+  final environment = ref.watch(appEnvironmentProvider);
   final timeout = ref.watch(appStartupTimeoutProvider);
   final apiStepTimeout = ref.watch(appStartupApiStepTimeoutProvider);
+  final localDatabaseTimeout = ref.watch(
+    appStartupLocalDatabaseTimeoutProvider,
+  );
   final remotePreflight = ref.watch(appStartupRemotePreflightProvider);
+  final openDatabase = ref.watch(appStartupOpenDatabaseProvider);
+  final appDataRefreshKey = ref.read(appDataRefreshProvider);
+  final sessionRuntimeKey = _safeSessionRuntimeKey(session);
   final trace = _AppStartupTrace();
 
   try {
     return await _runAppStartup(
       session: session,
+      environment: environment,
       remotePreflight: remotePreflight,
+      openDatabase: openDatabase,
       apiStepTimeout: apiStepTimeout,
+      localDatabaseTimeout: localDatabaseTimeout,
+      appDataRefreshKey: appDataRefreshKey,
+      sessionRuntimeKey: sessionRuntimeKey,
       trace: trace,
     ).timeout(
       timeout,
@@ -180,11 +239,21 @@ final appStartupProvider = FutureProvider<AppStartupState>((ref) async {
 
 Future<AppStartupState> _runAppStartup({
   required AppSession session,
+  required AppEnvironment environment,
   required AppStartupRemotePreflight remotePreflight,
+  required AppStartupOpenDatabase openDatabase,
   required Duration apiStepTimeout,
+  required Duration localDatabaseTimeout,
+  required int appDataRefreshKey,
+  required String sessionRuntimeKey,
   required _AppStartupTrace trace,
 }) async {
-  trace.logBootstrapStarted(session);
+  trace.logBootstrapStarted(
+    session: session,
+    environment: environment,
+    sessionRuntimeKey: sessionRuntimeKey,
+    appDataRefreshKey: appDataRefreshKey,
+  );
   _runSynchronousBootstrapStep(
     trace: trace,
     startedEvent: 'auth_session_load_started',
@@ -251,6 +320,20 @@ Future<AppStartupState> _runAppStartup({
     return state;
   }
 
+  if (session.isAuthenticated) {
+    final databaseState = await _openTenantDatabase(
+      session: session,
+      isolationKey: isolationKey,
+      openDatabase: openDatabase,
+      timeout: localDatabaseTimeout,
+      trace: trace,
+    );
+    if (databaseState != null) {
+      _logBootstrapFailure(databaseState);
+      return databaseState;
+    }
+  }
+
   final navigationStopwatch = Stopwatch()..start();
   trace.logStepCompleted(
     'navigation_shell_ready',
@@ -266,6 +349,58 @@ Future<AppStartupState> _runAppStartup({
     lastCompletedStep: trace.lastCompletedStep,
     pendingStep: trace.pendingStep,
   );
+}
+
+Future<AppStartupState?> _openTenantDatabase({
+  required AppSession session,
+  required String isolationKey,
+  required AppStartupOpenDatabase openDatabase,
+  required Duration timeout,
+  required _AppStartupTrace trace,
+}) async {
+  final stopwatch = Stopwatch()..start();
+  trace.logStepStarted(
+    'tenant_database_open_started',
+    companyRemoteId: session.company.remoteId,
+    tenantIsolationKey: isolationKey,
+    userRemoteId: session.user.remoteId,
+  );
+
+  try {
+    AppLogger.info(
+      'tenant_database_open_requested | tenant_key=$isolationKey | '
+      'database_name=${AppDatabase.databaseNameForIsolationKey(isolationKey)} | '
+      'timeout_seconds=${timeout.inSeconds}',
+    );
+    await openDatabase(isolationKey).timeout(
+      timeout,
+      onTimeout: () => throw TimeoutException('tenant_database_open_timeout'),
+    );
+    trace.logStepCompleted(
+      'tenant_database_opened',
+      stopwatch,
+      companyRemoteId: session.company.remoteId,
+      tenantIsolationKey: isolationKey,
+      userRemoteId: session.user.remoteId,
+    );
+    return null;
+  } catch (error, stackTrace) {
+    trace.logStepFailure(
+      'tenant_database_open_started',
+      stopwatch,
+      error: error,
+      stackTrace: stackTrace,
+      reason: 'tenant_database_open_failed',
+    );
+    return AppStartupState.localDatabaseError(
+      debugDetails: trace.buildDebugDetails(
+        reason:
+            'tenant_database_open_failed | database_name=${AppDatabase.databaseNameForIsolationKey(isolationKey)}',
+      ),
+      lastCompletedStep: trace.lastCompletedStep,
+      pendingStep: trace.pendingStep,
+    );
+  }
 }
 
 AppStartupState? _validateRemoteSession(
@@ -451,6 +586,14 @@ void _logBootstrapFailure(
     error: error,
     stackTrace: stackTrace,
   );
+}
+
+String _safeSessionRuntimeKey(AppSession session) {
+  try {
+    return SessionIsolation.runtimeKeyFor(session);
+  } catch (_) {
+    return 'invalid_session_runtime_key';
+  }
 }
 
 void _runSynchronousBootstrapStep({
