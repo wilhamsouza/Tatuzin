@@ -122,8 +122,8 @@ void main() {
     },
   );
 
-  test('Custos nao usam financial-events como contrato falso de ERP', () {
-    expect(CostRepositoryImpl.hasCompatibleRemoteCostContract, isFalse);
+  test('Custos usam contrato remoto ERP dedicado', () {
+    expect(CostRepositoryImpl.hasCompatibleRemoteCostContract, isTrue);
   });
 
   test('Provider de compras propaga erro e nao fica carregando', () async {

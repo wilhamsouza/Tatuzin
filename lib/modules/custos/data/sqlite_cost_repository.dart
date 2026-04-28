@@ -15,6 +15,7 @@ import '../../caixa/data/cash_database_support.dart';
 import '../../caixa/data/sqlite_cash_repository.dart';
 import '../../caixa/domain/entities/cash_enums.dart';
 import '../../vendas/domain/entities/sale_enums.dart';
+import 'models/remote_cost_record.dart';
 import '../domain/entities/cost_entry.dart';
 import '../domain/entities/cost_overview.dart';
 import '../domain/entities/cost_status.dart';
@@ -267,6 +268,55 @@ class SqliteCostRepository implements CostRepository {
         'cancelado_em': null,
       });
     });
+  }
+
+  Future<CostEntry> upsertFromRemote(RemoteCostRecord remote) async {
+    final database = await _loadDatabase();
+    int localId = 0;
+    await database.transaction((txn) async {
+      final existingRows = await txn.query(
+        TableNames.custos,
+        where: 'remote_id = ? OR uuid = ?',
+        whereArgs: [remote.remoteId, remote.localUuid],
+        limit: 1,
+      );
+
+      final values = <String, Object?>{
+        'uuid': remote.localUuid,
+        'remote_id': remote.remoteId,
+        'descricao': remote.description.trim(),
+        'tipo_custo': remote.type.dbValue,
+        'categoria': _cleanNullable(remote.category),
+        'valor_centavos': remote.amountCents,
+        'data_referencia': _normalizeDay(
+          remote.referenceDate,
+        ).toIso8601String(),
+        'pago_em': remote.paidAt?.toIso8601String(),
+        'forma_pagamento': remote.paymentMethod?.dbValue,
+        'observacao': _cleanNullable(remote.notes),
+        'recorrente': remote.isRecurring ? 1 : 0,
+        'status': remote.status.dbValue,
+        'atualizado_em': remote.updatedAt.toIso8601String(),
+        'cancelado_em': remote.canceledAt?.toIso8601String(),
+      };
+
+      if (existingRows.isEmpty) {
+        values['caixa_movimento_id'] = null;
+        values['criado_em'] = remote.createdAt.toIso8601String();
+        localId = await txn.insert(TableNames.custos, values);
+        return;
+      }
+
+      localId = existingRows.first['id'] as int;
+      await txn.update(
+        TableNames.custos,
+        values,
+        where: 'id = ?',
+        whereArgs: [localId],
+      );
+    });
+
+    return fetchCost(localId);
   }
 
   @override

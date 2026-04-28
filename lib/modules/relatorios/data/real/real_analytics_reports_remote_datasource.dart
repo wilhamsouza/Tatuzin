@@ -25,7 +25,7 @@ class RealAnalyticsReportsRemoteDatasource
     required ReportFilter filter,
   }) async {
     final response = await _apiClient.getJson(
-      '/admin/analytics/reports/cash-consolidated',
+      '/analytics/reports/cash-consolidated',
       options: await _authorizedOptions(filter: filter),
     );
     final totals = _readMap(response.data, 'totals');
@@ -45,7 +45,7 @@ class RealAnalyticsReportsRemoteDatasource
     required ReportFilter filter,
   }) async {
     final response = await _apiClient.getJson(
-      '/admin/analytics/reports/financial-summary',
+      '/analytics/reports/financial-summary',
       options: await _authorizedOptions(filter: filter),
     );
     final summary = _readMap(response.data, 'summary');
@@ -70,7 +70,7 @@ class RealAnalyticsReportsRemoteDatasource
     int limit = 20,
   }) async {
     final response = await _apiClient.getJson(
-      '/admin/analytics/reports/sales-by-customer',
+      '/analytics/reports/sales-by-customer',
       options: await _authorizedOptions(filter: filter, topN: limit),
     );
     return RemoteSalesByCustomerReport(
@@ -86,7 +86,7 @@ class RealAnalyticsReportsRemoteDatasource
     required ReportFilter filter,
   }) async {
     final response = await _apiClient.getJson(
-      '/admin/analytics/reports/sales-by-day',
+      '/analytics/reports/sales-by-day',
       options: await _authorizedOptions(filter: filter),
     );
     return RemoteSalesByDayReport(
@@ -103,7 +103,7 @@ class RealAnalyticsReportsRemoteDatasource
     int limit = 10,
   }) async {
     final response = await _apiClient.getJson(
-      '/admin/analytics/reports/sales-by-product',
+      '/analytics/reports/sales-by-product',
       options: await _authorizedOptions(filter: filter, topN: limit),
     );
     return RemoteSalesByProductReport(
@@ -140,7 +140,6 @@ class RealAnalyticsReportsRemoteDatasource
     return ApiRequestOptions(
       headers: <String, String>{'Authorization': 'Bearer $token'},
       queryParameters: <String, Object?>{
-        'companyId': companyId,
         'startDate': _formatDate(filter.start),
         'endDate': _formatDate(
           filter.endExclusive.subtract(const Duration(days: 1)),

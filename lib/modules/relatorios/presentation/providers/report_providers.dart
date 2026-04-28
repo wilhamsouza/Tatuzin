@@ -64,7 +64,7 @@ final erpManagementReportRepositoryProvider =
         localFallbackRepository: ref.watch(
           pdvOperationalReportRepositoryProvider,
         ),
-        canUseRemoteAnalytics: operationalContext.session.user.isPlatformAdmin,
+        canUseRemoteAnalytics: operationalContext.canUseCloudReads,
       );
     });
 

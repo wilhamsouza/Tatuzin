@@ -3,12 +3,17 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/app_context/app_operational_context.dart';
+import '../../../../app/core/app_context/data_access_policy.dart';
 import '../../../../app/core/database/app_database.dart';
+import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/provider_context_logger.dart';
 import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
+import '../../../../app/core/session/auth_token_storage.dart';
 import '../../data/cost_repository_impl.dart';
+import '../../data/datasources/costs_remote_datasource.dart';
+import '../../data/real/real_costs_remote_datasource.dart';
 import '../../data/sqlite_cost_repository.dart';
 import '../../domain/entities/cost_entry.dart';
 import '../../domain/entities/cost_overview.dart';
@@ -23,9 +28,19 @@ final localCostRepositoryProvider = Provider<SqliteCostRepository>((ref) {
   );
 });
 
+final costsRemoteDatasourceProvider = Provider<CostsRemoteDatasource>((ref) {
+  return RealCostsRemoteDatasource(
+    apiClient: ref.read(realApiClientProvider),
+    tokenStorage: ref.read(authTokenStorageProvider),
+  );
+});
+
 final costRepositoryProvider = Provider<CostRepository>((ref) {
   return CostRepositoryImpl(
     localRepository: ref.watch(localCostRepositoryProvider),
+    remoteDatasource: ref.read(costsRemoteDatasourceProvider),
+    operationalContext: ref.watch(appOperationalContextProvider),
+    dataAccessPolicy: ref.watch(appDataAccessPolicyProvider),
   );
 });
 
