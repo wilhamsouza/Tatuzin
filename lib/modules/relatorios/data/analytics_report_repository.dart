@@ -481,7 +481,14 @@ class AnalyticsReportRepository implements ReportRepository {
       AppLogger.info('report.$label remote-first started');
       final result = await remote();
       AppLogger.info('report.$label remote-first finished');
-      return ReportResult<T>(data: result);
+      return ReportResult<T>(
+        data: result,
+        notice: ReportDataOriginNotice(
+          scope: scope,
+          title: 'Dados atualizados',
+          message: 'Dados atualizados da nuvem.',
+        ),
+      );
     } catch (error, stackTrace) {
       final isForbiddenAdminEndpoint =
           error is NetworkRequestException && error.cause == 403;

@@ -9,6 +9,7 @@ import '../domain/entities/inventory_adjustment_input.dart';
 import '../domain/entities/inventory_item.dart';
 import '../domain/entities/inventory_movement.dart';
 import '../domain/repositories/inventory_repository.dart';
+import 'datasources/inventory_remote_datasource.dart';
 import 'sqlite_inventory_repository.dart';
 
 class InventoryRepositoryImpl implements InventoryRepository {
@@ -16,17 +17,20 @@ class InventoryRepositoryImpl implements InventoryRepository {
     required SqliteInventoryRepository localRepository,
     SqliteProductRepository? localProductRepository,
     ProductsRemoteDatasource? productsRemoteDatasource,
+    InventoryRemoteDatasource? inventoryRemoteDatasource,
     AppOperationalContext? operationalContext,
     DataAccessPolicy? dataAccessPolicy,
   }) : _localRepository = localRepository,
        _localProductRepository = localProductRepository,
        _productsRemoteDatasource = productsRemoteDatasource,
+       _inventoryRemoteDatasource = inventoryRemoteDatasource,
        _operationalContext = operationalContext,
        _dataAccessPolicy = dataAccessPolicy;
 
   final SqliteInventoryRepository _localRepository;
   final SqliteProductRepository? _localProductRepository;
   final ProductsRemoteDatasource? _productsRemoteDatasource;
+  final InventoryRemoteDatasource? _inventoryRemoteDatasource;
   final AppOperationalContext? _operationalContext;
   final DataAccessPolicy? _dataAccessPolicy;
 
@@ -51,6 +55,27 @@ class InventoryRepositoryImpl implements InventoryRepository {
     String query = '',
     InventoryListFilter filter = InventoryListFilter.all,
   }) async {
+    if (_shouldUseErpRemoteRead && _inventoryRemoteDatasource != null) {
+      try {
+        AppLogger.info('[Estoque] remote inventory list started');
+        final remoteItems = await _inventoryRemoteDatasource
+            .listItems(query: query, filter: _remoteFilterFor(filter))
+            .timeout(const Duration(seconds: 15));
+        AppLogger.info(
+          '[Estoque] remote inventory list finished: ${remoteItems.length} items',
+        );
+        return remoteItems
+            .map((item) => item.toInventoryItem())
+            .toList(growable: false);
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Falha ao carregar estoque gerencial remoto. Usando cache local.',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
+
     AppLogger.info('[Estoque] listItems local read started');
     _refreshRemoteProductStockSnapshotInBackground();
     return _localRepository
@@ -119,5 +144,14 @@ class InventoryRepositoryImpl implements InventoryRepository {
 
   void _refreshRemoteProductStockSnapshotInBackground() {
     unawaited(_refreshRemoteProductStockSnapshotIfAvailable());
+  }
+
+  String _remoteFilterFor(InventoryListFilter filter) {
+    return switch (filter) {
+      InventoryListFilter.all => 'all',
+      InventoryListFilter.active => 'active',
+      InventoryListFilter.zeroed => 'zeroed',
+      InventoryListFilter.belowMinimum => 'belowMinimum',
+    };
   }
 }

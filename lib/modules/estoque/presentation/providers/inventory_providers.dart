@@ -5,13 +5,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/core/app_context/app_operational_context.dart';
 import '../../../../app/core/app_context/data_access_policy.dart';
 import '../../../../app/core/database/app_database.dart';
+import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/provider_context_logger.dart';
 import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
+import '../../../../app/core/session/auth_token_storage.dart';
 import '../../../produtos/presentation/providers/product_providers.dart';
+import '../../data/datasources/inventory_remote_datasource.dart';
 import '../../data/inventory_count_repository_impl.dart';
 import '../../data/inventory_repository_impl.dart';
+import '../../data/real/real_inventory_remote_datasource.dart';
 import '../../data/sqlite_inventory_count_repository.dart';
 import '../../data/sqlite_inventory_repository.dart';
 import '../../domain/entities/inventory_adjustment_input.dart';
@@ -30,11 +34,21 @@ final localInventoryRepositoryProvider = Provider<SqliteInventoryRepository>((
   return SqliteInventoryRepository(ref.watch(appDatabaseProvider));
 });
 
+final inventoryRemoteDatasourceProvider = Provider<InventoryRemoteDatasource>((
+  ref,
+) {
+  return RealInventoryRemoteDatasource(
+    apiClient: ref.read(realApiClientProvider),
+    tokenStorage: ref.read(authTokenStorageProvider),
+  );
+});
+
 final inventoryRepositoryProvider = Provider<InventoryRepository>((ref) {
   return InventoryRepositoryImpl(
     localRepository: ref.read(localInventoryRepositoryProvider),
     localProductRepository: ref.read(localProductRepositoryProvider),
     productsRemoteDatasource: ref.read(productsRemoteDatasourceProvider),
+    inventoryRemoteDatasource: ref.read(inventoryRemoteDatasourceProvider),
     operationalContext: ref.watch(appOperationalContextProvider),
     dataAccessPolicy: ref.watch(appDataAccessPolicyProvider),
   );

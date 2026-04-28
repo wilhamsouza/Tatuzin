@@ -40,8 +40,8 @@ void main() {
     test(
       'usa analytics remoto primeiro quando ha endpoint compativel',
       () async {
-        final remote = _FakeAnalyticsRemoteDatasource();
-        final local = _FakeReportRepository();
+        final remote = FakeAnalyticsRemoteDatasource();
+        final local = FakeReportRepository();
         final repository = AnalyticsReportRepository(
           remoteDatasource: remote,
           localFallbackRepository: local,
@@ -56,8 +56,8 @@ void main() {
     );
 
     test('usa fallback local somente quando analytics falha', () async {
-      final remote = _FakeAnalyticsRemoteDatasource(shouldFail: true);
-      final local = _FakeReportRepository();
+      final remote = FakeAnalyticsRemoteDatasource(shouldFail: true);
+      final local = FakeReportRepository();
       final repository = AnalyticsReportRepository(
         remoteDatasource: remote,
         localFallbackRepository: local,
@@ -74,8 +74,8 @@ void main() {
     });
 
     test('propaga erro quando API e cache falham', () async {
-      final remote = _FakeAnalyticsRemoteDatasource(shouldFail: true);
-      final local = _FakeReportRepository(shouldFail: true);
+      final remote = FakeAnalyticsRemoteDatasource(shouldFail: true);
+      final local = FakeReportRepository(shouldFail: true);
       final repository = AnalyticsReportRepository(
         remoteDatasource: remote,
         localFallbackRepository: local,
@@ -90,8 +90,8 @@ void main() {
     test(
       'cashflowReportProvider operacional usa repositório PDV local',
       () async {
-        final remote = _FakeAnalyticsRemoteDatasource();
-        final local = _FakeReportRepository();
+        final remote = FakeAnalyticsRemoteDatasource();
+        final local = FakeReportRepository();
         final container = ProviderContainer(
           overrides: [
             pdvOperationalReportRepositoryProvider.overrideWithValue(local),
@@ -114,8 +114,8 @@ void main() {
     test(
       'usa fallback local para contrato remoto ausente de estoque',
       () async {
-        final remote = _FakeAnalyticsRemoteDatasource();
-        final local = _FakeReportRepository();
+        final remote = FakeAnalyticsRemoteDatasource();
+        final local = FakeReportRepository();
         final repository = AnalyticsReportRepository(
           remoteDatasource: remote,
           localFallbackRepository: local,
@@ -137,8 +137,8 @@ void main() {
     test(
       'usuario comum nao chama endpoint admin e usa fallback sinalizado',
       () async {
-        final remote = _FakeAnalyticsRemoteDatasource();
-        final local = _FakeReportRepository();
+        final remote = FakeAnalyticsRemoteDatasource();
+        final local = FakeReportRepository();
         final container = ProviderContainer(
           overrides: [
             pdvOperationalReportRepositoryProvider.overrideWithValue(local),
@@ -162,8 +162,8 @@ void main() {
     test(
       'provider de variantes retorna notice sem modificar StateProvider no build',
       () async {
-        final remote = _FakeAnalyticsRemoteDatasource();
-        final local = _FakeReportRepository();
+        final remote = FakeAnalyticsRemoteDatasource();
+        final local = FakeReportRepository();
         final container = ProviderContainer(
           overrides: [
             pdvOperationalReportRepositoryProvider.overrideWithValue(local),
@@ -192,11 +192,12 @@ ReportFilter _filter() {
   );
 }
 
-class _FakeAnalyticsRemoteDatasource
+class FakeAnalyticsRemoteDatasource
     implements AnalyticsReportsRemoteDatasource {
-  _FakeAnalyticsRemoteDatasource({this.shouldFail = false});
+  FakeAnalyticsRemoteDatasource({this.shouldFail = false, this.error});
 
   final bool shouldFail;
+  final Object? error;
   int cashConsolidatedCalls = 0;
   int salesByDayCalls = 0;
   int salesByProductCalls = 0;
@@ -207,7 +208,7 @@ class _FakeAnalyticsRemoteDatasource
   }) async {
     cashConsolidatedCalls++;
     if (shouldFail) {
-      throw StateError('remote failed');
+      throw error ?? StateError('remote failed');
     }
     return RemoteCashConsolidatedReport(
       totalInflowCents: 15000,
@@ -229,7 +230,7 @@ class _FakeAnalyticsRemoteDatasource
     required ReportFilter filter,
   }) async {
     if (shouldFail) {
-      throw StateError('remote failed');
+      throw error ?? StateError('remote failed');
     }
     return const RemoteFinancialSummaryReport(
       salesAmountCents: 12000,
@@ -249,7 +250,7 @@ class _FakeAnalyticsRemoteDatasource
     int limit = 20,
   }) async {
     if (shouldFail) {
-      throw StateError('remote failed');
+      throw error ?? StateError('remote failed');
     }
     return const RemoteSalesByCustomerReport(
       items: [
@@ -273,7 +274,7 @@ class _FakeAnalyticsRemoteDatasource
   }) async {
     salesByDayCalls++;
     if (shouldFail) {
-      throw StateError('remote failed');
+      throw error ?? StateError('remote failed');
     }
     return RemoteSalesByDayReport(
       series: [
@@ -295,7 +296,7 @@ class _FakeAnalyticsRemoteDatasource
   }) async {
     salesByProductCalls++;
     if (shouldFail) {
-      throw StateError('remote failed');
+      throw error ?? StateError('remote failed');
     }
     return const RemoteSalesByProductReport(
       items: [
@@ -314,8 +315,8 @@ class _FakeAnalyticsRemoteDatasource
   }
 }
 
-class _FakeReportRepository implements ReportRepository {
-  _FakeReportRepository({this.shouldFail = false});
+class FakeReportRepository implements ReportRepository {
+  FakeReportRepository({this.shouldFail = false});
 
   final bool shouldFail;
   int salesTrendCalls = 0;

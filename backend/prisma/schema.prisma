@@ -98,6 +98,7 @@ model Company {
   purchases                       Purchase[]
   sales                           Sale[]
   financialEvents                 FinancialEvent[]
+  costs                           Cost[]
   fiadoPayments                   FiadoPayment[]
   cashEvents                      CashEvent[]
   supplyCostHistory               SupplyCostHistory[]
@@ -724,6 +725,31 @@ model FinancialEvent {
   @@index([companyId, createdAt])
   @@index([companyId, eventType])
   @@index([companyId, saleId])
+}
+
+model Cost {
+  id            String    @id @default(uuid())
+  companyId     String
+  localUuid     String
+  description   String
+  type          String
+  category      String?
+  amountCents   Int
+  referenceDate DateTime
+  status        String    @default("pending")
+  isRecurring   Boolean   @default(false)
+  paidAt        DateTime?
+  paymentMethod String?
+  notes         String?
+  canceledAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, referenceDate])
+  @@index([companyId, status])
+  @@index([companyId, type])
 }
 
 model FiadoPayment {
