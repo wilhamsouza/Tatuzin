@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
@@ -148,7 +149,7 @@ final appDatabaseProvider = Provider<AppDatabase>((ref) {
 });
 
 final appStartupTimeoutProvider = Provider<Duration>((ref) {
-  return const Duration(seconds: 30);
+  return const Duration(seconds: 90);
 });
 
 final appStartupApiStepTimeoutProvider = Provider<Duration>((ref) {
@@ -370,11 +371,16 @@ Future<AppStartupState?> _openTenantDatabase({
     AppLogger.info(
       'tenant_database_open_requested | tenant_key=$isolationKey | '
       'database_name=${AppDatabase.databaseNameForIsolationKey(isolationKey)} | '
-      'timeout_seconds=${timeout.inSeconds}',
+      'slow_warning_seconds=${timeout.inSeconds}',
     );
-    await openDatabase(isolationKey).timeout(
+    await _awaitWithSlowWarning(
+      openDatabase(isolationKey),
       timeout,
-      onTimeout: () => throw TimeoutException('tenant_database_open_timeout'),
+      () => AppLogger.warn(
+        '[DB] tenant_database_open_slow_warning | tenant_key=$isolationKey | '
+        'database_name=${AppDatabase.databaseNameForIsolationKey(isolationKey)} | '
+        'elapsed_seconds=${timeout.inSeconds}',
+      ),
     );
     trace.logStepCompleted(
       'tenant_database_opened',
@@ -392,6 +398,12 @@ Future<AppStartupState?> _openTenantDatabase({
       stackTrace: stackTrace,
       reason: 'tenant_database_open_failed',
     );
+    AppLogger.error(
+      '[DB] tenant_database_open_failed | tenant_key=$isolationKey | '
+      'database_name=${AppDatabase.databaseNameForIsolationKey(isolationKey)}',
+      error: error,
+      stackTrace: stackTrace,
+    );
     return AppStartupState.localDatabaseError(
       debugDetails: trace.buildDebugDetails(
         reason:
@@ -401,6 +413,27 @@ Future<AppStartupState?> _openTenantDatabase({
       pendingStep: trace.pendingStep,
     );
   }
+}
+
+Future<T> _awaitWithSlowWarning<T>(
+  Future<T> future,
+  Duration warningAfter,
+  void Function() onSlow,
+) {
+  var completed = false;
+  Timer? timer;
+  if (warningAfter > Duration.zero) {
+    timer = Timer(warningAfter, () {
+      if (!completed) {
+        onSlow();
+      }
+    });
+  }
+
+  return future.whenComplete(() {
+    completed = true;
+    timer?.cancel();
+  });
 }
 
 AppStartupState? _validateRemoteSession(
@@ -737,11 +770,15 @@ class AppStartupState {
     String? lastCompletedStep,
     String? pendingStep,
   }) {
+    final waitingForDatabase = pendingStep == 'tenant_database_open_started';
     return AppStartupState._(
       status: AppStartupStatus.timeout,
-      title: 'O preparo demorou mais do que o esperado',
-      message:
-          'O Tatuzin nao conseguiu concluir a preparacao inicial a tempo. Tente novamente ou saia da conta para reiniciar a sessao.',
+      title: waitingForDatabase
+          ? 'O banco local demorou demais para abrir'
+          : 'O preparo demorou mais do que o esperado',
+      message: waitingForDatabase
+          ? 'O banco local desta empresa demorou demais para abrir. Seus dados serao preservados. Tente novamente ou saia da conta.'
+          : 'O Tatuzin nao conseguiu concluir a preparacao inicial a tempo. Tente novamente ou saia da conta para reiniciar a sessao.',
       debugDetails: debugDetails,
       lastCompletedStep: lastCompletedStep,
       pendingStep: pendingStep,
@@ -774,6 +811,84 @@ class AppStartupState {
   bool get isSuccess => status == AppStartupStatus.success;
 }
 
+class _DbOpenTrace {
+  _DbOpenTrace({required this.databaseName, required this.databasePath});
+
+  static const _watchdogInterval = Duration(seconds: 10);
+
+  final String databaseName;
+  final String databasePath;
+  String _lastStage = 'created';
+  Timer? _watchdog;
+
+  void startWatchdog() {
+    _watchdog?.cancel();
+    _watchdog = Timer.periodic(_watchdogInterval, (_) {
+      AppLogger.warn(
+        '[DB_OPEN_TRACE] still_waiting last_stage=$_lastStage | '
+        'database_name=$databaseName',
+      );
+    });
+  }
+
+  void mark(String stage, {String? details}) {
+    _lastStage = stage;
+    final buffer = StringBuffer('[DB_OPEN_TRACE] $stage');
+    if (details != null && details.trim().isNotEmpty) {
+      buffer.write(' ${details.trim()}');
+    }
+    buffer.write(' | database_name=$databaseName');
+    AppLogger.info(buffer.toString());
+  }
+
+  void logFileState() {
+    AppLogger.info(_buildFileStateMessage());
+  }
+
+  void logNonDestructiveDiagnostic() {
+    AppLogger.warn(_buildFileStateMessage());
+    AppLogger.warn(
+      '[DB_OPEN_TRACE] diagnostic_skipped reason=primary_open_pending | '
+      'database_name=$databaseName | last_stage=$_lastStage',
+    );
+  }
+
+  void dispose() {
+    _watchdog?.cancel();
+    _watchdog = null;
+  }
+
+  String _buildFileStateMessage() {
+    final database = _fileState(databasePath);
+    final wal = _fileState('$databasePath-wal');
+    final shm = _fileState('$databasePath-shm');
+    return '[DB_OPEN_TRACE] file_state | database_name=$databaseName | '
+        'exists=${database.exists} db_bytes=${database.bytes} '
+        'wal_exists=${wal.exists} wal_bytes=${wal.bytes} '
+        'shm_exists=${shm.exists} shm_bytes=${shm.bytes}';
+  }
+
+  static _FileState _fileState(String path) {
+    try {
+      final file = File(path);
+      if (!file.existsSync()) {
+        return const _FileState(exists: false, bytes: 0);
+      }
+      return _FileState(exists: true, bytes: file.lengthSync());
+    } catch (error) {
+      AppLogger.warn('[DB_OPEN_TRACE] file_state_unavailable error=$error');
+      return const _FileState(exists: false, bytes: 0);
+    }
+  }
+}
+
+class _FileState {
+  const _FileState({required this.exists, required this.bytes});
+
+  final bool exists;
+  final int bytes;
+}
+
 class AppDatabase {
   AppDatabase._({required String databaseName}) : _databaseName = databaseName;
 
@@ -798,6 +913,15 @@ class AppDatabase {
 
   static Future<void> openForIsolationKey(String isolationKey) async {
     await AppDatabase.forIsolationKey(isolationKey).database;
+  }
+
+  static Future<void> closeForIsolationKey(String isolationKey) async {
+    final databaseName = databaseNameForIsolationKey(isolationKey);
+    final cached = _instances[databaseName];
+    if (cached == null) {
+      return;
+    }
+    await cached.close();
   }
 
   static String databaseNameForIsolationKey(String isolationKey) {
@@ -843,89 +967,158 @@ class AppDatabase {
     final future = _openDatabase();
     _openingDatabase = future;
     try {
-      return await future;
-    } finally {
+      final database = await future;
       if (identical(_openingDatabase, future)) {
+        _openingDatabase = null;
+      }
+      return database;
+    } finally {
+      if (identical(_openingDatabase, future) && _database == null) {
         _openingDatabase = null;
       }
     }
   }
 
   Future<Database> _openDatabase() async {
+    final openStopwatch = Stopwatch()..start();
+    _DbOpenTrace? trace;
     try {
+      AppLogger.info('[DB] open_path_started | database_name=$_databaseName');
       final databasesPath = await getDatabasesPath().timeout(
         _databasePathTimeout,
         onTimeout: () => throw TimeoutException('getDatabasesPath_timeout'),
       );
       final databasePath = path.join(databasesPath, _databaseName);
+      AppLogger.info(
+        '[DB] open_path_finished | database_name=$_databaseName | '
+        'duration_ms=${openStopwatch.elapsedMilliseconds}',
+      );
+      trace = _DbOpenTrace(
+        databaseName: _databaseName,
+        databasePath: databasePath,
+      )..startWatchdog();
+      trace.logFileState();
 
       AppLogger.info('Opening database at $databasePath');
       AppLogger.info('Database bootstrap started');
+      AppLogger.info('[DB] open_started | database_name=$_databaseName');
+      trace.mark('before_open_database');
 
-      _database =
-          await openDatabase(
-            databasePath,
-            version: AppConstants.databaseVersion,
-            onConfigure: (db) async {
-              await _runBootstrapStep(
-                'onConfigure > PRAGMA foreign_keys = ON',
-                () => _enableForeignKeys(db),
-                timeout: _pragmaTimeout,
-              );
-              await _runBootstrapStep(
-                'onConfigure > PRAGMA journal_mode = WAL',
-                () => _configureJournalMode(db),
-                timeout: _pragmaTimeout,
-              );
-            },
-            onCreate: (db, version) async {
-              await _runBootstrapStep(
-                'onCreate > schema version $version',
-                () async {
-                  AppLogger.info('Creating database schema version $version');
-                  await db.transaction((txn) async {
-                    await AppMigrations.runCreate(txn, version);
-                  });
-                },
-                timeout: _migrationTimeout,
-              );
-            },
-            onUpgrade: (db, oldVersion, newVersion) async {
-              await _runBootstrapStep(
-                'onUpgrade > schema v$oldVersion to v$newVersion',
-                () async {
-                  AppLogger.info(
-                    'Upgrading database from v$oldVersion to v$newVersion',
-                  );
-                  await db.transaction((txn) async {
-                    await AppMigrations.runUpgrade(txn, oldVersion, newVersion);
-                  });
-                },
-                timeout: _migrationTimeout,
-              );
-            },
-            onOpen: (db) async {
-              await _runBootstrapStep('onOpen > final verification', () async {
-                AppLogger.info('Database opened successfully');
-                final foreignKeyResult = await db.rawQuery(
-                  'PRAGMA foreign_keys',
-                );
-                final foreignKeysEnabled = _readPragmaValue(foreignKeyResult);
+      _database = await _awaitWithSlowWarning(
+        openDatabase(
+          databasePath,
+          version: AppConstants.databaseVersion,
+          onConfigure: (db) async {
+            trace?.mark('on_configure_started');
+            AppLogger.info(
+              '[DB] open_configure_started | database_name=$_databaseName',
+            );
+            await _runBootstrapStep(
+              'onConfigure > PRAGMA foreign_keys = ON',
+              () => _enableForeignKeys(db),
+              timeout: _pragmaTimeout,
+            );
+            await _runBootstrapStep(
+              'onConfigure > PRAGMA journal_mode = WAL',
+              () => _configureJournalMode(db),
+              timeout: _pragmaTimeout,
+            );
+            AppLogger.info(
+              '[DB] open_configure_finished | database_name=$_databaseName',
+            );
+            trace?.mark('on_configure_finished');
+          },
+          onCreate: (db, version) async {
+            trace?.mark('on_create_started');
+            AppLogger.info(
+              '[DB] open_create_started | database_name=$_databaseName | '
+              'version=$version',
+            );
+            await _runBootstrapStep(
+              'onCreate > schema version $version',
+              () async {
+                AppLogger.info('Creating database schema version $version');
+                await db.transaction((txn) async {
+                  await AppMigrations.runCreate(txn, version);
+                });
+              },
+              timeout: _migrationTimeout,
+            );
+            AppLogger.info(
+              '[DB] open_create_finished | database_name=$_databaseName | '
+              'version=$version',
+            );
+            trace?.mark('on_create_finished');
+          },
+          onUpgrade: (db, oldVersion, newVersion) async {
+            trace?.mark(
+              'on_upgrade_started',
+              details: 'old=$oldVersion new=$newVersion',
+            );
+            AppLogger.info(
+              '[DB] open_migration_started | database_name=$_databaseName | '
+              'from=$oldVersion | to=$newVersion',
+            );
+            await _runBootstrapStep(
+              'onUpgrade > schema v$oldVersion to v$newVersion',
+              () async {
                 AppLogger.info(
-                  'PRAGMA foreign_keys verification returned $foreignKeysEnabled',
+                  'Upgrading database from v$oldVersion to v$newVersion',
                 );
-                if (foreignKeysEnabled != '1') {
-                  throw StateError(
-                    'foreign_keys remained disabled after opening the database '
-                    '(result=$foreignKeysEnabled)',
-                  );
-                }
-              }, timeout: _verificationTimeout);
-            },
-          ).timeout(
-            _databaseOpenTimeout,
-            onTimeout: () => throw TimeoutException('openDatabase_timeout'),
+                await db.transaction((txn) async {
+                  await AppMigrations.runUpgrade(txn, oldVersion, newVersion);
+                });
+              },
+              timeout: _migrationTimeout,
+            );
+            AppLogger.info(
+              '[DB] open_migration_finished | database_name=$_databaseName | '
+              'from=$oldVersion | to=$newVersion',
+            );
+            trace?.mark('on_upgrade_finished');
+          },
+          onOpen: (db) async {
+            trace?.mark('on_open_started');
+            AppLogger.info(
+              '[DB] open_on_open_started | database_name=$_databaseName',
+            );
+            await _runBootstrapStep('onOpen > final verification', () async {
+              AppLogger.info('Database opened successfully');
+              final foreignKeyResult = await db.rawQuery('PRAGMA foreign_keys');
+              final foreignKeysEnabled = _readPragmaValue(foreignKeyResult);
+              AppLogger.info(
+                'PRAGMA foreign_keys verification returned $foreignKeysEnabled',
+              );
+              if (foreignKeysEnabled != '1') {
+                throw StateError(
+                  'foreign_keys remained disabled after opening the database '
+                  '(result=$foreignKeysEnabled)',
+                );
+              }
+            }, timeout: _verificationTimeout);
+            AppLogger.info(
+              '[DB] open_on_open_finished | database_name=$_databaseName',
+            );
+            trace?.mark('on_open_finished');
+          },
+        ),
+        _databaseOpenTimeout,
+        () {
+          AppLogger.warn(
+            '[DB] open_slow_warning | database_name=$_databaseName | '
+            'elapsed_seconds=${_databaseOpenTimeout.inSeconds}',
           );
+          trace?.logNonDestructiveDiagnostic();
+        },
+      );
+
+      trace.mark('after_open_database');
+      trace.mark('post_bootstrap_started');
+      trace.mark('post_bootstrap_finished');
+      AppLogger.info(
+        '[DB] open_finished | database_name=$_databaseName | '
+        'duration_ms=${openStopwatch.elapsedMilliseconds}',
+      );
 
       return _database!;
     } catch (error, stackTrace) {
@@ -950,23 +1143,17 @@ class AppDatabase {
         'Nao foi possivel inicializar o banco de dados local',
         cause: error,
       );
+    } finally {
+      trace?.dispose();
     }
   }
 
   Future<void> close() async {
     final openingDatabase = _openingDatabase;
     if (_database == null && openingDatabase != null) {
-      try {
-        final database = await openingDatabase;
-        await database.close();
-      } catch (_) {
-        // Ignore close errors during disposal of an abandoned bootstrap.
-      } finally {
-        _instances.remove(_databaseName);
-        _openingDatabase = null;
-        _database = null;
-      }
-      AppLogger.info('Database connection closed');
+      AppLogger.warn(
+        '[DB] database_close_deferred_opening | database_name=$_databaseName',
+      );
       return;
     }
 
