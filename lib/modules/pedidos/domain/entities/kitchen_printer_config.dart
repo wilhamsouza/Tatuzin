@@ -89,7 +89,7 @@ class KitchenPrinterConfig {
     return KitchenPrinterConfig(
       displayName: (json['displayName'] as String?)?.trim().isNotEmpty == true
           ? (json['displayName'] as String).trim()
-          : 'Impressora cozinha',
+          : 'Impressora de pedidos',
       connectionType: KitchenPrinterConnectionTypeX.fromStorage(
         json['connectionType'] as String?,
       ),

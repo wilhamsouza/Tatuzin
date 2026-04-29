@@ -201,6 +201,7 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
   Future<List<SyncQueueItem>> listEligibleItems({
     Iterable<String>? featureKeys,
     required bool retryOnly,
+    bool ignoreRetryBackoff = false,
     DateTime? now,
   }) async {
     final database = await _appDatabase.database;
@@ -217,6 +218,7 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
           (item) => _isEligible(
             item,
             retryOnly: retryOnly,
+            ignoreRetryBackoff: ignoreRetryBackoff,
             now: currentTime,
             featureKeys: featureKeys,
           ),
@@ -766,6 +768,7 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
   bool _isEligible(
     SyncQueueItem item, {
     required bool retryOnly,
+    required bool ignoreRetryBackoff,
     required DateTime now,
     required Iterable<String>? featureKeys,
   }) {
@@ -789,7 +792,7 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
       return false;
     }
 
-    if (retryOnly &&
+    if (!ignoreRetryBackoff &&
         item.status == SyncQueueStatus.syncError &&
         item.nextRetryAt != null &&
         item.nextRetryAt!.isAfter(now)) {

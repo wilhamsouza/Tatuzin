@@ -35,7 +35,7 @@ class AppEnvironment {
       dataMode: AppDataMode.futureRemoteReady,
       endpointConfig: EndpointConfig.remoteDefault(),
       authEnabled: true,
-      remoteSyncEnabled: false,
+      remoteSyncEnabled: true,
       multiUserEnabled: true,
       multiCompanyEnabled: true,
     );
@@ -47,7 +47,7 @@ class AppEnvironment {
       dataMode = AppDataMode.futureRemoteReady,
       endpointConfig = const EndpointConfig.localDevelopment(),
       authEnabled = true,
-      remoteSyncEnabled = false,
+      remoteSyncEnabled = true,
       multiUserEnabled = true,
       multiCompanyEnabled = true;
 
@@ -176,7 +176,7 @@ class AppEnvironmentController extends Notifier<AppEnvironment> {
       dataMode: mode,
       endpointConfig: endpointConfig,
       authEnabled: mode != AppDataMode.localOnly,
-      remoteSyncEnabled: mode == AppDataMode.futureHybridReady,
+      remoteSyncEnabled: mode != AppDataMode.localOnly,
       multiUserEnabled: mode != AppDataMode.localOnly,
       multiCompanyEnabled: mode != AppDataMode.localOnly,
     );
@@ -291,7 +291,7 @@ class AppEnvironmentStorage {
       dataMode: mode,
       endpointConfig: endpointConfig,
       authEnabled: mode != AppDataMode.localOnly,
-      remoteSyncEnabled: mode == AppDataMode.futureHybridReady,
+      remoteSyncEnabled: mode != AppDataMode.localOnly,
       multiUserEnabled: mode != AppDataMode.localOnly,
       multiCompanyEnabled: mode != AppDataMode.localOnly,
     );

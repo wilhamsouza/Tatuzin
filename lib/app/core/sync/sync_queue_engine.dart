@@ -3,8 +3,11 @@ import 'sync_dependency_resolver.dart';
 import 'sync_error_info.dart';
 import 'sync_feature_keys.dart';
 import 'sync_feature_processor.dart';
+import 'sync_queue_feature_summary.dart';
+import 'sync_queue_operation.dart';
 import 'sync_queue_repository.dart';
 import 'sync_retry_policy.dart';
+import '../utils/app_logger.dart';
 
 class SyncQueueEngine {
   const SyncQueueEngine({
@@ -28,6 +31,7 @@ class SyncQueueEngine {
   Future<SyncBatchResult> process({
     Iterable<String>? featureKeys,
     required bool retryOnly,
+    bool ignoreRetryBackoff = false,
   }) async {
     final startedAt = DateTime.now();
     var processedCount = 0;
@@ -35,19 +39,59 @@ class SyncQueueEngine {
     var failedCount = 0;
     var blockedCount = 0;
     var conflictCount = 0;
+    var skippedCount = 0;
+
+    final initialSummaries = await _queueRepository.listFeatureSummaries();
+    AppLogger.info(
+      '[Sync] batch_started '
+      'pending=${_sumPending(initialSummaries)} '
+      'error=${_sumErrors(initialSummaries)} '
+      'blocked=${_sumBlocked(initialSummaries)} '
+      'retryOnly=$retryOnly ignoreBackoff=$ignoreRetryBackoff',
+    );
 
     for (final processor in _orderedProcessors(featureKeys)) {
       if (!_shouldContinue()) {
         break;
       }
 
-      await processor.ensureSyncAllowed();
-
       final eligibleItems = await _queueRepository.listEligibleItems(
         featureKeys: [processor.featureKey],
         retryOnly: retryOnly,
+        ignoreRetryBackoff: ignoreRetryBackoff,
         now: DateTime.now(),
       );
+      if (eligibleItems.isEmpty) {
+        skippedCount++;
+        continue;
+      }
+
+      try {
+        await processor.ensureSyncAllowed();
+      } catch (error) {
+        final syncError = resolveSyncError(error);
+        AppLogger.info(
+          '[Sync] auto_sync_skipped reason=processor_not_allowed '
+          'feature=${processor.featureKey} error=${syncError.message}',
+        );
+        for (final item in eligibleItems) {
+          failedCount++;
+          final now = DateTime.now();
+          final nextRetryAt = _retryPolicy.nextRetryAt(
+            attemptCount: item.attemptCount,
+            errorType: syncError.type,
+            now: now,
+          );
+          await _queueRepository.markFailure(
+            item.id,
+            message: syncError.message,
+            errorType: syncError.type,
+            processedAt: now,
+            nextRetryAt: nextRetryAt,
+          );
+        }
+        continue;
+      }
 
       for (final candidate in eligibleItems) {
         if (!_shouldContinue()) {
@@ -61,6 +105,12 @@ class SyncQueueEngine {
 
         processedCount++;
         var activeItem = locked;
+        AppLogger.info(
+          '[Sync] item_started id=${activeItem.id} '
+          'entity=${activeItem.entityType} '
+          'operation=${activeItem.operation.storageValue} '
+          'attempt=${activeItem.attemptCount}',
+        );
 
         final dependency = await _dependencyResolver.check(locked);
         if (dependency.isBlocked) {
@@ -97,6 +147,11 @@ class SyncQueueEngine {
                 activeItem.id,
                 remoteId: result.remoteId ?? activeItem.remoteId,
                 processedAt: DateTime.now(),
+              );
+              AppLogger.info(
+                '[Sync] item_succeeded id=${activeItem.id} '
+                'entity=${activeItem.entityType} '
+                'operation=${activeItem.operation.storageValue}',
               );
               break;
             case SyncFeatureProcessOutcome.blocked:
@@ -137,6 +192,13 @@ class SyncQueueEngine {
             processedAt: DateTime.now(),
             nextRetryAt: nextRetryAt,
           );
+          AppLogger.info(
+            '[Sync] item_failed id=${activeItem.id} '
+            'entity=${activeItem.entityType} '
+            'operation=${activeItem.operation.storageValue} '
+            'error=${syncError.message} '
+            'nextRetryAt=${nextRetryAt?.toIso8601String() ?? 'none'}',
+          );
         }
       }
 
@@ -147,6 +209,17 @@ class SyncQueueEngine {
       await processor.pullRemoteSnapshot();
     }
 
+    final finishedAt = DateTime.now();
+    AppLogger.info(
+      '[Sync] batch_finished '
+      'sent=$syncedCount failed=$failedCount skipped=$skippedCount '
+      'blocked=$blockedCount conflicts=$conflictCount '
+      'duration_ms=${finishedAt.difference(startedAt).inMilliseconds}',
+    );
+    AppLogger.info(
+      '[Sync] last_sync_completed_updated at=${finishedAt.toIso8601String()}',
+    );
+
     return SyncBatchResult(
       processedCount: processedCount,
       syncedCount: syncedCount,
@@ -155,9 +228,22 @@ class SyncQueueEngine {
       conflictCount: conflictCount,
       reprocessedOnly: retryOnly,
       startedAt: startedAt,
-      finishedAt: DateTime.now(),
+      finishedAt: finishedAt,
     );
   }
+
+  int _sumPending(List<SyncQueueFeatureSummary> summaries) =>
+      summaries.fold<int>(
+        0,
+        (total, summary) =>
+            total + summary.pendingCount + summary.staleProcessingCount,
+      );
+
+  int _sumErrors(List<SyncQueueFeatureSummary> summaries) =>
+      summaries.fold<int>(0, (total, summary) => total + summary.errorCount);
+
+  int _sumBlocked(List<SyncQueueFeatureSummary> summaries) =>
+      summaries.fold<int>(0, (total, summary) => total + summary.blockedCount);
 
   List<SyncFeatureProcessor> _orderedProcessors(Iterable<String>? featureKeys) {
     final filtered = featureKeys == null

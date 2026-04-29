@@ -41,7 +41,7 @@ class DataAccessPolicy {
           mode: AppDataMode.futureRemoteReady,
           strategy: DataAccessStrategy.serverFirst,
           allowRemoteRead: true,
-          allowRemoteWrite: false,
+          allowRemoteWrite: true,
         );
       case AppDataMode.futureHybridReady:
         return const DataAccessPolicy(

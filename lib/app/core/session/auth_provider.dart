@@ -14,6 +14,7 @@ import '../utils/app_logger.dart';
 import 'app_session.dart';
 import 'auth_token_storage.dart';
 import 'session_provider.dart';
+import 'session_reset.dart';
 
 final mockAuthGatewayProvider = Provider<AuthGateway>((ref) {
   return FakeAuthGateway();
@@ -231,8 +232,18 @@ class AuthController extends AsyncNotifier<void> {
     state = const AsyncLoading();
     try {
       final session = ref.read(appSessionProvider);
-      ref.read(autoSyncCoordinatorProvider).cancelPending();
+      final resetSnapshot = await ref.read(sessionSignOutResetProvider)(
+        session,
+      );
+      if (resetSnapshot.pendingSyncCount > 0) {
+        AppLogger.info(
+          '[SessionReset] pending_sync_preserved | '
+          'pending_sync_count=${resetSnapshot.pendingSyncCount}',
+        );
+      }
       ref.read(appSessionProvider.notifier).signOutToLocalMode();
+      await Future<void>.delayed(Duration.zero);
+      await closeSessionDatabaseForReset(resetSnapshot);
       await _ensureStartupReady();
 
       if (session.isRemoteAuthenticated) {

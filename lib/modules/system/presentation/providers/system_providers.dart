@@ -9,7 +9,9 @@ import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/network/remote_feature_diagnostic.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/provider_guard.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
+import '../../../../app/core/utils/app_logger.dart';
 import '../../../../app/core/sync/local_remote_reconciliation_repository.dart';
 import '../../../../app/core/sync/sqlite_sync_audit_repository.dart';
 import '../../../../app/core/sync/sync_batch_result.dart';
@@ -47,6 +49,7 @@ final syncReadinessRepositoryProvider = Provider<SyncReadinessRepository>((
 final syncReadinessSummaryProvider = FutureProvider<List<SyncFeatureSummary>>((
   ref,
 ) async {
+  await requireTenantBootstrapReady(ref, 'syncReadinessSummaryProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'syncReadinessSummaryProvider',
@@ -57,6 +60,10 @@ final syncReadinessSummaryProvider = FutureProvider<List<SyncFeatureSummary>>((
 
 final syncQueueFeatureSummariesProvider =
     FutureProvider<List<SyncQueueFeatureSummary>>((ref) async {
+      await requireTenantBootstrapReady(
+        ref,
+        'syncQueueFeatureSummariesProvider',
+      );
       ref.watch(appDataRefreshProvider);
       return runProviderGuarded(
         'syncQueueFeatureSummariesProvider',
@@ -70,6 +77,7 @@ final syncAuditRepositoryProvider = Provider<SqliteSyncAuditRepository>((ref) {
 });
 
 final syncAuditLogsProvider = FutureProvider<List<SyncAuditLog>>((ref) async {
+  await requireTenantBootstrapReady(ref, 'syncAuditLogsProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'syncAuditLogsProvider',
@@ -498,9 +506,18 @@ class CatalogSyncController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      AppLogger.info(
+        reprocessedOnly
+            ? '[Sync] manual_sync_started scope=retry_pending'
+            : '[Sync] manual_sync_started scope=all',
+      );
       final result = await ref
           .read(syncBatchRunnerProvider)
-          .run(retryOnly: reprocessedOnly, featureKeys: featureKeys);
+          .run(
+            retryOnly: reprocessedOnly,
+            ignoreRetryBackoff: true,
+            featureKeys: featureKeys,
+          );
       state = const AsyncData(null);
       return result;
     } catch (error, stackTrace) {

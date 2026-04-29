@@ -2,6 +2,7 @@ import '../../../app/core/app_context/app_operational_context.dart';
 import '../../../app/core/app_context/data_access_policy.dart';
 import '../../../app/core/errors/app_exceptions.dart';
 import '../../../app/core/sync/sync_conflict_info.dart';
+import '../../../app/core/sync/sync_date_normalizer.dart';
 import '../../../app/core/sync/sync_feature_processor.dart';
 import '../../../app/core/sync/sync_queue_item.dart';
 import '../domain/entities/checkout_input.dart';
@@ -101,7 +102,31 @@ class SalesRepositoryImpl implements SaleRepository, SyncFeatureProcessor {
       return SyncFeatureProcessResult.conflict(conflict: conflict);
     }
 
-    final remoteRecord = RemoteSaleRecord.fromSyncPayload(sale);
+    final normalizedSoldAt = normalizeSyncDate(
+      sale.soldAt,
+      entity: 'sale',
+      field: 'soldAt',
+      fallbacks: [
+        SyncDateFallback(label: 'queue.createdAt', value: item.createdAt),
+        SyncDateFallback(label: 'sale.updatedAt', value: sale.updatedAt),
+      ],
+    );
+    final normalizedUpdatedAt = normalizeSyncDate(
+      sale.updatedAt,
+      entity: 'sale',
+      field: 'updatedAt',
+      fallbacks: [
+        SyncDateFallback(label: 'queue.createdAt', value: item.createdAt),
+        SyncDateFallback(label: 'sale.soldAt', value: normalizedSoldAt.value),
+      ],
+    );
+
+    final remoteRecord = RemoteSaleRecord.fromSyncPayload(
+      sale,
+      soldAt: normalizedSoldAt.value,
+      createdAt: normalizedSoldAt.value,
+      updatedAt: normalizedUpdatedAt.value,
+    );
     final persisted = await _remoteDatasource.create(remoteRecord);
     await _localRepository.markSynced(
       sale: sale,

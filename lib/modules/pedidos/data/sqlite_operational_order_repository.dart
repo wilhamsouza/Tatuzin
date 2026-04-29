@@ -300,14 +300,14 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
     }
     if (!currentOrder.status.canTransitionTo(OperationalOrderStatus.open)) {
       throw ValidationException(
-        'Pedido #$orderId nao pode ser enviado para cozinha neste status.',
+        'Pedido #$orderId nao pode ser enviado para separacao neste status.',
       );
     }
 
     final itemsCount = await _countItems(database, orderId);
     if (itemsCount <= 0) {
       throw const ValidationException(
-        'Adicione pelo menos um item antes de enviar o pedido para a cozinha.',
+        'Adicione pelo menos um item antes de enviar o pedido para a separacao.',
       );
     }
 
@@ -431,7 +431,11 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       'uuid': IdGenerator.next(),
       'pedido_operacional_id': orderId,
       'produto_id': input.productId,
+      'produto_variante_id': input.productVariantId,
       'nome_produto_snapshot': input.productNameSnapshot.trim(),
+      'sku_variante_snapshot': _cleanNullable(input.variantSkuSnapshot),
+      'cor_variante_snapshot': _cleanNullable(input.variantColorSnapshot),
+      'tamanho_variante_snapshot': _cleanNullable(input.variantSizeSnapshot),
       'quantidade_mil': input.quantityMil,
       'valor_unitario_centavos': input.unitPriceCents,
       'subtotal_centavos': input.subtotalCents,
@@ -466,7 +470,11 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       TableNames.pedidosOperacionaisItens,
       {
         'produto_id': input.productId,
+        'produto_variante_id': input.productVariantId,
         'nome_produto_snapshot': input.productNameSnapshot.trim(),
+        'sku_variante_snapshot': _cleanNullable(input.variantSkuSnapshot),
+        'cor_variante_snapshot': _cleanNullable(input.variantColorSnapshot),
+        'tamanho_variante_snapshot': _cleanNullable(input.variantSizeSnapshot),
         'quantidade_mil': input.quantityMil,
         'valor_unitario_centavos': input.unitPriceCents,
         'subtotal_centavos': input.subtotalCents,
@@ -619,6 +627,10 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       orderId: row['pedido_operacional_id'] as int,
       productId: row['produto_id'] as int,
       baseProductId: row['produto_base_id'] as int?,
+      productVariantId: row['produto_variante_id'] as int?,
+      variantSkuSnapshot: row['sku_variante_snapshot'] as String?,
+      variantColorSnapshot: row['cor_variante_snapshot'] as String?,
+      variantSizeSnapshot: row['tamanho_variante_snapshot'] as String?,
       productNameSnapshot: row['nome_produto_snapshot'] as String,
       quantityMil: row['quantidade_mil'] as int,
       unitPriceCents: row['valor_unitario_centavos'] as int? ?? 0,

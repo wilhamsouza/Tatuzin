@@ -445,7 +445,7 @@ class OperationalOrderBillingController extends AsyncNotifier<void> {
         saleType: SaleType.cash,
         paymentMethod: paymentMethod,
         operationalOrderId: detail.order.id,
-        notes: 'Venda originada do pedido operacional #${detail.order.id}.',
+        notes: 'Venda originada do pedido de venda #${detail.order.id}.',
       );
 
       final sale = await ref

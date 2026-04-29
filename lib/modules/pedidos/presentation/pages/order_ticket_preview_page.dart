@@ -36,7 +36,7 @@ class _OrderTicketPreviewPageState
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Preview tecnico do ticket'),
+        title: const Text(operationalOrderPreviewTitle),
         actions: [
           IconButton(
             tooltip: 'Configurar impressora',
@@ -59,12 +59,12 @@ class _OrderTicketPreviewPageState
                   return AppSectionCard(
                     title: 'Uso deste preview',
                     subtitle:
-                        'Fallback tecnico para conferencia visual, diagnostico e comparacao com a impressao real.',
+                        'Apoio visual para conferencia e comparacao com a impressao real.',
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Status do ticket: ${orderTicketDispatchStatusLabel(detail.order.ticketMeta.status)}',
+                          'Status do comprovante: ${orderTicketDispatchStatusLabel(detail.order.ticketMeta.status)}',
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -87,7 +87,7 @@ class _OrderTicketPreviewPageState
                 runSpacing: 8,
                 children: [
                   ChoiceChip(
-                    label: const Text('Cozinha'),
+                    label: const Text(operationalOrderReceiptProfileLabel),
                     selected: _profile == OrderTicketProfile.kitchen,
                     onSelected: (_) {
                       setState(() => _profile = OrderTicketProfile.kitchen);
@@ -106,7 +106,7 @@ class _OrderTicketPreviewPageState
               AppSectionCard(
                 title: viewModel.title,
                 subtitle: _profile == OrderTicketProfile.kitchen
-                    ? 'Representacao visual da comanda enviada para cozinha.'
+                    ? 'Representacao visual do romaneio enviado para separacao.'
                     : 'Visual tecnico do documento interno usado para conferencia.',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -144,7 +144,7 @@ class _OrderTicketPreviewPageState
               ),
               const SizedBox(height: 12),
               AppSectionCard(
-                title: 'Cabecalho do ticket',
+                title: operationalOrderReceiptHeaderLabel,
                 child: Column(
                   children: viewModel.infoLines
                       .map(
@@ -288,7 +288,7 @@ class _OrderTicketPreviewPageState
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) =>
-            Center(child: Text('Falha ao montar ticket: $error')),
+            Center(child: Text('Falha ao montar comprovante: $error')),
       ),
       bottomNavigationBar: _profile == OrderTicketProfile.kitchen
           ? SafeArea(
@@ -304,8 +304,8 @@ class _OrderTicketPreviewPageState
                     : const Icon(Icons.print_rounded),
                 label: Text(
                   reprintState.isLoading
-                      ? 'Reimprimindo...'
-                      : 'Reimprimir ticket',
+                      ? operationalOrderPrintingReceiptLabel
+                      : operationalOrderPrintReceiptLabel,
                 ),
               ),
             )
@@ -326,8 +326,8 @@ class _OrderTicketPreviewPageState
         SnackBar(
           content: Text(
             result.hasFailure
-                ? 'Falha ao reimprimir: ${result.failureMessage}'
-                : 'Ticket reimpresso com sucesso.',
+                ? '$operationalOrderReprintFailureMessagePrefix ${result.failureMessage}'
+                : operationalOrderReprintSuccessMessage,
           ),
         ),
       );

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../utils/app_logger.dart';
 import '../../../modules/caixa/presentation/providers/cash_providers.dart';
 import '../../../modules/carrinho/presentation/providers/cart_provider.dart';
 import '../../../modules/categorias/presentation/providers/category_providers.dart';
@@ -17,6 +18,27 @@ import '../sync/sync_providers.dart';
 import 'app_session.dart';
 import 'session_provider.dart';
 
+typedef SessionSignOutReset =
+    Future<SessionSignOutResetSnapshot> Function(AppSession session);
+
+final sessionSignOutResetProvider = Provider<SessionSignOutReset>((ref) {
+  return (session) => prepareSessionSignOutReset(ref, session);
+});
+
+class SessionSignOutResetSnapshot {
+  const SessionSignOutResetSnapshot({
+    required this.pendingSyncCount,
+    required this.hadActiveSync,
+    required this.tenantIsolationKey,
+    required this.databaseClosed,
+  });
+
+  final int pendingSyncCount;
+  final bool hadActiveSync;
+  final String? tenantIsolationKey;
+  final bool databaseClosed;
+}
+
 final sessionContextResetProvider = Provider<void>((ref) {
   ref.listen<AppSession>(appSessionProvider, (previous, next) {
     if (previous == null) {
@@ -32,6 +54,81 @@ final sessionContextResetProvider = Provider<void>((ref) {
     resetSessionScopedProviders(ref);
   });
 });
+
+Future<SessionSignOutResetSnapshot> prepareSessionSignOutReset(
+  Ref ref,
+  AppSession session, {
+  Duration syncStopTimeout = const Duration(seconds: 5),
+}) async {
+  final isolationKey = _safeIsolationKeyFor(session);
+  final pendingSyncCount = await _safePendingSyncCount(ref);
+  final hadActiveSync = ref.read(syncBatchActivityProvider);
+  AppLogger.info(
+    '[SessionReset] logout_started pending_sync_count=$pendingSyncCount | '
+    'active_sync=$hadActiveSync | '
+    'tenant_key=${isolationKey ?? 'n/a'}',
+  );
+
+  try {
+    await ref
+        .read(autoSyncCoordinatorProvider)
+        .stopForSessionReset(timeout: syncStopTimeout);
+    await ref
+        .read(syncBatchRunnerProvider)
+        .stopForSessionReset(timeout: syncStopTimeout);
+    ref.read(syncBatchActivityProvider.notifier).state = false;
+    AppLogger.info('[SessionReset] auto_sync_stopped');
+  } catch (error, stackTrace) {
+    AppLogger.error(
+      '[SessionReset] auto_sync_stop_failed',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+
+  return SessionSignOutResetSnapshot(
+    pendingSyncCount: pendingSyncCount,
+    hadActiveSync: hadActiveSync,
+    tenantIsolationKey: isolationKey,
+    databaseClosed: false,
+  );
+}
+
+Future<SessionSignOutResetSnapshot> closeSessionDatabaseForReset(
+  SessionSignOutResetSnapshot snapshot, {
+  Duration databaseCloseTimeout = const Duration(seconds: 8),
+}) async {
+  final isolationKey = snapshot.tenantIsolationKey;
+  if (isolationKey == null) {
+    return snapshot;
+  }
+
+  AppLogger.info(
+    '[SessionReset] database_close_started | tenant_key=$isolationKey | '
+    'database_name=${AppDatabase.databaseNameForIsolationKey(isolationKey)}',
+  );
+  try {
+    await AppDatabase.closeForIsolationKey(
+      isolationKey,
+    ).timeout(databaseCloseTimeout);
+    AppLogger.info(
+      '[SessionReset] database_close_finished | tenant_key=$isolationKey',
+    );
+    return SessionSignOutResetSnapshot(
+      pendingSyncCount: snapshot.pendingSyncCount,
+      hadActiveSync: snapshot.hadActiveSync,
+      tenantIsolationKey: snapshot.tenantIsolationKey,
+      databaseClosed: true,
+    );
+  } catch (error, stackTrace) {
+    AppLogger.error(
+      '[SessionReset] database_close_failed | tenant_key=$isolationKey',
+      error: error,
+      stackTrace: stackTrace,
+    );
+    return snapshot;
+  }
+}
 
 void resetSessionScopedProviders(Ref ref) {
   ref.read(syncBatchActivityProvider.notifier).state = false;
@@ -185,4 +282,39 @@ void resetSessionScopedProviders(Ref ref) {
   ref.invalidate(syncQueueEngineProvider);
   ref.invalidate(syncBatchRunnerProvider);
   ref.invalidate(autoSyncCoordinatorProvider);
+  AppLogger.info('[SessionReset] providers_invalidated');
+}
+
+String? _safeIsolationKeyFor(AppSession session) {
+  try {
+    return SessionIsolation.keyFor(session);
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<int> _safePendingSyncCount(Ref ref) async {
+  try {
+    final summaries = await ref
+        .read(syncQueueRepositoryProvider)
+        .listFeatureSummaries()
+        .timeout(const Duration(seconds: 3));
+    return summaries.fold<int>(
+      0,
+      (total, summary) =>
+          total +
+          summary.pendingForDisplay +
+          summary.errorCount +
+          summary.blockedCount +
+          summary.conflictCount +
+          summary.activeProcessingCount,
+    );
+  } catch (error, stackTrace) {
+    AppLogger.error(
+      '[SessionReset] pending_sync_count_failed',
+      error: error,
+      stackTrace: stackTrace,
+    );
+    return 0;
+  }
 }

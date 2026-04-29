@@ -5,6 +5,10 @@ class OperationalOrderItem {
     required this.orderId,
     required this.productId,
     required this.baseProductId,
+    this.productVariantId,
+    this.variantSkuSnapshot,
+    this.variantColorSnapshot,
+    this.variantSizeSnapshot,
     required this.productNameSnapshot,
     required this.quantityMil,
     required this.unitPriceCents,
@@ -19,6 +23,10 @@ class OperationalOrderItem {
   final int orderId;
   final int productId;
   final int? baseProductId;
+  final int? productVariantId;
+  final String? variantSkuSnapshot;
+  final String? variantColorSnapshot;
+  final String? variantSizeSnapshot;
   final String productNameSnapshot;
   final int quantityMil;
   final int unitPriceCents;
@@ -32,6 +40,10 @@ class OperationalOrderItemInput {
   const OperationalOrderItemInput({
     required this.productId,
     this.baseProductId,
+    this.productVariantId,
+    this.variantSkuSnapshot,
+    this.variantColorSnapshot,
+    this.variantSizeSnapshot,
     required this.productNameSnapshot,
     required this.quantityMil,
     this.unitPriceCents = 0,
@@ -41,6 +53,10 @@ class OperationalOrderItemInput {
 
   final int productId;
   final int? baseProductId;
+  final int? productVariantId;
+  final String? variantSkuSnapshot;
+  final String? variantColorSnapshot;
+  final String? variantSizeSnapshot;
   final String productNameSnapshot;
   final int quantityMil;
   final int unitPriceCents;

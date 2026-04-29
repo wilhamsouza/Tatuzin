@@ -99,7 +99,7 @@ class SaleValidationSupport {
 
     if (rows.isEmpty) {
       throw ValidationException(
-        'Pedido operacional #$orderId nao foi encontrado.',
+        'Pedido de venda #$orderId nao foi encontrado.',
       );
     }
 
@@ -107,19 +107,19 @@ class SaleValidationSupport {
     final linkedSaleId = row['venda_id'] as int?;
     if (linkedSaleId != null) {
       throw ValidationException(
-        'Pedido operacional #$orderId ja foi convertido na venda #$linkedSaleId.',
+        'Pedido de venda #$orderId ja foi convertido na venda #$linkedSaleId.',
       );
     }
 
     final status = row['status'] as String?;
     if (status == 'canceled') {
       throw ValidationException(
-        'Pedido operacional #$orderId esta cancelado e nao pode ser convertido.',
+        'Pedido de venda #$orderId esta cancelado e nao pode ser convertido.',
       );
     }
     if (status != 'delivered') {
       throw ValidationException(
-        'Pedido operacional #$orderId ainda nao foi entregue e nao pode ser faturado.',
+        'Pedido de venda #$orderId ainda nao foi entregue e nao pode ser faturado.',
       );
     }
   }

@@ -610,7 +610,7 @@ class SqliteSaleRepository implements SaleRepository {
       );
     } on DatabaseException catch (_) {
       throw ValidationException(
-        'Pedido operacional #$orderId ja foi convertido em venda.',
+        'Pedido de venda #$orderId ja foi convertido em venda.',
       );
     }
 

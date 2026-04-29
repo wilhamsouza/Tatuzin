@@ -44,7 +44,13 @@ class RemoteSaleRecord {
     );
   }
 
-  factory RemoteSaleRecord.fromSyncPayload(SaleSyncPayload sale) {
+  factory RemoteSaleRecord.fromSyncPayload(
+    SaleSyncPayload sale, {
+    DateTime? soldAt,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    final safeSoldAt = soldAt ?? sale.soldAt;
     return RemoteSaleRecord(
       remoteId: sale.remoteId ?? '',
       localUuid: sale.saleUuid,
@@ -55,10 +61,10 @@ class RemoteSaleRecord {
       status: sale.status.name == 'cancelled' ? 'canceled' : 'active',
       totalAmountCents: sale.totalAmountCents,
       totalCostCents: sale.totalCostCents,
-      soldAt: sale.soldAt,
+      soldAt: safeSoldAt,
       notes: sale.notes,
-      createdAt: sale.soldAt,
-      updatedAt: sale.updatedAt,
+      createdAt: createdAt ?? safeSoldAt,
+      updatedAt: updatedAt ?? sale.updatedAt,
       items: sale.items.map(RemoteSaleItemRecord.fromSyncItemPayload).toList(),
     );
   }
@@ -88,7 +94,7 @@ class RemoteSaleRecord {
       'status': status,
       'totalAmountCents': totalAmountCents,
       'totalCostCents': totalCostCents,
-      'soldAt': soldAt.toIso8601String(),
+      'soldAt': soldAt.toUtc().toIso8601String(),
       'notes': notes,
       'items': items.map((item) => item.toJson()).toList(),
     };

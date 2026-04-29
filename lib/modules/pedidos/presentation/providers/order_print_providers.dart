@@ -172,7 +172,7 @@ Future<OrderTicketDispatchResult> _dispatchTicket(Ref ref, int orderId) async {
     final printer = await ref.read(kitchenPrinterConfigProvider.future);
     if (printer == null) {
       throw const ValidationException(
-        'Nenhuma impressora configurada para cozinha.',
+        'Nenhuma impressora configurada para separacao.',
       );
     }
 

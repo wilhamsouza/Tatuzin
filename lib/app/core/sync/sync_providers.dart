@@ -17,6 +17,7 @@ import '../../../modules/vendas/presentation/providers/sales_providers.dart';
 import '../database/app_database.dart';
 import '../network/network_providers.dart';
 import '../session/auth_token_storage.dart';
+import '../utils/app_logger.dart';
 import 'financial_event_sync_processor.dart';
 import 'financial_events_remote_datasource.dart';
 import 'real_financial_events_remote_datasource.dart';
@@ -26,6 +27,7 @@ import 'sync_dependency_resolver.dart';
 import 'sync_feature_processor.dart';
 import 'sync_batch_result.dart';
 import 'sync_queue_engine.dart';
+import 'sync_queue_feature_summary.dart';
 import 'sync_queue_repository.dart';
 import 'sync_retry_policy.dart';
 
@@ -86,6 +88,8 @@ final syncFeatureProcessorsProvider = Provider<List<SyncFeatureProcessor>>((
     ref.watch(supplierHybridRepositoryProvider),
     ref.watch(purchaseHybridRepositoryProvider),
     ref.watch(salesHybridRepositoryProvider),
+    ref.watch(saleCancellationSyncProcessorProvider),
+    ref.watch(fiadoPaymentSyncProcessorProvider),
     ref.watch(financialEventSyncProcessorProvider),
     ref.watch(cashEventSyncProcessorProvider),
   ];
@@ -134,14 +138,25 @@ final autoSyncCoordinatorProvider = Provider<AutoSyncCoordinator>((ref) {
       final environment = ref.read(appEnvironmentProvider);
       final session = ref.read(appSessionProvider);
       final company = ref.read(currentCompanyContextProvider);
+      final startupState = ref.read(appStartupProvider).valueOrNull;
       return environment.remoteSyncEnabled &&
           environment.endpointConfig.isConfigured &&
           session.isRemoteAuthenticated &&
-          company.allowsCloudSync;
+          company.allowsCloudSync &&
+          startupState?.isSuccess == true;
     },
     isRunning: () => ref.read(syncBatchActivityProvider),
-    runSync: () => ref.read(syncBatchRunnerProvider).run(retryOnly: false),
-    loadQueueSummaries: () {
+    runSync: () => ref
+        .read(syncBatchRunnerProvider)
+        .run(retryOnly: false, ignoreRetryBackoff: false),
+    loadQueueSummaries: () async {
+      final startupState = await ref.read(appStartupProvider.future);
+      if (!startupState.isSuccess) {
+        AppLogger.info(
+          '[Sync] auto_sync_skipped reason=tenant_bootstrap_not_ready:queue_summary',
+        );
+        return const <SyncQueueFeatureSummary>[];
+      }
       return ref.read(syncQueueRepositoryProvider).listFeatureSummaries();
     },
     onSnapshot: (snapshot) {
@@ -169,8 +184,24 @@ class SyncBatchRunner {
     _disposed = true;
   }
 
+  Future<void> stopForSessionReset({
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    _disposed = true;
+    final running = _inFlight;
+    if (running != null) {
+      try {
+        await running.timeout(timeout);
+      } catch (_) {
+        // A long network call may still settle later, but shouldContinue()
+        // already returns false and prevents the batch from advancing.
+      }
+    }
+  }
+
   Future<SyncBatchResult> run({
     required bool retryOnly,
+    bool ignoreRetryBackoff = false,
     Iterable<String>? featureKeys,
   }) {
     final running = _inFlight;
@@ -179,7 +210,11 @@ class SyncBatchRunner {
     }
 
     late final Future<SyncBatchResult> future;
-    future = _execute(retryOnly: retryOnly, featureKeys: featureKeys);
+    future = _execute(
+      retryOnly: retryOnly,
+      ignoreRetryBackoff: ignoreRetryBackoff,
+      featureKeys: featureKeys,
+    );
     _inFlight = future;
 
     return future.whenComplete(() {
@@ -192,17 +227,36 @@ class SyncBatchRunner {
 
   Future<SyncBatchResult> _execute({
     required bool retryOnly,
+    required bool ignoreRetryBackoff,
     Iterable<String>? featureKeys,
   }) async {
     if (!_isCurrentSession()) {
       return _cancelledResult(retryOnly: retryOnly);
     }
 
+    final startupState = await _ref.read(appStartupProvider.future);
+    if (!startupState.isSuccess) {
+      AppLogger.info(
+        '[Sync] batch_runner_skipped reason=tenant_bootstrap_not_ready | '
+        'status=${startupState.status.name}',
+      );
+      return _cancelledResult(retryOnly: retryOnly);
+    }
+
     _ref.read(syncBatchActivityProvider.notifier).state = true;
     try {
+      AppLogger.info(
+        retryOnly
+            ? '[Sync] batch_runner_started scope=retry_pending'
+            : '[Sync] batch_runner_started scope=all',
+      );
       final result = await _ref
           .read(syncQueueEngineProvider)
-          .process(featureKeys: featureKeys, retryOnly: retryOnly);
+          .process(
+            featureKeys: featureKeys,
+            retryOnly: retryOnly,
+            ignoreRetryBackoff: ignoreRetryBackoff,
+          );
       if (!_isCurrentSession()) {
         return _cancelledResult(retryOnly: retryOnly);
       }

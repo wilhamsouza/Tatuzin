@@ -103,7 +103,7 @@ class _CartPageState extends ConsumerState<CartPage> {
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(Icons.receipt_long_rounded),
-                    title: Text('Criar pedido operacional'),
+                    title: Text('Criar pedido de venda'),
                   ),
                 ),
                 PopupMenuItem(
@@ -537,7 +537,7 @@ class _CartPageState extends ConsumerState<CartPage> {
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
-            content: Text('Pedido operacional #$orderId criado com sucesso.'),
+            content: Text('Pedido de venda #$orderId criado com sucesso.'),
           ),
         );
       context.pushNamed(
@@ -551,7 +551,7 @@ class _CartPageState extends ConsumerState<CartPage> {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          SnackBar(content: Text('Falha ao criar pedido operacional: $error')),
+          SnackBar(content: Text('Falha ao criar pedido de venda: $error')),
         );
     }
   }

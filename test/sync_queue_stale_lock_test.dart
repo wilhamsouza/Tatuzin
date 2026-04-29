@@ -117,6 +117,77 @@ void main() {
       );
     },
   );
+
+  test(
+    'respeita backoff automatico e permite sincronizacao manual forcar retry',
+    () async {
+      final session = _remoteSession();
+      final isolationKey = SessionIsolation.keyFor(session);
+      await AppDatabase.deleteDatabaseForIsolationKeyForTesting(isolationKey);
+
+      final container = ProviderContainer();
+      addTearDown(() async {
+        container.dispose();
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await AppDatabase.deleteDatabaseForIsolationKeyForTesting(isolationKey);
+      });
+
+      container
+          .read(appSessionProvider.notifier)
+          .setAuthenticatedSession(
+            scope: session.scope,
+            user: session.user,
+            company: session.company,
+            isOfflineFallback: session.isOfflineFallback,
+          );
+      await container.read(appStartupProvider.future);
+
+      final repository = container.read(syncQueueRepositoryProvider);
+      final database = await container.read(appDatabaseProvider).database;
+      final now = DateTime.now();
+      await database.transaction((txn) async {
+        await repository.enqueueMutation(
+          txn,
+          featureKey: SyncFeatureKeys.products,
+          entityType: 'product',
+          localEntityId: 1,
+          localUuid: 'prod-backoff',
+          remoteId: null,
+          operation: SyncQueueOperation.create,
+          localUpdatedAt: now,
+        );
+      });
+
+      final queueRows = await database.query(TableNames.syncQueue, limit: 1);
+      final queueId = queueRows.first['id'] as int;
+      final nextRetryAt = now.add(const Duration(minutes: 10));
+      await database.update(
+        TableNames.syncQueue,
+        {
+          'status': SyncQueueStatus.syncError.storageValue,
+          'next_retry_at': nextRetryAt.toIso8601String(),
+          'last_error': 'Falha temporaria',
+          'updated_at': now.toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [queueId],
+      );
+
+      final automaticEligible = await repository.listEligibleItems(
+        retryOnly: false,
+        now: now,
+      );
+      expect(automaticEligible, isEmpty);
+
+      final forcedEligible = await repository.listEligibleItems(
+        retryOnly: false,
+        ignoreRetryBackoff: true,
+        now: now,
+      );
+      expect(forcedEligible, hasLength(1));
+      expect(forcedEligible.single.id, queueId);
+    },
+  );
 }
 
 AppSession _remoteSession() {

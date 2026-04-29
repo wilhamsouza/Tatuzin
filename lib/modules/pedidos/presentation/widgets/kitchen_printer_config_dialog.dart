@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/core/widgets/app_input.dart';
 import '../../domain/entities/kitchen_printer_config.dart';
 import '../providers/order_print_providers.dart';
+import '../support/order_ui_support.dart';
 
 class KitchenPrinterConfigDialog extends ConsumerStatefulWidget {
   const KitchenPrinterConfigDialog({super.key, this.initialConfig});
@@ -30,7 +31,8 @@ class _KitchenPrinterConfigDialogState
         widget.initialConfig?.connectionType ??
         KitchenPrinterConnectionType.network;
     _nameController = TextEditingController(
-      text: widget.initialConfig?.displayName ?? 'Impressora cozinha',
+      text:
+          widget.initialConfig?.displayName ?? operationalOrderPrinterNameLabel,
     );
     _hostController = TextEditingController(
       text: widget.initialConfig?.host ?? '',
@@ -59,7 +61,7 @@ class _KitchenPrinterConfigDialogState
     final busy = configState.isLoading || testState.isLoading;
 
     return AlertDialog(
-      title: const Text('Impressora da cozinha'),
+      title: const Text(operationalOrderPrinterDialogTitle),
       content: SizedBox(
         width: 420,
         child: Column(

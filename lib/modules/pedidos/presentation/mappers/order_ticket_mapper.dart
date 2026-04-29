@@ -96,7 +96,9 @@ abstract final class OrderTicketMapper {
 
     return OrderTicketViewModel(
       title: ticket.title,
-      profileLabel: ticket.isKitchenProfile ? 'Cozinha' : 'Preview',
+      profileLabel: ticket.isKitchenProfile
+          ? operationalOrderReceiptProfileLabel
+          : operationalOrderInternalProfileLabel,
       businessName: ticket.businessName,
       orderNumber: '#${ticket.orderId}',
       statusLabel: operationalOrderStatusLabel(ticket.status),
