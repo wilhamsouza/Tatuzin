@@ -27,6 +27,7 @@ abstract interface class SyncQueueRepository {
   Future<List<SyncQueueItem>> listEligibleItems({
     Iterable<String>? featureKeys,
     required bool retryOnly,
+    bool ignoreRetryBackoff = false,
     DateTime? now,
   });
 

@@ -13,11 +13,16 @@ import '../../../../app/core/sync/sync_queue_operation.dart';
 import '../../../../app/core/sync/sync_queue_status.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/provider_guard.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../system/presentation/providers/system_providers.dart';
 
 final accountCloudAttentionItemsProvider =
     FutureProvider<List<AccountCloudSyncIssue>>((ref) async {
+      await requireTenantBootstrapReady(
+        ref,
+        'accountCloudAttentionItemsProvider',
+      );
       ref.watch(appDataRefreshProvider);
       final items = await runProviderGuarded(
         'accountCloudAttentionItemsProvider',
@@ -628,6 +633,8 @@ String _endpointFor(SyncQueueItem item) {
     'suppliers' => '/suppliers',
     'purchases' => '/purchases',
     'sales' => '/sales',
+    'sale_cancellations' => '/sales',
+    'fiado_payments' => '/financial-events',
     'financial_events' => '/financial-events',
     'cash_events' => '/cash-events',
     _ => '/${item.featureKey}',

@@ -47,6 +47,7 @@ abstract final class AppMigrations {
     const MigrationStep(version: 31, up: _createVersion31Schema),
     const MigrationStep(version: 32, up: _createVersion32Schema),
     const MigrationStep(version: 33, up: _createVersion33Schema),
+    const MigrationStep(version: 34, up: _createVersion34Schema),
   ];
 
   static Future<void> runCreate(DatabaseExecutor db, int version) async {
@@ -3601,5 +3602,37 @@ abstract final class AppMigrations {
       columnName: 'stale_at_apply',
       columnDefinition: 'INTEGER NOT NULL DEFAULT 0',
     );
+  }
+
+  static Future<void> _createVersion34Schema(DatabaseExecutor db) async {
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionaisItens,
+      columnName: 'produto_variante_id',
+      columnDefinition: 'INTEGER',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionaisItens,
+      columnName: 'sku_variante_snapshot',
+      columnDefinition: 'TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionaisItens,
+      columnName: 'cor_variante_snapshot',
+      columnDefinition: 'TEXT',
+    );
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.pedidosOperacionaisItens,
+      columnName: 'tamanho_variante_snapshot',
+      columnDefinition: 'TEXT',
+    );
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_pedidos_operacionais_itens_produto_variante
+      ON ${TableNames.pedidosOperacionaisItens}(produto_variante_id)
+    ''');
   }
 }

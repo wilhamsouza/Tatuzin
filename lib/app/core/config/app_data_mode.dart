@@ -27,5 +27,5 @@ extension AppDataModeX on AppDataMode {
 
   bool get allowsRemoteRead => this != AppDataMode.localOnly;
 
-  bool get allowsRemoteWrite => this == AppDataMode.futureHybridReady;
+  bool get allowsRemoteWrite => this != AppDataMode.localOnly;
 }

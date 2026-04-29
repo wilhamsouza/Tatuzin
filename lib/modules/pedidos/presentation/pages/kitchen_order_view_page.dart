@@ -25,7 +25,7 @@ class KitchenOrderViewPage extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Modo cozinha'),
+        title: const Text(operationalOrderSeparationModeLabel),
         actions: [
           IconButton(
             tooltip: 'Configurar impressora',
@@ -179,8 +179,10 @@ class KitchenOrderViewPage extends ConsumerWidget {
                   runSpacing: 8,
                   children: [
                     _KitchenActionButton(
-                      label: 'Em preparo',
-                      icon: Icons.local_fire_department_rounded,
+                      label: operationalOrderShortActionLabel(
+                        OperationalOrderStatus.inPreparation,
+                      ),
+                      icon: Icons.inventory_2_rounded,
                       onPressed:
                           detail.order.status.canTransitionTo(
                                 OperationalOrderStatus.inPreparation,
@@ -194,7 +196,9 @@ class KitchenOrderViewPage extends ConsumerWidget {
                           : null,
                     ),
                     _KitchenActionButton(
-                      label: 'Pronto',
+                      label: operationalOrderShortActionLabel(
+                        OperationalOrderStatus.ready,
+                      ),
                       icon: Icons.check_circle_rounded,
                       onPressed:
                           detail.order.status.canTransitionTo(
@@ -209,8 +213,10 @@ class KitchenOrderViewPage extends ConsumerWidget {
                           : null,
                     ),
                     _KitchenActionButton(
-                      label: 'Entregue',
-                      icon: Icons.delivery_dining_rounded,
+                      label: operationalOrderShortActionLabel(
+                        OperationalOrderStatus.delivered,
+                      ),
+                      icon: Icons.shopping_bag_rounded,
                       onPressed:
                           detail.order.status.canTransitionTo(
                                 OperationalOrderStatus.delivered,
@@ -239,8 +245,8 @@ class KitchenOrderViewPage extends ConsumerWidget {
                         : const Icon(Icons.print_rounded),
                     label: Text(
                       reprintState.isLoading
-                          ? 'Reimprimindo...'
-                          : 'Reimprimir ticket',
+                          ? operationalOrderPrintingReceiptLabel
+                          : operationalOrderPrintReceiptLabel,
                     ),
                   ),
                 ),
@@ -300,8 +306,8 @@ class KitchenOrderViewPage extends ConsumerWidget {
         SnackBar(
           content: Text(
             result.hasFailure
-                ? 'Falha ao reimprimir ticket: ${result.failureMessage}'
-                : 'Ticket reimpresso com sucesso.',
+                ? '$operationalOrderReprintFailureMessagePrefix ${result.failureMessage}'
+                : operationalOrderReprintSuccessMessage,
           ),
         ),
       );
@@ -320,7 +326,7 @@ class KitchenOrderViewPage extends ConsumerWidget {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(content: Text('Impressora da cozinha atualizada.')),
+          const SnackBar(content: Text(operationalOrderPrinterUpdatedMessage)),
         );
     }
   }

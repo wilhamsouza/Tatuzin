@@ -31,7 +31,7 @@ class AppOperationalContext {
       session.company.allowsCloudSync;
 
   bool get canUseCloudWrites =>
-      environment.dataMode == AppDataMode.futureHybridReady &&
+      environment.dataMode != AppDataMode.localOnly &&
       hasRemoteSession &&
       session.company.allowsCloudSync;
 

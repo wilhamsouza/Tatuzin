@@ -31,7 +31,11 @@ class RemoteCashEventRecord {
     );
   }
 
-  factory RemoteCashEventRecord.fromSyncPayload(CashEventSyncPayload event) {
+  factory RemoteCashEventRecord.fromSyncPayload(
+    CashEventSyncPayload event, {
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
     return RemoteCashEventRecord(
       remoteId: event.remoteId ?? '',
       localUuid: event.movementUuid,
@@ -41,8 +45,8 @@ class RemoteCashEventRecord {
       referenceType: event.referenceType,
       referenceId: event.referenceRemoteId,
       notes: event.description,
-      createdAt: event.createdAt,
-      updatedAt: event.updatedAt,
+      createdAt: createdAt ?? event.createdAt,
+      updatedAt: updatedAt ?? event.updatedAt,
     );
   }
 
@@ -66,7 +70,7 @@ class RemoteCashEventRecord {
       'referenceType': referenceType,
       'referenceId': referenceId,
       'notes': notes,
-      'createdAt': createdAt.toIso8601String(),
+      'createdAt': createdAt.toUtc().toIso8601String(),
     };
   }
 

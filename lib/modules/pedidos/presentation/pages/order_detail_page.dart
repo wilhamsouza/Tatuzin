@@ -80,7 +80,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
         title: Text('Pedido #${widget.orderId}'),
         actions: [
           IconButton(
-            tooltip: 'Modo cozinha',
+            tooltip: operationalOrderSeparationModeLabel,
             onPressed: () {
               context.pushNamed(
                 AppRouteNames.orderKitchen,
@@ -90,7 +90,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             icon: const Icon(Icons.soup_kitchen_rounded),
           ),
           IconButton(
-            tooltip: 'Preview tecnico',
+            tooltip: operationalOrderPreviewLabel,
             onPressed: () => _openTicketPreview(context),
             icon: const Icon(Icons.preview_rounded),
           ),
@@ -390,7 +390,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     return AppSectionCard(
       title: 'Resumo financeiro',
       subtitle:
-          'Valor parcial do pedido operacional. O faturamento comercial acontece so depois da entrega.',
+          'Valor parcial do pedido de venda. O faturamento comercial acontece so depois da entrega.',
       child: Column(
         children: [
           _SummaryRow(
@@ -400,7 +400,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
           _SummaryRow(label: 'Itens', value: '${detail.totalUnits} item(ns)'),
           _SummaryRow(label: 'Linhas', value: '${detail.lineItemsCount}'),
           _SummaryRow(
-            label: 'Ticket',
+            label: operationalOrderReceiptLabel,
             value: orderTicketDispatchStatusLabel(order.ticketMeta.status),
           ),
           _SummaryRow(
@@ -450,7 +450,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
               ),
               child: Text(
                 order.ticketMeta.lastFailureMessage ??
-                    'Falha ao enviar ticket.',
+                    'Falha ao imprimir comprovante.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onErrorContainer,
                   fontWeight: FontWeight.w600,
@@ -479,7 +479,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     return AppSectionCard(
       title: 'Acoes operacionais',
       subtitle:
-          'Operacao primeiro, faturamento depois. O ticket de preview fica apenas como apoio.',
+          'Operacao primeiro, faturamento depois. A previa do comprovante fica apenas como apoio.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -501,12 +501,12 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                     ? () => _sendToKitchen(context)
                     : null,
                 icon: const Icon(Icons.send_rounded),
-                label: const Text('Enviar para cozinha'),
+                label: const Text(operationalOrderSendToSeparationLabel),
               ),
               FilledButton.tonalIcon(
                 onPressed: canReprint && !busy ? () => _reprint(context) : null,
                 icon: const Icon(Icons.print_rounded),
-                label: const Text('Reimprimir ticket'),
+                label: const Text(operationalOrderPrintReceiptLabel),
               ),
               FilledButton.tonalIcon(
                 onPressed:
@@ -519,8 +519,12 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                         OperationalOrderStatus.inPreparation,
                       )
                     : null,
-                icon: const Icon(Icons.local_fire_department_rounded),
-                label: const Text('Marcar em preparo'),
+                icon: const Icon(Icons.inventory_2_rounded),
+                label: Text(
+                  operationalOrderActionLabel(
+                    OperationalOrderStatus.inPreparation,
+                  ),
+                ),
               ),
               FilledButton.tonalIcon(
                 onPressed:
@@ -531,7 +535,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                     ? () => _updateStatus(context, OperationalOrderStatus.ready)
                     : null,
                 icon: const Icon(Icons.notifications_active_rounded),
-                label: const Text('Marcar pronto'),
+                label: Text(
+                  operationalOrderActionLabel(OperationalOrderStatus.ready),
+                ),
               ),
               FilledButton.tonalIcon(
                 onPressed:
@@ -544,15 +550,17 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                         OperationalOrderStatus.delivered,
                       )
                     : null,
-                icon: const Icon(Icons.delivery_dining_rounded),
-                label: const Text('Marcar entregue'),
+                icon: const Icon(Icons.shopping_bag_rounded),
+                label: Text(
+                  operationalOrderActionLabel(OperationalOrderStatus.delivered),
+                ),
               ),
               FilledButton.icon(
                 onPressed: canInvoice && !busy
                     ? () => _invoice(context, detail)
                     : null,
                 icon: const Icon(Icons.point_of_sale_rounded),
-                label: const Text('Faturar pedido'),
+                label: const Text('Finalizar venda'),
               ),
               OutlinedButton.icon(
                 onPressed: !detail.order.isTerminal && !busy
@@ -571,7 +579,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
               OutlinedButton.icon(
                 onPressed: () => _openTicketPreview(context),
                 icon: const Icon(Icons.preview_rounded),
-                label: const Text('Preview tecnico'),
+                label: const Text(operationalOrderPreviewLabel),
               ),
               OutlinedButton.icon(
                 onPressed: () {
@@ -581,7 +589,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                   );
                 },
                 icon: const Icon(Icons.soup_kitchen_rounded),
-                label: const Text('Modo cozinha'),
+                label: const Text(operationalOrderSeparationModeLabel),
               ),
               FilledButton.tonalIcon(
                 onPressed: busy ? null : () => _openPrinterConfig(context),
@@ -802,11 +810,11 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
       if (result.hasFailure) {
         _showMessage(
           context,
-          'Pedido enviado para cozinha, mas a impressao falhou: ${result.failureMessage}',
+          '$operationalOrderSendFailureMessagePrefix ${result.failureMessage}',
         );
         return;
       }
-      _showMessage(context, 'Pedido enviado para cozinha e ticket impresso.');
+      _showMessage(context, operationalOrderSendSuccessMessage);
     } catch (error) {
       if (!context.mounted) {
         return;
@@ -824,15 +832,21 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
         return;
       }
       if (result.hasFailure) {
-        _showMessage(context, 'Falha ao reimprimir: ${result.failureMessage}');
+        _showMessage(
+          context,
+          '$operationalOrderReprintFailureMessagePrefix ${result.failureMessage}',
+        );
         return;
       }
-      _showMessage(context, 'Ticket reimpresso com sucesso.');
+      _showMessage(context, operationalOrderReprintSuccessMessage);
     } catch (error) {
       if (!context.mounted) {
         return;
       }
-      _showMessage(context, 'Falha ao reimprimir: $error');
+      _showMessage(
+        context,
+        '$operationalOrderReprintFailureMessagePrefix $error',
+      );
     }
   }
 

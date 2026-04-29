@@ -3,16 +3,48 @@ import 'package:flutter/material.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../domain/entities/operational_order.dart';
 
+const operationalOrderPanelSubtitle =
+    'Acompanhe a fila de separacao, o status dos comprovantes e o faturamento sem misturar etapas.';
+const operationalOrderSeparationModeLabel = 'Modo separacao';
+const operationalOrderSendToSeparationLabel = 'Enviar para separacao';
+const operationalOrderPrintReceiptLabel = 'Imprimir comprovante';
+const operationalOrderPrintingReceiptLabel = 'Imprimindo...';
+const operationalOrderPreviewTitle = 'Previa do comprovante';
+const operationalOrderPreviewLabel = 'Previa do comprovante';
+const operationalOrderReceiptLabel = 'Comprovante';
+const operationalOrderReceiptFailureSummaryLabel = 'Falhas comprovante';
+const operationalOrderReceiptHeaderLabel = 'Cabecalho do comprovante';
+const operationalOrderReceiptProfileLabel = 'Separacao';
+const operationalOrderInternalProfileLabel = 'Interno';
+const operationalOrderPrinterNameLabel = 'Impressora de pedidos';
+const operationalOrderPrinterDialogTitle = 'Impressora de separacao';
+const operationalOrderPrinterUpdatedMessage =
+    'Impressora de separacao atualizada.';
+const operationalOrderSeparationManifestTitle = 'ROMANEIO DE SEPARACAO';
+const operationalOrderInternalPreviewTitle = 'PREVIEW OPERACIONAL';
+const operationalOrderSeparationManifestFooter =
+    'Uso interno da separacao. Nao entregar ao cliente.';
+const operationalOrderInternalPreviewFooter =
+    'Previa tecnica para conferencia e diagnostico da impressao.';
+const operationalOrderSendFailureMessagePrefix =
+    'Pedido enviado para separacao, mas a impressao falhou:';
+const operationalOrderSendSuccessMessage =
+    'Pedido enviado para separacao e comprovante impresso.';
+const operationalOrderReprintFailureMessagePrefix =
+    'Falha ao imprimir comprovante:';
+const operationalOrderReprintSuccessMessage =
+    'Comprovante impresso com sucesso.';
+
 String operationalOrderStatusLabel(OperationalOrderStatus status) {
   switch (status) {
     case OperationalOrderStatus.draft:
       return 'Rascunho';
     case OperationalOrderStatus.open:
-      return 'Enviado';
+      return 'Aguardando separacao';
     case OperationalOrderStatus.inPreparation:
-      return 'Em preparo';
+      return 'Em separacao';
     case OperationalOrderStatus.ready:
-      return 'Pronto';
+      return 'Pronto para retirada';
     case OperationalOrderStatus.delivered:
       return 'Entregue';
     case OperationalOrderStatus.canceled:
@@ -23,17 +55,17 @@ String operationalOrderStatusLabel(OperationalOrderStatus status) {
 String operationalOrderStatusDescription(OperationalOrderStatus status) {
   switch (status) {
     case OperationalOrderStatus.draft:
-      return 'Pedido em montagem no balcao';
+      return 'Pedido ainda nao confirmado.';
     case OperationalOrderStatus.open:
-      return 'Pedido enviado para a fila da cozinha';
+      return 'Pedido confirmado e aguardando separacao das pecas.';
     case OperationalOrderStatus.inPreparation:
-      return 'Cozinha preparando o pedido';
+      return 'Produtos em separacao.';
     case OperationalOrderStatus.ready:
-      return 'Pedido pronto para retirada ou entrega';
+      return 'Pedido pronto para retirada ou entrega.';
     case OperationalOrderStatus.delivered:
-      return 'Fluxo operacional concluido, pronto para faturar';
+      return 'Pedido entregue ao cliente.';
     case OperationalOrderStatus.canceled:
-      return 'Pedido interrompido';
+      return 'Pedido cancelado.';
   }
 }
 
@@ -61,13 +93,43 @@ IconData operationalOrderStatusIcon(OperationalOrderStatus status) {
     case OperationalOrderStatus.open:
       return Icons.send_to_mobile_rounded;
     case OperationalOrderStatus.inPreparation:
-      return Icons.local_fire_department_rounded;
+      return Icons.inventory_2_rounded;
     case OperationalOrderStatus.ready:
       return Icons.notifications_active_rounded;
     case OperationalOrderStatus.delivered:
-      return Icons.delivery_dining_rounded;
+      return Icons.shopping_bag_rounded;
     case OperationalOrderStatus.canceled:
       return Icons.cancel_rounded;
+  }
+}
+
+String operationalOrderActionLabel(OperationalOrderStatus status) {
+  switch (status) {
+    case OperationalOrderStatus.inPreparation:
+      return 'Marcar em separacao';
+    case OperationalOrderStatus.ready:
+      return 'Marcar pronto para retirada';
+    case OperationalOrderStatus.delivered:
+      return 'Marcar como entregue';
+    case OperationalOrderStatus.draft:
+    case OperationalOrderStatus.open:
+    case OperationalOrderStatus.canceled:
+      return operationalOrderStatusLabel(status);
+  }
+}
+
+String operationalOrderShortActionLabel(OperationalOrderStatus status) {
+  switch (status) {
+    case OperationalOrderStatus.inPreparation:
+      return 'Em separacao';
+    case OperationalOrderStatus.ready:
+      return 'Pronto para retirada';
+    case OperationalOrderStatus.delivered:
+      return 'Entregue';
+    case OperationalOrderStatus.draft:
+    case OperationalOrderStatus.open:
+    case OperationalOrderStatus.canceled:
+      return operationalOrderStatusLabel(status);
   }
 }
 
@@ -91,7 +153,7 @@ String operationalOrderServiceTypeHint(
 ) {
   switch (serviceType) {
     case OperationalOrderServiceType.counter:
-      return 'Consumo imediato no balcao';
+      return 'Venda presencial';
     case OperationalOrderServiceType.pickup:
       return 'Cliente retira no local';
     case OperationalOrderServiceType.delivery:
@@ -110,7 +172,7 @@ IconData operationalOrderServiceTypeIcon(
     case OperationalOrderServiceType.pickup:
       return Icons.shopping_bag_rounded;
     case OperationalOrderServiceType.delivery:
-      return Icons.delivery_dining_rounded;
+      return Icons.local_shipping_rounded;
     case OperationalOrderServiceType.table:
       return Icons.table_restaurant_rounded;
   }

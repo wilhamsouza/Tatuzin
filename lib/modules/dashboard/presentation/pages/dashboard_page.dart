@@ -120,7 +120,8 @@ class DashboardPage extends ConsumerWidget {
                             label: 'Pendencias operacionais',
                             value:
                                 '${snapshot.activeOperationalOrdersCount} pedido(s)',
-                            caption: 'Pedidos em rascunho, fila ou preparo',
+                            caption:
+                                'Pedidos em rascunho, separacao ou retirada',
                             icon: Icons.pending_actions_rounded,
                             accentColor: tokens.info.base,
                             onTap: () =>

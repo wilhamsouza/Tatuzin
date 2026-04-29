@@ -87,8 +87,7 @@ class _OrdersPageState extends ConsumerState<OrdersPage> {
             ),
             child: const AppPageHeader(
               title: 'Painel operacional',
-              subtitle:
-                  'Acompanhe a fila da cozinha, o status dos tickets e o faturamento sem misturar etapas.',
+              subtitle: operationalOrderPanelSubtitle,
               badgeLabel: 'Pedidos',
               badgeIcon: Icons.receipt_long_rounded,
               emphasized: true,
@@ -193,16 +192,16 @@ class _OrdersPageState extends ConsumerState<OrdersPage> {
                               compact: true,
                             ),
                             AppSummaryBlock(
-                              label: 'Prontos',
+                              label: 'Prontos para retirada',
                               value:
                                   '${board.countFor(OperationalOrderStatus.ready)}',
-                              caption: 'Aguardando entrega',
+                              caption: 'Aguardando retirada ou entrega',
                               icon: Icons.notifications_active_rounded,
                               palette: tokens.success,
                               compact: true,
                             ),
                             AppSummaryBlock(
-                              label: 'Falhas ticket',
+                              label: operationalOrderReceiptFailureSummaryLabel,
                               value: '$failedPrints',
                               caption: 'Requer atencao',
                               icon: Icons.print_disabled_outlined,
@@ -342,11 +341,11 @@ class _OrdersPageState extends ConsumerState<OrdersPage> {
     if (result.hasFailure) {
       _showMessage(
         context,
-        'Pedido enviado para cozinha, mas a impressao falhou: ${result.failureMessage}',
+        '$operationalOrderSendFailureMessagePrefix ${result.failureMessage}',
       );
       return;
     }
-    _showMessage(context, 'Pedido enviado para cozinha e ticket impresso.');
+    _showMessage(context, operationalOrderSendSuccessMessage);
   }
 
   Future<void> _reprint(BuildContext context, int orderId) async {
@@ -359,11 +358,11 @@ class _OrdersPageState extends ConsumerState<OrdersPage> {
     if (result.hasFailure) {
       _showMessage(
         context,
-        'Falha ao reimprimir ticket: ${result.failureMessage}',
+        '$operationalOrderReprintFailureMessagePrefix ${result.failureMessage}',
       );
       return;
     }
-    _showMessage(context, 'Ticket reimpresso com sucesso.');
+    _showMessage(context, operationalOrderReprintSuccessMessage);
   }
 
   Future<void> _updateStatus(

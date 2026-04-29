@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,7 +9,9 @@ import 'core/database/app_database.dart';
 import 'core/session/auth_provider.dart';
 import 'core/session/session_provider.dart';
 import 'core/session/session_reset.dart';
+import 'core/sync/auto_sync_coordinator.dart';
 import 'core/sync/sync_providers.dart';
+import 'core/utils/app_logger.dart';
 import 'core/widgets/app_async_value_view.dart';
 import 'routes/app_router.dart';
 import 'theme/app_theme.dart';
@@ -58,7 +62,7 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
               title: startupState.title,
               message: startupState.message,
               actionLabel: 'Tentar novamente',
-              onAction: _retryStartup,
+              onAction: () => unawaited(_retryStartup()),
               secondaryActionLabel: 'Sair da conta',
               onSecondaryAction: _signOutFromBootstrapError,
               detailsMessage: kDebugMode
@@ -96,7 +100,7 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
           message:
               'Nao foi possivel concluir a preparacao inicial com seguranca.',
           actionLabel: 'Tentar novamente',
-          onAction: _retryStartup,
+          onAction: () => unawaited(_retryStartup()),
           secondaryActionLabel: 'Sair da conta',
           onSecondaryAction: _signOutFromBootstrapError,
           detailsMessage: kDebugMode ? error.toString() : null,
@@ -105,19 +109,77 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
     );
   }
 
-  void _retryStartup() {
-    ref.invalidate(appDatabaseProvider);
+  Future<void> _retryStartup() async {
+    final session = ref.read(appSessionProvider);
+    String? isolationKey;
+    try {
+      isolationKey = SessionIsolation.keyFor(session);
+    } catch (_) {
+      isolationKey = null;
+    }
+
+    AppLogger.info(
+      '[TenantBootstrap] retry_started | tenant_key=${isolationKey ?? 'n/a'}',
+    );
+
+    // Retrying must attach to an opening tenant database instead of closing it.
+    // Closing during sqflite open can race with the bootstrap future and leave
+    // the next startup waiting on a connection that is immediately disposed.
     ref.invalidate(appStartupProvider);
+    AppLogger.info(
+      '[TenantBootstrap] retry_finished | tenant_key=${isolationKey ?? 'n/a'}',
+    );
   }
 
   Future<void> _signOutFromBootstrapError() async {
+    final session = ref.read(appSessionProvider);
+    String? isolationKey;
     try {
-      await ref.read(authControllerProvider.notifier).signOutCurrentSession();
+      isolationKey = SessionIsolation.keyFor(session);
     } catch (_) {
-      ref.read(autoSyncCoordinatorProvider).cancelPending();
-      ref.read(appSessionProvider.notifier).signOutToLocalMode();
+      isolationKey = null;
+    }
+
+    final autoSyncCoordinator = ref.read(autoSyncCoordinatorProvider);
+    final syncBatchRunner = ref.read(syncBatchRunnerProvider);
+
+    autoSyncCoordinator.cancelPending();
+    ref.read(appSessionProvider.notifier).signOutToLocalMode();
+    ref.invalidate(appStartupProvider);
+    unawaited(
+      _finishBootstrapSignOutCleanup(
+        autoSyncCoordinator: autoSyncCoordinator,
+        syncBatchRunner: syncBatchRunner,
+        SessionSignOutResetSnapshot(
+          pendingSyncCount: 0,
+          hadActiveSync: false,
+          tenantIsolationKey: isolationKey,
+          databaseClosed: false,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _finishBootstrapSignOutCleanup(
+    SessionSignOutResetSnapshot snapshot, {
+    required AutoSyncCoordinator autoSyncCoordinator,
+    required SyncBatchRunner syncBatchRunner,
+  }) async {
+    try {
+      await autoSyncCoordinator.stopForSessionReset(
+        timeout: const Duration(seconds: 1),
+      );
+      await syncBatchRunner.stopForSessionReset(
+        timeout: const Duration(seconds: 1),
+      );
+    } catch (_) {
+      autoSyncCoordinator.cancelPending();
+    }
+
+    await Future<void>.delayed(Duration.zero);
+    await closeSessionDatabaseForReset(snapshot);
+    if (mounted) {
       ref.invalidate(appDatabaseProvider);
-      ref.invalidate(appStartupProvider);
     }
   }
 

@@ -5,6 +5,7 @@ import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_selector_chip.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/theme/app_design_tokens.dart';
+import '../../domain/entities/operational_order.dart';
 import '../../domain/entities/operational_order_summary.dart';
 import '../support/order_ui_support.dart';
 import 'order_status_badge.dart';
@@ -158,37 +159,43 @@ class OrderQueueCard extends StatelessWidget {
               if (onSendToKitchen != null)
                 _ActionChip(
                   icon: Icons.send_rounded,
-                  label: 'Enviar',
+                  label: operationalOrderSendToSeparationLabel,
                   onPressed: onSendToKitchen!,
                 ),
               if (onReprint != null)
                 _ActionChip(
                   icon: Icons.print_rounded,
-                  label: 'Reimprimir',
+                  label: operationalOrderPrintReceiptLabel,
                   onPressed: onReprint!,
                 ),
               if (onMarkInPreparation != null)
                 _ActionChip(
-                  icon: Icons.local_fire_department_rounded,
-                  label: 'Em preparo',
+                  icon: Icons.inventory_2_rounded,
+                  label: operationalOrderShortActionLabel(
+                    OperationalOrderStatus.inPreparation,
+                  ),
                   onPressed: onMarkInPreparation!,
                 ),
               if (onMarkReady != null)
                 _ActionChip(
                   icon: Icons.notifications_active_rounded,
-                  label: 'Pronto',
+                  label: operationalOrderShortActionLabel(
+                    OperationalOrderStatus.ready,
+                  ),
                   onPressed: onMarkReady!,
                 ),
               if (onMarkDelivered != null)
                 _ActionChip(
-                  icon: Icons.delivery_dining_rounded,
-                  label: 'Entregue',
+                  icon: Icons.shopping_bag_rounded,
+                  label: operationalOrderShortActionLabel(
+                    OperationalOrderStatus.delivered,
+                  ),
                   onPressed: onMarkDelivered!,
                 ),
               if (onInvoice != null)
                 _ActionChip(
                   icon: Icons.point_of_sale_rounded,
-                  label: 'Faturar',
+                  label: 'Finalizar venda',
                   onPressed: onInvoice!,
                   tone: AppSelectorChipTone.brand,
                 ),

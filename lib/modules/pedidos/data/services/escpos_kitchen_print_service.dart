@@ -86,7 +86,7 @@ class EscPosKitchenPrintService implements KitchenPrintService {
       );
     } catch (error) {
       throw ValidationException(
-        'Falha ao enviar o ticket para a impressora termica.',
+        'Falha ao enviar o comprovante para a impressora termica.',
         cause: error,
       );
     } finally {
@@ -192,7 +192,7 @@ class EscPosKitchenPrintService implements KitchenPrintService {
     writer.feed();
     writer.left();
     writer.text(
-      'Se este ticket saiu completo, a configuracao basica esta funcionando.',
+      'Se este comprovante saiu completo, a configuracao basica esta funcionando.',
     );
     writer.text(AppFormatters.shortDateTime(DateTime.now()));
     writer.feed(lines: 4);

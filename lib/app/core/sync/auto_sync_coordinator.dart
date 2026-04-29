@@ -194,6 +194,7 @@ class AutoSyncCoordinator {
 
   Timer? _timer;
   StreamSubscription<SyncMutationSignal>? _mutationSubscription;
+  Future<void>? _activeRun;
   bool _disposed = false;
   bool _runAgainAfterCurrentBatch = false;
   AutoSyncCoordinatorSnapshot _snapshot =
@@ -207,6 +208,7 @@ class AutoSyncCoordinator {
     }
 
     if (!_isEligible()) {
+      AppLogger.info('[Sync] auto_sync_skipped reason=not_eligible:$reason');
       cancelPending(
         skippedReason: 'nao_elegivel:$reason',
         clearLastRequestedAt: false,
@@ -257,6 +259,7 @@ class AutoSyncCoordinator {
 
     final requestedAt = _now();
     if (!_isEligible()) {
+      AppLogger.info('[Sync] auto_sync_skipped reason=not_eligible:$reason');
       cancelPending(
         skippedReason: 'nao_elegivel:$reason',
         clearLastRequestedAt: false,
@@ -303,8 +306,11 @@ class AutoSyncCoordinator {
       ),
     );
 
+    final activeCompleter = Completer<void>();
+    _activeRun = activeCompleter.future;
+
     try {
-      AppLogger.info('Auto sync iniciado | reason=$reason');
+      AppLogger.info('[Sync] auto_sync_started reason=$reason');
       final result = await _runSync();
       final finishedAt = _now();
       _publishSnapshot(
@@ -331,6 +337,10 @@ class AutoSyncCoordinator {
         ),
       );
     } finally {
+      activeCompleter.complete();
+      if (identical(_activeRun, activeCompleter.future)) {
+        _activeRun = null;
+      }
       if (!_disposed) {
         final shouldRunAgain = _runAgainAfterCurrentBatch;
         _runAgainAfterCurrentBatch = false;
@@ -398,6 +408,28 @@ class AutoSyncCoordinator {
     await _mutationSubscription?.cancel();
   }
 
+  Future<void> stopForSessionReset({
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    _disposed = true;
+    _timer?.cancel();
+    _timer = null;
+    _runAgainAfterCurrentBatch = false;
+    final activeRun = _activeRun;
+    if (activeRun != null) {
+      try {
+        await activeRun.timeout(timeout);
+      } on TimeoutException catch (error, stackTrace) {
+        AppLogger.error(
+          '[SessionReset] auto_sync_stop_timeout',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
+    await _mutationSubscription?.cancel();
+  }
+
   Future<bool> _scheduleRetryWakeupIfNeeded() async {
     late final List<SyncQueueFeatureSummary> summaries;
     try {
@@ -425,8 +457,23 @@ class AutoSyncCoordinator {
     }
 
     if (nextRetryAt == null) {
+      AppLogger.info(
+        '[Sync] queue_summary '
+        'pending=${summaries.fold<int>(0, (total, summary) => total + summary.pendingForDisplay)} '
+        'error=${summaries.fold<int>(0, (total, summary) => total + summary.errorCount)} '
+        'blocked=${summaries.fold<int>(0, (total, summary) => total + summary.blockedCount)} '
+        'nextRetryAt=none',
+      );
       return false;
     }
+
+    AppLogger.info(
+      '[Sync] queue_summary '
+      'pending=${summaries.fold<int>(0, (total, summary) => total + summary.pendingForDisplay)} '
+      'error=${summaries.fold<int>(0, (total, summary) => total + summary.errorCount)} '
+      'blocked=${summaries.fold<int>(0, (total, summary) => total + summary.blockedCount)} '
+      'nextRetryAt=${nextRetryAt.toIso8601String()}',
+    );
 
     final now = _now();
     if (!nextRetryAt.isAfter(now)) {

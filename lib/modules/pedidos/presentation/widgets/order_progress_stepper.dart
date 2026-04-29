@@ -1,18 +1,31 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/entities/operational_order.dart';
+import '../support/order_ui_support.dart';
 
 class OrderProgressStepper extends StatelessWidget {
   const OrderProgressStepper({super.key, required this.status});
 
   final OperationalOrderStatus status;
 
-  static const List<(OperationalOrderStatus, String)> _steps =
+  static final List<(OperationalOrderStatus, String)> _steps =
       <(OperationalOrderStatus, String)>[
-        (OperationalOrderStatus.open, 'Enviado'),
-        (OperationalOrderStatus.inPreparation, 'Em preparo'),
-        (OperationalOrderStatus.ready, 'Pronto'),
-        (OperationalOrderStatus.delivered, 'Entregue'),
+        (
+          OperationalOrderStatus.open,
+          operationalOrderStatusLabel(OperationalOrderStatus.open),
+        ),
+        (
+          OperationalOrderStatus.inPreparation,
+          operationalOrderStatusLabel(OperationalOrderStatus.inPreparation),
+        ),
+        (
+          OperationalOrderStatus.ready,
+          operationalOrderStatusLabel(OperationalOrderStatus.ready),
+        ),
+        (
+          OperationalOrderStatus.delivered,
+          operationalOrderStatusLabel(OperationalOrderStatus.delivered),
+        ),
       ];
 
   @override

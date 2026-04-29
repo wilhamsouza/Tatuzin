@@ -2,6 +2,7 @@ import '../../../../app/core/constants/app_constants.dart';
 import '../../domain/entities/order_ticket_document.dart';
 import '../../domain/entities/operational_order_detail.dart';
 import '../../domain/services/order_ticket_builder.dart';
+import '../../presentation/support/order_ui_support.dart';
 
 class DefaultOrderTicketBuilder implements OrderTicketBuilder {
   const DefaultOrderTicketBuilder();
@@ -39,8 +40,8 @@ class DefaultOrderTicketBuilder implements OrderTicketBuilder {
       profile: profile,
       businessName: AppConstants.defaultLocalCompanyName,
       title: profile == OrderTicketProfile.kitchen
-          ? 'COMANDA COZINHA'
-          : 'PREVIEW OPERACIONAL',
+          ? operationalOrderSeparationManifestTitle
+          : operationalOrderInternalPreviewTitle,
       orderId: detail.order.id,
       status: detail.order.status,
       serviceType: detail.order.serviceType,
@@ -56,9 +57,9 @@ class DefaultOrderTicketBuilder implements OrderTicketBuilder {
       lines: lines,
       footerLines: <String>[
         if (profile == OrderTicketProfile.kitchen)
-          'Uso interno da cozinha. Nao entregar ao cliente.',
+          operationalOrderSeparationManifestFooter,
         if (profile == OrderTicketProfile.internal)
-          'Preview tecnico para conferencia e diagnostico da impressao.',
+          operationalOrderInternalPreviewFooter,
       ],
     );
   }

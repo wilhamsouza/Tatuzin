@@ -6,6 +6,9 @@ import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/session/auth_provider.dart';
 import '../../../../app/core/session/session_feedback.dart';
 import '../../../../app/core/session/session_provider.dart';
+import '../../../../app/core/sync/sync_display_state.dart';
+import '../../../../app/core/sync/sync_providers.dart';
+import '../../../../app/core/sync/sync_queue_feature_summary.dart';
 import '../../../../app/core/widgets/app_button.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
@@ -26,6 +29,11 @@ class AccountCloudPage extends ConsumerWidget {
     final authStatus = ref.watch(authStatusProvider);
     final company = ref.watch(currentCompanyContextProvider);
     final accountCloud = ref.watch(accountCloudStatusProvider);
+    final autoSyncSnapshot = ref.watch(autoSyncSnapshotProvider);
+    final syncActionState = ref.watch(catalogSyncControllerProvider);
+    final syncSummariesAsync = authStatus.isRemoteAuthenticated
+        ? ref.watch(syncQueueFeatureSummariesProvider)
+        : null;
     final hasSyncAttention =
         authStatus.isRemoteAuthenticated &&
         (accountCloud.errorCount > 0 ||
@@ -105,6 +113,70 @@ class AccountCloudPage extends ConsumerWidget {
             ),
           ],
           const SizedBox(height: 18),
+          if (authStatus.isRemoteAuthenticated) ...[
+            AppSectionCard(
+              title: 'Fila de sincronizacao',
+              subtitle:
+                  'Resumo por modulo para saber o que ainda precisa sair deste aparelho.',
+              child: syncSummariesAsync!.when(
+                data: (summaries) {
+                  final activeSummaries = summaries
+                      .where(
+                        (summary) =>
+                            summary.pendingForDisplay > 0 ||
+                            summary.activeProcessingCount > 0 ||
+                            summary.errorCount > 0 ||
+                            summary.blockedCount > 0 ||
+                            summary.conflictCount > 0,
+                      )
+                      .toList(growable: false);
+                  if (activeSummaries.isEmpty) {
+                    return Text(
+                      'Nenhuma pendencia local aguardando envio.',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    );
+                  }
+                  return Column(
+                    children: [
+                      for (final summary in activeSummaries) ...[
+                        _SyncFeatureSummaryTile(summary: summary),
+                        const SizedBox(height: 10),
+                      ],
+                    ],
+                  );
+                },
+                loading: () => Text(
+                  'Carregando resumo da fila...',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                error: (error, _) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Nao foi possivel carregar o resumo da fila: $error',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.error,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    AppButton.secondary(
+                      label: 'Tentar novamente',
+                      icon: Icons.refresh_rounded,
+                      compact: true,
+                      onPressed: () =>
+                          ref.invalidate(syncQueueFeatureSummariesProvider),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+          ],
           AppSectionCard(
             title: 'Sua conta',
             subtitle:
@@ -220,6 +292,22 @@ class AccountCloudPage extends ConsumerWidget {
                             accountCloud.lastSyncedAt!,
                           ),
                   ),
+                  _InfoRow(
+                    label: 'Ultima tentativa',
+                    value: autoSyncSnapshot.lastStartedAt == null
+                        ? 'Ainda nao iniciada'
+                        : AppFormatters.shortDateTime(
+                            autoSyncSnapshot.lastStartedAt!,
+                          ),
+                  ),
+                  _InfoRow(
+                    label: 'Ultima conclusao',
+                    value: autoSyncSnapshot.lastFinishedAt == null
+                        ? 'Ainda nao concluida'
+                        : AppFormatters.shortDateTime(
+                            autoSyncSnapshot.lastFinishedAt!,
+                          ),
+                  ),
                   if (accountCloud.nextRetryAt != null)
                     _InfoRow(
                       label: 'Proxima tentativa',
@@ -227,6 +315,17 @@ class AccountCloudPage extends ConsumerWidget {
                         accountCloud.nextRetryAt!,
                       ),
                     ),
+                  const SizedBox(height: 12),
+                  AppButton.secondary(
+                    label: syncActionState.isLoading
+                        ? 'Sincronizando...'
+                        : 'Sincronizar agora',
+                    icon: Icons.sync_rounded,
+                    compact: true,
+                    onPressed: syncActionState.isLoading
+                        ? null
+                        : () => _syncNow(context, ref),
+                  ),
                 ] else if (accountCloud.supportingValue != null)
                   _InfoRow(
                     label: accountCloud.supportingLabel ?? 'Atualizacao',
@@ -389,6 +488,23 @@ class AccountCloudPage extends ConsumerWidget {
 
   Future<void> _signOutToLocalMode(BuildContext context, WidgetRef ref) async {
     try {
+      final pendingCount = ref.read(accountCloudStatusProvider).pendingCount;
+      if (pendingCount > 0) {
+        final decision = await _confirmSignOutWithPendingSync(
+          context,
+          pendingCount,
+        );
+        if (decision == _SignOutDecision.cancel || !context.mounted) {
+          return;
+        }
+        if (decision == _SignOutDecision.syncFirst) {
+          await ref
+              .read(autoSyncCoordinatorProvider)
+              .runNowIfEligible(reason: 'manual-before-sign-out');
+          return;
+        }
+      }
+
       await ref.read(authControllerProvider.notifier).signOutCurrentSession();
       if (!context.mounted) {
         return;
@@ -416,6 +532,149 @@ class AccountCloudPage extends ConsumerWidget {
         ),
       );
     }
+  }
+
+  Future<void> _syncNow(BuildContext context, WidgetRef ref) async {
+    try {
+      final result = await ref
+          .read(catalogSyncControllerProvider.notifier)
+          .syncAll();
+      ref.invalidate(accountCloudAttentionItemsProvider);
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${result.message} Enviados: ${result.syncedCount}. Falhas: ${result.failedCount}.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Nao foi possivel sincronizar agora: $error')),
+      );
+    }
+  }
+
+  Future<_SignOutDecision> _confirmSignOutWithPendingSync(
+    BuildContext context,
+    int pendingCount,
+  ) async {
+    return await showDialog<_SignOutDecision>(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              title: const Text('Pendencias aguardando envio'),
+              content: Text(
+                'Existem $pendingCount pendencias aguardando envio. '
+                'Elas continuarao salvas neste dispositivo.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () =>
+                      Navigator.of(context).pop(_SignOutDecision.cancel),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: () =>
+                      Navigator.of(context).pop(_SignOutDecision.syncFirst),
+                  child: const Text('Tentar sincronizar antes'),
+                ),
+                FilledButton(
+                  onPressed: () =>
+                      Navigator.of(context).pop(_SignOutDecision.signOut),
+                  child: const Text('Sair mesmo assim'),
+                ),
+              ],
+            );
+          },
+        ) ??
+        _SignOutDecision.cancel;
+  }
+}
+
+enum _SignOutDecision { cancel, syncFirst, signOut }
+
+class _SyncFeatureSummaryTile extends StatelessWidget {
+  const _SyncFeatureSummaryTile({required this.summary});
+
+  final SyncQueueFeatureSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final nextRetryAt = summary.nextRetryAt;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    summary.displayName,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                AppStatusBadge(
+                  label: summary.displayState.label,
+                  tone: summary.hasAttention
+                      ? AppStatusTone.warning
+                      : summary.hasActiveProcessing
+                      ? AppStatusTone.info
+                      : AppStatusTone.neutral,
+                  icon: summary.hasAttention
+                      ? Icons.error_outline_rounded
+                      : summary.hasActiveProcessing
+                      ? Icons.sync_rounded
+                      : Icons.schedule_send_rounded,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _IssueLine(
+              label: 'Pendentes',
+              value: '${summary.pendingForDisplay}',
+            ),
+            _IssueLine(
+              label: 'Em envio',
+              value: '${summary.activeProcessingCount}',
+            ),
+            _IssueLine(label: 'Com erro', value: '${summary.errorCount}'),
+            _IssueLine(label: 'Bloqueados', value: '${summary.blockedCount}'),
+            if (summary.conflictCount > 0)
+              _IssueLine(label: 'Conflitos', value: '${summary.conflictCount}'),
+            if (summary.lastProcessedAt != null)
+              _IssueLine(
+                label: 'Ultimo processamento',
+                value: AppFormatters.shortDateTime(summary.lastProcessedAt!),
+              ),
+            if (nextRetryAt != null)
+              _IssueLine(
+                label: 'Proxima tentativa',
+                value: AppFormatters.shortDateTime(nextRetryAt),
+              ),
+            if (summary.lastError?.trim().isNotEmpty == true)
+              _IssueLine(label: 'Ultimo erro', value: summary.lastError!),
+          ],
+        ),
+      ),
+    );
   }
 }
 

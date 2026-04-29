@@ -2,6 +2,7 @@ import '../../../app/core/app_context/app_operational_context.dart';
 import '../../../app/core/app_context/data_access_policy.dart';
 import '../../../app/core/errors/app_exceptions.dart';
 import '../../../app/core/sync/sync_conflict_info.dart';
+import '../../../app/core/sync/sync_date_normalizer.dart';
 import '../../../app/core/sync/sync_feature_processor.dart';
 import '../../../app/core/sync/sync_queue_item.dart';
 import 'datasources/cash_remote_datasource.dart';
@@ -74,8 +75,34 @@ class CashEventSyncProcessor implements SyncFeatureProcessor {
       );
     }
 
+    final normalizedCreatedAt = normalizeSyncDate(
+      event.createdAt,
+      entity: 'cash_event',
+      field: 'createdAt',
+      fallbacks: [
+        SyncDateFallback(label: 'queue.createdAt', value: item.createdAt),
+        SyncDateFallback(label: 'cash_event.updatedAt', value: event.updatedAt),
+      ],
+    );
+    final normalizedUpdatedAt = normalizeSyncDate(
+      event.updatedAt,
+      entity: 'cash_event',
+      field: 'updatedAt',
+      fallbacks: [
+        SyncDateFallback(label: 'queue.createdAt', value: item.createdAt),
+        SyncDateFallback(
+          label: 'cash_event.createdAt',
+          value: normalizedCreatedAt.value,
+        ),
+      ],
+    );
+
     final remote = await _remoteDatasource.createEvent(
-      RemoteCashEventRecord.fromSyncPayload(event),
+      RemoteCashEventRecord.fromSyncPayload(
+        event,
+        createdAt: normalizedCreatedAt.value,
+        updatedAt: normalizedUpdatedAt.value,
+      ),
     );
 
     if (!_matches(event, remote)) {

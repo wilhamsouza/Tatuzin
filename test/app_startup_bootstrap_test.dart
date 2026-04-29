@@ -154,12 +154,15 @@ void main() {
   );
 
   test(
-    'startup returns localDatabaseError when tenant sqlite open times out',
+    'startup guard owns timeout while tenant sqlite open remains attached',
     () async {
       final container = ProviderContainer(
         overrides: [
-          appStartupLocalDatabaseTimeoutProvider.overrideWith((ref) {
+          appStartupTimeoutProvider.overrideWith((ref) {
             return const Duration(milliseconds: 50);
+          }),
+          appStartupLocalDatabaseTimeoutProvider.overrideWith((ref) {
+            return const Duration(milliseconds: 10);
           }),
           appStartupOpenDatabaseProvider.overrideWith((ref) {
             return (isolationKey) => Completer<void>().future;
@@ -178,7 +181,7 @@ void main() {
           );
 
       final state = await container.read(appStartupProvider.future);
-      expect(state.status, AppStartupStatus.localDatabaseError);
+      expect(state.status, AppStartupStatus.timeout);
       expect(state.lastCompletedStep, 'tenant_key_resolved');
       expect(state.pendingStep, 'tenant_database_open_started');
     },
