@@ -133,6 +133,15 @@ class EscPosKitchenPrintService implements KitchenPrintService {
       writer.normalSize();
       writer.bold(false);
 
+      final variantLabel = operationalOrderVariantSnapshotLabel(
+        sku: line.variantSku,
+        color: line.variantColor,
+        size: line.variantSize,
+      );
+      if (variantLabel != null) {
+        writer.indented(variantLabel);
+      }
+
       for (final modifier in line.modifiers) {
         final modifierLabel = [
           if (modifier.groupName?.trim().isNotEmpty ?? false)

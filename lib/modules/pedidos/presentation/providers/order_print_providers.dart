@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/errors/app_exceptions.dart';
+import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../data/services/default_order_ticket_builder.dart';
 import '../../data/services/escpos_kitchen_print_service.dart';
 import '../../data/shared_preferences_kitchen_printer_settings_repository.dart';
@@ -204,6 +205,7 @@ Future<OrderTicketDispatchResult> _dispatchTicket(Ref ref, int orderId) async {
 }
 
 void _invalidateOrder(Ref ref, int orderId) {
+  ref.read(appDataRefreshProvider.notifier).state++;
   ref.invalidate(kitchenPrinterConfigProvider);
   ref.invalidate(operationalOrderBoardProvider);
   ref.invalidate(operationalOrderDetailProvider(orderId));

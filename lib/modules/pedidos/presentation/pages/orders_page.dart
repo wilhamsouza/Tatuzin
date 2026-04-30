@@ -332,20 +332,27 @@ class _OrdersPageState extends ConsumerState<OrdersPage> {
   }
 
   Future<void> _sendToKitchen(BuildContext context, int orderId) async {
-    final result = await ref
-        .read(orderKitchenDispatchControllerProvider.notifier)
-        .sendToKitchen(orderId);
-    if (!context.mounted) {
-      return;
+    try {
+      final result = await ref
+          .read(orderKitchenDispatchControllerProvider.notifier)
+          .sendToKitchen(orderId);
+      if (!context.mounted) {
+        return;
+      }
+      if (result.hasFailure) {
+        _showMessage(
+          context,
+          '$operationalOrderSendFailureMessagePrefix ${result.failureMessage}',
+        );
+        return;
+      }
+      _showMessage(context, operationalOrderSendSuccessMessage);
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      _showMessage(context, 'Falha ao enviar pedido para separacao: $error');
     }
-    if (result.hasFailure) {
-      _showMessage(
-        context,
-        '$operationalOrderSendFailureMessagePrefix ${result.failureMessage}',
-      );
-      return;
-    }
-    _showMessage(context, operationalOrderSendSuccessMessage);
   }
 
   Future<void> _reprint(BuildContext context, int orderId) async {

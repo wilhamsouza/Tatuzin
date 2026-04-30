@@ -15,6 +15,7 @@ import '../../clientes/domain/entities/customer_credit_transaction.dart';
 import '../../estoque/data/support/inventory_balance_support.dart';
 import '../../estoque/data/support/inventory_movement_writer.dart';
 import '../../estoque/domain/entities/inventory_movement.dart';
+import '../../estoque/domain/entities/stock_reservation.dart';
 import '../../insumos/data/support/supply_inventory_support.dart';
 import '../../insumos/data/support/supply_sync_mutation_support.dart';
 import '../domain/entities/checkout_input.dart';
@@ -574,6 +575,12 @@ class SqliteSaleRepository implements SaleRepository {
         saleId: saleId,
         linkedAtIso: nowIso,
       );
+      await _markActiveReservationsConvertedByOrderId(
+        txn,
+        orderId: input.operationalOrderId!,
+        saleId: saleId,
+        convertedAtIso: nowIso,
+      );
     }
 
     return CompletedSale(
@@ -623,6 +630,25 @@ class SqliteSaleRepository implements SaleRepository {
       },
       where: 'id = ?',
       whereArgs: [orderId],
+    );
+  }
+
+  Future<void> _markActiveReservationsConvertedByOrderId(
+    DatabaseExecutor txn, {
+    required int orderId,
+    required int saleId,
+    required String convertedAtIso,
+  }) async {
+    await txn.update(
+      TableNames.estoqueReservas,
+      {
+        'status': StockReservationStatus.converted.storageValue,
+        'venda_id': saleId,
+        'atualizado_em': convertedAtIso,
+        'convertido_em_venda_em': convertedAtIso,
+      },
+      where: 'pedido_operacional_id = ? AND status = ?',
+      whereArgs: [orderId, StockReservationStatus.active.storageValue],
     );
   }
 

@@ -202,11 +202,24 @@ class _OrderTicketPreviewPageState
                                 children: [
                                   Text(
                                     line.title,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
                                     style: Theme.of(context)
                                         .textTheme
                                         .titleMedium
                                         ?.copyWith(fontWeight: FontWeight.w800),
                                   ),
+                                  if (line.variantLabel != null) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      line.variantLabel!,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall,
+                                    ),
+                                  ],
                                   const SizedBox(height: 4),
                                   Text(line.summaryLabel),
                                 ],

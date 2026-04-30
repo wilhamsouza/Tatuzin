@@ -48,6 +48,7 @@ abstract final class AppMigrations {
     const MigrationStep(version: 32, up: _createVersion32Schema),
     const MigrationStep(version: 33, up: _createVersion33Schema),
     const MigrationStep(version: 34, up: _createVersion34Schema),
+    const MigrationStep(version: 35, up: _createVersion35Schema),
   ];
 
   static Future<void> runCreate(DatabaseExecutor db, int version) async {
@@ -3633,6 +3634,52 @@ abstract final class AppMigrations {
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_pedidos_operacionais_itens_produto_variante
       ON ${TableNames.pedidosOperacionaisItens}(produto_variante_id)
+    ''');
+  }
+
+  static Future<void> _createVersion35Schema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.estoqueReservas} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT NOT NULL UNIQUE,
+        pedido_operacional_id INTEGER NOT NULL,
+        item_pedido_operacional_id INTEGER NOT NULL,
+        produto_id INTEGER NOT NULL,
+        produto_variante_id INTEGER,
+        quantidade_mil INTEGER NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active', 'released', 'converted')),
+        venda_id INTEGER,
+        criado_em TEXT NOT NULL,
+        atualizado_em TEXT NOT NULL,
+        liberado_em TEXT,
+        convertido_em_venda_em TEXT,
+        FOREIGN KEY (pedido_operacional_id) REFERENCES ${TableNames.pedidosOperacionais}(id) ON DELETE CASCADE,
+        FOREIGN KEY (item_pedido_operacional_id) REFERENCES ${TableNames.pedidosOperacionaisItens}(id) ON DELETE CASCADE,
+        FOREIGN KEY (produto_id) REFERENCES ${TableNames.produtos}(id) ON DELETE RESTRICT,
+        FOREIGN KEY (produto_variante_id) REFERENCES ${TableNames.produtoVariantes}(id) ON DELETE SET NULL,
+        FOREIGN KEY (venda_id) REFERENCES ${TableNames.vendas}(id) ON DELETE SET NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_estoque_reservas_pedido
+      ON ${TableNames.estoqueReservas}(pedido_operacional_id)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_estoque_reservas_item
+      ON ${TableNames.estoqueReservas}(item_pedido_operacional_id)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_estoque_reservas_produto_status
+      ON ${TableNames.estoqueReservas}(produto_id, produto_variante_id, status)
+    ''');
+
+    await db.execute('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_estoque_reservas_item_active_unique
+      ON ${TableNames.estoqueReservas}(item_pedido_operacional_id)
+      WHERE status = 'active'
     ''');
   }
 }

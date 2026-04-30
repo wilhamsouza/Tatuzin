@@ -14,6 +14,7 @@ class OrderTicketLineViewModel {
     required this.title,
     required this.quantityLabel,
     required this.summaryLabel,
+    required this.variantLabel,
     required this.modifierLines,
     required this.notes,
     required this.totalLabel,
@@ -22,6 +23,7 @@ class OrderTicketLineViewModel {
   final String title;
   final String quantityLabel;
   final String summaryLabel;
+  final String? variantLabel;
   final List<String> modifierLines;
   final String? notes;
   final String? totalLabel;
@@ -85,6 +87,11 @@ abstract final class OrderTicketMapper {
             summaryLabel: ticket.showFinancialSummary
                 ? '${AppFormatters.quantityFromMil(line.quantityMil)} x ${AppFormatters.currencyFromCents(line.unitPriceCents)}'
                 : 'Quantidade ${AppFormatters.quantityFromMil(line.quantityMil)}',
+            variantLabel: operationalOrderVariantSnapshotLabel(
+              sku: line.variantSku,
+              color: line.variantColor,
+              size: line.variantSize,
+            ),
             modifierLines: modifierLines,
             notes: line.notes,
             totalLabel: ticket.showFinancialSummary

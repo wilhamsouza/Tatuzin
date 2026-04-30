@@ -501,15 +501,7 @@ class _CartPageState extends ConsumerState<CartPage> {
       for (final item in cart.items) {
         final orderItemId = await repository.addItem(
           orderId,
-          OperationalOrderItemInput(
-            productId: item.productId,
-            baseProductId: item.baseProductId,
-            productNameSnapshot: item.productName,
-            quantityMil: item.quantityMil,
-            unitPriceCents: item.unitPriceCents,
-            subtotalCents: item.subtotalCents,
-            notes: item.notes,
-          ),
+          operationalOrderItemInputFromCartItem(item),
         );
 
         for (final modifier in item.modifiers) {
@@ -558,6 +550,22 @@ class _CartPageState extends ConsumerState<CartPage> {
 }
 
 enum _CartMenuAction { operationalOrder, clear }
+
+OperationalOrderItemInput operationalOrderItemInputFromCartItem(CartItem item) {
+  return OperationalOrderItemInput(
+    productId: item.productId,
+    baseProductId: item.baseProductId,
+    productVariantId: item.productVariantId,
+    variantSkuSnapshot: item.variantSku,
+    variantColorSnapshot: item.variantColorLabel,
+    variantSizeSnapshot: item.variantSizeLabel,
+    productNameSnapshot: item.productName,
+    quantityMil: item.quantityMil,
+    unitPriceCents: item.unitPriceCents,
+    subtotalCents: item.subtotalCents,
+    notes: item.notes,
+  );
+}
 
 String cartDeliverySummaryLabel(TipoEntrega tipoEntrega) {
   switch (tipoEntrega) {

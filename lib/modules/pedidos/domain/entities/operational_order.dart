@@ -106,8 +106,7 @@ extension OperationalOrderStatusRules on OperationalOrderStatus {
   }
 
   bool get allowsItemChanges {
-    return this == OperationalOrderStatus.draft ||
-        this == OperationalOrderStatus.open;
+    return this == OperationalOrderStatus.draft;
   }
 
   bool canTransitionTo(OperationalOrderStatus next) {

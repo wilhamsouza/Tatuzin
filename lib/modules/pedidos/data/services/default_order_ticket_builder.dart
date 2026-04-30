@@ -17,6 +17,9 @@ class DefaultOrderTicketBuilder implements OrderTicketBuilder {
           final item = itemDetail.item;
           return OrderTicketLine(
             productName: item.productNameSnapshot,
+            variantSku: item.variantSkuSnapshot,
+            variantColor: item.variantColorSnapshot,
+            variantSize: item.variantSizeSnapshot,
             quantityMil: item.quantityMil,
             unitPriceCents: item.unitPriceCents,
             totalCents: itemDetail.totalCents,

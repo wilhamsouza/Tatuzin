@@ -638,6 +638,10 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             orderId: widget.orderId,
             productId: result.productId,
             baseProductId: result.baseProductId,
+            productVariantId: result.productVariantId,
+            variantSkuSnapshot: result.variantSkuSnapshot,
+            variantColorSnapshot: result.variantColorSnapshot,
+            variantSizeSnapshot: result.variantSizeSnapshot,
             productName: result.productName,
             unitPriceCents: result.unitPriceCents,
             quantityUnits: result.quantityUnits,
@@ -669,6 +673,10 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
           orderItemId: itemDetail.item.id,
           productId: itemDetail.item.productId,
           baseProductId: itemDetail.item.baseProductId,
+          productVariantId: itemDetail.item.productVariantId,
+          variantSkuSnapshot: itemDetail.item.variantSkuSnapshot,
+          variantColorSnapshot: itemDetail.item.variantColorSnapshot,
+          variantSizeSnapshot: itemDetail.item.variantSizeSnapshot,
           productName: itemDetail.item.productNameSnapshot,
           unitPriceCents: itemDetail.item.unitPriceCents,
           quantityUnits: itemDetail.quantityUnits,
@@ -691,6 +699,10 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             orderItemId: itemDetail.item.id,
             productId: result.productId,
             baseProductId: result.baseProductId,
+            productVariantId: result.productVariantId,
+            variantSkuSnapshot: result.variantSkuSnapshot,
+            variantColorSnapshot: result.variantColorSnapshot,
+            variantSizeSnapshot: result.variantSizeSnapshot,
             productName: result.productName,
             unitPriceCents: result.unitPriceCents,
             quantityUnits: result.quantityUnits,
@@ -819,7 +831,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
       if (!context.mounted) {
         return;
       }
-      _showMessage(context, 'Falha ao enviar pedido: $error');
+      _showMessage(context, 'Falha ao enviar pedido para separacao: $error');
     }
   }
 
