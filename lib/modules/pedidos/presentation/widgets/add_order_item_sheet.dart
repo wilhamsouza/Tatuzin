@@ -10,6 +10,7 @@ import '../../../produtos/domain/entities/product.dart';
 import '../../../produtos/presentation/providers/product_providers.dart';
 import '../../domain/entities/operational_order_item_modifier.dart';
 import '../providers/order_providers.dart';
+import '../support/order_ui_support.dart';
 
 class AddOperationalOrderItemResult {
   const AddOperationalOrderItemResult({
@@ -38,7 +39,7 @@ class _AddOrderItemSheetState extends ConsumerState<AddOrderItemSheet> {
   final Set<int> _selectedOptionIds = <int>{};
   final Map<int, ModifierOption> _optionsById = <int, ModifierOption>{};
   final List<_ModifierGroupBundle> _modifierBundles = <_ModifierGroupBundle>[];
-  Product? _selectedProduct;
+  OrderSellableProductOption? _selectedOption;
   String _search = '';
   int _quantityUnits = 1;
   bool _loadingModifiers = false;
@@ -53,13 +54,14 @@ class _AddOrderItemSheetState extends ConsumerState<AddOrderItemSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final catalogAsync = ref.watch(orderCatalogProvider(_search));
+    final catalogAsync = ref.watch(orderCatalogOptionsProvider(_search));
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final selectedModifierDelta = _selectedModifierDeltaCents;
-    final estimatedTotal = _selectedProduct == null
+    final selectedProduct = _selectedOption?.product;
+    final estimatedTotal = selectedProduct == null
         ? 0
-        : (_selectedProduct!.salePriceCents + selectedModifierDelta) *
+        : (selectedProduct.salePriceCents + selectedModifierDelta) *
               _quantityUnits;
 
     return SafeArea(
@@ -117,27 +119,32 @@ class _AddOrderItemSheetState extends ConsumerState<AddOrderItemSheet> {
                     SizedBox(
                       height: 220,
                       child: catalogAsync.when(
-                        data: (products) {
-                          if (products.isEmpty) {
+                        data: (options) {
+                          if (options.isEmpty) {
                             return AppCard(
                               color: colorScheme.surfaceContainerLow,
                               child: const Center(
-                                child: Text('Nenhum produto encontrado.'),
+                                child: Text(
+                                  'Nenhum produto com disponibilidade.',
+                                ),
                               ),
                             );
                           }
                           return ListView.separated(
-                            itemCount: products.length,
+                            itemCount: options.length,
                             separatorBuilder: (_, __) =>
                                 const SizedBox(height: 8),
                             itemBuilder: (context, index) {
-                              final product = products[index];
+                              final option = options[index];
                               final selected =
-                                  _selectedProduct?.id == product.id;
+                                  operationalOrderIsSameSellableProduct(
+                                    selectedProduct,
+                                    option.product,
+                                  );
                               return _SelectableProductTile(
-                                product: product,
+                                option: option,
                                 selected: selected,
-                                onTap: () => _selectProduct(product),
+                                onTap: () => _selectProduct(option),
                               );
                             },
                           );
@@ -203,7 +210,7 @@ class _AddOrderItemSheetState extends ConsumerState<AddOrderItemSheet> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _selectedProduct?.displayName ??
+                            selectedProduct?.displayName ??
                                 'Selecione um produto para continuar',
                             style: theme.textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w800,
@@ -212,10 +219,19 @@ class _AddOrderItemSheetState extends ConsumerState<AddOrderItemSheet> {
                           const SizedBox(height: 8),
                           Text('Quantidade: $_quantityUnits'),
                           Text(
-                            _selectedProduct == null
+                            selectedProduct == null
                                 ? 'Valor base: --'
-                                : 'Valor base: ${AppFormatters.currencyFromCents(_selectedProduct!.salePriceCents)}',
+                                : 'Valor base: ${AppFormatters.currencyFromCents(selectedProduct.salePriceCents)}',
                           ),
+                          if (_selectedOption != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              _availabilityLabel(_selectedOption!),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                           if (_selectedOptionIds.isNotEmpty) ...[
                             const SizedBox(height: 8),
                             Text(
@@ -250,7 +266,7 @@ class _AddOrderItemSheetState extends ConsumerState<AddOrderItemSheet> {
                                 child: Text('Total estimado do item'),
                               ),
                               Text(
-                                _selectedProduct == null
+                                selectedProduct == null
                                     ? '--'
                                     : AppFormatters.currencyFromCents(
                                         estimatedTotal,
@@ -271,7 +287,7 @@ class _AddOrderItemSheetState extends ConsumerState<AddOrderItemSheet> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: _selectedProduct == null ? null : _submit,
+                  onPressed: _selectedOption == null ? null : _submit,
                   icon: const Icon(Icons.check_rounded),
                   label: const Text('Adicionar no pedido'),
                 ),
@@ -295,9 +311,16 @@ class _AddOrderItemSheetState extends ConsumerState<AddOrderItemSheet> {
     );
   }
 
-  Future<void> _selectProduct(Product product) async {
+  Future<void> _selectProduct(OrderSellableProductOption option) async {
+    final product = option.product;
     setState(() {
-      _selectedProduct = product;
+      _selectedOption = option;
+      if (_quantityUnits * 1000 > option.availableQuantityMil) {
+        _quantityUnits = option.availableQuantityMil ~/ 1000;
+        if (_quantityUnits < 1) {
+          _quantityUnits = 1;
+        }
+      }
       _selectedOptionIds.clear();
       _optionsById.clear();
       _modifierBundles.clear();
@@ -411,6 +434,29 @@ class _AddOrderItemSheetState extends ConsumerState<AddOrderItemSheet> {
 
   void _submit() {
     setState(() => _submitted = true);
+    final selectedOption = _selectedOption;
+    if (selectedOption == null) {
+      return;
+    }
+    final quantityMil = _quantityUnits * 1000;
+    if (quantityMil > selectedOption.availableQuantityMil) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              operationalOrderAvailabilityErrorMessage(
+                productName: selectedOption.product.displayName,
+                availableQuantityMil: selectedOption.availableQuantityMil,
+                sku: selectedOption.product.sellableVariantSku,
+                color: selectedOption.product.sellableVariantColorLabel,
+                size: selectedOption.product.sellableVariantSizeLabel,
+              ),
+            ),
+          ),
+        );
+      return;
+    }
     final validationError = _validateSelections();
     if (validationError != null) {
       ScaffoldMessenger.of(context)
@@ -421,7 +467,7 @@ class _AddOrderItemSheetState extends ConsumerState<AddOrderItemSheet> {
 
     Navigator.of(context).pop(
       AddOperationalOrderItemResult(
-        product: _selectedProduct!,
+        product: selectedOption.product,
         quantityUnits: _quantityUnits,
         notes: _cleanNullable(_notesController.text),
         modifiers: _buildModifierInputs(),
@@ -462,22 +508,32 @@ class _AddOrderItemSheetState extends ConsumerState<AddOrderItemSheet> {
     final trimmed = value?.trim();
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
+
+  String _availabilityLabel(OrderSellableProductOption option) {
+    return 'Disponivel: ${operationalOrderFormatQuantityMil(option.availableQuantityMil)} • Reservado: ${operationalOrderFormatQuantityMil(option.reservedQuantityMil)}';
+  }
 }
 
 class _SelectableProductTile extends StatelessWidget {
   const _SelectableProductTile({
-    required this.product,
+    required this.option,
     required this.selected,
     required this.onTap,
   });
 
-  final Product product;
+  final OrderSellableProductOption option;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final product = option.product;
     final colorScheme = Theme.of(context).colorScheme;
+    final variantLabel = operationalOrderVariantSnapshotLabel(
+      sku: product.sellableVariantSku,
+      color: product.sellableVariantColorLabel,
+      size: product.sellableVariantSizeLabel,
+    );
 
     return AppCard(
       onTap: onTap,
@@ -491,6 +547,8 @@ class _SelectableProductTile extends StatelessWidget {
               children: [
                 Text(
                   product.displayName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                     color: selected ? colorScheme.onPrimaryContainer : null,
@@ -502,6 +560,31 @@ class _SelectableProductTile extends StatelessWidget {
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: selected ? colorScheme.onPrimaryContainer : null,
+                  ),
+                ),
+                if (variantLabel != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    variantLabel,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: selected
+                          ? colorScheme.onPrimaryContainer
+                          : colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 4),
+                Text(
+                  'Disponivel: ${operationalOrderFormatQuantityMil(option.availableQuantityMil)} • Reservado: ${operationalOrderFormatQuantityMil(option.reservedQuantityMil)}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: selected
+                        ? colorScheme.onPrimaryContainer
+                        : colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
