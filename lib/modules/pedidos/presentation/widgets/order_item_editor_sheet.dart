@@ -6,16 +6,20 @@ import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_input.dart';
 import '../../../produtos/domain/entities/modifier_group.dart';
 import '../../../produtos/domain/entities/modifier_option.dart';
-import '../../../produtos/domain/entities/product.dart';
 import '../../../produtos/presentation/providers/product_providers.dart';
 import '../../domain/entities/operational_order_item_modifier.dart';
 import '../providers/order_providers.dart';
+import '../support/order_ui_support.dart';
 
 class OrderItemEditorSeed {
   const OrderItemEditorSeed({
     this.orderItemId,
     required this.productId,
     required this.baseProductId,
+    this.productVariantId,
+    this.variantSkuSnapshot,
+    this.variantColorSnapshot,
+    this.variantSizeSnapshot,
     required this.productName,
     required this.unitPriceCents,
     required this.quantityUnits,
@@ -26,6 +30,10 @@ class OrderItemEditorSeed {
   final int? orderItemId;
   final int productId;
   final int? baseProductId;
+  final int? productVariantId;
+  final String? variantSkuSnapshot;
+  final String? variantColorSnapshot;
+  final String? variantSizeSnapshot;
   final String productName;
   final int unitPriceCents;
   final int quantityUnits;
@@ -40,6 +48,10 @@ class OrderItemEditorResult {
     required this.orderItemId,
     required this.productId,
     required this.baseProductId,
+    required this.productVariantId,
+    required this.variantSkuSnapshot,
+    required this.variantColorSnapshot,
+    required this.variantSizeSnapshot,
     required this.productName,
     required this.unitPriceCents,
     required this.quantityUnits,
@@ -50,6 +62,10 @@ class OrderItemEditorResult {
   final int? orderItemId;
   final int productId;
   final int? baseProductId;
+  final int? productVariantId;
+  final String? variantSkuSnapshot;
+  final String? variantColorSnapshot;
+  final String? variantSizeSnapshot;
   final String productName;
   final int unitPriceCents;
   final int quantityUnits;
@@ -75,7 +91,7 @@ class _OrderItemEditorSheetState extends ConsumerState<OrderItemEditorSheet> {
   final Set<int> _selectedOptionIds = <int>{};
   final Map<int, ModifierOption> _optionsById = <int, ModifierOption>{};
   final List<_ModifierGroupBundle> _modifierBundles = <_ModifierGroupBundle>[];
-  Product? _selectedProduct;
+  OrderSellableProductOption? _selectedOption;
   String _selectedCategory = 'Todos';
   String _search = '';
   int _quantityUnits = 1;
@@ -110,7 +126,24 @@ class _OrderItemEditorSheetState extends ConsumerState<OrderItemEditorSheet> {
     final colorScheme = theme.colorScheme;
     final catalogAsync = _isEditing
         ? null
-        : ref.watch(orderCatalogGroupsProvider(_search));
+        : ref.watch(orderCatalogOptionGroupsProvider(_search));
+    final seedAvailabilityAsync = _isEditing
+        ? ref.watch(
+            orderSellableProductAvailabilityProvider(
+              OrderSellableProductKey(
+                productId: widget.seed!.productId,
+                productVariantId: widget.seed!.productVariantId,
+              ),
+            ),
+          )
+        : null;
+    final seedAvailabilityLabel = seedAvailabilityAsync?.maybeWhen(
+      data: (availability) => _availabilityLabel(
+        availableQuantityMil: availability.availableQuantityMil,
+        reservedQuantityMil: availability.reservedQuantityMil,
+      ),
+      orElse: () => null,
+    );
     final selectedModifierDelta = _selectedModifierDeltaCents;
     final unitPriceCents = _selectedUnitPriceCents;
     final estimatedTotal =
@@ -165,7 +198,13 @@ class _OrderItemEditorSheetState extends ConsumerState<OrderItemEditorSheet> {
                     if (_isEditing)
                       _LockedProductCard(
                         productName: widget.seed!.productName,
+                        variantLabel: operationalOrderVariantSnapshotLabel(
+                          sku: widget.seed!.variantSkuSnapshot,
+                          color: widget.seed!.variantColorSnapshot,
+                          size: widget.seed!.variantSizeSnapshot,
+                        ),
                         unitPriceCents: widget.seed!.unitPriceCents,
+                        availabilityLabel: seedAvailabilityLabel,
                       )
                     else ...[
                       AppInput(
@@ -198,13 +237,13 @@ class _OrderItemEditorSheetState extends ConsumerState<OrderItemEditorSheet> {
                             'Todos',
                             ...groups.map((group) => group.label),
                           ];
-                          final visibleProducts = groups
+                          final visibleOptions = groups
                               .where(
                                 (group) =>
                                     _selectedCategory == 'Todos' ||
                                     group.label == _selectedCategory,
                               )
-                              .expand((group) => group.products)
+                              .expand((group) => group.options)
                               .toList(growable: false);
 
                           return Column(
@@ -239,16 +278,18 @@ class _OrderItemEditorSheetState extends ConsumerState<OrderItemEditorSheet> {
                               Wrap(
                                 spacing: 10,
                                 runSpacing: 10,
-                                children: visibleProducts
+                                children: visibleOptions
                                     .map(
-                                      (product) => SizedBox(
+                                      (option) => SizedBox(
                                         width: 170,
                                         child: _ProductSelectionCard(
-                                          product: product,
+                                          option: option,
                                           selected:
-                                              _selectedProduct?.id ==
-                                              product.id,
-                                          onTap: () => _selectProduct(product),
+                                              operationalOrderIsSameSellableProduct(
+                                                _selectedOption?.product,
+                                                option.product,
+                                              ),
+                                          onTap: () => _selectProduct(option),
                                         ),
                                       ),
                                     )
@@ -323,7 +364,7 @@ class _OrderItemEditorSheetState extends ConsumerState<OrderItemEditorSheet> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _selectedProduct?.displayName ??
+                            _selectedOption?.product.displayName ??
                                 widget.seed?.productName ??
                                 'Selecione um produto para continuar',
                             style: theme.textTheme.titleMedium?.copyWith(
@@ -331,6 +372,10 @@ class _OrderItemEditorSheetState extends ConsumerState<OrderItemEditorSheet> {
                             ),
                           ),
                           const SizedBox(height: 8),
+                          if (_selectedVariantLabel != null) ...[
+                            Text(_selectedVariantLabel!),
+                            const SizedBox(height: 8),
+                          ],
                           Text('Quantidade: $_quantityUnits'),
                           Text(
                             unitPriceCents == 0
@@ -411,11 +456,11 @@ class _OrderItemEditorSheetState extends ConsumerState<OrderItemEditorSheet> {
     );
   }
 
-  bool get _canSubmit => _isEditing || _selectedProduct != null;
+  bool get _canSubmit => _isEditing || _selectedOption != null;
 
   int get _selectedUnitPriceCents {
-    if (_selectedProduct != null) {
-      return _selectedProduct!.salePriceCents;
+    if (_selectedOption != null) {
+      return _selectedOption!.product.salePriceCents;
     }
     return widget.seed?.unitPriceCents ?? 0;
   }
@@ -445,9 +490,16 @@ class _OrderItemEditorSheetState extends ConsumerState<OrderItemEditorSheet> {
     await _loadModifiers(baseProductId);
   }
 
-  Future<void> _selectProduct(Product product) async {
+  Future<void> _selectProduct(OrderSellableProductOption option) async {
+    final product = option.product;
     setState(() {
-      _selectedProduct = product;
+      _selectedOption = option;
+      if (_quantityUnits * 1000 > option.availableQuantityMil) {
+        _quantityUnits = option.availableQuantityMil ~/ 1000;
+        if (_quantityUnits < 1) {
+          _quantityUnits = 1;
+        }
+      }
       _selectedOptionIds.clear();
       _optionsById.clear();
       _modifierBundles.clear();
@@ -566,6 +618,28 @@ class _OrderItemEditorSheetState extends ConsumerState<OrderItemEditorSheet> {
 
   void _submit() {
     setState(() => _submitted = true);
+    final selectedOption = _selectedOption;
+    if (!_isEditing && selectedOption != null) {
+      final quantityMil = _quantityUnits * 1000;
+      if (quantityMil > selectedOption.availableQuantityMil) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(
+                operationalOrderAvailabilityErrorMessage(
+                  productName: selectedOption.product.displayName,
+                  availableQuantityMil: selectedOption.availableQuantityMil,
+                  sku: selectedOption.product.sellableVariantSku,
+                  color: selectedOption.product.sellableVariantColorLabel,
+                  size: selectedOption.product.sellableVariantSizeLabel,
+                ),
+              ),
+            ),
+          );
+        return;
+      }
+    }
     final validationError = _validateSelections();
     if (validationError != null) {
       ScaffoldMessenger.of(context)
@@ -574,19 +648,34 @@ class _OrderItemEditorSheetState extends ConsumerState<OrderItemEditorSheet> {
       return;
     }
 
-    final productId = _selectedProduct?.id ?? widget.seed!.productId;
+    final selectedProduct = selectedOption?.product;
+    final productId = selectedProduct?.id ?? widget.seed!.productId;
     final baseProductId =
-        _selectedProduct?.baseProductId ?? widget.seed?.baseProductId;
+        selectedProduct?.baseProductId ?? widget.seed?.baseProductId;
+    final productVariantId =
+        selectedProduct?.sellableVariantId ?? widget.seed?.productVariantId;
+    final variantSkuSnapshot =
+        selectedProduct?.sellableVariantSku ?? widget.seed?.variantSkuSnapshot;
+    final variantColorSnapshot =
+        selectedProduct?.sellableVariantColorLabel ??
+        widget.seed?.variantColorSnapshot;
+    final variantSizeSnapshot =
+        selectedProduct?.sellableVariantSizeLabel ??
+        widget.seed?.variantSizeSnapshot;
     final productName =
-        _selectedProduct?.displayName ?? widget.seed!.productName;
+        selectedProduct?.displayName ?? widget.seed!.productName;
     final unitPriceCents =
-        _selectedProduct?.salePriceCents ?? widget.seed!.unitPriceCents;
+        selectedProduct?.salePriceCents ?? widget.seed!.unitPriceCents;
 
     Navigator.of(context).pop(
       OrderItemEditorResult(
         orderItemId: widget.seed?.orderItemId,
         productId: productId,
         baseProductId: baseProductId,
+        productVariantId: productVariantId,
+        variantSkuSnapshot: variantSkuSnapshot,
+        variantColorSnapshot: variantColorSnapshot,
+        variantSizeSnapshot: variantSizeSnapshot,
         productName: productName,
         unitPriceCents: unitPriceCents,
         quantityUnits: _quantityUnits,
@@ -629,16 +718,47 @@ class _OrderItemEditorSheetState extends ConsumerState<OrderItemEditorSheet> {
     final trimmed = value?.trim();
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
+
+  String? get _selectedVariantLabel {
+    final selected = _selectedOption?.product;
+    if (selected != null) {
+      return operationalOrderVariantSnapshotLabel(
+        sku: selected.sellableVariantSku,
+        color: selected.sellableVariantColorLabel,
+        size: selected.sellableVariantSizeLabel,
+      );
+    }
+    final seed = widget.seed;
+    if (seed == null) {
+      return null;
+    }
+    return operationalOrderVariantSnapshotLabel(
+      sku: seed.variantSkuSnapshot,
+      color: seed.variantColorSnapshot,
+      size: seed.variantSizeSnapshot,
+    );
+  }
+
+  String _availabilityLabel({
+    required int availableQuantityMil,
+    required int reservedQuantityMil,
+  }) {
+    return 'Disponivel: ${operationalOrderFormatQuantityMil(availableQuantityMil)} • Reservado: ${operationalOrderFormatQuantityMil(reservedQuantityMil)}';
+  }
 }
 
 class _LockedProductCard extends StatelessWidget {
   const _LockedProductCard({
     required this.productName,
+    required this.variantLabel,
     required this.unitPriceCents,
+    required this.availabilityLabel,
   });
 
   final String productName;
+  final String? variantLabel;
   final int unitPriceCents;
+  final String? availabilityLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -654,7 +774,7 @@ class _LockedProductCard extends StatelessWidget {
               color: Theme.of(context).colorScheme.primaryContainer,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: const Icon(Icons.lunch_dining_rounded),
+            child: const Icon(Icons.inventory_2_rounded),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -667,8 +787,29 @@ class _LockedProductCard extends StatelessWidget {
                     context,
                   ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
+                if (variantLabel != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    variantLabel!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
                 const SizedBox(height: 4),
                 Text(AppFormatters.currencyFromCents(unitPriceCents)),
+                if (availabilityLabel != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    availabilityLabel!,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -680,18 +821,24 @@ class _LockedProductCard extends StatelessWidget {
 
 class _ProductSelectionCard extends StatelessWidget {
   const _ProductSelectionCard({
-    required this.product,
+    required this.option,
     required this.selected,
     required this.onTap,
   });
 
-  final Product product;
+  final OrderSellableProductOption option;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final product = option.product;
     final colorScheme = Theme.of(context).colorScheme;
+    final variantLabel = operationalOrderVariantSnapshotLabel(
+      sku: product.sellableVariantSku,
+      color: product.sellableVariantColorLabel,
+      size: product.sellableVariantSizeLabel,
+    );
 
     return AppCard(
       onTap: onTap,
@@ -724,6 +871,19 @@ class _ProductSelectionCard extends StatelessWidget {
               ),
             ],
           ),
+          if (variantLabel != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              variantLabel,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: selected
+                    ? colorScheme.onPrimaryContainer
+                    : colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Text(
             AppFormatters.currencyFromCents(product.salePriceCents),
@@ -741,6 +901,18 @@ class _ProductSelectionCard extends StatelessWidget {
               color: selected
                   ? colorScheme.onPrimaryContainer
                   : colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Disp.: ${operationalOrderFormatQuantityMil(option.availableQuantityMil)} • Res.: ${operationalOrderFormatQuantityMil(option.reservedQuantityMil)}',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: selected
+                  ? colorScheme.onPrimaryContainer
+                  : colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
