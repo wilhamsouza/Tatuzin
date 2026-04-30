@@ -18,6 +18,8 @@ import '../../data/inventory_repository_impl.dart';
 import '../../data/real/real_inventory_remote_datasource.dart';
 import '../../data/sqlite_inventory_count_repository.dart';
 import '../../data/sqlite_inventory_repository.dart';
+import '../../data/sqlite_stock_availability_repository.dart';
+import '../../data/sqlite_stock_reservation_repository.dart';
 import '../../domain/entities/inventory_adjustment_input.dart';
 import '../../domain/entities/inventory_count_item.dart';
 import '../../domain/entities/inventory_count_item_input.dart';
@@ -27,6 +29,8 @@ import '../../domain/entities/inventory_item.dart';
 import '../../domain/entities/inventory_movement.dart';
 import '../../domain/repositories/inventory_count_repository.dart';
 import '../../domain/repositories/inventory_repository.dart';
+import '../../domain/repositories/stock_availability_repository.dart';
+import '../../domain/repositories/stock_reservation_repository.dart';
 
 final localInventoryRepositoryProvider = Provider<SqliteInventoryRepository>((
   ref,
@@ -58,6 +62,17 @@ final localInventoryCountRepositoryProvider =
     Provider<SqliteInventoryCountRepository>((ref) {
       return SqliteInventoryCountRepository(ref.watch(appDatabaseProvider));
     });
+
+final stockAvailabilityRepositoryProvider =
+    Provider<StockAvailabilityRepository>((ref) {
+      return SqliteStockAvailabilityRepository(ref.watch(appDatabaseProvider));
+    });
+
+final stockReservationRepositoryProvider = Provider<StockReservationRepository>(
+  (ref) {
+    return SqliteStockReservationRepository(ref.watch(appDatabaseProvider));
+  },
+);
 
 final inventoryCountRepositoryProvider = Provider<InventoryCountRepository>((
   ref,

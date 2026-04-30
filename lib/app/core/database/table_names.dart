@@ -6,6 +6,7 @@ abstract final class TableNames {
   static const supplyCostHistory = 'supply_cost_history';
   static const supplyInventoryMovements = 'supply_inventory_movements';
   static const inventoryMovements = 'inventory_movements';
+  static const estoqueReservas = 'estoque_reservas';
   static const inventorySettings = 'inventory_settings';
   static const inventoryCountSessions = 'inventory_count_sessions';
   static const inventoryCountItems = 'inventory_count_items';

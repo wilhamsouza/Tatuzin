@@ -47,6 +47,9 @@ class OrderTicketDocument {
 class OrderTicketLine {
   const OrderTicketLine({
     required this.productName,
+    required this.variantSku,
+    required this.variantColor,
+    required this.variantSize,
     required this.quantityMil,
     required this.unitPriceCents,
     required this.totalCents,
@@ -55,6 +58,9 @@ class OrderTicketLine {
   });
 
   final String productName;
+  final String? variantSku;
+  final String? variantColor;
+  final String? variantSize;
   final int quantityMil;
   final int unitPriceCents;
   final int totalCents;

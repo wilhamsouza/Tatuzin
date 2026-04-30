@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../domain/entities/operational_order.dart';
+import '../../../produtos/domain/entities/product.dart';
 
 const operationalOrderPanelSubtitle =
     'Acompanhe a fila de separacao, o status dos comprovantes e o faturamento sem misturar etapas.';
@@ -251,4 +252,32 @@ String operationalOrderModifierLabel(String optionName, String adjustmentType) {
     return 'Sem $optionName';
   }
   return optionName;
+}
+
+bool operationalOrderIsSameSellableProduct(Product? selected, Product product) {
+  return selected?.id == product.id &&
+      selected?.sellableVariantId == product.sellableVariantId;
+}
+
+String operationalOrderFormatQuantityMil(int quantityMil) {
+  if (quantityMil % 1000 == 0) {
+    return (quantityMil ~/ 1000).toString();
+  }
+  return (quantityMil / 1000).toStringAsFixed(3);
+}
+
+String? operationalOrderVariantSnapshotLabel({
+  String? sku,
+  String? color,
+  String? size,
+}) {
+  final parts = <String>[
+    if ((sku ?? '').trim().isNotEmpty) 'SKU: ${sku!.trim()}',
+    if ((color ?? '').trim().isNotEmpty) 'Cor: ${color!.trim()}',
+    if ((size ?? '').trim().isNotEmpty) 'Tam: ${size!.trim()}',
+  ];
+  if (parts.isEmpty) {
+    return null;
+  }
+  return parts.join(' • ');
 }

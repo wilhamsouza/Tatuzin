@@ -27,6 +27,11 @@ class OperationalOrderItemCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final item = itemDetail.item;
     final quantityLabel = AppFormatters.quantityFromMil(item.quantityMil);
+    final variantLabel = operationalOrderVariantSnapshotLabel(
+      sku: item.variantSkuSnapshot,
+      color: item.variantColorSnapshot,
+      size: item.variantSizeSnapshot,
+    );
 
     return AppCard(
       padding: const EdgeInsets.all(16),
@@ -65,12 +70,26 @@ class OperationalOrderItemCard extends StatelessWidget {
                   children: [
                     Text(
                       item.productNameSnapshot,
+                      maxLines: kitchenMode ? 3 : 2,
+                      overflow: TextOverflow.ellipsis,
                       style:
                           (kitchenMode
                                   ? theme.textTheme.titleLarge
                                   : theme.textTheme.titleMedium)
                               ?.copyWith(fontWeight: FontWeight.w800),
                     ),
+                    if (variantLabel != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        variantLabel,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontWeight: kitchenMode ? FontWeight.w600 : null,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Text(
                       showPrices

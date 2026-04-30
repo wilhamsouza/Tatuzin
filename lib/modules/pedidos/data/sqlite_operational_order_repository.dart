@@ -5,6 +5,7 @@ import '../../../app/core/database/table_names.dart';
 import '../../../app/core/errors/app_exceptions.dart';
 import '../../../app/core/utils/app_logger.dart';
 import '../../../app/core/utils/id_generator.dart';
+import '../../estoque/domain/entities/stock_reservation.dart';
 import '../domain/entities/operational_order.dart';
 import '../domain/entities/operational_order_item.dart';
 import '../domain/entities/operational_order_item_modifier.dart';
@@ -181,20 +182,7 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
   @override
   Future<List<OperationalOrderItem>> listItems(int orderId) async {
     final database = await _appDatabase.database;
-    final rows = await database.rawQuery(
-      '''
-      SELECT
-        i.*,
-        pbv.produto_base_id AS produto_base_id
-      FROM ${TableNames.pedidosOperacionaisItens} i
-      LEFT JOIN ${TableNames.produtosBaseVariantes} pbv
-        ON pbv.produto_id = i.produto_id
-      WHERE i.pedido_operacional_id = ?
-      ORDER BY i.id ASC
-      ''',
-      [orderId],
-    );
-    return rows.map(_mapItem).toList(growable: false);
+    return _listItems(database, orderId);
   }
 
   @override
@@ -294,85 +282,101 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
   @override
   Future<void> sendToKitchen(int orderId) async {
     final database = await _appDatabase.database;
-    final currentOrder = await _requireOrder(database, orderId);
-    if (currentOrder.status == OperationalOrderStatus.open) {
-      return;
-    }
-    if (!currentOrder.status.canTransitionTo(OperationalOrderStatus.open)) {
-      throw ValidationException(
-        'Pedido #$orderId nao pode ser enviado para separacao neste status.',
-      );
-    }
+    await database.transaction((txn) async {
+      final currentOrder = await _requireOrder(txn, orderId);
+      if (currentOrder.status == OperationalOrderStatus.open) {
+        return;
+      }
+      if (!currentOrder.status.canTransitionTo(OperationalOrderStatus.open)) {
+        throw ValidationException(
+          'Pedido #$orderId nao pode ser enviado para separacao neste status.',
+        );
+      }
 
-    final itemsCount = await _countItems(database, orderId);
-    if (itemsCount <= 0) {
-      throw const ValidationException(
-        'Adicione pelo menos um item antes de enviar o pedido para a separacao.',
-      );
-    }
+      final items = await _listItems(txn, orderId);
+      if (items.isEmpty) {
+        throw const ValidationException(
+          'Adicione pelo menos um item antes de enviar o pedido para a separacao.',
+        );
+      }
 
-    final nowIso = DateTime.now().toIso8601String();
-    await database.update(
-      TableNames.pedidosOperacionais,
-      {
-        'status': OperationalOrderStatus.open.dbValue,
-        'enviado_cozinha_em': nowIso,
-        'atualizado_em': nowIso,
-        'fechado_em': null,
-      },
-      where: 'id = ?',
-      whereArgs: [orderId],
-    );
+      final nowIso = DateTime.now().toIso8601String();
+      await _createMissingStockReservations(
+        txn,
+        orderId: orderId,
+        items: items,
+        nowIso: nowIso,
+      );
+
+      await txn.update(
+        TableNames.pedidosOperacionais,
+        {
+          'status': OperationalOrderStatus.open.dbValue,
+          'enviado_cozinha_em': nowIso,
+          'atualizado_em': nowIso,
+          'fechado_em': null,
+        },
+        where: 'id = ?',
+        whereArgs: [orderId],
+      );
+    });
   }
 
   @override
   Future<void> updateStatus(int orderId, OperationalOrderStatus status) async {
     final database = await _appDatabase.database;
-    final currentOrder = await _requireOrder(database, orderId);
-    if (!currentOrder.status.canTransitionTo(status)) {
-      throw ValidationException(
-        'Transicao invalida: ${currentOrder.status.dbValue} -> ${status.dbValue}.',
+    await database.transaction((txn) async {
+      final currentOrder = await _requireOrder(txn, orderId);
+      if (!currentOrder.status.canTransitionTo(status)) {
+        throw ValidationException(
+          'Transicao invalida: ${currentOrder.status.dbValue} -> ${status.dbValue}.',
+        );
+      }
+
+      if (currentOrder.status == status) {
+        return;
+      }
+
+      final nowIso = DateTime.now().toIso8601String();
+      final payload = <String, Object?>{
+        'status': status.dbValue,
+        'atualizado_em': nowIso,
+        'fechado_em': status.isTerminal ? nowIso : null,
+      };
+
+      switch (status) {
+        case OperationalOrderStatus.draft:
+          break;
+        case OperationalOrderStatus.open:
+          payload['enviado_cozinha_em'] =
+              currentOrder.sentToKitchenAt?.toIso8601String() ?? nowIso;
+          break;
+        case OperationalOrderStatus.inPreparation:
+          payload['em_preparo_em'] = nowIso;
+          break;
+        case OperationalOrderStatus.ready:
+          payload['pronto_em'] = nowIso;
+          break;
+        case OperationalOrderStatus.delivered:
+          payload['entregue_em'] = nowIso;
+          break;
+        case OperationalOrderStatus.canceled:
+          payload['cancelado_em'] = nowIso;
+          await _releaseActiveReservationsByOrderId(
+            txn,
+            orderId: orderId,
+            nowIso: nowIso,
+          );
+          break;
+      }
+
+      await txn.update(
+        TableNames.pedidosOperacionais,
+        payload,
+        where: 'id = ?',
+        whereArgs: [orderId],
       );
-    }
-
-    if (currentOrder.status == status) {
-      return;
-    }
-
-    final nowIso = DateTime.now().toIso8601String();
-    final payload = <String, Object?>{
-      'status': status.dbValue,
-      'atualizado_em': nowIso,
-      'fechado_em': status.isTerminal ? nowIso : null,
-    };
-
-    switch (status) {
-      case OperationalOrderStatus.draft:
-        break;
-      case OperationalOrderStatus.open:
-        payload['enviado_cozinha_em'] =
-            currentOrder.sentToKitchenAt?.toIso8601String() ?? nowIso;
-        break;
-      case OperationalOrderStatus.inPreparation:
-        payload['em_preparo_em'] = nowIso;
-        break;
-      case OperationalOrderStatus.ready:
-        payload['pronto_em'] = nowIso;
-        break;
-      case OperationalOrderStatus.delivered:
-        payload['entregue_em'] = nowIso;
-        break;
-      case OperationalOrderStatus.canceled:
-        payload['cancelado_em'] = nowIso;
-        break;
-    }
-
-    await database.update(
-      TableNames.pedidosOperacionais,
-      payload,
-      where: 'id = ?',
-      whereArgs: [orderId],
-    );
+    });
   }
 
   @override
@@ -703,6 +707,26 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
     return _mapOrder(rows.first);
   }
 
+  Future<List<OperationalOrderItem>> _listItems(
+    DatabaseExecutor database,
+    int orderId,
+  ) async {
+    final rows = await database.rawQuery(
+      '''
+      SELECT
+        i.*,
+        pbv.produto_base_id AS produto_base_id
+      FROM ${TableNames.pedidosOperacionaisItens} i
+      LEFT JOIN ${TableNames.produtosBaseVariantes} pbv
+        ON pbv.produto_id = i.produto_id
+      WHERE i.pedido_operacional_id = ?
+      ORDER BY i.id ASC
+      ''',
+      [orderId],
+    );
+    return rows.map(_mapItem).toList(growable: false);
+  }
+
   Future<int?> _findOrderIdByItem(
     DatabaseExecutor database,
     int orderItemId,
@@ -720,16 +744,221 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
     return rows.first['pedido_operacional_id'] as int?;
   }
 
-  Future<int> _countItems(DatabaseExecutor database, int orderId) async {
+  Future<void> _createMissingStockReservations(
+    DatabaseExecutor database, {
+    required int orderId,
+    required List<OperationalOrderItem> items,
+    required String nowIso,
+  }) async {
+    final activeReservationsByItemId =
+        await _loadActiveReservationQuantityByItemId(
+          database,
+          items.map((item) => item.id),
+        );
+    final existingQuantityByKey = <_StockReservationKey, int>{};
+    final quantityToReserveByKey = <_StockReservationKey, int>{};
+
+    for (final item in items) {
+      if (item.quantityMil <= 0) {
+        throw ValidationException(
+          'Quantidade invalida para reservar ${item.productNameSnapshot}.',
+        );
+      }
+
+      final key = _StockReservationKey(
+        productId: item.productId,
+        productVariantId: item.productVariantId,
+      );
+      final existingQuantityMil = activeReservationsByItemId[item.id];
+      if (existingQuantityMil != null) {
+        existingQuantityByKey[key] =
+            (existingQuantityByKey[key] ?? 0) + existingQuantityMil;
+      } else {
+        quantityToReserveByKey[key] =
+            (quantityToReserveByKey[key] ?? 0) + item.quantityMil;
+      }
+    }
+
+    for (final entry in quantityToReserveByKey.entries) {
+      final key = entry.key;
+      final quantityToReserveMil = entry.value;
+      final physicalQuantityMil = await _loadPhysicalQuantityMil(database, key);
+      final activeReservedQuantityMil = await _loadActiveReservedQuantityMil(
+        database,
+        key,
+      );
+      final alreadyReservedByThisOrderMil = existingQuantityByKey[key] ?? 0;
+      final availableQuantityMil =
+          physicalQuantityMil -
+          (activeReservedQuantityMil - alreadyReservedByThisOrderMil);
+
+      if (quantityToReserveMil > availableQuantityMil) {
+        final sampleItem = items.firstWhere(
+          (item) =>
+              item.productId == key.productId &&
+              item.productVariantId == key.productVariantId,
+        );
+        throw ValidationException(
+          _buildInsufficientStockMessage(
+            sampleItem,
+            availableQuantityMil: availableQuantityMil < 0
+                ? 0
+                : availableQuantityMil,
+            requestedQuantityMil: quantityToReserveMil,
+          ),
+        );
+      }
+    }
+
+    for (final item in items) {
+      if (activeReservationsByItemId.containsKey(item.id)) {
+        continue;
+      }
+      await database.insert(TableNames.estoqueReservas, {
+        'uuid': IdGenerator.next(),
+        'pedido_operacional_id': orderId,
+        'item_pedido_operacional_id': item.id,
+        'produto_id': item.productId,
+        'produto_variante_id': item.productVariantId,
+        'quantidade_mil': item.quantityMil,
+        'status': StockReservationStatus.active.storageValue,
+        'venda_id': null,
+        'criado_em': nowIso,
+        'atualizado_em': nowIso,
+        'liberado_em': null,
+        'convertido_em_venda_em': null,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+  }
+
+  Future<Map<int, int>> _loadActiveReservationQuantityByItemId(
+    DatabaseExecutor database,
+    Iterable<int> itemIds,
+  ) async {
+    final ids = itemIds.toList(growable: false);
+    if (ids.isEmpty) {
+      return const {};
+    }
+
+    final placeholders = List.filled(ids.length, '?').join(', ');
     final rows = await database.rawQuery(
       '''
-      SELECT COUNT(*) AS total
-      FROM ${TableNames.pedidosOperacionaisItens}
-      WHERE pedido_operacional_id = ?
+      SELECT item_pedido_operacional_id, quantidade_mil
+      FROM ${TableNames.estoqueReservas}
+      WHERE status = ?
+        AND item_pedido_operacional_id IN ($placeholders)
       ''',
-      [orderId],
+      <Object?>[StockReservationStatus.active.storageValue, ...ids],
+    );
+
+    return {
+      for (final row in rows)
+        row['item_pedido_operacional_id'] as int:
+            row['quantidade_mil'] as int? ?? 0,
+    };
+  }
+
+  Future<void> _releaseActiveReservationsByOrderId(
+    DatabaseExecutor database, {
+    required int orderId,
+    required String nowIso,
+  }) async {
+    await database.update(
+      TableNames.estoqueReservas,
+      {
+        'status': StockReservationStatus.released.storageValue,
+        'atualizado_em': nowIso,
+        'liberado_em': nowIso,
+      },
+      where: 'pedido_operacional_id = ? AND status = ?',
+      whereArgs: [orderId, StockReservationStatus.active.storageValue],
+    );
+  }
+
+  Future<int> _loadPhysicalQuantityMil(
+    DatabaseExecutor database,
+    _StockReservationKey key,
+  ) async {
+    if (key.productVariantId == null) {
+      final rows = await database.query(
+        TableNames.produtos,
+        columns: const ['estoque_mil'],
+        where: 'id = ?',
+        whereArgs: [key.productId],
+        limit: 1,
+      );
+      if (rows.isEmpty) {
+        throw ValidationException('Produto #${key.productId} nao encontrado.');
+      }
+      return rows.first['estoque_mil'] as int? ?? 0;
+    }
+
+    final rows = await database.query(
+      TableNames.produtoVariantes,
+      columns: const ['estoque_mil'],
+      where: 'id = ? AND produto_id = ?',
+      whereArgs: [key.productVariantId, key.productId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw ValidationException(
+        'Variante #${key.productVariantId} do produto #${key.productId} nao encontrada.',
+      );
+    }
+    return rows.first['estoque_mil'] as int? ?? 0;
+  }
+
+  Future<int> _loadActiveReservedQuantityMil(
+    DatabaseExecutor database,
+    _StockReservationKey key,
+  ) async {
+    final rows = await database.rawQuery(
+      '''
+      SELECT COALESCE(SUM(quantidade_mil), 0) AS total
+      FROM ${TableNames.estoqueReservas}
+      WHERE produto_id = ?
+        AND status = ?
+        AND ${key.productVariantId == null ? 'produto_variante_id IS NULL' : 'produto_variante_id = ?'}
+      ''',
+      <Object?>[
+        key.productId,
+        StockReservationStatus.active.storageValue,
+        if (key.productVariantId != null) key.productVariantId,
+      ],
     );
     return rows.first['total'] as int? ?? 0;
+  }
+
+  String _buildInsufficientStockMessage(
+    OperationalOrderItem item, {
+    required int availableQuantityMil,
+    required int requestedQuantityMil,
+  }) {
+    return 'Estoque insuficiente para ${_itemStockLabel(item)}. '
+        'Disponivel: ${_formatQuantityMil(availableQuantityMil)}; '
+        'solicitado: ${_formatQuantityMil(requestedQuantityMil)}.';
+  }
+
+  String _itemStockLabel(OperationalOrderItem item) {
+    final details = <String>[
+      if (_cleanNullable(item.variantSkuSnapshot) != null)
+        'SKU: ${item.variantSkuSnapshot!.trim()}',
+      if (_cleanNullable(item.variantColorSnapshot) != null)
+        'Cor: ${item.variantColorSnapshot!.trim()}',
+      if (_cleanNullable(item.variantSizeSnapshot) != null)
+        'Tam: ${item.variantSizeSnapshot!.trim()}',
+    ];
+    if (details.isEmpty) {
+      return item.productNameSnapshot;
+    }
+    return '${item.productNameSnapshot} (${details.join(' - ')})';
+  }
+
+  String _formatQuantityMil(int quantityMil) {
+    if (quantityMil % 1000 == 0) {
+      return (quantityMil ~/ 1000).toString();
+    }
+    return (quantityMil / 1000).toStringAsFixed(3);
   }
 
   Future<int> _insertModifier(
@@ -752,4 +981,24 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       'atualizado_em': nowIso,
     });
   }
+}
+
+class _StockReservationKey {
+  const _StockReservationKey({
+    required this.productId,
+    required this.productVariantId,
+  });
+
+  final int productId;
+  final int? productVariantId;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _StockReservationKey &&
+        other.productId == productId &&
+        other.productVariantId == productVariantId;
+  }
+
+  @override
+  int get hashCode => Object.hash(productId, productVariantId);
 }
