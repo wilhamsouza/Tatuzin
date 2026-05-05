@@ -38,6 +38,8 @@ abstract final class TableNames {
   static const syncRegistros = 'sync_registros';
   static const syncQueue = 'sync_queue';
   static const syncAuditLogs = 'sync_audit_logs';
+  static const operationalSyncEvents = 'operational_sync_events';
+  static const operationalSyncState = 'operational_sync_state';
   static const produtosBase = 'produtos_base';
   static const produtosBaseVariantes = 'produtos_base_variantes';
   static const produtoVarianteAtributos = 'produto_variante_atributos';

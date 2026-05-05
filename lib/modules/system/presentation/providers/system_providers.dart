@@ -18,6 +18,7 @@ import '../../../../app/core/sync/sync_batch_result.dart';
 import '../../../../app/core/sync/sync_audit_log.dart';
 import '../../../../app/core/sync/sync_providers.dart';
 import '../../../../app/core/sync/sync_display_state.dart';
+import '../../../../app/core/sync/sync_feature_keys.dart';
 import '../../../../app/core/sync/sync_repair_action.dart';
 import '../../../../app/core/sync/sync_repair_decision.dart';
 import '../../../../app/core/sync/sync_repair_repository.dart';
@@ -67,7 +68,9 @@ final syncQueueFeatureSummariesProvider =
       ref.watch(appDataRefreshProvider);
       return runProviderGuarded(
         'syncQueueFeatureSummariesProvider',
-        () => ref.watch(syncQueueRepositoryProvider).listFeatureSummaries(),
+        () => ref
+            .watch(operationalSyncQueueRepositoryProvider)
+            .listFeatureSummaries(),
         timeout: localProviderTimeout,
       );
     });
@@ -497,7 +500,10 @@ class CatalogSyncController extends AsyncNotifier<void> {
   }
 
   Future<SyncBatchResult> retryFeatures(Iterable<String> featureKeys) {
-    return _run(reprocessedOnly: true, featureKeys: featureKeys);
+    return _run(
+      reprocessedOnly: true,
+      featureKeys: _expandRetryFeatureKeys(featureKeys),
+    );
   }
 
   Future<SyncBatchResult> _run({
@@ -506,6 +512,7 @@ class CatalogSyncController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(ref, 'CatalogSyncController._run');
       AppLogger.info(
         reprocessedOnly
             ? '[Sync] manual_sync_started scope=retry_pending'
@@ -525,6 +532,22 @@ class CatalogSyncController extends AsyncNotifier<void> {
       rethrow;
     }
   }
+
+  Iterable<String> _expandRetryFeatureKeys(Iterable<String> featureKeys) {
+    final expanded = <String>{...featureKeys};
+    if (expanded.contains(SyncFeatureKeys.cashEvents)) {
+      expanded.addAll(const <String>[
+        SyncFeatureKeys.sales,
+        SyncFeatureKeys.fiadoPayments,
+        SyncFeatureKeys.financialEvents,
+      ]);
+    }
+    if (expanded.contains(SyncFeatureKeys.financialEvents) ||
+        expanded.contains(SyncFeatureKeys.fiadoPayments)) {
+      expanded.add(SyncFeatureKeys.cashEvents);
+    }
+    return expanded;
+  }
 }
 
 class SyncReconciliationController
@@ -537,6 +560,10 @@ class SyncReconciliationController
   Future<List<SyncReconciliationResult>> run() async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'SyncReconciliationController.run',
+      );
       final results = await ref
           .read(syncReconciliationRepositoryProvider)
           .reconcileAll();
@@ -553,6 +580,10 @@ class SyncReconciliationController
   Future<int> repairFeature(String featureKey) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'SyncReconciliationController.repairFeature',
+      );
       final repairedCount = await ref
           .read(syncReconciliationRepositoryProvider)
           .markFeatureForResync(featureKey);
@@ -579,6 +610,10 @@ class SyncRepairController extends AsyncNotifier<void> {
   Future<SyncRepairResult> applyAction(SyncRepairAction action) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'SyncRepairController.applyAction',
+      );
       final result = await ref
           .read(syncRepairRepositoryProvider)
           .applyAction(action);
@@ -596,6 +631,10 @@ class SyncRepairController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'SyncRepairController.applySafeRepairs',
+      );
       final result = await ref
           .read(syncRepairRepositoryProvider)
           .applySafeRepairs(featureKeys: featureKeys);

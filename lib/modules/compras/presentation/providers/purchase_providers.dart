@@ -9,8 +9,8 @@ import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/provider_guard.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
-import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
 import '../../data/datasources/purchases_remote_datasource.dart';
 import '../../data/purchases_repository_impl.dart';
@@ -63,7 +63,7 @@ final purchaseStatusFilterProvider = StateProvider<PurchaseStatus?>(
 final purchaseSupplierFilterProvider = StateProvider<int?>((ref) => null);
 
 final purchaseListProvider = FutureProvider<List<Purchase>>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'purchaseListProvider');
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(purchaseSearchQueryProvider);
   final status = ref.watch(purchaseStatusFilterProvider);
@@ -81,7 +81,7 @@ final purchaseDetailProvider = FutureProvider.family<PurchaseDetail, int>((
   ref,
   purchaseId,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'purchaseDetailProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'purchaseDetailProvider',
@@ -94,7 +94,7 @@ final purchasesBySupplierProvider = FutureProvider.family<List<Purchase>, int>((
   ref,
   supplierId,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'purchasesBySupplierProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'purchasesBySupplierProvider',
@@ -115,6 +115,7 @@ class PurchaseSyncController extends AsyncNotifier<void> {
   Future<SyncActionResult> syncNow() async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(ref, 'PurchaseSyncController.syncNow');
       final result = await ref.read(purchaseHybridRepositoryProvider).syncNow();
       ref.read(appDataRefreshProvider.notifier).state++;
       state = const AsyncData(null);

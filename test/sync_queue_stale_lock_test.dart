@@ -41,6 +41,7 @@ void main() {
             user: session.user,
             company: session.company,
             isOfflineFallback: session.isOfflineFallback,
+            clientInstanceId: session.clientInstanceId,
           );
       await container.read(appStartupProvider.future);
 
@@ -50,10 +51,10 @@ void main() {
       await database.transaction((txn) async {
         await repository.enqueueMutation(
           txn,
-          featureKey: SyncFeatureKeys.products,
-          entityType: 'product',
+          featureKey: SyncFeatureKeys.cashEvents,
+          entityType: 'cash_event',
           localEntityId: 1,
-          localUuid: 'prod-1',
+          localUuid: 'cash-1',
           remoteId: null,
           operation: SyncQueueOperation.create,
           localUpdatedAt: now,
@@ -139,6 +140,7 @@ void main() {
             user: session.user,
             company: session.company,
             isOfflineFallback: session.isOfflineFallback,
+            clientInstanceId: session.clientInstanceId,
           );
       await container.read(appStartupProvider.future);
 
@@ -148,10 +150,10 @@ void main() {
       await database.transaction((txn) async {
         await repository.enqueueMutation(
           txn,
-          featureKey: SyncFeatureKeys.products,
-          entityType: 'product',
+          featureKey: SyncFeatureKeys.cashEvents,
+          entityType: 'cash_event',
           localEntityId: 1,
-          localUuid: 'prod-backoff',
+          localUuid: 'cash-backoff',
           remoteId: null,
           operation: SyncQueueOperation.create,
           localUpdatedAt: now,
@@ -188,6 +190,67 @@ void main() {
       expect(forcedEligible.single.id, queueId);
     },
   );
+
+  test(
+    'retry manual tambem reprocessa itens bloqueados por dependencia',
+    () async {
+      final session = _remoteSession();
+      final isolationKey = SessionIsolation.keyFor(session);
+      await AppDatabase.deleteDatabaseForIsolationKeyForTesting(isolationKey);
+
+      final container = ProviderContainer();
+      addTearDown(() async {
+        container.dispose();
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await AppDatabase.deleteDatabaseForIsolationKeyForTesting(isolationKey);
+      });
+
+      container
+          .read(appSessionProvider.notifier)
+          .setAuthenticatedSession(
+            scope: session.scope,
+            user: session.user,
+            company: session.company,
+            isOfflineFallback: session.isOfflineFallback,
+            clientInstanceId: session.clientInstanceId,
+          );
+      await container.read(appStartupProvider.future);
+
+      final repository = container.read(syncQueueRepositoryProvider);
+      final database = await container.read(appDatabaseProvider).database;
+      final now = DateTime.now();
+      await database.transaction((txn) async {
+        await repository.enqueueMutation(
+          txn,
+          featureKey: SyncFeatureKeys.cashEvents,
+          entityType: 'cash_event',
+          localEntityId: 1,
+          localUuid: 'cash-blocked-1',
+          remoteId: null,
+          operation: SyncQueueOperation.create,
+          localUpdatedAt: now,
+        );
+      });
+
+      final queueRows = await database.query(TableNames.syncQueue, limit: 1);
+      final queueId = queueRows.first['id'] as int;
+      await repository.markBlocked(
+        queueId,
+        reason: 'Evento de caixa aguardando a operacao remota de origem.',
+        blockedAt: now,
+      );
+
+      final eligibleItems = await repository.listEligibleItems(
+        retryOnly: true,
+        ignoreRetryBackoff: true,
+        now: now,
+      );
+
+      expect(eligibleItems, hasLength(1));
+      expect(eligibleItems.single.id, queueId);
+      expect(eligibleItems.single.status, SyncQueueStatus.blockedDependency);
+    },
+  );
 }
 
 AppSession _remoteSession() {
@@ -214,5 +277,6 @@ AppSession _remoteSession() {
     ),
     startedAt: DateTime.now(),
     isOfflineFallback: false,
+    clientInstanceId: 'device-1',
   );
 }

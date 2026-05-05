@@ -7,6 +7,7 @@ import '../../../core/network/admin_api_client.dart';
 import '../../../core/utils/admin_formatters.dart';
 import '../../../core/widgets/admin_surface.dart';
 import '../../../core/widgets/license_editor_dialog.dart';
+import 'company_sync_health_tab.dart';
 
 class CompanyDetailPage extends ConsumerWidget {
   const CompanyDetailPage({super.key, required this.companyId});
@@ -205,7 +206,7 @@ class _CompanyDetailContent extends ConsumerWidget {
       ),
     );
 
-    return SingleChildScrollView(
+    final overviewTab = SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -264,6 +265,31 @@ class _CompanyDetailContent extends ConsumerWidget {
                 ],
               );
             },
+          ),
+        ],
+      ),
+    );
+
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const TabBar(
+            isScrollable: true,
+            tabs: [
+              Tab(icon: Icon(Icons.info_outline_rounded), text: 'Visao geral'),
+              Tab(icon: Icon(Icons.sync_rounded), text: 'Sync Health'),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Expanded(
+            child: TabBarView(
+              children: [
+                overviewTab,
+                CompanySyncHealthTab(companyId: company.id),
+              ],
+            ),
           ),
         ],
       ),

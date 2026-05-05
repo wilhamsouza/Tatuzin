@@ -36,6 +36,8 @@ import 'package:erp_pdv_app/modules/produtos/presentation/providers/product_prov
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'test_tenant_session.dart';
+
 const _categoryRemoteId = '00000000-0000-4000-8000-000000000001';
 
 void main() {
@@ -235,12 +237,14 @@ void main() {
   test('provider de produto propaga erro em vez de ficar carregando', () async {
     final container = ProviderContainer(
       overrides: [
+        ...testTenantBootstrapOverrides(),
         productRepositoryProvider.overrideWithValue(
           _FailingProductRepository(),
         ),
       ],
     );
     addTearDown(container.dispose);
+    setTestTenantSession(container);
 
     await expectLater(
       container.read(productListProvider.future),
@@ -278,6 +282,7 @@ AppOperationalContext _remoteOperationalContext() {
       ),
       startedAt: DateTime(2026, 4, 26, 10),
       isOfflineFallback: false,
+      clientInstanceId: 'device-1',
     ),
   );
 }

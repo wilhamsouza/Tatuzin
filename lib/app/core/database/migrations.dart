@@ -49,6 +49,7 @@ abstract final class AppMigrations {
     const MigrationStep(version: 33, up: _createVersion33Schema),
     const MigrationStep(version: 34, up: _createVersion34Schema),
     const MigrationStep(version: 35, up: _createVersion35Schema),
+    const MigrationStep(version: 36, up: _createVersion36Schema),
   ];
 
   static Future<void> runCreate(DatabaseExecutor db, int version) async {
@@ -3680,6 +3681,66 @@ abstract final class AppMigrations {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_estoque_reservas_item_active_unique
       ON ${TableNames.estoqueReservas}(item_pedido_operacional_id)
       WHERE status = 'active'
+    ''');
+  }
+
+  static Future<void> _createVersion36Schema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.operationalSyncEvents} (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_id TEXT NOT NULL UNIQUE,
+        feature TEXT NOT NULL,
+        entity TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        entity_local_id TEXT,
+        entity_server_id TEXT,
+        occurred_at TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (
+          status IN (
+            'pending',
+            'pushing',
+            'accepted',
+            'duplicate',
+            'rejected',
+            'conflict',
+            'failed'
+          )
+        ),
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        next_retry_at TEXT,
+        server_version TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        conflict_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        pushing_started_at TEXT,
+        last_pushed_at TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_operational_sync_status_retry
+      ON ${TableNames.operationalSyncEvents}(status, next_retry_at, created_at)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_operational_sync_entity_status
+      ON ${TableNames.operationalSyncEvents}(entity, status)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_operational_sync_server_version
+      ON ${TableNames.operationalSyncEvents}(server_version)
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ${TableNames.operationalSyncState} (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
     ''');
   }
 }

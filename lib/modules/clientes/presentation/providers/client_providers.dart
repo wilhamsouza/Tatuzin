@@ -173,6 +173,7 @@ class ClientSyncController extends AsyncNotifier<void> {
   Future<SyncActionResult> syncNow() async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(ref, 'ClientSyncController.syncNow');
       final result = await ref.read(clientHybridRepositoryProvider).syncNow();
       ref.read(appDataRefreshProvider.notifier).state++;
       state = const AsyncData(null);
@@ -195,6 +196,10 @@ class CustomerCreditController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'CustomerCreditController.addManualCredit',
+      );
       final transaction = await ref
           .read(customerCreditRepositoryProvider)
           .addManualCredit(
@@ -218,6 +223,10 @@ class CustomerCreditController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'CustomerCreditController.addManualDebit',
+      );
       final transaction = await ref
           .read(customerCreditRepositoryProvider)
           .addManualDebit(

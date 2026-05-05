@@ -9,8 +9,8 @@ import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/provider_guard.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
-import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_action_result.dart';
 import '../../data/datasources/supplies_remote_datasource.dart';
 import '../../data/real/real_supplies_remote_datasource.dart';
@@ -52,7 +52,7 @@ final supplyRepositoryProvider = Provider<SupplyRepository>((ref) {
 final supplySearchQueryProvider = StateProvider<String>((ref) => '');
 
 final supplyListProvider = FutureProvider<List<Supply>>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'supplyListProvider');
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(supplySearchQueryProvider);
   return runProviderGuarded(
@@ -63,7 +63,7 @@ final supplyListProvider = FutureProvider<List<Supply>>((ref) async {
 });
 
 final activeSupplyOptionsProvider = FutureProvider<List<Supply>>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'activeSupplyOptionsProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'activeSupplyOptionsProvider',
@@ -76,7 +76,7 @@ final supplyDetailProvider = FutureProvider.family<Supply?, int>((
   ref,
   supplyId,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'supplyDetailProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'supplyDetailProvider',
@@ -87,7 +87,7 @@ final supplyDetailProvider = FutureProvider.family<Supply?, int>((
 
 final supplyInventoryOverviewProvider =
     FutureProvider<List<SupplyInventoryOverview>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(ref, 'supplyInventoryOverviewProvider');
       ref.watch(appDataRefreshProvider);
       final query = ref.watch(supplySearchQueryProvider);
       return runProviderGuarded(
@@ -109,7 +109,10 @@ final reorderSuggestionsFilterProvider = StateProvider<SupplyReorderFilter>(
 
 final supplyReorderSuggestionsProvider =
     FutureProvider<List<SupplyReorderSuggestion>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(
+        ref,
+        'supplyReorderSuggestionsProvider',
+      );
       ref.watch(appDataRefreshProvider);
       final query = ref.watch(reorderSuggestionsSearchQueryProvider);
       final filter = ref.watch(reorderSuggestionsFilterProvider);
@@ -127,7 +130,10 @@ final supplyInventoryMovementsProvider =
       List<SupplyInventoryMovement>,
       SupplyInventoryMovementQuery
     >((ref, query) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(
+        ref,
+        'supplyInventoryMovementsProvider',
+      );
       ref.watch(appDataRefreshProvider);
       return runProviderGuarded(
         'supplyInventoryMovementsProvider',
@@ -149,7 +155,7 @@ final supplyCostHistoryProvider =
       ref,
       supplyId,
     ) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(ref, 'supplyCostHistoryProvider');
       ref.watch(appDataRefreshProvider);
       return runProviderGuarded(
         'supplyCostHistoryProvider',
@@ -172,6 +178,10 @@ class SupplyActionController extends AsyncNotifier<void> {
   Future<int> createSupply(SupplyInput input) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'SupplyActionController.createSupply',
+      );
       final id = await ref.read(supplyRepositoryProvider).create(input);
       ref.read(appDataRefreshProvider.notifier).state++;
       state = const AsyncData(null);
@@ -188,6 +198,10 @@ class SupplyActionController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'SupplyActionController.updateSupply',
+      );
       await ref.read(supplyRepositoryProvider).update(supplyId, input);
       ref.read(appDataRefreshProvider.notifier).state++;
       state = const AsyncData(null);
@@ -200,6 +214,10 @@ class SupplyActionController extends AsyncNotifier<void> {
   Future<void> deactivateSupply(int supplyId) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'SupplyActionController.deactivateSupply',
+      );
       await ref.read(supplyRepositoryProvider).deactivate(supplyId);
       ref.read(appDataRefreshProvider.notifier).state++;
       state = const AsyncData(null);
@@ -253,6 +271,7 @@ class SupplySyncController extends AsyncNotifier<void> {
   Future<SyncActionResult> syncNow() async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(ref, 'SupplySyncController.syncNow');
       final result = await ref.read(supplyHybridRepositoryProvider).syncNow();
       ref.read(appDataRefreshProvider.notifier).state++;
       state = const AsyncData(null);

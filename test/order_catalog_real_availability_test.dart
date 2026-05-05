@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'test_tenant_session.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
@@ -58,6 +60,29 @@ void main() {
     expect(options.single.reservedQuantityMil, 2000);
     expect(options.single.availableQuantityMil, 3000);
   });
+
+  test(
+    'produto pai com estoque zero aparece quando variante tem disponibilidade',
+    () async {
+      final fixture = await _openFixture();
+      addTearDown(fixture.dispose);
+      await fixture.insertVariantProduct(
+        parentStockMil: 0,
+        firstVariantStockMil: 5000,
+      );
+      final container = fixture.createContainer();
+      addTearDown(container.dispose);
+
+      final options = await container.read(
+        orderCatalogOptionsProvider('').future,
+      );
+
+      expect(options, hasLength(1));
+      expect(options.single.product.id, 1);
+      expect(options.single.product.sellableVariantId, 10);
+      expect(options.single.availableQuantityMil, 5000);
+    },
+  );
 
   test(
     'variante totalmente reservada nao aparece e nao pode ser adicionada',
@@ -206,14 +231,17 @@ class _AvailabilityFixture {
   final Database database;
 
   ProviderContainer createContainer() {
-    return ProviderContainer(
+    final container = ProviderContainer(
       overrides: [
+        ...testTenantBootstrapOverrides(),
         appDatabaseProvider.overrideWithValue(appDatabase),
-        appStartupProvider.overrideWith(
-          (ref) async => const AppStartupState.success(),
-        ),
       ],
     );
+    setTestTenantSession(
+      container,
+      companyId: isolationKey.replaceFirst('remote:', ''),
+    );
+    return container;
   }
 
   Future<void> insertSimpleProduct({required int stockMil}) {

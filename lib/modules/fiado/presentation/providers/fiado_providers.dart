@@ -103,6 +103,10 @@ class FiadoPaymentController extends AsyncNotifier<void> {
   Future<FiadoDetail> registerPayment(FiadoPaymentInput input) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'FiadoPaymentController.registerPayment',
+      );
       final detail = await ref
           .read(registerFiadoPaymentUseCaseProvider)
           .call(input);

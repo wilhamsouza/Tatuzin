@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../data/services/default_order_ticket_builder.dart';
 import '../../data/services/escpos_kitchen_print_service.dart';
 import '../../data/shared_preferences_kitchen_printer_settings_repository.dart';
@@ -137,6 +138,10 @@ class OrderKitchenDispatchController extends AsyncNotifier<void> {
   Future<OrderTicketDispatchResult> sendToKitchen(int orderId) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'OrderKitchenDispatchController.sendToKitchen',
+      );
       await ref.read(operationalOrderRepositoryProvider).sendToKitchen(orderId);
       final result = await _dispatchTicket(ref, orderId);
       _invalidateOrder(ref, orderId);
@@ -156,6 +161,10 @@ class OrderTicketReprintController extends AsyncNotifier<void> {
   Future<OrderTicketDispatchResult> reprint(int orderId) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'OrderTicketReprintController.reprint',
+      );
       final result = await _dispatchTicket(ref, orderId);
       _invalidateOrder(ref, orderId);
       state = const AsyncData(null);

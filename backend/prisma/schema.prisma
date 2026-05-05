@@ -26,6 +26,28 @@ enum SessionClientType {
   UNKNOWN
 }
 
+enum CompanyDeviceStatus {
+  PENDING
+  ACTIVE
+  BLOCKED
+  REVOKED
+}
+
+enum SyncEventStatus {
+  PENDING
+  ACCEPTED
+  DUPLICATE
+  REJECTED
+  CONFLICT
+  FAILED
+}
+
+enum SyncConflictStatus {
+  OPEN
+  RESOLVED
+  IGNORED
+}
+
 enum CustomerTaskStatus {
   OPEN
   COMPLETED
@@ -65,6 +87,13 @@ model User {
   memberships             Membership[]
   adminAuditLogs          AdminAuditLog[]      @relation("AdminAuditActor")
   deviceSessions          DeviceSession[]
+  companyDevices          CompanyDevice[]
+  syncEvents              SyncEvent[]
+  syncConflicts           SyncConflict[]       @relation("SyncConflictUser")
+  resolvedSyncConflicts   SyncConflict[]       @relation("SyncConflictResolver")
+  syncIncidents           SyncIncident[]
+  cashSessions            CashSession[]
+  operationalOrders       OperationalOrder[]
   passwordResetTokens     PasswordResetToken[]
   sessionAuditActorLogs   SessionAuditLog[]    @relation("SessionAuditActor")
   sessionAuditSubjectLogs SessionAuditLog[]    @relation("SessionAuditSubject")
@@ -86,8 +115,14 @@ model Company {
   updatedAt                       DateTime                         @updatedAt
   memberships                     Membership[]
   license                         License?
+  syncState                       CompanySyncState?
   adminAuditLogs                  AdminAuditLog[]                  @relation("AdminAuditCompany")
   deviceSessions                  DeviceSession[]
+  companyDevices                  CompanyDevice[]
+  syncEvents                      SyncEvent[]
+  syncCheckpoints                 SyncCheckpoint[]
+  syncConflicts                   SyncConflict[]
+  syncIncidents                   SyncIncident[]
   sessionAuditLogs                SessionAuditLog[]                @relation("SessionAuditCompany")
   suppliers                       Supplier[]
   supplies                        Supply[]
@@ -101,6 +136,11 @@ model Company {
   costs                           Cost[]
   fiadoPayments                   FiadoPayment[]
   cashEvents                      CashEvent[]
+  cashSessions                    CashSession[]
+  operationalOrders               OperationalOrder[]
+  operationalOrderItems           OperationalOrderItem[]
+  stockReservations               StockReservation[]
+  stockDeductions                 StockDeduction[]
   supplyCostHistory               SupplyCostHistory[]
   analyticsCompanyDailySnapshots  AnalyticsCompanyDailySnapshot[]
   analyticsProductDailySnapshots  AnalyticsProductDailySnapshot[]
@@ -145,6 +185,146 @@ model License {
   @@index([status])
   @@index([syncEnabled])
   @@index([expiresAt])
+}
+
+model CompanyDevice {
+  id                 String              @id @default(uuid())
+  companyId          String
+  userId             String
+  clientInstanceId   String
+  deviceLabel        String?
+  platform           String?
+  appVersion         String?
+  status             CompanyDeviceStatus @default(PENDING)
+  approvedAt         DateTime?
+  approvedByUserId   String?
+  lastSeenAt         DateTime?
+  revokedAt          DateTime?
+  revokedReason      String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  syncEvents         SyncEvent[]
+  syncCheckpoints    SyncCheckpoint[]
+  syncConflicts      SyncConflict[]
+  syncIncidents      SyncIncident[]
+  cashSessions       CashSession[]
+  operationalOrders  OperationalOrder[]
+
+  @@unique([companyId, clientInstanceId])
+  @@index([companyId])
+  @@index([userId])
+  @@index([status])
+}
+
+model CompanySyncState {
+  companyId                  String   @id
+  currentVersion             BigInt   @default(0)
+  serverFirstSnapshotVersion BigInt   @default(0)
+  updatedAt                  DateTime @updatedAt
+  company                    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model SyncEvent {
+  id               String          @id @default(uuid())
+  companyId        String
+  deviceId         String
+  userId           String
+  eventId          String
+  feature          String
+  entity           String
+  operation        String
+  entityLocalId    String?
+  entityServerId   String?
+  occurredAt       DateTime
+  payload          Json
+  status           SyncEventStatus @default(PENDING)
+  serverVersion    BigInt?
+  rejectionCode    String?
+  rejectionMessage String?
+  materializedAt   DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  company          Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  device           CompanyDevice   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conflict         SyncConflict?
+  incidents        SyncIncident[]
+
+  @@unique([companyId, deviceId, eventId])
+  @@index([companyId, serverVersion])
+  @@index([companyId, feature, serverVersion])
+  @@index([companyId, entity])
+  @@index([status])
+}
+
+model SyncCheckpoint {
+  id                String        @id @default(uuid())
+  companyId         String
+  deviceId          String
+  feature           String
+  lastServerVersion BigInt        @default(0)
+  lastPushedAt      DateTime?
+  lastPulledAt      DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  company           Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  device            CompanyDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, deviceId, feature])
+  @@index([companyId, deviceId])
+  @@index([companyId, feature])
+}
+
+model SyncConflict {
+  id               String             @id @default(uuid())
+  companyId        String
+  deviceId         String
+  userId           String
+  syncEventId      String             @unique
+  entity           String
+  entityLocalId    String?
+  entityServerId   String?
+  code             String
+  message          String
+  status           SyncConflictStatus @default(OPEN)
+  payload          Json?
+  resolution       Json?
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  company          Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  device           CompanyDevice      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user             User               @relation("SyncConflictUser", fields: [userId], references: [id], onDelete: Cascade)
+  syncEvent        SyncEvent          @relation(fields: [syncEventId], references: [id], onDelete: Cascade)
+  resolvedBy       User?              @relation("SyncConflictResolver", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status])
+  @@index([companyId, entity])
+  @@index([deviceId])
+}
+
+model SyncIncident {
+  id          String         @id @default(uuid())
+  companyId   String?
+  deviceId    String?
+  userId      String?
+  syncEventId String?
+  code        String
+  message     String
+  severity    String         @default("warn")
+  details     Json?
+  createdAt   DateTime       @default(now())
+  company     Company?       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  device      CompanyDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  user        User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  syncEvent   SyncEvent?     @relation(fields: [syncEventId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([deviceId, createdAt])
+  @@index([code])
 }
 
 model AdminAuditLog {
@@ -290,7 +470,10 @@ model Product {
   linkedModifierOptions                  ProductModifierOption[] @relation("ProductModifierLinkedProduct")
   saleItems                              SaleItem[]
   purchaseItems                          PurchaseItem[]
+  operationalOrderItems                  OperationalOrderItem[]
   recipeItems                            ProductRecipeItem[]
+  stockReservations                      StockReservation[]
+  stockDeductions                        StockDeduction[]
 
   @@unique([companyId, localUuid])
   @@index([companyId, updatedAt])
@@ -316,6 +499,9 @@ model ProductVariant {
   updatedAt            DateTime       @updatedAt
   product              Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
   purchaseItems        PurchaseItem[]
+  operationalOrderItems OperationalOrderItem[]
+  stockReservations    StockReservation[]
+  stockDeductions      StockDeduction[]
 
   @@index([productId, sortOrder])
   @@index([sku])
@@ -370,6 +556,7 @@ model Customer {
   updatedAt         DateTime                @updatedAt
   company           Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
   sales             Sale[]
+  operationalOrders OperationalOrder[]
   crmNotes          CustomerNote[]
   crmTasks          CustomerTask[]
   crmTagAssignments CustomerTagAssignment[]
@@ -660,6 +847,7 @@ model PurchasePayment {
 model Sale {
   id               String           @id @default(uuid())
   companyId        String
+  cashSessionId    String?
   localUuid        String
   customerId       String?
   receiptNumber    String?
@@ -674,12 +862,17 @@ model Sale {
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  cashSession      CashSession?     @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
   customer         Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
   items            SaleItem[]
   financialEvents  FinancialEvent[]
   fiadoPayments    FiadoPayment[]
+  convertedOperationalOrder OperationalOrder? @relation("OperationalOrderConvertedSale")
+  stockReservations StockReservation[]
+  stockDeductions   StockDeduction[]
 
   @@unique([companyId, localUuid])
+  @@index([companyId, cashSessionId])
   @@index([companyId, soldAt])
   @@index([companyId, updatedAt])
   @@index([companyId, status])
@@ -688,6 +881,7 @@ model Sale {
 model SaleItem {
   id                  String   @id @default(uuid())
   saleId              String
+  localUuid           String?
   productId           String?
   productNameSnapshot String
   quantityMil         Int
@@ -702,6 +896,7 @@ model SaleItem {
   sale                Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product             Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
 
+  @@unique([saleId, localUuid])
   @@index([saleId])
   @@index([productId])
 }
@@ -773,6 +968,7 @@ model FiadoPayment {
 model CashEvent {
   id            String   @id @default(uuid())
   companyId     String
+  cashSessionId String?
   localUuid     String
   eventType     String
   amountCents   Int
@@ -783,10 +979,146 @@ model CashEvent {
   createdAt     DateTime
   updatedAt     DateTime @updatedAt
   company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  cashSession   CashSession? @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, localUuid])
+  @@index([companyId, cashSessionId])
   @@index([companyId, createdAt])
   @@index([companyId, eventType])
+}
+
+model CashSession {
+  id                   String         @id @default(uuid())
+  companyId            String
+  deviceId             String?
+  userId               String?
+  localId              String?
+  localUuid            String
+  status               String         @default("open")
+  openedAt             DateTime?
+  closedAt             DateTime?
+  openingBalanceCents  Int            @default(0)
+  closingBalanceCents  Int?
+  expectedBalanceCents Int?
+  notes                String?
+  payload              Json?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  company              Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  device               CompanyDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  user                 User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sales                Sale[]
+  cashEvents           CashEvent[]
+  operationalOrders    OperationalOrder[]
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, localId])
+  @@index([companyId, status])
+  @@index([companyId, deviceId])
+  @@index([companyId, openedAt])
+}
+
+model OperationalOrder {
+  id              String                 @id @default(uuid())
+  companyId       String
+  localUuid       String
+  cashSessionId   String?
+  customerId      String?
+  sellerUserId    String?
+  deviceId        String?
+  status          String                 @default("open")
+  subtotalCents   Int                    @default(0)
+  discountCents   Int                    @default(0)
+  totalCents      Int                    @default(0)
+  notes           String?
+  closedAt        DateTime?
+  cancelledAt     DateTime?
+  convertedSaleId String?                @unique
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  company         Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  cashSession     CashSession?           @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  customer        Customer?              @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  sellerUser      User?                  @relation(fields: [sellerUserId], references: [id], onDelete: SetNull)
+  device          CompanyDevice?         @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  convertedSale   Sale?                  @relation("OperationalOrderConvertedSale", fields: [convertedSaleId], references: [id], onDelete: SetNull)
+  items           OperationalOrderItem[]
+
+  @@unique([companyId, localUuid])
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([companyId, cashSessionId])
+  @@index([companyId, convertedSaleId])
+}
+
+model OperationalOrderItem {
+  id                 String           @id @default(uuid())
+  companyId          String
+  operationalOrderId String
+  localUuid          String
+  productId          String?
+  productVariantId   String?
+  description        String
+  quantityMil        Int
+  unitPriceCents     Int              @default(0)
+  totalCents         Int              @default(0)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  company            Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  operationalOrder   OperationalOrder @relation(fields: [operationalOrderId], references: [id], onDelete: Cascade)
+  product            Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productVariant     ProductVariant?  @relation(fields: [productVariantId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, localUuid])
+  @@index([companyId])
+  @@index([companyId, operationalOrderId])
+  @@index([companyId, productVariantId])
+}
+
+model StockReservation {
+  id               String          @id @default(uuid())
+  companyId        String
+  saleId           String?
+  productId        String?
+  productVariantId String?
+  localUuid        String
+  quantityMil      Int
+  status           String          @default("active")
+  payload          Json?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  company          Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sale             Sale?           @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  product          Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productVariant   ProductVariant? @relation(fields: [productVariantId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, status])
+  @@index([companyId, saleId])
+  @@index([companyId, productVariantId])
+  @@index([companyId, productId])
+}
+
+model StockDeduction {
+  id               String          @id @default(uuid())
+  companyId        String
+  saleId           String?
+  productId        String?
+  productVariantId String?
+  localUuid        String
+  quantityMil      Int
+  payload          Json?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  company          Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sale             Sale?           @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  product          Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productVariant   ProductVariant? @relation(fields: [productVariantId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, localUuid])
+  @@index([companyId, saleId])
+  @@index([companyId, productVariantId])
+  @@index([companyId, productId])
 }
 
 model SupplyCostHistory {

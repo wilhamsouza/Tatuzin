@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/session/auth_provider.dart';
 import '../../../../app/core/session/session_feedback.dart';
 import '../../../../app/core/session/session_provider.dart';
@@ -38,10 +39,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final colorScheme = theme.colorScheme;
     final authState = ref.watch(authControllerProvider);
     final authStatus = ref.watch(authStatusProvider);
+    final session = ref.watch(appSessionProvider);
+    final startupState = ref.watch(appStartupProvider).valueOrNull;
     final isBusy = authState.isLoading;
     final canAttemptRemoteLogin = authStatus.canAttemptRemoteLogin;
 
-    if (authStatus.isAuthenticated) {
+    if (session.hasOperationalIdentity && startupState?.isSuccess == true) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) {
           return;
@@ -88,8 +91,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           const SizedBox(height: 8),
                           Text(
                             canAttemptRemoteLogin
-                                ? 'Entre para conectar sua empresa na nuvem ou siga operando normalmente no modo local.'
-                                : 'Voce pode seguir no modo local e conectar a conta quando a nuvem estiver disponivel.',
+                                ? 'Entre com sua conta para abrir a empresa neste dispositivo.'
+                                : 'Conecte-se a internet para fazer o primeiro acesso ao Tatuzin.',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                             ),
@@ -102,18 +105,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               AppStatusBadge(
                                 label: authStatus.isAuthenticated
                                     ? 'Conta conectada'
-                                    : 'Modo local',
+                                    : 'Login necessario',
                                 tone: authStatus.isAuthenticated
                                     ? AppStatusTone.success
                                     : AppStatusTone.neutral,
                                 icon: authStatus.isAuthenticated
                                     ? Icons.verified_user_rounded
-                                    : Icons.offline_bolt_rounded,
+                                    : Icons.lock_outline_rounded,
                               ),
                               AppStatusBadge(
                                 label: canAttemptRemoteLogin
                                     ? 'Nuvem disponivel'
-                                    : 'Uso local',
+                                    : 'Conexao necessaria',
                                 tone: canAttemptRemoteLogin
                                     ? AppStatusTone.info
                                     : AppStatusTone.neutral,
@@ -190,15 +193,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                 : null,
                             expand: true,
                           ),
-                          const SizedBox(height: 12),
-                          AppButton.secondary(
-                            label: 'Continuar offline',
-                            icon: Icons.offline_bolt_rounded,
-                            onPressed: isBusy
-                                ? null
-                                : () => _continueOffline(context),
-                            expand: true,
-                          ),
                           const SizedBox(height: 10),
                           Align(
                             alignment: Alignment.centerLeft,
@@ -272,7 +266,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Mesmo sem entrar na nuvem, o app continua pronto para vendas, caixa, compras e operacao offline-first.',
+                          'Depois de um login valido, o app pode abrir a base local da empresa mesmo quando a internet oscilar.',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                           ),
@@ -283,17 +277,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           runSpacing: 8,
                           children: [
                             AppStatusBadge(
-                              label: 'Vendas locais',
+                              label: 'Empresa obrigatoria',
                               tone: AppStatusTone.info,
                               icon: Icons.point_of_sale_rounded,
                             ),
                             AppStatusBadge(
-                              label: 'Caixa local',
+                              label: 'Tenant local',
                               tone: AppStatusTone.success,
                               icon: Icons.account_balance_wallet_rounded,
                             ),
                             AppStatusBadge(
-                              label: 'Uso offline',
+                              label: 'Offline seguro',
                               tone: AppStatusTone.neutral,
                               icon: Icons.storage_rounded,
                             ),
@@ -381,11 +375,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         ),
       );
     }
-  }
-
-  void _continueOffline(BuildContext context) {
-    ref.read(appSessionProvider.notifier).restoreLocalSession();
-    context.goNamed(AppRouteNames.dashboard);
   }
 
   String _errorMessage(Object? error) {

@@ -58,7 +58,7 @@ class RemoteFiadoPaymentRecord {
       'localUuid': localUuid,
       'amountCents': amountCents,
       'paymentMethod': paymentMethod.dbValue,
-      'createdAt': createdAt.toIso8601String(),
+      'createdAt': createdAt.toUtc().toIso8601String(),
       'notes': notes,
     };
   }

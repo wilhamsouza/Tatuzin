@@ -105,6 +105,7 @@ class CategorySyncController extends AsyncNotifier<void> {
   Future<SyncActionResult> syncNow() async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(ref, 'CategorySyncController.syncNow');
       final result = await ref.read(categoryHybridRepositoryProvider).syncNow();
       ref.read(appDataRefreshProvider.notifier).state++;
       state = const AsyncData(null);

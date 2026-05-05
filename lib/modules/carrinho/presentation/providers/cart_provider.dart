@@ -15,6 +15,10 @@ class CartController extends Notifier<CartState> {
   }
 
   bool addProduct(Product product) {
+    if (product.hasVariants && product.sellableVariantId == null) {
+      return false;
+    }
+
     final index = state.items.indexWhere(
       (item) =>
           item.productId == product.id &&
@@ -31,7 +35,17 @@ class CartController extends Notifier<CartState> {
       return true;
     }
 
-    return increaseQuantity(state.items[index].id);
+    final items = [...state.items];
+    final current = items[index];
+    if (current.quantityMil + 1000 > product.stockMil) {
+      return false;
+    }
+    items[index] = current.copyWith(
+      quantityMil: current.quantityMil + 1000,
+      availableStockMil: product.stockMil,
+    );
+    state = state.copyWith(items: items);
+    return true;
   }
 
   bool addCustomizedProduct(
@@ -39,6 +53,10 @@ class CartController extends Notifier<CartState> {
     List<CartItemModifier> modifiers = const <CartItemModifier>[],
     String? notes,
   }) {
+    if (product.hasVariants && product.sellableVariantId == null) {
+      return false;
+    }
+
     if (product.stockMil < 1000) {
       return false;
     }
@@ -57,7 +75,17 @@ class CartController extends Notifier<CartState> {
       (item) => item.signature == newItem.signature,
     );
     if (index != -1) {
-      return increaseQuantity(state.items[index].id);
+      final items = [...state.items];
+      final current = items[index];
+      if (current.quantityMil + 1000 > product.stockMil) {
+        return false;
+      }
+      items[index] = current.copyWith(
+        quantityMil: current.quantityMil + 1000,
+        availableStockMil: product.stockMil,
+      );
+      state = state.copyWith(items: items);
+      return true;
     }
 
     state = state.copyWith(items: [...state.items, newItem]);

@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/provider_guard.dart';
-import '../../../../app/core/session/session_provider.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../categorias/domain/entities/category.dart';
 import '../../../categorias/presentation/providers/category_providers.dart';
 import '../../../clientes/domain/entities/client.dart';
@@ -148,7 +148,7 @@ final reportPreviousFilterProvider = Provider<ReportFilter>((ref) {
 
 final reportOverviewResultProvider =
     FutureProvider<ReportResult<ReportOverviewSummary>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(ref, 'reportOverviewResultProvider');
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
@@ -169,7 +169,10 @@ final reportOverviewProvider = FutureProvider<ReportOverviewSummary>((
 
 final reportPreviousOverviewResultProvider =
     FutureProvider<ReportResult<ReportOverviewSummary>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(
+        ref,
+        'reportPreviousOverviewResultProvider',
+      );
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(reportPreviousFilterProvider);
       return runProviderGuarded(
@@ -190,7 +193,7 @@ final reportPreviousOverviewProvider = FutureProvider<ReportOverviewSummary>((
 
 final salesTrendResultProvider =
     FutureProvider<ReportResult<List<ReportSalesTrendPoint>>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(ref, 'salesTrendResultProvider');
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
@@ -211,7 +214,7 @@ final salesTrendProvider = FutureProvider<List<ReportSalesTrendPoint>>((
 
 final topProductsReportResultProvider =
     FutureProvider<ReportResult<List<ReportSoldProductSummary>>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(ref, 'topProductsReportResultProvider');
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
@@ -231,7 +234,7 @@ final topProductsReportProvider =
 
 final topVariantsReportResultProvider =
     FutureProvider<ReportResult<List<ReportVariantSummary>>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(ref, 'topVariantsReportResultProvider');
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
@@ -252,7 +255,10 @@ final topVariantsReportProvider = FutureProvider<List<ReportVariantSummary>>((
 
 final profitabilityReportResultProvider =
     FutureProvider<ReportResult<List<ReportProfitabilityRow>>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(
+        ref,
+        'profitabilityReportResultProvider',
+      );
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
@@ -272,7 +278,10 @@ final profitabilityReportProvider =
 
 final profitabilityCategoryReportResultProvider =
     FutureProvider<ReportResult<List<ReportProfitabilityRow>>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(
+        ref,
+        'profitabilityCategoryReportResultProvider',
+      );
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(
         reportFilterProvider.select(
@@ -298,7 +307,7 @@ final profitabilityCategoryReportProvider =
 
 final cashflowReportResultProvider =
     FutureProvider<ReportResult<ReportCashflowSummary>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(ref, 'cashflowReportResultProvider');
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
@@ -321,7 +330,10 @@ final cashflowReportProvider = FutureProvider<ReportCashflowSummary>((
 
 final inventoryHealthReportResultProvider =
     FutureProvider<ReportResult<ReportInventoryHealthSummary>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(
+        ref,
+        'inventoryHealthReportResultProvider',
+      );
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
@@ -343,7 +355,10 @@ final inventoryHealthReportProvider =
 
 final customerRankingReportResultProvider =
     FutureProvider<ReportResult<List<ReportCustomerRankingRow>>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(
+        ref,
+        'customerRankingReportResultProvider',
+      );
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
@@ -365,7 +380,10 @@ final customerRankingReportProvider =
 
 final purchaseSummaryReportResultProvider =
     FutureProvider<ReportResult<ReportPurchaseSummary>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(
+        ref,
+        'purchaseSummaryReportResultProvider',
+      );
       ref.watch(appDataRefreshProvider);
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
@@ -385,7 +403,7 @@ final purchaseSummaryReportProvider = FutureProvider<ReportPurchaseSummary>((
 });
 
 final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'reportSummaryProvider');
   ref.watch(appDataRefreshProvider);
   final period = ref.watch(reportPeriodProvider);
   final filter = ref.watch(reportFilterProvider);
@@ -399,7 +417,7 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
 });
 
 final reportClientOptionsProvider = FutureProvider<List<Client>>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'reportClientOptionsProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'reportClientOptionsProvider',
@@ -411,7 +429,7 @@ final reportClientOptionsProvider = FutureProvider<List<Client>>((ref) async {
 final reportCategoryOptionsProvider = FutureProvider<List<Category>>((
   ref,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'reportCategoryOptionsProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'reportCategoryOptionsProvider',
@@ -421,7 +439,7 @@ final reportCategoryOptionsProvider = FutureProvider<List<Category>>((
 });
 
 final reportProductOptionsProvider = FutureProvider<List<Product>>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'reportProductOptionsProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'reportProductOptionsProvider',
@@ -433,7 +451,7 @@ final reportProductOptionsProvider = FutureProvider<List<Product>>((ref) async {
 final reportSupplierOptionsProvider = FutureProvider<List<Supplier>>((
   ref,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'reportSupplierOptionsProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'reportSupplierOptionsProvider',
@@ -444,7 +462,7 @@ final reportSupplierOptionsProvider = FutureProvider<List<Supplier>>((
 
 final reportVariantOptionsProvider =
     FutureProvider<List<ReportVariantFilterOption>>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(ref, 'reportVariantOptionsProvider');
       return runProviderGuarded('reportVariantOptionsProvider', () async {
         final products = await ref.watch(reportProductOptionsProvider.future);
         final options = <ReportVariantFilterOption>[];
@@ -478,7 +496,10 @@ final reportVariantOptionsProvider =
 
 final reportFilterOptionLabelsProvider =
     FutureProvider<ReportFilterOptionLabels>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(
+        ref,
+        'reportFilterOptionLabelsProvider',
+      );
       return runProviderGuarded('reportFilterOptionLabelsProvider', () async {
         final customers = await ref.watch(reportClientOptionsProvider.future);
         final categories = await ref.watch(

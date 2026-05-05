@@ -14,6 +14,9 @@ import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 import '../../../../app/core/utils/app_logger.dart';
 import '../../../carrinho/presentation/providers/cart_provider.dart';
+import '../../../estoque/domain/entities/stock_availability.dart';
+import '../../../estoque/domain/entities/stock_reservation.dart';
+import '../../../estoque/presentation/providers/inventory_providers.dart';
 import '../../../produtos/domain/entities/product.dart';
 import '../../../produtos/domain/repositories/product_repository.dart';
 import '../../../produtos/presentation/providers/product_providers.dart';
@@ -39,11 +42,13 @@ final salesCatalogRepositoryProvider = Provider<ProductRepository>((ref) {
 class SalesCatalogEntry {
   const SalesCatalogEntry({
     required this.product,
+    required this.productAvailability,
     required this.availableVariants,
   });
 
   final Product product;
-  final List<ProductVariant> availableVariants;
+  final StockAvailability productAvailability;
+  final List<SalesCatalogVariantOption> availableVariants;
 
   bool get hasVariants => availableVariants.isNotEmpty;
 
@@ -61,9 +66,11 @@ class SalesCatalogEntry {
     }
 
     var lowest =
-        product.salePriceCents + availableVariants.first.priceAdditionalCents;
-    for (final variant in availableVariants.skip(1)) {
-      final price = product.salePriceCents + variant.priceAdditionalCents;
+        product.salePriceCents +
+        availableVariants.first.variant.priceAdditionalCents;
+    for (final option in availableVariants.skip(1)) {
+      final price =
+          product.salePriceCents + option.variant.priceAdditionalCents;
       if (price < lowest) {
         lowest = price;
       }
@@ -77,9 +84,11 @@ class SalesCatalogEntry {
     }
 
     final firstPrice =
-        product.salePriceCents + availableVariants.first.priceAdditionalCents;
-    for (final variant in availableVariants.skip(1)) {
-      if (product.salePriceCents + variant.priceAdditionalCents != firstPrice) {
+        product.salePriceCents +
+        availableVariants.first.variant.priceAdditionalCents;
+    for (final option in availableVariants.skip(1)) {
+      if (product.salePriceCents + option.variant.priceAdditionalCents !=
+          firstPrice) {
         return true;
       }
     }
@@ -88,16 +97,66 @@ class SalesCatalogEntry {
 
   int get totalStockMil {
     if (!hasVariants) {
-      return product.stockMil;
+      return productAvailability.availableQuantityMil;
     }
 
     return availableVariants.fold<int>(
       0,
-      (total, variant) => total + variant.stockMil,
+      (total, option) => total + option.availableQuantityMil,
     );
   }
 
-  Product buildSellableVariantProduct(ProductVariant variant) {
+  int get totalPhysicalStockMil {
+    if (!hasVariants) {
+      return productAvailability.physicalQuantityMil;
+    }
+
+    return availableVariants.fold<int>(
+      0,
+      (total, option) => total + option.physicalQuantityMil,
+    );
+  }
+
+  int get totalReservedStockMil {
+    if (!hasVariants) {
+      return productAvailability.reservedQuantityMil;
+    }
+
+    return availableVariants.fold<int>(
+      0,
+      (total, option) => total + option.reservedQuantityMil,
+    );
+  }
+
+  Product buildSellableProduct() {
+    return _copyProduct(
+      salePriceCents: product.salePriceCents,
+      stockMil: productAvailability.availableQuantityMil,
+    );
+  }
+
+  Product buildSellableVariantProduct(SalesCatalogVariantOption option) {
+    final variant = option.variant;
+    return _copyProduct(
+      sellableVariantId: variant.id,
+      sellableVariantSku: variant.sku,
+      sellableVariantColorLabel: variant.colorLabel,
+      sellableVariantSizeLabel: variant.sizeLabel,
+      sellableVariantPriceAdditionalCents: variant.priceAdditionalCents,
+      salePriceCents: product.salePriceCents + variant.priceAdditionalCents,
+      stockMil: option.availableQuantityMil,
+    );
+  }
+
+  Product _copyProduct({
+    int? sellableVariantId,
+    String? sellableVariantSku,
+    String? sellableVariantColorLabel,
+    String? sellableVariantSizeLabel,
+    int? sellableVariantPriceAdditionalCents,
+    required int salePriceCents,
+    required int stockMil,
+  }) {
     return Product(
       id: product.id,
       uuid: product.uuid,
@@ -117,17 +176,17 @@ class SalesCatalogEntry {
       variantAttributes: product.variantAttributes,
       variants: product.variants,
       modifierGroups: product.modifierGroups,
-      sellableVariantId: variant.id,
-      sellableVariantSku: variant.sku,
-      sellableVariantColorLabel: variant.colorLabel,
-      sellableVariantSizeLabel: variant.sizeLabel,
-      sellableVariantPriceAdditionalCents: variant.priceAdditionalCents,
+      sellableVariantId: sellableVariantId,
+      sellableVariantSku: sellableVariantSku,
+      sellableVariantColorLabel: sellableVariantColorLabel,
+      sellableVariantSizeLabel: sellableVariantSizeLabel,
+      sellableVariantPriceAdditionalCents: sellableVariantPriceAdditionalCents,
       unitMeasure: product.unitMeasure,
       costCents: product.costCents,
       manualCostCents: product.manualCostCents,
       costSource: product.costSource,
-      salePriceCents: product.salePriceCents + variant.priceAdditionalCents,
-      stockMil: variant.stockMil,
+      salePriceCents: salePriceCents,
+      stockMil: stockMil,
       isActive: product.isActive,
       createdAt: product.createdAt,
       updatedAt: product.updatedAt,
@@ -139,6 +198,20 @@ class SalesCatalogEntry {
   }
 }
 
+class SalesCatalogVariantOption {
+  const SalesCatalogVariantOption({
+    required this.variant,
+    required this.availability,
+  });
+
+  final ProductVariant variant;
+  final StockAvailability availability;
+
+  int get physicalQuantityMil => availability.physicalQuantityMil;
+  int get reservedQuantityMil => availability.reservedQuantityMil;
+  int get availableQuantityMil => availability.availableQuantityMil;
+}
+
 final salesCatalogProvider = FutureProvider<List<SalesCatalogEntry>>((
   ref,
 ) async {
@@ -147,6 +220,7 @@ final salesCatalogProvider = FutureProvider<List<SalesCatalogEntry>>((
   logProviderContext(ref, 'salesCatalogProvider');
   final query = ref.watch(salesSearchQueryProvider);
   final repository = ref.watch(salesCatalogRepositoryProvider);
+  final availabilityRepository = ref.watch(stockAvailabilityRepositoryProvider);
   final products = await runProviderGuarded(
     '[Vendas] salesCatalogProvider',
     () async {
@@ -160,27 +234,99 @@ final salesCatalogProvider = FutureProvider<List<SalesCatalogEntry>>((
     timeout: localProviderTimeout,
   );
 
-  return products
-      .where((product) {
-        if (!product.isActive) {
-          return false;
-        }
-        if (product.hasVariants) {
-          return product.variants.any(
-            (variant) => variant.isActive && variant.stockMil > 0,
-          );
-        }
-        return product.stockMil > 0;
-      })
-      .map(
-        (product) => SalesCatalogEntry(
-          product: product,
-          availableVariants: product.variants
-              .where((variant) => variant.isActive && variant.stockMil > 0)
-              .toList(growable: false),
+  final keys = <StockReservationProductKey>{};
+  for (final product in products.where((product) => product.isActive)) {
+    if (product.hasVariants) {
+      for (final variant in product.variants.where(
+        (variant) => variant.isActive,
+      )) {
+        keys.add(
+          StockReservationProductKey(
+            productId: product.id,
+            productVariantId: variant.id,
+          ),
+        );
+      }
+    } else {
+      keys.add(
+        StockReservationProductKey(
+          productId: product.id,
+          productVariantId: null,
         ),
-      )
-      .toList(growable: false);
+      );
+    }
+  }
+  final availabilityByKey = await availabilityRepository
+      .getAvailabilityByProductKeys(keys);
+
+  final entries = <SalesCatalogEntry>[];
+  for (final product in products) {
+    if (!product.isActive) {
+      continue;
+    }
+
+    if (product.hasVariants) {
+      final variants = <SalesCatalogVariantOption>[];
+      for (final variant in product.variants.where(
+        (variant) => variant.isActive,
+      )) {
+        final key = StockReservationProductKey(
+          productId: product.id,
+          productVariantId: variant.id,
+        );
+        final availability = availabilityByKey[key];
+        if (availability == null || availability.availableQuantityMil <= 0) {
+          continue;
+        }
+        variants.add(
+          SalesCatalogVariantOption(
+            variant: variant,
+            availability: availability,
+          ),
+        );
+      }
+      if (variants.isEmpty) {
+        continue;
+      }
+      entries.add(
+        SalesCatalogEntry(
+          product: product,
+          productAvailability: StockAvailability(
+            productId: product.id,
+            productVariantId: null,
+            physicalQuantityMil: variants.fold<int>(
+              0,
+              (total, option) => total + option.physicalQuantityMil,
+            ),
+            reservedQuantityMil: variants.fold<int>(
+              0,
+              (total, option) => total + option.reservedQuantityMil,
+            ),
+          ),
+          availableVariants: variants,
+        ),
+      );
+      continue;
+    }
+
+    final key = StockReservationProductKey(
+      productId: product.id,
+      productVariantId: null,
+    );
+    final availability = availabilityByKey[key];
+    if (availability == null || availability.availableQuantityMil <= 0) {
+      continue;
+    }
+    entries.add(
+      SalesCatalogEntry(
+        product: product,
+        productAvailability: availability,
+        availableVariants: const <SalesCatalogVariantOption>[],
+      ),
+    );
+  }
+
+  return entries;
 });
 
 final salesQuickAddProvider = Provider<SalesQuickAddController>((ref) {
@@ -255,6 +401,7 @@ class CheckoutController extends AsyncNotifier<void> {
   Future<CompletedSale> finalize(CheckoutInput input) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(ref, 'CheckoutController.finalize');
       final sale = input.saleType.isCredit
           ? await ref.read(finalizeCreditSaleUseCaseProvider).call(input)
           : await ref.read(finalizeCashSaleUseCaseProvider).call(input);
@@ -275,6 +422,7 @@ class CancelSaleController extends AsyncNotifier<void> {
   Future<void> cancel({required int saleId, required String reason}) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(ref, 'CancelSaleController.cancel');
       await ref
           .read(cancelSaleUseCaseProvider)
           .call(saleId: saleId, reason: reason);
@@ -317,6 +465,10 @@ class SalesQuickAddController {
       );
     }
 
+    await requireTenantBootstrapReady(
+      _ref,
+      'SalesQuickAddController.addByBarcode',
+    );
     final catalog = await _ref
         .read(localProductRepositoryProvider)
         .searchAvailable(query: rawValue.trim());
@@ -334,6 +486,25 @@ class SalesQuickAddController {
       return const SalesQuickAddResult(
         type: SalesQuickAddResultType.notFound,
         message: 'Nenhum produto encontrado para o código informado.',
+      );
+    }
+
+    final availability = await _ref
+        .read(stockAvailabilityRepositoryProvider)
+        .getAvailability(
+          productId: matchedProduct.id,
+          productVariantId: matchedProduct.sellableVariantId,
+        );
+    matchedProduct = _copyProductWithStock(
+      matchedProduct,
+      stockMil: availability.availableQuantityMil,
+    );
+    if (matchedProduct.stockMil < 1000) {
+      return SalesQuickAddResult(
+        type: SalesQuickAddResultType.outOfStock,
+        product: matchedProduct,
+        message:
+            'Não foi possível adicionar ${matchedProduct.name} por falta de estoque.',
       );
     }
 
@@ -361,5 +532,52 @@ class SalesQuickAddController {
 
     final normalized = value.replaceAll(RegExp(r'[^0-9A-Za-z]'), '');
     return normalized.trim().toUpperCase();
+  }
+
+  Product _copyProductWithStock(Product product, {required int stockMil}) {
+    return Product(
+      id: product.id,
+      uuid: product.uuid,
+      name: product.name,
+      description: product.description,
+      categoryId: product.categoryId,
+      categoryName: product.categoryName,
+      barcode: product.barcode,
+      primaryPhotoPath: product.primaryPhotoPath,
+      productType: product.productType,
+      niche: product.niche,
+      catalogType: product.catalogType,
+      modelName: product.modelName,
+      variantLabel: product.variantLabel,
+      baseProductId: product.baseProductId,
+      baseProductName: product.baseProductName,
+      variantAttributes: product.variantAttributes,
+      variants: product.variants,
+      modifierGroups: product.modifierGroups,
+      sellableVariantId: product.sellableVariantId,
+      sellableVariantSku: product.sellableVariantSku,
+      sellableVariantColorLabel: product.sellableVariantColorLabel,
+      sellableVariantSizeLabel: product.sellableVariantSizeLabel,
+      sellableVariantPriceAdditionalCents:
+          product.sellableVariantPriceAdditionalCents,
+      unitMeasure: product.unitMeasure,
+      costCents: product.costCents,
+      manualCostCents: product.manualCostCents,
+      costSource: product.costSource,
+      variableCostSnapshotCents: product.variableCostSnapshotCents,
+      estimatedGrossMarginCents: product.estimatedGrossMarginCents,
+      estimatedGrossMarginPercentBasisPoints:
+          product.estimatedGrossMarginPercentBasisPoints,
+      lastCostUpdatedAt: product.lastCostUpdatedAt,
+      salePriceCents: product.salePriceCents,
+      stockMil: stockMil,
+      isActive: product.isActive,
+      createdAt: product.createdAt,
+      updatedAt: product.updatedAt,
+      deletedAt: product.deletedAt,
+      remoteId: product.remoteId,
+      syncStatus: product.syncStatus,
+      lastSyncedAt: product.lastSyncedAt,
+    );
   }
 }

@@ -1,0 +1,320 @@
+import assert from 'node:assert/strict';
+import { after, before, beforeEach, describe, it } from 'node:test';
+import type { AddressInfo } from 'node:net';
+
+import type { Server } from 'http';
+import jwt from 'jsonwebtoken';
+
+import { createApp } from '../../app';
+import { env } from '../../config/env';
+import { prisma } from '../../database/prisma';
+
+const runId = `app-context-${Date.now()}`;
+
+let server: Server;
+let apiBaseUrl = '';
+
+describe('app context bootstrap and guards', () => {
+  before(async () => {
+    await prisma.$connect();
+    server = createApp().listen(0);
+    const address = server.address() as AddressInfo;
+    apiBaseUrl = `http://127.0.0.1:${address.port}/api`;
+  });
+
+  beforeEach(async () => {
+    await cleanupFixtures();
+  });
+
+  after(async () => {
+    await cleanupFixtures();
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error == null ? resolve() : reject(error)));
+    });
+    await prisma.$disconnect();
+  });
+
+  it('rejects bootstrap without token', async () => {
+    const response = await requestJson('GET', '/app/bootstrap');
+
+    assert.equal(response.status, 401);
+    assert.equal((response.data as { code?: string }).code, 'AUTH_REQUIRED');
+  });
+
+  it('rejects bootstrap without clientInstanceId', async () => {
+    const fixture = await createFixture();
+    const token = signToken({
+      userId: fixture.userId,
+      companyId: fixture.companyId,
+      membershipId: fixture.membershipId,
+      email: fixture.email,
+    });
+
+    const response = await requestJson('GET', '/app/bootstrap', { token });
+
+    assert.equal(response.status, 400);
+    assert.equal((response.data as { code?: string }).code, 'DEVICE_REQUIRED');
+  });
+
+  it('returns complete bootstrap context for an ACTIVE device', async () => {
+    const fixture = await createFixture({ deviceStatus: 'ACTIVE' });
+
+    const response = await requestJson('GET', '/app/bootstrap', {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      user: { id: string; email: string };
+      company: { id: string; setupCompleted: boolean };
+      membership: { id: string; role: string; permissions: string[] };
+      license: { id: string; syncEnabled: boolean; maxDevices: number | null };
+      device: { id: string; clientInstanceId: string; status: string };
+      sync: { enabled: boolean; serverVersion: string; pullRequired: boolean };
+    };
+    assert.equal(payload.user.id, fixture.userId);
+    assert.equal(payload.company.id, fixture.companyId);
+    assert.equal(payload.company.setupCompleted, true);
+    assert.equal(payload.membership.id, fixture.membershipId);
+    assert.equal(payload.license.syncEnabled, true);
+    assert.equal(payload.device.clientInstanceId, fixture.clientInstanceId);
+    assert.equal(payload.device.status, 'ACTIVE');
+    assert.equal(payload.sync.enabled, true);
+    assert.equal(payload.sync.pullRequired, false);
+    assert.ok(payload.membership.permissions.length > 0);
+  });
+
+  it('blocks bootstrap for a BLOCKED device', async () => {
+    const fixture = await createFixture({ deviceStatus: 'BLOCKED' });
+
+    const response = await requestJson('GET', '/app/bootstrap', {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal((response.data as { code?: string }).code, 'DEVICE_BLOCKED');
+  });
+
+  it('blocks sync for a REVOKED device', async () => {
+    const fixture = await createFixture({ deviceStatus: 'REVOKED' });
+
+    const response = await requestJson('GET', '/sync/status', {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal((response.data as { code?: string }).code, 'DEVICE_REVOKED');
+  });
+
+  it('rejects sync without app context', async () => {
+    const response = await requestJson('GET', '/sync/status');
+
+    assert.equal(response.status, 401);
+    assert.equal((response.data as { code?: string }).code, 'AUTH_REQUIRED');
+  });
+
+  it('rejects sync when license sync is disabled', async () => {
+    const fixture = await createFixture({
+      deviceStatus: 'ACTIVE',
+      syncEnabled: false,
+    });
+
+    const response = await requestJson('GET', '/sync/status', {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal((response.data as { code?: string }).code, 'SYNC_DISABLED');
+  });
+
+  it('rejects operational endpoints without an ACTIVE device', async () => {
+    const fixture = await createFixture();
+
+    const response = await requestJson('GET', '/categories', {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal((response.data as { code?: string }).code, 'DEVICE_REQUIRED');
+  });
+
+  it('activates the first OWNER device and rejects devices above maxDevices', async () => {
+    const fixture = await createFixture({
+      role: 'OWNER',
+      maxDevices: 1,
+      createDevice: false,
+    });
+    const ownerToken = signToken({
+      userId: fixture.userId,
+      companyId: fixture.companyId,
+      membershipId: fixture.membershipId,
+      email: fixture.email,
+      membershipRole: 'OWNER',
+    });
+
+    const firstDevice = await requestJson('POST', '/app/device', {
+      token: ownerToken,
+      body: {
+        clientInstanceId: `${runId}-owner-first`,
+        deviceLabel: 'Owner First',
+        platform: 'android',
+        appVersion: '1.0.0',
+      },
+    });
+    assert.equal(firstDevice.status, 200);
+    assert.equal(
+      (firstDevice.data as { device: { status: string } }).device.status,
+      'ACTIVE',
+    );
+
+    const secondDevice = await requestJson('POST', '/app/device', {
+      token: ownerToken,
+      body: {
+        clientInstanceId: `${runId}-owner-second`,
+        deviceLabel: 'Owner Second',
+        platform: 'android',
+        appVersion: '1.0.0',
+      },
+    });
+    assert.equal(secondDevice.status, 409);
+    assert.equal(
+      (secondDevice.data as { code?: string }).code,
+      'DEVICE_LIMIT_REACHED',
+    );
+  });
+});
+
+async function createFixture(options?: {
+  role?: 'OWNER' | 'ADMIN' | 'OPERATOR';
+  maxDevices?: number | null;
+  syncEnabled?: boolean;
+  deviceStatus?: 'PENDING' | 'ACTIVE' | 'BLOCKED' | 'REVOKED';
+  createDevice?: boolean;
+}) {
+  const company = await prisma.company.create({
+    data: {
+      name: 'App Context Company',
+      legalName: 'App Context Company LTDA',
+      slug: `${runId}-company-${Date.now()}`,
+    },
+  });
+  const user = await prisma.user.create({
+    data: {
+      email: `${runId}-${Date.now()}@tatuzin.test`,
+      name: 'App Context User',
+      passwordHash: 'not-used',
+    },
+  });
+  const membership = await prisma.membership.create({
+    data: {
+      userId: user.id,
+      companyId: company.id,
+      role: options?.role ?? 'OPERATOR',
+      isDefault: true,
+    },
+  });
+  await prisma.license.create({
+    data: {
+      companyId: company.id,
+      plan: 'pro',
+      status: 'ACTIVE',
+      startsAt: new Date(),
+      maxDevices: options?.maxDevices ?? 5,
+      syncEnabled: options?.syncEnabled ?? true,
+    },
+  });
+
+  const clientInstanceId = `${runId}-device-${Date.now()}`;
+  if (options?.createDevice !== false && options?.deviceStatus != null) {
+    await prisma.companyDevice.create({
+      data: {
+        companyId: company.id,
+        userId: user.id,
+        clientInstanceId,
+        deviceLabel: 'App Context Test Device',
+        platform: 'node-test',
+        appVersion: 'app-context-test',
+        status: options.deviceStatus,
+        approvedAt: options.deviceStatus === 'ACTIVE' ? new Date() : undefined,
+        approvedByUserId:
+          options.deviceStatus === 'ACTIVE' ? user.id : undefined,
+        lastSeenAt: new Date(),
+        revokedAt:
+          options.deviceStatus === 'REVOKED' ? new Date() : undefined,
+        revokedReason:
+          options.deviceStatus === 'REVOKED' ? 'test_revoked' : undefined,
+      },
+    });
+  }
+
+  return {
+    userId: user.id,
+    companyId: company.id,
+    membershipId: membership.id,
+    email: user.email,
+    clientInstanceId,
+    token: signToken({
+      userId: user.id,
+      companyId: company.id,
+      membershipId: membership.id,
+      email: user.email,
+      clientInstanceId,
+    }),
+  };
+}
+
+function signToken(input: {
+  userId: string;
+  companyId: string;
+  membershipId: string;
+  email: string;
+  membershipRole?: string;
+  clientInstanceId?: string;
+}) {
+  return jwt.sign(
+    {
+      sub: input.userId,
+      companyId: input.companyId,
+      membershipId: input.membershipId,
+      membershipRole: input.membershipRole ?? 'OPERATOR',
+      email: input.email,
+      isPlatformAdmin: false,
+      ...(input.clientInstanceId == null
+        ? {}
+        : { clientInstanceId: input.clientInstanceId }),
+    },
+    env.JWT_SECRET,
+    { expiresIn: '15m' },
+  );
+}
+
+async function requestJson(
+  method: string,
+  path: string,
+  options?: { token?: string; body?: Record<string, unknown> },
+) {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    method,
+    headers: {
+      ...(options?.token == null
+        ? {}
+        : { Authorization: `Bearer ${options.token}` }),
+      ...(options?.body == null ? {} : { 'Content-Type': 'application/json' }),
+    },
+    body: options?.body == null ? undefined : JSON.stringify(options.body),
+  });
+  const rawBody = await response.text();
+  return {
+    status: response.status,
+    data: rawBody.trim().length === 0 ? null : JSON.parse(rawBody),
+  };
+}
+
+async function cleanupFixtures() {
+  await prisma.company.deleteMany({
+    where: { slug: { startsWith: `${runId}-` } },
+  });
+  await prisma.user.deleteMany({
+    where: { email: { startsWith: `${runId}-` } },
+  });
+}

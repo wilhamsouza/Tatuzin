@@ -5,7 +5,9 @@ import '../../../app/core/app_context/record_identity.dart';
 import '../../../app/core/database/app_database.dart';
 import '../../../app/core/database/table_names.dart';
 import '../../../app/core/errors/app_exceptions.dart';
+import '../../../app/core/sync/operational_sync_event.dart';
 import '../../../app/core/sync/sqlite_sync_metadata_repository.dart';
+import '../../../app/core/sync/sqlite_operational_sync_queue_repository.dart';
 import '../../../app/core/sync/sqlite_sync_queue_repository.dart';
 import '../../../app/core/sync/sync_feature_keys.dart';
 import '../../../app/core/sync/sync_queue_operation.dart';
@@ -26,6 +28,9 @@ import 'models/cash_event_sync_payload.dart';
 class SqliteCashRepository implements CashRepository {
   SqliteCashRepository(this._appDatabase, this._operationalContext)
     : _syncMetadataRepository = SqliteSyncMetadataRepository(_appDatabase),
+      _operationalSyncQueueRepository = SqliteOperationalSyncQueueRepository(
+        _appDatabase,
+      ),
       _syncQueueRepository = SqliteSyncQueueRepository(_appDatabase);
 
   static const String cashEventFeatureKey = SyncFeatureKeys.cashEvents;
@@ -35,6 +40,7 @@ class SqliteCashRepository implements CashRepository {
   final AppDatabase _appDatabase;
   final AppOperationalContext _operationalContext;
   final SqliteSyncMetadataRepository _syncMetadataRepository;
+  final SqliteOperationalSyncQueueRepository _operationalSyncQueueRepository;
   final SqliteSyncQueueRepository _syncQueueRepository;
 
   @override
@@ -139,8 +145,9 @@ class SqliteCashRepository implements CashRepository {
       }
 
       final now = DateTime.now();
+      final sessionUuid = IdGenerator.next();
       final sessionId = await txn.insert(TableNames.caixaSessoes, {
-        'uuid': IdGenerator.next(),
+        'uuid': sessionUuid,
         'usuario_id': _operationalContext.currentLocalUserId,
         'aberta_em': now.toIso8601String(),
         'fechada_em': null,
@@ -162,7 +169,14 @@ class SqliteCashRepository implements CashRepository {
         'observacao': _cleanNullable(notes),
       });
 
-      return _mapSession(await _loadSessionRow(txn, sessionId));
+      final session = _mapSession(await _loadSessionRow(txn, sessionId));
+      await _enqueueCashSessionEvent(
+        txn,
+        session,
+        operation: 'create',
+        occurredAt: now,
+      );
+      return session;
     });
   }
 
@@ -206,7 +220,14 @@ class SqliteCashRepository implements CashRepository {
         whereArgs: [sessionId],
       );
 
-      return _mapSession(await _loadSessionRow(txn, sessionId));
+      final session = _mapSession(await _loadSessionRow(txn, sessionId));
+      await _enqueueCashSessionEvent(
+        txn,
+        session,
+        operation: 'update',
+        occurredAt: DateTime.now(),
+      );
+      return session;
     });
   }
 
@@ -248,7 +269,14 @@ class SqliteCashRepository implements CashRepository {
         whereArgs: [sessionId],
       );
 
-      return _mapSession(await _loadSessionRow(txn, sessionId));
+      final session = _mapSession(await _loadSessionRow(txn, sessionId));
+      await _enqueueCashSessionEvent(
+        txn,
+        session,
+        operation: 'update',
+        occurredAt: DateTime.parse(closedAt),
+      );
+      return session;
     });
   }
 
@@ -298,6 +326,18 @@ class SqliteCashRepository implements CashRepository {
         movementId: movement.id,
         movementUuid: movement.uuid,
         createdAt: now,
+      );
+      await _enqueueCashMovementEvent(
+        txn,
+        movementId: movement.id,
+        movementUuid: movement.uuid,
+        sessionId: sessionId,
+        type: input.type.dbValue,
+        amountCents: input.type == CashMovementType.sangria
+            ? -input.amountCents
+            : input.amountCents,
+        description: input.description,
+        occurredAt: now,
       );
     });
   }
@@ -415,6 +455,81 @@ class SqliteCashRepository implements CashRepository {
       remoteId: null,
       operation: SyncQueueOperation.create,
       localUpdatedAt: createdAt,
+    );
+  }
+
+  Future<void> _enqueueCashSessionEvent(
+    DatabaseExecutor txn,
+    CashSession session, {
+    required String operation,
+    required DateTime occurredAt,
+  }) async {
+    final eventIdentity = operation == 'create'
+        ? session.uuid
+        : '${session.uuid}:${occurredAt.microsecondsSinceEpoch}';
+    await _operationalSyncQueueRepository.enqueue(
+      txn,
+      event: OperationalSyncEvent(
+        eventId: OperationalSyncEvent.buildEventId(
+          entity: 'cashSession',
+          operation: operation,
+          localIdentity: eventIdentity,
+        ),
+        feature: 'pdv',
+        entity: 'cashSession',
+        operation: operation,
+        entityLocalId: session.uuid,
+        occurredAt: occurredAt,
+        payload: <String, dynamic>{
+          'localId': session.id,
+          'uuid': session.uuid,
+          'operatorName': session.operatorName,
+          'openedAt': session.openedAt.toIso8601String(),
+          'closedAt': session.closedAt?.toIso8601String(),
+          'initialFloatCents': session.initialFloatCents,
+          'expectedBalanceCents': session.expectedBalanceCents,
+          'countedBalanceCents': session.countedBalanceCents,
+          'differenceCents': session.differenceCents,
+          'status': session.status.dbValue,
+          'notes': session.notes,
+        },
+      ),
+    );
+  }
+
+  Future<void> _enqueueCashMovementEvent(
+    DatabaseExecutor txn, {
+    required int movementId,
+    required String movementUuid,
+    required int sessionId,
+    required String type,
+    required int amountCents,
+    required DateTime occurredAt,
+    String? description,
+  }) async {
+    await _operationalSyncQueueRepository.enqueue(
+      txn,
+      event: OperationalSyncEvent(
+        eventId: OperationalSyncEvent.buildEventId(
+          entity: 'cashMovement',
+          operation: 'create',
+          localIdentity: movementUuid,
+        ),
+        feature: 'pdv',
+        entity: 'cashMovement',
+        operation: 'create',
+        entityLocalId: movementUuid,
+        occurredAt: occurredAt,
+        payload: <String, dynamic>{
+          'localId': movementId,
+          'uuid': movementUuid,
+          'sessionId': sessionId,
+          'type': type,
+          'amountCents': amountCents,
+          'description': description,
+          'createdAt': occurredAt.toIso8601String(),
+        },
+      ),
     );
   }
 

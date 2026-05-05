@@ -10,6 +10,7 @@ import '../errors/app_exceptions.dart';
 import 'financial_events_remote_datasource.dart';
 import 'remote_financial_event_record.dart';
 import 'sync_conflict_info.dart';
+import 'sync_date_normalizer.dart';
 import 'sync_feature_keys.dart';
 import 'sync_feature_processor.dart';
 import 'sync_queue_item.dart';
@@ -115,6 +116,36 @@ class FinancialEventSyncProcessor implements SyncFeatureProcessor {
       );
     }
 
+    final normalizedCreatedAt = normalizeSyncDate(
+      sale.canceledAt,
+      entity: 'financial_event',
+      field: 'createdAt',
+      fallbacks: [
+        SyncDateFallback(
+          label: 'queue.localUpdatedAt',
+          value: item.localUpdatedAt,
+        ),
+        SyncDateFallback(label: 'queue.createdAt', value: item.createdAt),
+        SyncDateFallback(label: 'sale.updatedAt', value: sale.updatedAt),
+      ],
+    );
+    final normalizedUpdatedAt = normalizeSyncDate(
+      sale.updatedAt,
+      entity: 'financial_event',
+      field: 'updatedAt',
+      fallbacks: [
+        SyncDateFallback(
+          label: 'queue.localUpdatedAt',
+          value: item.localUpdatedAt,
+        ),
+        SyncDateFallback(label: 'queue.createdAt', value: item.createdAt),
+        SyncDateFallback(
+          label: 'sale.canceledAt',
+          value: normalizedCreatedAt.value,
+        ),
+      ],
+    );
+
     final remote = await _createFinancialEvent(
       RemoteFinancialEventRecord(
         remoteId: sale.remoteId ?? '',
@@ -125,8 +156,8 @@ class FinancialEventSyncProcessor implements SyncFeatureProcessor {
         localUuid: sale.saleUuid,
         amountCents: sale.amountCents,
         paymentType: sale.paymentType,
-        createdAt: sale.canceledAt,
-        updatedAt: sale.updatedAt,
+        createdAt: normalizedCreatedAt.value,
+        updatedAt: normalizedUpdatedAt.value,
         metadata: <String, dynamic>{
           'saleLocalId': sale.saleId,
           if (sale.notes != null && sale.notes!.trim().isNotEmpty)
@@ -190,6 +221,39 @@ class FinancialEventSyncProcessor implements SyncFeatureProcessor {
       );
     }
 
+    final normalizedCreatedAt = normalizeSyncDate(
+      payment.createdAt,
+      entity: 'financial_event',
+      field: 'createdAt',
+      fallbacks: [
+        SyncDateFallback(
+          label: 'queue.localUpdatedAt',
+          value: item.localUpdatedAt,
+        ),
+        SyncDateFallback(label: 'queue.createdAt', value: item.createdAt),
+        SyncDateFallback(
+          label: 'fiado_payment.updatedAt',
+          value: payment.updatedAt,
+        ),
+      ],
+    );
+    final normalizedUpdatedAt = normalizeSyncDate(
+      payment.updatedAt,
+      entity: 'financial_event',
+      field: 'updatedAt',
+      fallbacks: [
+        SyncDateFallback(
+          label: 'queue.localUpdatedAt',
+          value: item.localUpdatedAt,
+        ),
+        SyncDateFallback(label: 'queue.createdAt', value: item.createdAt),
+        SyncDateFallback(
+          label: 'fiado_payment.createdAt',
+          value: normalizedCreatedAt.value,
+        ),
+      ],
+    );
+
     final remote = await _createFinancialEvent(
       RemoteFinancialEventRecord(
         remoteId: payment.remoteId ?? '',
@@ -200,8 +264,8 @@ class FinancialEventSyncProcessor implements SyncFeatureProcessor {
         localUuid: payment.entryUuid,
         amountCents: payment.amountCents,
         paymentType: payment.paymentMethod.dbValue,
-        createdAt: payment.createdAt,
-        updatedAt: payment.updatedAt,
+        createdAt: normalizedCreatedAt.value,
+        updatedAt: normalizedUpdatedAt.value,
         metadata: <String, dynamic>{
           'fiadoLocalId': payment.fiadoId,
           'paymentEntryLocalId': payment.entryId,

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { requireCloudLicense } from '../../../shared/http/auth-middleware';
+import { requireAppContext } from '../../../shared/http/auth-middleware';
 import { asyncHandler } from '../../../shared/http/async-handler';
 import { validateQuery } from '../../../shared/http/validate';
 import { AnalyticsReportsService } from './analytics-reports.service';
@@ -13,7 +13,7 @@ const analyticsReportsService = new AnalyticsReportsService();
 
 export const tenantAnalyticsReportsRouter = Router();
 
-tenantAnalyticsReportsRouter.use(requireCloudLicense);
+tenantAnalyticsReportsRouter.use(requireAppContext);
 
 tenantAnalyticsReportsRouter.get(
   '/cash-consolidated',

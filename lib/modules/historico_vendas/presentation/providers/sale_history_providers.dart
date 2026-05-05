@@ -4,7 +4,7 @@ import '../../../../app/core/app_context/app_operational_context.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/provider_guard.dart';
-import '../../../../app/core/session/session_provider.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../produtos/domain/entities/product.dart';
 import '../../../produtos/presentation/providers/product_providers.dart';
 import '../../../vendas/domain/entities/sale_detail.dart';
@@ -29,7 +29,7 @@ final saleHistoryFromProvider = StateProvider<DateTime?>((ref) => null);
 final saleHistoryToProvider = StateProvider<DateTime?>((ref) => null);
 
 final saleHistoryListProvider = FutureProvider<List<SaleRecord>>((ref) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'saleHistoryListProvider');
   ref.watch(appDataRefreshProvider);
   final query = ref.watch(saleHistorySearchQueryProvider);
   final status = ref.watch(saleHistoryStatusFilterProvider);
@@ -49,7 +49,7 @@ final saleDetailProvider = FutureProvider.family<SaleDetail, int>((
   ref,
   saleId,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'saleDetailProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'saleDetailProvider',
@@ -72,7 +72,7 @@ final saleReturnsProvider = FutureProvider.family<List<SaleReturnRecord>, int>((
   ref,
   saleId,
 ) async {
-  ref.watch(sessionRuntimeKeyProvider);
+  await requireTenantBootstrapReady(ref, 'saleReturnsProvider');
   ref.watch(appDataRefreshProvider);
   return runProviderGuarded(
     'saleReturnsProvider',
@@ -83,7 +83,10 @@ final saleReturnsProvider = FutureProvider.family<List<SaleReturnRecord>, int>((
 
 final saleExchangeProductLookupProvider =
     FutureProvider.family<List<Product>, String>((ref, query) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(
+        ref,
+        'saleExchangeProductLookupProvider',
+      );
       ref.watch(appDataRefreshProvider);
       return runProviderGuarded('saleExchangeProductLookupProvider', () async {
         final products = await ref
@@ -107,6 +110,10 @@ class SaleExchangeController extends AsyncNotifier<void> {
   Future<SaleReturnResult> registerReturn(SaleReturnInput input) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'SaleExchangeController.registerReturn',
+      );
       final result = await ref
           .read(saleReturnRepositoryProvider)
           .registerReturn(input);

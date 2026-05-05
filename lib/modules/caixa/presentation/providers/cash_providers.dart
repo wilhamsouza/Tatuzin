@@ -223,6 +223,10 @@ class CashActionController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'CashActionController.openSession',
+      );
       final session = await ref
           .read(openCashSessionUseCaseProvider)
           .call(initialFloatCents: initialFloatCents, notes: notes);
@@ -240,6 +244,10 @@ class CashActionController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'CashActionController.confirmAutoOpenedSession',
+      );
       final session = await ref
           .read(cashRepositoryProvider)
           .confirmAutoOpenedSession(initialFloatCents: initialFloatCents);
@@ -258,6 +266,10 @@ class CashActionController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'CashActionController.closeSession',
+      );
       final session = await ref
           .read(closeCashSessionUseCaseProvider)
           .call(countedBalanceCents: countedBalanceCents, notes: notes);
@@ -273,6 +285,10 @@ class CashActionController extends AsyncNotifier<void> {
   Future<void> registerManualMovement(CashManualMovementInput input) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'CashActionController.registerManualMovement',
+      );
       await ref.read(cashRepositoryProvider).registerManualMovement(input);
       _notifyCashChanged();
       state = const AsyncData(null);

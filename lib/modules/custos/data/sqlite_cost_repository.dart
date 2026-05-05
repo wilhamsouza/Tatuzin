@@ -23,26 +23,25 @@ import '../domain/entities/cost_type.dart';
 import '../domain/repositories/cost_repository.dart';
 
 class SqliteCostRepository implements CostRepository {
-  SqliteCostRepository(this._appDatabase, this._operationalContext)
-    : _syncMetadataRepository = SqliteSyncMetadataRepository(_appDatabase),
-      _syncQueueRepository = SqliteSyncQueueRepository(_appDatabase),
+  SqliteCostRepository(AppDatabase appDatabase, this._operationalContext)
+    : _appDatabase = appDatabase,
+      _syncMetadataRepository = SqliteSyncMetadataRepository(appDatabase),
+      _syncQueueRepository = SqliteSyncQueueRepository(appDatabase),
       _databaseLoader = null;
 
   SqliteCostRepository.forDatabase({
     required Future<Database> Function() databaseLoader,
     required AppOperationalContext operationalContext,
-  }) : _appDatabase = AppDatabase.instance,
+  }) : _appDatabase = null,
        _operationalContext = operationalContext,
-       _syncMetadataRepository = SqliteSyncMetadataRepository(
-         AppDatabase.instance,
-       ),
-       _syncQueueRepository = SqliteSyncQueueRepository(AppDatabase.instance),
+       _syncMetadataRepository = null,
+       _syncQueueRepository = null,
        _databaseLoader = databaseLoader;
 
-  final AppDatabase _appDatabase;
+  final AppDatabase? _appDatabase;
   final AppOperationalContext _operationalContext;
-  final SqliteSyncMetadataRepository _syncMetadataRepository;
-  final SqliteSyncQueueRepository _syncQueueRepository;
+  final SqliteSyncMetadataRepository? _syncMetadataRepository;
+  final SqliteSyncQueueRepository? _syncQueueRepository;
   final Future<Database> Function()? _databaseLoader;
   static const _localQueryTimeout = Duration(seconds: 6);
 
@@ -51,7 +50,7 @@ class SqliteCostRepository implements CostRepository {
     if (databaseLoader != null) {
       return databaseLoader();
     }
-    return _appDatabase.database;
+    return _appDatabase!.database;
   }
 
   @override
@@ -241,6 +240,7 @@ class SqliteCostRepository implements CostRepository {
 
   @override
   Future<int> createCost(CreateCostInput input) async {
+    _ensureTenantBoundWrites();
     final database = await _loadDatabase();
     return database.transaction((txn) async {
       _validateCostInput(
@@ -271,6 +271,7 @@ class SqliteCostRepository implements CostRepository {
   }
 
   Future<CostEntry> upsertFromRemote(RemoteCostRecord remote) async {
+    _ensureTenantBoundWrites();
     final database = await _loadDatabase();
     int localId = 0;
     await database.transaction((txn) async {
@@ -324,6 +325,7 @@ class SqliteCostRepository implements CostRepository {
     required int costId,
     required UpdateCostInput input,
   }) async {
+    _ensureTenantBoundWrites();
     final database = await _loadDatabase();
     await database.transaction((txn) async {
       _validateCostInput(
@@ -367,6 +369,7 @@ class SqliteCostRepository implements CostRepository {
 
   @override
   Future<CostEntry> markCostPaid(MarkCostPaidInput input) async {
+    _ensureTenantBoundWrites();
     final database = await _loadDatabase();
     await database.transaction((txn) async {
       final existing = await _findCostRow(txn, input.costId);
@@ -459,6 +462,7 @@ class SqliteCostRepository implements CostRepository {
 
   @override
   Future<CostEntry> cancelCost({required int costId, String? notes}) async {
+    _ensureTenantBoundWrites();
     final database = await _loadDatabase();
     await database.transaction((txn) async {
       final existing = await _findCostRow(txn, costId);
@@ -513,7 +517,14 @@ class SqliteCostRepository implements CostRepository {
     required String movementUuid,
     required DateTime createdAt,
   }) async {
-    await _syncMetadataRepository.markPendingUpload(
+    final syncMetadataRepository = _syncMetadataRepository;
+    final syncQueueRepository = _syncQueueRepository;
+    if (syncMetadataRepository == null || syncQueueRepository == null) {
+      throw const ValidationException(
+        'Operacoes de sync exigem banco operacional vinculado a empresa.',
+      );
+    }
+    await syncMetadataRepository.markPendingUpload(
       txn,
       featureKey: SqliteCashRepository.cashEventFeatureKey,
       localId: movementId,
@@ -521,7 +532,7 @@ class SqliteCostRepository implements CostRepository {
       createdAt: createdAt,
       updatedAt: createdAt,
     );
-    await _syncQueueRepository.enqueueMutation(
+    await syncQueueRepository.enqueueMutation(
       txn,
       featureKey: SqliteCashRepository.cashEventFeatureKey,
       entityType: 'cash_event',
@@ -542,6 +553,19 @@ class SqliteCostRepository implements CostRepository {
     }
     if (amountCents <= 0) {
       throw const ValidationException('Informe um valor maior que zero.');
+    }
+  }
+
+  void _ensureTenantBoundWrites() {
+    if (_databaseLoader != null) {
+      throw const ValidationException(
+        'Operacoes de custos exigem banco operacional vinculado a empresa.',
+      );
+    }
+    if (!_operationalContext.session.hasOperationalIdentity) {
+      throw const ValidationException(
+        'Operacoes de custos exigem sessao com empresa, usuario e dispositivo.',
+      );
     }
   }
 

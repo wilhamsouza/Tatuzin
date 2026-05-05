@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../fiado/presentation/providers/fiado_providers.dart';
 import '../../../clientes/presentation/providers/client_providers.dart';
 import '../../../historico_vendas/presentation/providers/sale_history_providers.dart';
@@ -28,6 +29,7 @@ final commercialReceiptProvider =
       ref,
       request,
     ) async {
+      await requireTenantBootstrapReady(ref, 'commercialReceiptProvider');
       ref.watch(appDataRefreshProvider);
       return ref.watch(commercialReceiptRepositoryProvider).build(request);
     });
@@ -52,6 +54,7 @@ class ReceiptActionController extends AsyncNotifier<void> {
   Future<String> savePdf(CommercialReceiptRequest request) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(ref, 'ReceiptActionController.savePdf');
       final receipt = await ref.read(commercialReceiptProvider(request).future);
       final file = await ref
           .read(receiptPdfServiceProvider)
@@ -67,6 +70,10 @@ class ReceiptActionController extends AsyncNotifier<void> {
   Future<void> sharePdf(CommercialReceiptRequest request) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'ReceiptActionController.sharePdf',
+      );
       final receipt = await ref.read(commercialReceiptProvider(request).future);
       final file = await ref
           .read(receiptPdfServiceProvider)

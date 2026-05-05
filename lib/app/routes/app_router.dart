@@ -47,6 +47,7 @@ import '../../modules/fornecedores/presentation/pages/supplier_form_page.dart';
 import '../../modules/fornecedores/presentation/pages/suppliers_page.dart';
 import '../../modules/historico_vendas/presentation/pages/sale_detail_page.dart';
 import '../../modules/historico_vendas/presentation/pages/sales_history_page.dart';
+import '../../modules/more/presentation/pages/more_page.dart';
 import '../../modules/produtos/domain/entities/product.dart';
 import '../../modules/produtos/presentation/pages/product_form_page.dart';
 import '../../modules/produtos/presentation/pages/product_profitability_page.dart';
@@ -61,12 +62,40 @@ import '../../modules/relatorios/presentation/pages/sales_reports_page.dart';
 import '../../modules/system/presentation/pages/system_page.dart';
 import '../../modules/vendas/presentation/pages/sales_page.dart';
 import '../core/widgets/app_async_value_view.dart';
+import '../core/database/app_database.dart';
 import '../core/session/auth_provider.dart';
+import '../core/session/session_provider.dart';
 import 'route_names.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
+  final session = ref.watch(appSessionProvider);
+  final startupState = ref.watch(appStartupProvider).valueOrNull;
+
   return GoRouter(
     initialLocation: AppRoutePaths.login,
+    redirect: (context, state) {
+      final path = state.uri.path;
+      final isPublicRoute =
+          path == AppRoutePaths.login ||
+          path == AppRoutePaths.register ||
+          path == AppRoutePaths.forgotPassword ||
+          path == AppRoutePaths.resetPassword;
+
+      if (isPublicRoute) {
+        if (path == AppRoutePaths.login &&
+            session.hasOperationalIdentity &&
+            startupState?.isSuccess == true) {
+          return AppRoutePaths.dashboard;
+        }
+        return null;
+      }
+
+      if (!session.hasOperationalIdentity) {
+        return AppRoutePaths.login;
+      }
+
+      return null;
+    },
     routes: <RouteBase>[
       GoRoute(
         path: AppRoutePaths.login,
@@ -93,6 +122,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutePaths.dashboard,
         name: AppRouteNames.dashboard,
         builder: (context, state) => const DashboardPage(),
+      ),
+      GoRoute(
+        path: AppRoutePaths.more,
+        name: AppRouteNames.more,
+        builder: (context, state) => const MorePage(),
       ),
       GoRoute(
         path: AppRoutePaths.accountCloud,
@@ -373,7 +407,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRouteNames.technicalSystem,
         redirect: (context, state) {
           final authStatus = ref.read(authStatusProvider);
-          if (kDebugMode || authStatus.isPlatformAdmin) {
+          if (kDebugMode ||
+              authStatus.isPlatformAdmin ||
+              authStatus.isSupportProfile) {
             return null;
           }
           return AppRoutePaths.accountCloud;
@@ -389,7 +425,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRouteNames.admin,
         redirect: (context, state) {
           final authStatus = ref.read(authStatusProvider);
-          if (authStatus.isRemoteAuthenticated && authStatus.isPlatformAdmin) {
+          if (authStatus.isRemoteAuthenticated &&
+              (kDebugMode ||
+                  authStatus.isPlatformAdmin ||
+                  authStatus.isSupportProfile)) {
             return null;
           }
           return AppRoutePaths.accountCloud;

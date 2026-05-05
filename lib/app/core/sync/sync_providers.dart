@@ -7,7 +7,6 @@ import '../providers/app_data_refresh_provider.dart';
 import '../session/session_provider.dart';
 import '../../../modules/categorias/presentation/providers/category_providers.dart';
 import '../../../modules/caixa/presentation/providers/cash_providers.dart';
-import '../../../modules/clientes/presentation/providers/client_providers.dart';
 import '../../../modules/compras/presentation/providers/purchase_providers.dart';
 import '../../../modules/fiado/presentation/providers/fiado_providers.dart';
 import '../../../modules/fornecedores/presentation/providers/supplier_providers.dart';
@@ -18,10 +17,17 @@ import '../database/app_database.dart';
 import '../network/network_providers.dart';
 import '../session/auth_token_storage.dart';
 import '../utils/app_logger.dart';
+import 'app_snapshot_remote_datasource.dart';
 import 'financial_event_sync_processor.dart';
 import 'financial_events_remote_datasource.dart';
+import 'operational_sync_queue_repository.dart';
+import 'operational_sync_remote_datasource.dart';
+import 'operational_sync_runner.dart';
+import 'real_app_snapshot_remote_datasource.dart';
 import 'real_financial_events_remote_datasource.dart';
+import 'real_operational_sync_remote_datasource.dart';
 import 'auto_sync_coordinator.dart';
+import 'sqlite_operational_sync_queue_repository.dart';
 import 'sqlite_sync_queue_repository.dart';
 import 'sync_dependency_resolver.dart';
 import 'sync_feature_processor.dart';
@@ -34,6 +40,29 @@ import 'sync_retry_policy.dart';
 final syncQueueRepositoryProvider = Provider<SyncQueueRepository>((ref) {
   return SqliteSyncQueueRepository(ref.watch(appDatabaseProvider));
 });
+
+final operationalSyncQueueRepositoryProvider =
+    Provider<OperationalSyncQueueRepository>((ref) {
+      return SqliteOperationalSyncQueueRepository(
+        ref.watch(appDatabaseProvider),
+      );
+    });
+
+final operationalSyncRemoteDataSourceProvider =
+    Provider<OperationalSyncRemoteDataSource>((ref) {
+      return RealOperationalSyncRemoteDataSource(
+        apiClient: ref.watch(realApiClientProvider),
+        tokenStorage: ref.watch(authTokenStorageProvider),
+      );
+    });
+
+final appSnapshotRemoteDataSourceProvider =
+    Provider<AppSnapshotRemoteDataSource>((ref) {
+      return RealAppSnapshotRemoteDataSource(
+        apiClient: ref.watch(realApiClientProvider),
+        tokenStorage: ref.watch(authTokenStorageProvider),
+      );
+    });
 
 final syncRetryPolicyProvider = Provider<SyncRetryPolicy>((ref) {
   return const SyncRetryPolicy();
@@ -76,23 +105,8 @@ final syncDependencyResolverProvider = Provider<SyncDependencyResolver>((ref) {
   );
 });
 
-final syncFeatureProcessorsProvider = Provider<List<SyncFeatureProcessor>>((
-  ref,
-) {
-  return <SyncFeatureProcessor>[
-    ref.watch(categoryHybridRepositoryProvider),
-    ref.watch(supplyHybridRepositoryProvider),
-    ref.watch(productHybridRepositoryProvider),
-    ref.watch(productRecipeSyncProcessorProvider),
-    ref.watch(clientHybridRepositoryProvider),
-    ref.watch(supplierHybridRepositoryProvider),
-    ref.watch(purchaseHybridRepositoryProvider),
-    ref.watch(salesHybridRepositoryProvider),
-    ref.watch(saleCancellationSyncProcessorProvider),
-    ref.watch(fiadoPaymentSyncProcessorProvider),
-    ref.watch(financialEventSyncProcessorProvider),
-    ref.watch(cashEventSyncProcessorProvider),
-  ];
+final syncFeatureProcessorsProvider = Provider<List<SyncFeatureProcessor>>((_) {
+  return const <SyncFeatureProcessor>[];
 });
 
 final syncQueueEngineProvider = Provider<SyncQueueEngine>((ref) {
@@ -115,6 +129,27 @@ final syncQueueEngineProvider = Provider<SyncQueueEngine>((ref) {
 });
 
 final syncBatchActivityProvider = StateProvider<bool>((ref) => false);
+
+final operationalSyncRunnerProvider = Provider<OperationalSyncRunner>((ref) {
+  final sessionRuntimeKey = ref.watch(sessionRuntimeKeyProvider);
+  var isDisposed = false;
+  ref.onDispose(() {
+    isDisposed = true;
+  });
+
+  return OperationalSyncRunner(
+    queueRepository: ref.watch(operationalSyncQueueRepositoryProvider),
+    remoteDataSource: ref.watch(operationalSyncRemoteDataSourceProvider),
+    snapshotRemoteDataSource: ref.watch(appSnapshotRemoteDataSourceProvider),
+    shouldContinue: () {
+      return !isDisposed &&
+          ref.read(sessionRuntimeKeyProvider) == sessionRuntimeKey;
+    },
+    onCacheSnapshotChanged: () {
+      ref.read(appDataRefreshProvider.notifier).state++;
+    },
+  );
+});
 
 final syncBatchRunnerProvider = Provider<SyncBatchRunner>((ref) {
   final runner = SyncBatchRunner(
@@ -141,7 +176,7 @@ final autoSyncCoordinatorProvider = Provider<AutoSyncCoordinator>((ref) {
       final startupState = ref.read(appStartupProvider).valueOrNull;
       return environment.remoteSyncEnabled &&
           environment.endpointConfig.isConfigured &&
-          session.isRemoteAuthenticated &&
+          session.canStartSync &&
           company.allowsCloudSync &&
           startupState?.isSuccess == true;
     },
@@ -157,7 +192,9 @@ final autoSyncCoordinatorProvider = Provider<AutoSyncCoordinator>((ref) {
         );
         return const <SyncQueueFeatureSummary>[];
       }
-      return ref.read(syncQueueRepositoryProvider).listFeatureSummaries();
+      return ref
+          .read(operationalSyncQueueRepositoryProvider)
+          .listFeatureSummaries();
     },
     onSnapshot: (snapshot) {
       ref.read(autoSyncSnapshotProvider.notifier).state = snapshot;
@@ -243,6 +280,18 @@ class SyncBatchRunner {
       return _cancelledResult(retryOnly: retryOnly);
     }
 
+    final session = _ref.read(appSessionProvider);
+    if (!session.canStartSync) {
+      AppLogger.info(
+        '[Sync] batch_runner_skipped reason=missing_sync_identity | '
+        'companyId=${session.company.remoteId ?? 'n/a'} | '
+        'userId=${session.user.remoteId ?? 'n/a'} | '
+        'clientInstanceId=${session.clientInstanceId ?? 'n/a'} | '
+        'tenantReady=${session.hasOperationalIdentity}',
+      );
+      return _cancelledResult(retryOnly: retryOnly);
+    }
+
     _ref.read(syncBatchActivityProvider.notifier).state = true;
     try {
       AppLogger.info(
@@ -250,13 +299,15 @@ class SyncBatchRunner {
             ? '[Sync] batch_runner_started scope=retry_pending'
             : '[Sync] batch_runner_started scope=all',
       );
+      if (featureKeys != null && featureKeys.isNotEmpty) {
+        AppLogger.info(
+          '[Sync] feature_filter_ignored_for_operational_runner '
+          'features=${featureKeys.join(',')}',
+        );
+      }
       final result = await _ref
-          .read(syncQueueEngineProvider)
-          .process(
-            featureKeys: featureKeys,
-            retryOnly: retryOnly,
-            ignoreRetryBackoff: ignoreRetryBackoff,
-          );
+          .read(operationalSyncRunnerProvider)
+          .run(retryOnly: retryOnly, ignoreRetryBackoff: ignoreRetryBackoff);
       if (!_isCurrentSession()) {
         return _cancelledResult(retryOnly: retryOnly);
       }

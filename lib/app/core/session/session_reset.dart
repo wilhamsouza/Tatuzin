@@ -1,20 +1,33 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../utils/app_logger.dart';
+import '../../../modules/account/presentation/providers/account_cloud_providers.dart';
+import '../../../modules/backup/presentation/providers/backup_providers.dart';
 import '../../../modules/caixa/presentation/providers/cash_providers.dart';
 import '../../../modules/carrinho/presentation/providers/cart_provider.dart';
 import '../../../modules/categorias/presentation/providers/category_providers.dart';
 import '../../../modules/clientes/presentation/providers/client_providers.dart';
 import '../../../modules/compras/presentation/providers/purchase_providers.dart';
+import '../../../modules/comprovantes/presentation/providers/receipt_providers.dart';
+import '../../../modules/custos/presentation/providers/cost_providers.dart';
 import '../../../modules/dashboard/presentation/providers/dashboard_providers.dart';
+import '../../../modules/estoque/presentation/providers/inventory_providers.dart';
 import '../../../modules/fiado/presentation/providers/fiado_providers.dart';
 import '../../../modules/fornecedores/presentation/providers/supplier_providers.dart';
+import '../../../modules/historico_vendas/presentation/providers/sale_history_providers.dart';
 import '../../../modules/insumos/presentation/providers/supply_providers.dart';
+import '../../../modules/pedidos/presentation/providers/order_print_providers.dart';
+import '../../../modules/pedidos/presentation/providers/order_providers.dart';
 import '../../../modules/produtos/presentation/providers/product_providers.dart';
+import '../../../modules/relatorios/presentation/providers/report_providers.dart';
+import '../../../modules/system/presentation/providers/system_providers.dart';
 import '../../../modules/vendas/presentation/providers/sales_providers.dart';
 import '../database/app_database.dart';
 import '../providers/app_data_refresh_provider.dart';
 import '../sync/sync_providers.dart';
+import '../sync/sync_queue_feature_summary.dart';
 import 'app_session.dart';
 import 'session_provider.dart';
 
@@ -45,15 +58,71 @@ final sessionContextResetProvider = Provider<void>((ref) {
       return;
     }
 
-    if (SessionIsolation.runtimeKeyFor(previous) ==
-        SessionIsolation.runtimeKeyFor(next)) {
+    final previousRuntimeKey = _safeRuntimeKeyFor(previous);
+    final nextRuntimeKey = _safeRuntimeKeyFor(next);
+    if (previousRuntimeKey == nextRuntimeKey) {
       return;
     }
 
-    ref.read(autoSyncCoordinatorProvider).cancelPending();
+    final previousIsolationKey = _safeIsolationKeyFor(previous);
+    final autoSyncCoordinator = ref.read(autoSyncCoordinatorProvider);
+    final syncBatchRunner = ref.read(syncBatchRunnerProvider);
+    autoSyncCoordinator.cancelPending();
     resetSessionScopedProviders(ref);
+    unawaited(
+      _disposePreviousRuntime(
+        autoSyncCoordinator: autoSyncCoordinator,
+        syncBatchRunner: syncBatchRunner,
+        isolationKey: previousIsolationKey,
+        previousRuntimeKey: previousRuntimeKey,
+        nextRuntimeKey: nextRuntimeKey,
+      ),
+    );
   });
 });
+
+Future<void> _disposePreviousRuntime({
+  required dynamic autoSyncCoordinator,
+  required dynamic syncBatchRunner,
+  required String? isolationKey,
+  required String previousRuntimeKey,
+  required String nextRuntimeKey,
+}) async {
+  try {
+    await autoSyncCoordinator.stopForSessionReset(
+      timeout: const Duration(seconds: 5),
+    );
+    await syncBatchRunner.stopForSessionReset(
+      timeout: const Duration(seconds: 5),
+    );
+    AppLogger.info(
+      '[SessionReset] runtime_sync_stopped | '
+      'previous_runtime_key=$previousRuntimeKey | '
+      'next_runtime_key=$nextRuntimeKey',
+    );
+  } catch (error, stackTrace) {
+    AppLogger.error(
+      '[SessionReset] runtime_sync_stop_failed | '
+      'previous_runtime_key=$previousRuntimeKey | '
+      'next_runtime_key=$nextRuntimeKey',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+
+  if (isolationKey == null) {
+    return;
+  }
+
+  await closeSessionDatabaseForReset(
+    SessionSignOutResetSnapshot(
+      pendingSyncCount: 0,
+      hadActiveSync: false,
+      tenantIsolationKey: isolationKey,
+      databaseClosed: false,
+    ),
+  );
+}
 
 Future<SessionSignOutResetSnapshot> prepareSessionSignOutReset(
   Ref ref,
@@ -273,15 +342,147 @@ void resetSessionScopedProviders(Ref ref) {
   ref.invalidate(purchasesBySupplierProvider);
   ref.invalidate(purchaseSyncControllerProvider);
 
+  ref.invalidate(localInventoryRepositoryProvider);
+  ref.invalidate(inventoryRemoteDatasourceProvider);
+  ref.invalidate(inventoryRepositoryProvider);
+  ref.invalidate(localInventoryCountRepositoryProvider);
+  ref.invalidate(stockAvailabilityRepositoryProvider);
+  ref.invalidate(stockReservationRepositoryProvider);
+  ref.invalidate(inventoryCountRepositoryProvider);
+  ref.invalidate(inventorySearchQueryProvider);
+  ref.invalidate(inventoryFilterProvider);
+  ref.invalidate(inventoryItemsProvider);
+  ref.invalidate(inventoryItemOptionsProvider);
+  ref.invalidate(inventoryActiveItemOptionsProvider);
+  ref.invalidate(inventoryMovementsProvider);
+  ref.invalidate(inventoryCountSessionsProvider);
+  ref.invalidate(inventoryCountSessionDetailProvider);
+  ref.invalidate(inventoryActionControllerProvider);
+  ref.invalidate(inventoryCountActionControllerProvider);
+
+  ref.invalidate(localCostRepositoryProvider);
+  ref.invalidate(costsRemoteDatasourceProvider);
+  ref.invalidate(costRepositoryProvider);
+  ref.invalidate(costOverviewProvider);
+  ref.invalidate(costSearchQueryProvider);
+  ref.invalidate(costStatusFilterProvider);
+  ref.invalidate(costDateFromFilterProvider);
+  ref.invalidate(costDateToFilterProvider);
+  ref.invalidate(costOverdueOnlyFilterProvider);
+  ref.invalidate(costsProvider);
+  ref.invalidate(costDetailProvider);
+  ref.invalidate(costActionControllerProvider);
+
+  ref.invalidate(saleHistoryRepositoryProvider);
+  ref.invalidate(saleHistorySearchQueryProvider);
+  ref.invalidate(saleHistoryStatusFilterProvider);
+  ref.invalidate(saleHistoryTypeFilterProvider);
+  ref.invalidate(saleHistoryFromProvider);
+  ref.invalidate(saleHistoryToProvider);
+  ref.invalidate(saleHistoryListProvider);
+  ref.invalidate(saleDetailProvider);
+  ref.invalidate(saleReturnRepositoryProvider);
+  ref.invalidate(saleReturnsProvider);
+  ref.invalidate(saleExchangeProductLookupProvider);
+  ref.invalidate(saleExchangeControllerProvider);
+  ref.invalidate(commercialReceiptRepositoryProvider);
+  ref.invalidate(commercialReceiptProvider);
+  ref.invalidate(receiptActionControllerProvider);
+
+  ref.invalidate(operationalOrderRepositoryProvider);
+  ref.invalidate(operationalOrderSearchQueryProvider);
+  ref.invalidate(operationalOrderStatusFilterProvider);
+  ref.invalidate(operationalOrderBoardProvider);
+  ref.invalidate(operationalOrderDetailProvider);
+  ref.invalidate(orderCatalogProvider);
+  ref.invalidate(orderSellableProductAvailabilityProvider);
+  ref.invalidate(orderCatalogOptionsProvider);
+  ref.invalidate(orderCatalogGroupsProvider);
+  ref.invalidate(orderCatalogOptionGroupsProvider);
+  ref.invalidate(createOperationalOrderControllerProvider);
+  ref.invalidate(operationalOrderDraftControllerProvider);
+  ref.invalidate(operationalOrderItemControllerProvider);
+  ref.invalidate(operationalOrderStatusControllerProvider);
+  ref.invalidate(operationalOrderBillingControllerProvider);
+  ref.invalidate(orderTicketDocumentProvider);
+  ref.invalidate(orderKitchenDispatchControllerProvider);
+  ref.invalidate(orderTicketReprintControllerProvider);
+
+  ref.invalidate(pdvOperationalReportRepositoryProvider);
+  ref.invalidate(reportRemoteDatasourceProvider);
+  ref.invalidate(erpManagementReportRepositoryProvider);
+  ref.invalidate(reportRepositoryProvider);
+  ref.invalidate(reportFilterProvider);
+  ref.invalidate(reportPageSessionProvider);
+  ref.invalidate(reportPeriodProvider);
+  ref.invalidate(reportPreviousFilterProvider);
+  ref.invalidate(reportOverviewResultProvider);
+  ref.invalidate(reportOverviewProvider);
+  ref.invalidate(reportPreviousOverviewResultProvider);
+  ref.invalidate(reportPreviousOverviewProvider);
+  ref.invalidate(salesTrendResultProvider);
+  ref.invalidate(salesTrendProvider);
+  ref.invalidate(topProductsReportResultProvider);
+  ref.invalidate(topProductsReportProvider);
+  ref.invalidate(topVariantsReportResultProvider);
+  ref.invalidate(topVariantsReportProvider);
+  ref.invalidate(profitabilityReportResultProvider);
+  ref.invalidate(profitabilityReportProvider);
+  ref.invalidate(profitabilityCategoryReportResultProvider);
+  ref.invalidate(profitabilityCategoryReportProvider);
+  ref.invalidate(cashflowReportResultProvider);
+  ref.invalidate(cashflowReportProvider);
+  ref.invalidate(inventoryHealthReportResultProvider);
+  ref.invalidate(inventoryHealthReportProvider);
+  ref.invalidate(customerRankingReportResultProvider);
+  ref.invalidate(customerRankingReportProvider);
+  ref.invalidate(purchaseSummaryReportResultProvider);
+  ref.invalidate(purchaseSummaryReportProvider);
+  ref.invalidate(reportSummaryProvider);
+  ref.invalidate(reportClientOptionsProvider);
+  ref.invalidate(reportCategoryOptionsProvider);
+  ref.invalidate(reportProductOptionsProvider);
+  ref.invalidate(reportSupplierOptionsProvider);
+  ref.invalidate(reportVariantOptionsProvider);
+  ref.invalidate(reportFilterOptionLabelsProvider);
+
+  ref.invalidate(accountCloudAttentionItemsProvider);
+  ref.invalidate(accountCloudStatusProvider);
+
+  ref.invalidate(databaseBackupServiceProvider);
+  ref.invalidate(databaseRestoreServiceProvider);
+  ref.invalidate(lastGeneratedBackupProvider);
+  ref.invalidate(selectedRestoreCandidateProvider);
+  ref.invalidate(backupActionControllerProvider);
+
   ref.invalidate(syncQueueRepositoryProvider);
+  ref.invalidate(operationalSyncQueueRepositoryProvider);
+  ref.invalidate(operationalSyncRemoteDataSourceProvider);
+  ref.invalidate(appSnapshotRemoteDataSourceProvider);
   ref.invalidate(syncRetryPolicyProvider);
   ref.invalidate(financialEventsRemoteDatasourceProvider);
   ref.invalidate(financialEventSyncProcessorProvider);
   ref.invalidate(syncDependencyResolverProvider);
   ref.invalidate(syncFeatureProcessorsProvider);
   ref.invalidate(syncQueueEngineProvider);
+  ref.invalidate(operationalSyncRunnerProvider);
   ref.invalidate(syncBatchRunnerProvider);
   ref.invalidate(autoSyncCoordinatorProvider);
+  ref.invalidate(syncReadinessRepositoryProvider);
+  ref.invalidate(syncReadinessSummaryProvider);
+  ref.invalidate(syncQueueFeatureSummariesProvider);
+  ref.invalidate(syncAuditRepositoryProvider);
+  ref.invalidate(syncAuditLogsProvider);
+  ref.invalidate(localRemoteReconciliationRepositoryProvider);
+  ref.invalidate(syncReconciliationRepositoryProvider);
+  ref.invalidate(syncRepairRepositoryProvider);
+  ref.invalidate(syncReconciliationControllerProvider);
+  ref.invalidate(syncRepairDecisionsProvider);
+  ref.invalidate(syncRepairSummaryProvider);
+  ref.invalidate(syncRepairDecisionsByFeatureProvider);
+  ref.invalidate(syncRepairControllerProvider);
+  ref.invalidate(syncHealthOverviewProvider);
+  ref.invalidate(catalogSyncControllerProvider);
   AppLogger.info('[SessionReset] providers_invalidated');
 }
 
@@ -293,28 +494,56 @@ String? _safeIsolationKeyFor(AppSession session) {
   }
 }
 
+String _safeRuntimeKeyFor(AppSession session) {
+  try {
+    return SessionIsolation.runtimeKeyFor(session);
+  } catch (_) {
+    return 'invalid_session_runtime_key';
+  }
+}
+
 Future<int> _safePendingSyncCount(Ref ref) async {
+  var pendingSyncCount = 0;
   try {
     final summaries = await ref
         .read(syncQueueRepositoryProvider)
         .listFeatureSummaries()
         .timeout(const Duration(seconds: 3));
-    return summaries.fold<int>(
-      0,
-      (total, summary) =>
-          total +
-          summary.pendingForDisplay +
-          summary.errorCount +
-          summary.blockedCount +
-          summary.conflictCount +
-          summary.activeProcessingCount,
-    );
+    pendingSyncCount += _countPendingSummaries(summaries);
   } catch (error, stackTrace) {
     AppLogger.error(
       '[SessionReset] pending_sync_count_failed',
       error: error,
       stackTrace: stackTrace,
     );
-    return 0;
   }
+
+  try {
+    final operationalSummaries = await ref
+        .read(operationalSyncQueueRepositoryProvider)
+        .listFeatureSummaries()
+        .timeout(const Duration(seconds: 3));
+    pendingSyncCount += _countPendingSummaries(operationalSummaries);
+  } catch (error, stackTrace) {
+    AppLogger.error(
+      '[SessionReset] operational_pending_sync_count_failed',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
+
+  return pendingSyncCount;
+}
+
+int _countPendingSummaries(Iterable<SyncQueueFeatureSummary> summaries) {
+  return summaries.fold<int>(
+    0,
+    (total, summary) =>
+        total +
+        summary.pendingForDisplay +
+        summary.errorCount +
+        summary.blockedCount +
+        summary.conflictCount +
+        summary.activeProcessingCount,
+  );
 }

@@ -6,8 +6,8 @@ import 'package:erp_pdv_app/app/core/session/app_session.dart';
 import 'package:erp_pdv_app/app/core/session/app_user.dart';
 import 'package:erp_pdv_app/app/core/session/company_context.dart';
 import 'package:erp_pdv_app/app/core/session/session_provider.dart';
+import 'package:erp_pdv_app/app/core/sync/operational_sync_queue_repository.dart';
 import 'package:erp_pdv_app/app/core/sync/sync_providers.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_queue_repository.dart';
 import 'package:erp_pdv_app/app/core/sync/sync_queue_feature_summary.dart';
 import 'package:erp_pdv_app/modules/system/presentation/providers/system_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -80,7 +80,9 @@ void main() {
           appStartupOpenDatabaseProvider.overrideWith((ref) {
             return (isolationKey) => openCompleter.future;
           }),
-          syncQueueRepositoryProvider.overrideWith((ref) => repository),
+          operationalSyncQueueRepositoryProvider.overrideWith(
+            (ref) => repository,
+          ),
         ],
       );
       addTearDown(container.dispose);
@@ -92,6 +94,7 @@ void main() {
             user: _remoteUser(),
             company: _remoteCompany(),
             isOfflineFallback: false,
+            clientInstanceId: 'device-1',
           );
 
       final future = container.read(syncQueueFeatureSummariesProvider.future);
@@ -131,7 +134,7 @@ CompanyContext _remoteCompany() {
   );
 }
 
-class _RecordingSyncQueueRepository implements SyncQueueRepository {
+class _RecordingSyncQueueRepository implements OperationalSyncQueueRepository {
   bool listFeatureSummariesCalled = false;
 
   @override

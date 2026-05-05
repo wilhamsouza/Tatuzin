@@ -202,6 +202,7 @@ describe('tenant costs routes', () => {
       token: unlicensed.token,
     });
     assert.equal(blocked.status, 403);
+    assert.equal((blocked.data as { code?: string }).code, 'LICENSE_REQUIRED');
   });
 });
 
@@ -255,6 +256,24 @@ async function createFixture(options?: { createLicense?: boolean }) {
       isDefault: true,
     },
   });
+  const clientInstanceId = `${runId}-device-${Date.now()}`;
+
+  if (options?.createLicense !== false) {
+    await prisma.companyDevice.create({
+      data: {
+        companyId: company.id,
+        userId: user.id,
+        clientInstanceId,
+        deviceLabel: 'Costs Route Test',
+        platform: 'node-test',
+        appVersion: 'costs-test',
+        status: 'ACTIVE',
+        approvedAt: new Date(),
+        approvedByUserId: user.id,
+        lastSeenAt: new Date(),
+      },
+    });
+  }
 
   return {
     companyId: company.id,
@@ -267,6 +286,7 @@ async function createFixture(options?: { createLicense?: boolean }) {
       companyId: company.id,
       membershipId: membership.id,
       email: user.email,
+      clientInstanceId,
     }),
   };
 }
@@ -312,6 +332,7 @@ function signToken(input: {
   companyId: string;
   membershipId: string;
   email: string;
+  clientInstanceId: string;
 }) {
   return jwt.sign(
     {
@@ -321,6 +342,7 @@ function signToken(input: {
       membershipRole: 'OPERATOR',
       email: input.email,
       isPlatformAdmin: false,
+      clientInstanceId: input.clientInstanceId,
     },
     env.JWT_SECRET,
     { expiresIn: '15m' },
@@ -357,4 +379,3 @@ async function cleanupFixtures() {
     where: { email: { startsWith: `${runId}-` } },
   });
 }
-

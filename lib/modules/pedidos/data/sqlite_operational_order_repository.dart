@@ -3,6 +3,8 @@ import 'package:sqflite/sqflite.dart';
 import '../../../app/core/database/app_database.dart';
 import '../../../app/core/database/table_names.dart';
 import '../../../app/core/errors/app_exceptions.dart';
+import '../../../app/core/sync/operational_sync_event.dart';
+import '../../../app/core/sync/sqlite_operational_sync_queue_repository.dart';
 import '../../../app/core/utils/app_logger.dart';
 import '../../../app/core/utils/id_generator.dart';
 import '../../estoque/domain/entities/stock_reservation.dart';
@@ -13,34 +15,49 @@ import '../domain/entities/operational_order_summary.dart';
 import '../domain/repositories/operational_order_repository.dart';
 
 class SqliteOperationalOrderRepository implements OperationalOrderRepository {
-  const SqliteOperationalOrderRepository(this._appDatabase);
+  SqliteOperationalOrderRepository(this._appDatabase)
+    : _operationalSyncQueueRepository = SqliteOperationalSyncQueueRepository(
+        _appDatabase,
+      );
 
   final AppDatabase _appDatabase;
+  final SqliteOperationalSyncQueueRepository _operationalSyncQueueRepository;
 
   @override
   Future<int> create(OperationalOrderInput input) async {
     final database = await _appDatabase.database;
-    final nowIso = DateTime.now().toIso8601String();
-    return database.insert(TableNames.pedidosOperacionais, {
-      'uuid': IdGenerator.next(),
-      'status': input.status.dbValue,
-      'atendimento_tipo': input.serviceType.dbValue,
-      'cliente_identificador': _cleanNullable(input.customerIdentifier),
-      'telefone_cliente': _cleanNullable(input.customerPhone),
-      'observacao': _cleanNullable(input.notes),
-      'ticket_status': OrderTicketDispatchStatus.pending.dbValue,
-      'ticket_tentativas': 0,
-      'ticket_ultimo_erro': null,
-      'ticket_ultima_tentativa_em': null,
-      'ticket_enviado_em': null,
-      'enviado_cozinha_em': null,
-      'em_preparo_em': null,
-      'pronto_em': null,
-      'entregue_em': null,
-      'cancelado_em': null,
-      'criado_em': nowIso,
-      'atualizado_em': nowIso,
-      'fechado_em': null,
+    return database.transaction<int>((txn) async {
+      final now = DateTime.now();
+      final nowIso = now.toIso8601String();
+      final orderUuid = IdGenerator.next();
+      final orderId = await txn.insert(TableNames.pedidosOperacionais, {
+        'uuid': orderUuid,
+        'status': input.status.dbValue,
+        'atendimento_tipo': input.serviceType.dbValue,
+        'cliente_identificador': _cleanNullable(input.customerIdentifier),
+        'telefone_cliente': _cleanNullable(input.customerPhone),
+        'observacao': _cleanNullable(input.notes),
+        'ticket_status': OrderTicketDispatchStatus.pending.dbValue,
+        'ticket_tentativas': 0,
+        'ticket_ultimo_erro': null,
+        'ticket_ultima_tentativa_em': null,
+        'ticket_enviado_em': null,
+        'enviado_cozinha_em': null,
+        'em_preparo_em': null,
+        'pronto_em': null,
+        'entregue_em': null,
+        'cancelado_em': null,
+        'criado_em': nowIso,
+        'atualizado_em': nowIso,
+        'fechado_em': null,
+      });
+      await _enqueueOperationalOrderEvent(
+        txn,
+        order: _mapOrder(await _loadOrderRow(txn, orderId)),
+        operation: 'create',
+        occurredAt: now,
+      );
+      return orderId;
     });
   }
 
@@ -265,18 +282,27 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       );
     }
 
-    await database.update(
-      TableNames.pedidosOperacionais,
-      {
-        'atendimento_tipo': input.serviceType.dbValue,
-        'cliente_identificador': _cleanNullable(input.customerIdentifier),
-        'telefone_cliente': _cleanNullable(input.customerPhone),
-        'observacao': _cleanNullable(input.notes),
-        'atualizado_em': DateTime.now().toIso8601String(),
-      },
-      where: 'id = ?',
-      whereArgs: [orderId],
-    );
+    await database.transaction((txn) async {
+      final now = DateTime.now();
+      await txn.update(
+        TableNames.pedidosOperacionais,
+        {
+          'atendimento_tipo': input.serviceType.dbValue,
+          'cliente_identificador': _cleanNullable(input.customerIdentifier),
+          'telefone_cliente': _cleanNullable(input.customerPhone),
+          'observacao': _cleanNullable(input.notes),
+          'atualizado_em': now.toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [orderId],
+      );
+      await _enqueueOperationalOrderEvent(
+        txn,
+        order: _mapOrder(await _loadOrderRow(txn, orderId)),
+        operation: 'update',
+        occurredAt: now,
+      );
+    });
   }
 
   @override
@@ -318,6 +344,12 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
         },
         where: 'id = ?',
         whereArgs: [orderId],
+      );
+      await _enqueueOperationalOrderEvent(
+        txn,
+        order: _mapOrder(await _loadOrderRow(txn, orderId)),
+        operation: 'update',
+        occurredAt: DateTime.parse(nowIso),
       );
     });
   }
@@ -376,6 +408,12 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
         where: 'id = ?',
         whereArgs: [orderId],
       );
+      await _enqueueOperationalOrderEvent(
+        txn,
+        order: _mapOrder(await _loadOrderRow(txn, orderId)),
+        operation: 'update',
+        occurredAt: DateTime.parse(nowIso),
+      );
     });
   }
 
@@ -430,25 +468,35 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       );
     }
 
-    final nowIso = DateTime.now().toIso8601String();
-    final itemId = await database.insert(TableNames.pedidosOperacionaisItens, {
-      'uuid': IdGenerator.next(),
-      'pedido_operacional_id': orderId,
-      'produto_id': input.productId,
-      'produto_variante_id': input.productVariantId,
-      'nome_produto_snapshot': input.productNameSnapshot.trim(),
-      'sku_variante_snapshot': _cleanNullable(input.variantSkuSnapshot),
-      'cor_variante_snapshot': _cleanNullable(input.variantColorSnapshot),
-      'tamanho_variante_snapshot': _cleanNullable(input.variantSizeSnapshot),
-      'quantidade_mil': input.quantityMil,
-      'valor_unitario_centavos': input.unitPriceCents,
-      'subtotal_centavos': input.subtotalCents,
-      'observacao': _cleanNullable(input.notes),
-      'criado_em': nowIso,
-      'atualizado_em': nowIso,
+    return database.transaction<int>((txn) async {
+      final now = DateTime.now();
+      final nowIso = now.toIso8601String();
+      final itemUuid = IdGenerator.next();
+      final itemId = await txn.insert(TableNames.pedidosOperacionaisItens, {
+        'uuid': itemUuid,
+        'pedido_operacional_id': orderId,
+        'produto_id': input.productId,
+        'produto_variante_id': input.productVariantId,
+        'nome_produto_snapshot': input.productNameSnapshot.trim(),
+        'sku_variante_snapshot': _cleanNullable(input.variantSkuSnapshot),
+        'cor_variante_snapshot': _cleanNullable(input.variantColorSnapshot),
+        'tamanho_variante_snapshot': _cleanNullable(input.variantSizeSnapshot),
+        'quantidade_mil': input.quantityMil,
+        'valor_unitario_centavos': input.unitPriceCents,
+        'subtotal_centavos': input.subtotalCents,
+        'observacao': _cleanNullable(input.notes),
+        'criado_em': nowIso,
+        'atualizado_em': nowIso,
+      });
+      await _touchOrder(txn, orderId: orderId, nowIso: nowIso);
+      await _enqueueOperationalOrderItemEvent(
+        txn,
+        item: _mapItem(await _loadOrderItemRow(txn, itemId)),
+        operation: 'create',
+        occurredAt: now,
+      );
+      return itemId;
     });
-    await _touchOrder(database, orderId: orderId, nowIso: nowIso);
-    return itemId;
   }
 
   @override
@@ -469,26 +517,37 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       );
     }
 
-    final nowIso = DateTime.now().toIso8601String();
-    await database.update(
-      TableNames.pedidosOperacionaisItens,
-      {
-        'produto_id': input.productId,
-        'produto_variante_id': input.productVariantId,
-        'nome_produto_snapshot': input.productNameSnapshot.trim(),
-        'sku_variante_snapshot': _cleanNullable(input.variantSkuSnapshot),
-        'cor_variante_snapshot': _cleanNullable(input.variantColorSnapshot),
-        'tamanho_variante_snapshot': _cleanNullable(input.variantSizeSnapshot),
-        'quantidade_mil': input.quantityMil,
-        'valor_unitario_centavos': input.unitPriceCents,
-        'subtotal_centavos': input.subtotalCents,
-        'observacao': _cleanNullable(input.notes),
-        'atualizado_em': nowIso,
-      },
-      where: 'id = ?',
-      whereArgs: [orderItemId],
-    );
-    await _touchOrder(database, orderId: orderId, nowIso: nowIso);
+    await database.transaction((txn) async {
+      final now = DateTime.now();
+      final nowIso = now.toIso8601String();
+      await txn.update(
+        TableNames.pedidosOperacionaisItens,
+        {
+          'produto_id': input.productId,
+          'produto_variante_id': input.productVariantId,
+          'nome_produto_snapshot': input.productNameSnapshot.trim(),
+          'sku_variante_snapshot': _cleanNullable(input.variantSkuSnapshot),
+          'cor_variante_snapshot': _cleanNullable(input.variantColorSnapshot),
+          'tamanho_variante_snapshot': _cleanNullable(
+            input.variantSizeSnapshot,
+          ),
+          'quantidade_mil': input.quantityMil,
+          'valor_unitario_centavos': input.unitPriceCents,
+          'subtotal_centavos': input.subtotalCents,
+          'observacao': _cleanNullable(input.notes),
+          'atualizado_em': nowIso,
+        },
+        where: 'id = ?',
+        whereArgs: [orderItemId],
+      );
+      await _touchOrder(txn, orderId: orderId, nowIso: nowIso);
+      await _enqueueOperationalOrderItemEvent(
+        txn,
+        item: _mapItem(await _loadOrderItemRow(txn, orderItemId)),
+        operation: 'update',
+        occurredAt: now,
+      );
+    });
   }
 
   @override
@@ -506,13 +565,23 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       );
     }
 
-    final nowIso = DateTime.now().toIso8601String();
-    await database.delete(
-      TableNames.pedidosOperacionaisItens,
-      where: 'id = ?',
-      whereArgs: [orderItemId],
-    );
-    await _touchOrder(database, orderId: orderId, nowIso: nowIso);
+    await database.transaction((txn) async {
+      final now = DateTime.now();
+      final nowIso = now.toIso8601String();
+      final item = _mapItem(await _loadOrderItemRow(txn, orderItemId));
+      await _enqueueOperationalOrderItemEvent(
+        txn,
+        item: item,
+        operation: 'delete',
+        occurredAt: now,
+      );
+      await txn.delete(
+        TableNames.pedidosOperacionaisItens,
+        where: 'id = ?',
+        whereArgs: [orderItemId],
+      );
+      await _touchOrder(txn, orderId: orderId, nowIso: nowIso);
+    });
   }
 
   @override
@@ -691,7 +760,160 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
     );
   }
 
+  StockReservation _mapReservation(Map<String, Object?> row) {
+    return StockReservation(
+      id: row['id'] as int,
+      uuid: row['uuid'] as String,
+      operationalOrderId: row['pedido_operacional_id'] as int,
+      operationalOrderItemId: row['item_pedido_operacional_id'] as int,
+      productId: row['produto_id'] as int,
+      productVariantId: row['produto_variante_id'] as int?,
+      quantityMil: row['quantidade_mil'] as int,
+      status: StockReservationStatusX.fromStorage(row['status'] as String),
+      saleId: row['venda_id'] as int?,
+      createdAt: DateTime.parse(row['criado_em'] as String),
+      updatedAt: DateTime.parse(row['atualizado_em'] as String),
+      releasedAt: _parseDateTime(row['liberado_em']),
+      convertedToSaleAt: _parseDateTime(row['convertido_em_venda_em']),
+    );
+  }
+
+  Future<void> _enqueueOperationalOrderEvent(
+    DatabaseExecutor database, {
+    required OperationalOrder order,
+    required String operation,
+    required DateTime occurredAt,
+  }) async {
+    final eventIdentity = operation == 'create'
+        ? order.uuid
+        : '${order.uuid}:${occurredAt.microsecondsSinceEpoch}';
+    await _operationalSyncQueueRepository.enqueue(
+      database,
+      event: OperationalSyncEvent(
+        eventId: OperationalSyncEvent.buildEventId(
+          entity: 'operationalOrder',
+          operation: operation,
+          localIdentity: eventIdentity,
+        ),
+        feature: 'pdv',
+        entity: 'operationalOrder',
+        operation: operation,
+        entityLocalId: order.uuid,
+        occurredAt: occurredAt,
+        payload: <String, dynamic>{
+          'localId': order.id,
+          'uuid': order.uuid,
+          'status': order.status.dbValue,
+          'serviceType': order.serviceType.dbValue,
+          'customerIdentifier': order.customerIdentifier,
+          'customerPhone': order.customerPhone,
+          'notes': order.notes,
+          'createdAt': order.createdAt.toIso8601String(),
+          'updatedAt': order.updatedAt.toIso8601String(),
+          'sentToKitchenAt': order.sentToKitchenAt?.toIso8601String(),
+          'preparationStartedAt': order.preparationStartedAt?.toIso8601String(),
+          'readyAt': order.readyAt?.toIso8601String(),
+          'deliveredAt': order.deliveredAt?.toIso8601String(),
+          'canceledAt': order.canceledAt?.toIso8601String(),
+          'closedAt': order.closedAt?.toIso8601String(),
+        },
+      ),
+    );
+  }
+
+  Future<void> _enqueueOperationalOrderItemEvent(
+    DatabaseExecutor database, {
+    required OperationalOrderItem item,
+    required String operation,
+    required DateTime occurredAt,
+  }) async {
+    final eventIdentity = operation == 'create'
+        ? item.uuid
+        : '${item.uuid}:${occurredAt.microsecondsSinceEpoch}';
+    await _operationalSyncQueueRepository.enqueue(
+      database,
+      event: OperationalSyncEvent(
+        eventId: OperationalSyncEvent.buildEventId(
+          entity: 'operationalOrderItem',
+          operation: operation,
+          localIdentity: eventIdentity,
+        ),
+        feature: 'pdv',
+        entity: 'operationalOrderItem',
+        operation: operation,
+        entityLocalId: item.uuid,
+        occurredAt: occurredAt,
+        payload: <String, dynamic>{
+          'localId': item.id,
+          'uuid': item.uuid,
+          'operationalOrderId': item.orderId,
+          'productId': item.productId,
+          'baseProductId': item.baseProductId,
+          'productVariantId': item.productVariantId,
+          'variantSkuSnapshot': item.variantSkuSnapshot,
+          'variantColorSnapshot': item.variantColorSnapshot,
+          'variantSizeSnapshot': item.variantSizeSnapshot,
+          'productNameSnapshot': item.productNameSnapshot,
+          'quantityMil': item.quantityMil,
+          'unitPriceCents': item.unitPriceCents,
+          'subtotalCents': item.subtotalCents,
+          'notes': item.notes,
+          'createdAt': item.createdAt.toIso8601String(),
+          'updatedAt': item.updatedAt.toIso8601String(),
+        },
+      ),
+    );
+  }
+
+  Future<void> _enqueueStockReservationEvent(
+    DatabaseExecutor database, {
+    required StockReservation reservation,
+    required String operation,
+    required DateTime occurredAt,
+  }) async {
+    final eventIdentity = operation == 'create'
+        ? reservation.uuid
+        : '${reservation.uuid}:${occurredAt.microsecondsSinceEpoch}';
+    await _operationalSyncQueueRepository.enqueue(
+      database,
+      event: OperationalSyncEvent(
+        eventId: OperationalSyncEvent.buildEventId(
+          entity: 'stockReservation',
+          operation: operation,
+          localIdentity: eventIdentity,
+        ),
+        feature: 'pdv',
+        entity: 'stockReservation',
+        operation: operation,
+        entityLocalId: reservation.uuid,
+        occurredAt: occurredAt,
+        payload: <String, dynamic>{
+          'localId': reservation.id,
+          'uuid': reservation.uuid,
+          'operationalOrderId': reservation.operationalOrderId,
+          'operationalOrderItemId': reservation.operationalOrderItemId,
+          'productId': reservation.productId,
+          'productVariantId': reservation.productVariantId,
+          'quantityMil': reservation.quantityMil,
+          'status': reservation.status.storageValue,
+          'saleId': reservation.saleId,
+          'createdAt': reservation.createdAt.toIso8601String(),
+          'updatedAt': reservation.updatedAt.toIso8601String(),
+          'releasedAt': reservation.releasedAt?.toIso8601String(),
+          'convertedToSaleAt': reservation.convertedToSaleAt?.toIso8601String(),
+        },
+      ),
+    );
+  }
+
   Future<OperationalOrder> _requireOrder(
+    DatabaseExecutor database,
+    int orderId,
+  ) async {
+    return _mapOrder(await _loadOrderRow(database, orderId));
+  }
+
+  Future<Map<String, Object?>> _loadOrderRow(
     DatabaseExecutor database,
     int orderId,
   ) async {
@@ -704,7 +926,39 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
     if (rows.isEmpty) {
       throw ValidationException('Pedido #$orderId nao encontrado.');
     }
-    return _mapOrder(rows.first);
+    return rows.first;
+  }
+
+  Future<Map<String, Object?>> _loadOrderItemRow(
+    DatabaseExecutor database,
+    int orderItemId,
+  ) async {
+    final rows = await database.query(
+      TableNames.pedidosOperacionaisItens,
+      where: 'id = ?',
+      whereArgs: [orderItemId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw ValidationException('Item do pedido #$orderItemId nao encontrado.');
+    }
+    return rows.first;
+  }
+
+  Future<Map<String, Object?>> _loadReservationRow(
+    DatabaseExecutor database,
+    int reservationId,
+  ) async {
+    final rows = await database.query(
+      TableNames.estoqueReservas,
+      where: 'id = ?',
+      whereArgs: [reservationId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw ValidationException('Reserva #$reservationId nao encontrada.');
+    }
+    return rows.first;
   }
 
   Future<List<OperationalOrderItem>> _listItems(
@@ -814,8 +1068,9 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       if (activeReservationsByItemId.containsKey(item.id)) {
         continue;
       }
-      await database.insert(TableNames.estoqueReservas, {
-        'uuid': IdGenerator.next(),
+      final reservationUuid = IdGenerator.next();
+      final reservationId = await database.insert(TableNames.estoqueReservas, {
+        'uuid': reservationUuid,
         'pedido_operacional_id': orderId,
         'item_pedido_operacional_id': item.id,
         'produto_id': item.productId,
@@ -828,6 +1083,16 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
         'liberado_em': null,
         'convertido_em_venda_em': null,
       }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      if (reservationId > 0) {
+        await _enqueueStockReservationEvent(
+          database,
+          reservation: _mapReservation(
+            await _loadReservationRow(database, reservationId),
+          ),
+          operation: 'create',
+          occurredAt: DateTime.parse(nowIso),
+        );
+      }
     }
   }
 
@@ -873,6 +1138,20 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       where: 'pedido_operacional_id = ? AND status = ?',
       whereArgs: [orderId, StockReservationStatus.active.storageValue],
     );
+    final rows = await database.query(
+      TableNames.estoqueReservas,
+      where: 'pedido_operacional_id = ? AND liberado_em = ?',
+      whereArgs: [orderId, nowIso],
+      orderBy: 'id ASC',
+    );
+    for (final row in rows) {
+      await _enqueueStockReservationEvent(
+        database,
+        reservation: _mapReservation(row),
+        operation: 'update',
+        occurredAt: DateTime.parse(nowIso),
+      );
+    }
   }
 
   Future<int> _loadPhysicalQuantityMil(

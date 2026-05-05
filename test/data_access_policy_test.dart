@@ -5,7 +5,8 @@ import 'package:erp_pdv_app/app/core/app_context/app_operational_context.dart';
 import 'package:erp_pdv_app/app/core/session/app_session.dart';
 import 'package:erp_pdv_app/app/core/session/app_user.dart';
 import 'package:erp_pdv_app/app/core/session/company_context.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_feature_keys.dart';
+import 'package:erp_pdv_app/app/core/session/session_provider.dart';
+import 'package:erp_pdv_app/app/core/sync/operational_sync_policy.dart';
 import 'package:erp_pdv_app/app/core/sync/sync_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -57,6 +58,7 @@ void main() {
           ),
           startedAt: DateTime(2026, 4, 28),
           isOfflineFallback: false,
+          clientInstanceId: 'device-1',
         ),
       );
 
@@ -64,18 +66,67 @@ void main() {
     },
   );
 
-  test('batch processor list includes PDV pending sync features', () {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
+  test(
+    'batch processor list no longer turns ERP CRM into local-first sync',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      container
+          .read(appSessionProvider.notifier)
+          .setAuthenticatedSession(
+            scope: SessionScope.authenticatedRemote,
+            user: const AppUser(
+              localId: null,
+              remoteId: 'user-1',
+              displayName: 'Operador',
+              email: 'operador@tatuzin.test',
+              roleLabel: 'Operador',
+              kind: AppUserKind.remoteAuthenticated,
+            ),
+            company: const CompanyContext(
+              localId: null,
+              remoteId: 'company-1',
+              displayName: 'Empresa',
+              legalName: 'Empresa LTDA',
+              documentNumber: null,
+              licensePlan: 'pro',
+              licenseStatus: 'active',
+              syncEnabled: true,
+            ),
+            clientInstanceId: 'device-1',
+          );
 
-    final featureKeys = container
-        .read(syncFeatureProcessorsProvider)
-        .map((processor) => processor.featureKey)
-        .toSet();
-
-    expect(featureKeys, contains(SyncFeatureKeys.sales));
-    expect(featureKeys, contains(SyncFeatureKeys.saleCancellations));
-    expect(featureKeys, contains(SyncFeatureKeys.fiadoPayments));
-    expect(featureKeys, contains(SyncFeatureKeys.cashEvents));
-  });
+      expect(container.read(syncFeatureProcessorsProvider), isEmpty);
+      expect(
+        OperationalSyncPolicy.allowedLocalFirstEntities,
+        containsAll(<String>[
+          'cashSession',
+          'cashMovement',
+          'operationalOrder',
+          'operationalOrderItem',
+          'sale',
+          'saleItem',
+          'payment',
+          'receipt',
+          'stockReservation',
+          'stockDeduction',
+          'offlineOperationLog',
+        ]),
+      );
+      expect(
+        OperationalSyncPolicy.blockedServerFirstEntities,
+        containsAll(<String>[
+          'product',
+          'category',
+          'customer',
+          'supplier',
+          'purchase',
+          'supply',
+          'cost',
+          'report',
+          'fiado',
+        ]),
+      );
+    },
+  );
 }

@@ -17,6 +17,10 @@ import 'migrations.dart';
 
 typedef AppStartupRemotePreflight = Future<void> Function(AppSession session);
 typedef AppStartupOpenDatabase = Future<void> Function(String isolationKey);
+typedef AppStartupDatabaseExists = Future<bool> Function(String isolationKey);
+
+const firstAccessRequiresConnectionMessage =
+    'Conecte-se à internet para entrar no Tatuzin pela primeira vez.';
 
 class _AppStartupTrace {
   String? lastCompletedStep;
@@ -32,6 +36,7 @@ class _AppStartupTrace {
   }) {
     companyRemoteId = session.company.remoteId?.trim();
     final isolationKey = _safeIsolationKeyFor(session);
+    final dbName = _safeDatabaseNameFor(isolationKey);
     AppLogger.info(
       'bootstrap_started | duration_ms=0 | scope=${session.scope.name} | '
       'authenticated=${session.isAuthenticated} | '
@@ -43,8 +48,49 @@ class _AppStartupTrace {
       'tenant_key=${_valueOrNotAvailable(isolationKey)} | '
       'session_runtime_key=$sessionRuntimeKey | '
       'app_data_refresh_key=$appDataRefreshKey | '
-      'database_name=${_safeDatabaseNameFor(isolationKey)}',
+      'database_name=$dbName | '
+      'sessionState=${_sessionStateFor(session)} | '
+      'companyId=${_valueOrNotAvailable(session.company.remoteId)} | '
+      'userId=${_valueOrNotAvailable(session.user.remoteId)} | '
+      'clientInstanceId=${_valueOrNotAvailable(session.clientInstanceId)} | '
+      'dbName=$dbName | '
+      'tenantReady=false | '
+      'syncEnabled=${session.canStartSync} | '
+      'offlineAllowed=${session.isOfflineFallback && session.hasOperationalIdentity}',
     );
+  }
+
+  void logBootstrapDecision({
+    required AppSession session,
+    required String? isolationKey,
+    required bool tenantReady,
+    required bool syncEnabled,
+    required bool offlineAllowed,
+    String? reason,
+  }) {
+    final dbName = _safeDatabaseNameFor(isolationKey);
+    AppLogger.info(
+      'bootstrap_session_context | '
+      'sessionState=${_sessionStateFor(session)} | '
+      'companyId=${_valueOrNotAvailable(session.company.remoteId)} | '
+      'userId=${_valueOrNotAvailable(session.user.remoteId)} | '
+      'clientInstanceId=${_valueOrNotAvailable(session.clientInstanceId)} | '
+      'dbName=$dbName | '
+      'tenantReady=$tenantReady | '
+      'syncEnabled=$syncEnabled | '
+      'offlineAllowed=$offlineAllowed | '
+      'reason=${reason ?? 'n/a'}',
+    );
+  }
+
+  String _sessionStateFor(AppSession session) {
+    if (!session.isAuthenticated) {
+      return 'signed_out';
+    }
+    if (session.isOfflineFallback) {
+      return 'offline_cached';
+    }
+    return session.scope.name;
   }
 
   String? _safeIsolationKeyFor(AppSession session) {
@@ -140,6 +186,13 @@ class _AppStartupTrace {
 }
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
+  final session = ref.watch(appSessionProvider);
+  if (!session.hasOperationalIdentity) {
+    throw const AppStartupException(
+      'Sessao operacional invalida. Entre com uma conta vinculada a uma empresa antes de abrir o banco local.',
+      cause: 'missing_company_user_or_client_instance',
+    );
+  }
   final isolationKey = ref.watch(sessionIsolationKeyProvider);
   final database = AppDatabase.forIsolationKey(isolationKey);
   ref.onDispose(() {
@@ -188,6 +241,10 @@ final appStartupOpenDatabaseProvider = Provider<AppStartupOpenDatabase>((ref) {
   };
 });
 
+final tenantDatabaseExistsProvider = Provider<AppStartupDatabaseExists>((ref) {
+  return AppDatabase.databaseExistsForIsolationKey;
+});
+
 final appStartupProvider = FutureProvider<AppStartupState>((ref) async {
   final session = ref.watch(appSessionProvider);
   final environment = ref.watch(appEnvironmentProvider);
@@ -198,6 +255,7 @@ final appStartupProvider = FutureProvider<AppStartupState>((ref) async {
   );
   final remotePreflight = ref.watch(appStartupRemotePreflightProvider);
   final openDatabase = ref.watch(appStartupOpenDatabaseProvider);
+  final databaseExists = ref.watch(tenantDatabaseExistsProvider);
   final appDataRefreshKey = ref.read(appDataRefreshProvider);
   final sessionRuntimeKey = _safeSessionRuntimeKey(session);
   final trace = _AppStartupTrace();
@@ -208,6 +266,7 @@ final appStartupProvider = FutureProvider<AppStartupState>((ref) async {
       environment: environment,
       remotePreflight: remotePreflight,
       openDatabase: openDatabase,
+      databaseExists: databaseExists,
       apiStepTimeout: apiStepTimeout,
       localDatabaseTimeout: localDatabaseTimeout,
       appDataRefreshKey: appDataRefreshKey,
@@ -243,6 +302,7 @@ Future<AppStartupState> _runAppStartup({
   required AppEnvironment environment,
   required AppStartupRemotePreflight remotePreflight,
   required AppStartupOpenDatabase openDatabase,
+  required AppStartupDatabaseExists databaseExists,
   required Duration apiStepTimeout,
   required Duration localDatabaseTimeout,
   required int appDataRefreshKey,
@@ -264,11 +324,38 @@ Future<AppStartupState> _runAppStartup({
     action: () {},
   );
 
-  if (session.isRemoteAuthenticated) {
-    final remoteValidation = _validateRemoteSession(session, trace);
-    if (remoteValidation != null) {
-      _logBootstrapFailure(remoteValidation);
-      return remoteValidation;
+  if (session.isAuthenticated) {
+    final sessionValidation = _validateAuthenticatedSessionContext(
+      session,
+      trace,
+    );
+    if (sessionValidation != null) {
+      _logBootstrapFailure(sessionValidation);
+      trace.logBootstrapDecision(
+        session: session,
+        isolationKey: null,
+        tenantReady: false,
+        syncEnabled: false,
+        offlineAllowed: false,
+        reason: sessionValidation.debugDetails,
+      );
+      return sessionValidation;
+    }
+
+    if (session.isRemoteAuthenticated && !session.isOfflineFallback) {
+      final remoteValidation = _validateRemoteSession(session, trace);
+      if (remoteValidation != null) {
+        _logBootstrapFailure(remoteValidation);
+        trace.logBootstrapDecision(
+          session: session,
+          isolationKey: null,
+          tenantReady: false,
+          syncEnabled: false,
+          offlineAllowed: false,
+          reason: remoteValidation.debugDetails,
+        );
+        return remoteValidation;
+      }
     }
   }
 
@@ -284,44 +371,100 @@ Future<AppStartupState> _runAppStartup({
       pendingStep: trace.pendingStep,
     );
     _logBootstrapFailure(state);
+    trace.logBootstrapDecision(
+      session: session,
+      isolationKey: null,
+      tenantReady: false,
+      syncEnabled: false,
+      offlineAllowed: false,
+      reason: 'tenant_key_resolve_failed',
+    );
     return state;
   }
 
-  try {
-    await remotePreflight(session).timeout(apiStepTimeout);
-  } on AuthenticationException catch (error, stackTrace) {
-    final state = AppStartupState.apiError(
-      message:
-          'Nao foi possivel validar sua sessao remota agora. Entre novamente para continuar.',
-      debugDetails: trace.buildDebugDetails(reason: error.toString()),
-      lastCompletedStep: trace.lastCompletedStep,
-      pendingStep: trace.pendingStep,
-    );
-    _logBootstrapFailure(state, error: error, stackTrace: stackTrace);
-    return state;
-  } on NetworkRequestException catch (error, stackTrace) {
-    final state = AppStartupState.apiError(
-      message:
-          'Nao foi possivel falar com a API do Tatuzin agora. Tente novamente em instantes.',
-      debugDetails: trace.buildDebugDetails(reason: error.toString()),
-      lastCompletedStep: trace.lastCompletedStep,
-      pendingStep: trace.pendingStep,
-    );
-    _logBootstrapFailure(state, error: error, stackTrace: stackTrace);
-    return state;
-  } on TimeoutException catch (error, stackTrace) {
-    final state = AppStartupState.apiError(
-      message:
-          'A API do Tatuzin demorou demais para concluir a validacao inicial. Tente novamente em instantes.',
-      debugDetails: trace.buildDebugDetails(reason: 'api_preflight_timeout'),
-      lastCompletedStep: trace.lastCompletedStep,
-      pendingStep: trace.pendingStep,
-    );
-    _logBootstrapFailure(state, error: error, stackTrace: stackTrace);
-    return state;
+  if (session.isAuthenticated && !session.isOfflineFallback) {
+    try {
+      await remotePreflight(session).timeout(apiStepTimeout);
+    } on AuthenticationException catch (error, stackTrace) {
+      final state = AppStartupState.apiError(
+        message:
+            'Nao foi possivel validar sua sessao remota agora. Entre novamente para continuar.',
+        debugDetails: trace.buildDebugDetails(reason: error.toString()),
+        lastCompletedStep: trace.lastCompletedStep,
+        pendingStep: trace.pendingStep,
+      );
+      _logBootstrapFailure(state, error: error, stackTrace: stackTrace);
+      trace.logBootstrapDecision(
+        session: session,
+        isolationKey: isolationKey,
+        tenantReady: false,
+        syncEnabled: false,
+        offlineAllowed: false,
+        reason: state.debugDetails,
+      );
+      return state;
+    } on NetworkRequestException catch (error, stackTrace) {
+      final state = AppStartupState.apiError(
+        message:
+            'Nao foi possivel falar com a API do Tatuzin agora. Tente novamente em instantes.',
+        debugDetails: trace.buildDebugDetails(reason: error.toString()),
+        lastCompletedStep: trace.lastCompletedStep,
+        pendingStep: trace.pendingStep,
+      );
+      _logBootstrapFailure(state, error: error, stackTrace: stackTrace);
+      trace.logBootstrapDecision(
+        session: session,
+        isolationKey: isolationKey,
+        tenantReady: false,
+        syncEnabled: false,
+        offlineAllowed: false,
+        reason: state.debugDetails,
+      );
+      return state;
+    } on TimeoutException catch (error, stackTrace) {
+      final state = AppStartupState.apiError(
+        message:
+            'A API do Tatuzin demorou demais para concluir a validacao inicial. Tente novamente em instantes.',
+        debugDetails: trace.buildDebugDetails(reason: 'api_preflight_timeout'),
+        lastCompletedStep: trace.lastCompletedStep,
+        pendingStep: trace.pendingStep,
+      );
+      _logBootstrapFailure(state, error: error, stackTrace: stackTrace);
+      trace.logBootstrapDecision(
+        session: session,
+        isolationKey: isolationKey,
+        tenantReady: false,
+        syncEnabled: false,
+        offlineAllowed: false,
+        reason: state.debugDetails,
+      );
+      return state;
+    }
   }
 
   if (session.isAuthenticated) {
+    if (session.isOfflineFallback &&
+        !await databaseExists(isolationKey).timeout(localDatabaseTimeout)) {
+      final state = AppStartupState.apiError(
+        message: firstAccessRequiresConnectionMessage,
+        debugDetails: trace.buildDebugDetails(
+          reason: 'offline_blocked_missing_tenant_database',
+        ),
+        lastCompletedStep: trace.lastCompletedStep,
+        pendingStep: trace.pendingStep,
+      );
+      _logBootstrapFailure(state);
+      trace.logBootstrapDecision(
+        session: session,
+        isolationKey: isolationKey,
+        tenantReady: false,
+        syncEnabled: false,
+        offlineAllowed: false,
+        reason: 'offline_blocked_missing_tenant_database',
+      );
+      return state;
+    }
+
     final databaseState = await _openTenantDatabase(
       session: session,
       isolationKey: isolationKey,
@@ -331,6 +474,14 @@ Future<AppStartupState> _runAppStartup({
     );
     if (databaseState != null) {
       _logBootstrapFailure(databaseState);
+      trace.logBootstrapDecision(
+        session: session,
+        isolationKey: isolationKey,
+        tenantReady: false,
+        syncEnabled: false,
+        offlineAllowed: session.isOfflineFallback,
+        reason: databaseState.debugDetails,
+      );
       return databaseState;
     }
   }
@@ -342,6 +493,14 @@ Future<AppStartupState> _runAppStartup({
     companyRemoteId: session.company.remoteId,
     tenantIsolationKey: isolationKey,
     userRemoteId: session.user.remoteId,
+  );
+  trace.logBootstrapDecision(
+    session: session,
+    isolationKey: isolationKey,
+    tenantReady: session.hasOperationalIdentity,
+    syncEnabled: session.canStartSync,
+    offlineAllowed: session.isOfflineFallback && session.hasOperationalIdentity,
+    reason: 'shell_ready',
   );
   return AppStartupState.success(
     debugDetails: trace.buildDebugDetails(
@@ -434,6 +593,54 @@ Future<T> _awaitWithSlowWarning<T>(
     completed = true;
     timer?.cancel();
   });
+}
+
+AppStartupState? _validateAuthenticatedSessionContext(
+  AppSession session,
+  _AppStartupTrace trace,
+) {
+  final user = session.user;
+  final company = session.company;
+
+  try {
+    _runSynchronousBootstrapStep(
+      trace: trace,
+      startedEvent: 'session_context_guard_started',
+      completedEvent: 'session_context_guard_passed',
+      companyRemoteId: company.remoteId,
+      userRemoteId: user.remoteId,
+      action: () {
+        if (!user.hasRemoteIdentity) {
+          throw const AuthenticationException('missing_user_id');
+        }
+        if (!company.hasRemoteIdentity) {
+          throw const ValidationException('missing_company_id');
+        }
+        if (!session.hasClientInstanceId) {
+          throw const ValidationException('missing_client_instance_id');
+        }
+      },
+    );
+    return null;
+  } on AuthenticationException {
+    return AppStartupState.apiError(
+      message:
+          'Sua sessao local nao contem um usuario valido. Entre novamente com internet para continuar.',
+      debugDetails: trace.buildDebugDetails(reason: 'missing_user_id'),
+      lastCompletedStep: trace.lastCompletedStep,
+      pendingStep: trace.pendingStep,
+    );
+  } on ValidationException catch (error) {
+    final reason = error.message;
+    return AppStartupState.needsCompany(
+      message: reason == 'missing_client_instance_id'
+          ? 'Sua sessao local nao contem o identificador deste dispositivo. Entre novamente com internet para continuar.'
+          : 'Sua sessao local nao contem uma empresa valida. Entre novamente com internet para continuar.',
+      debugDetails: trace.buildDebugDetails(reason: reason),
+      lastCompletedStep: trace.lastCompletedStep,
+      pendingStep: trace.pendingStep,
+    );
+  }
 }
 
 AppStartupState? _validateRemoteSession(
@@ -922,6 +1129,17 @@ class AppDatabase {
       return;
     }
     await cached.close();
+  }
+
+  static Future<bool> databaseExistsForIsolationKey(String isolationKey) async {
+    final databasesPath = await getDatabasesPath().timeout(
+      _databasePathTimeout,
+    );
+    final databasePath = path.join(
+      databasesPath,
+      databaseNameForIsolationKey(isolationKey),
+    );
+    return File(databasePath).existsSync();
   }
 
   static String databaseNameForIsolationKey(String isolationKey) {

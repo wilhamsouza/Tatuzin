@@ -13,6 +13,7 @@ import '../sync/sync_providers.dart';
 import '../utils/app_logger.dart';
 import 'app_session.dart';
 import 'auth_token_storage.dart';
+import 'cached_session_storage.dart';
 import 'session_provider.dart';
 import 'session_reset.dart';
 
@@ -35,7 +36,15 @@ typedef AppStartupSyncKickoff = Future<void> Function(AppSession session);
 
 final appStartupSyncKickoffProvider = Provider<AppStartupSyncKickoff>((ref) {
   return (session) async {
-    if (!session.isRemoteAuthenticated) {
+    if (!session.canStartSync) {
+      AppLogger.info(
+        '[Sync] startup_kickoff_skipped | '
+        'companyId=${session.company.remoteId ?? 'n/a'} | '
+        'userId=${session.user.remoteId ?? 'n/a'} | '
+        'clientInstanceId=${session.clientInstanceId ?? 'n/a'} | '
+        'tenantReady=${session.hasOperationalIdentity} | '
+        'reason=missing_sync_identity_or_offline_fallback',
+      );
       return;
     }
     ref.read(autoSyncCoordinatorProvider).onRemoteSessionAvailable();
@@ -50,6 +59,7 @@ final authStatusProvider = Provider<AuthStatusSnapshot>((ref) {
     isMockAuthenticated: session.isMockAuthenticated,
     isRemoteAuthenticated: session.isRemoteAuthenticated,
     isPlatformAdmin: session.user.isPlatformAdmin,
+    isSupportProfile: session.user.isSupportProfile,
     sessionLabel: session.user.statusLabel,
     userLabel: session.user.displayName,
     companyLabel: session.company.displayName,
@@ -81,7 +91,10 @@ class AuthController extends AsyncNotifier<void> {
         await _applySession(session);
       }
     } on AuthenticationException {
+      await ref.read(cachedSessionStorageProvider).clear();
       ref.read(appSessionProvider.notifier).signOutToLocalMode();
+    } on NetworkRequestException catch (error) {
+      await _restoreCachedSessionOfflineOrThrow(error);
     }
   }
 
@@ -122,6 +135,15 @@ class AuthController extends AsyncNotifier<void> {
       await _applySession(session);
       state = const AsyncData(null);
       return session;
+    } on NetworkRequestException catch (error) {
+      try {
+        final session = await _restoreCachedSessionOfflineOrThrow(error);
+        state = const AsyncData(null);
+        return session;
+      } catch (fallbackError, fallbackStackTrace) {
+        state = AsyncError(fallbackError, fallbackStackTrace);
+        rethrow;
+      }
     } catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);
       rethrow;
@@ -173,10 +195,20 @@ class AuthController extends AsyncNotifier<void> {
       } else {
         ref.read(autoSyncCoordinatorProvider).cancelPending();
         ref.read(appSessionProvider.notifier).signOutToLocalMode();
+        ref.invalidate(appStartupProvider);
         await _ensureStartupReady();
       }
       state = const AsyncData(null);
       return session;
+    } on NetworkRequestException catch (error) {
+      try {
+        final session = await _restoreCachedSessionOfflineOrThrow(error);
+        state = const AsyncData(null);
+        return session;
+      } catch (fallbackError, fallbackStackTrace) {
+        state = AsyncError(fallbackError, fallbackStackTrace);
+        rethrow;
+      }
     } catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);
       rethrow;
@@ -242,8 +274,10 @@ class AuthController extends AsyncNotifier<void> {
         );
       }
       ref.read(appSessionProvider.notifier).signOutToLocalMode();
+      ref.invalidate(appStartupProvider);
       await Future<void>.delayed(Duration.zero);
       await closeSessionDatabaseForReset(resetSnapshot);
+      await ref.read(cachedSessionStorageProvider).clear();
       await _ensureStartupReady();
 
       if (session.isRemoteAuthenticated) {
@@ -276,12 +310,44 @@ class AuthController extends AsyncNotifier<void> {
           user: session.user,
           company: session.company,
           isOfflineFallback: session.isOfflineFallback,
+          clientInstanceId: session.clientInstanceId,
         );
 
     await _ensureStartupReady();
+    AppLogger.info(
+      '[Session] startup_ready_for_session | '
+      'companyId=${session.company.remoteId ?? 'n/a'} | '
+      'userId=${session.user.remoteId ?? 'n/a'} | '
+      'clientInstanceId=${session.clientInstanceId ?? 'n/a'} | '
+      'canStartSync=${session.canStartSync} | '
+      'offlineFallback=${session.isOfflineFallback}',
+    );
 
-    if (session.isRemoteAuthenticated) {
+    if (session.canStartSync) {
       _startSyncInBackground(session);
+    } else {
+      AppLogger.info(
+        'sync_coordinator_start_skipped | '
+        'companyId=${session.company.remoteId ?? 'n/a'} | '
+        'userId=${session.user.remoteId ?? 'n/a'} | '
+        'clientInstanceId=${session.clientInstanceId ?? 'n/a'} | '
+        'reason=session_not_eligible_after_startup',
+      );
+    }
+
+    if (session.isRemoteAuthenticated && !session.isOfflineFallback) {
+      try {
+        await ref.read(cachedSessionStorageProvider).saveSession(session);
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          '[Session] cached_session_save_failed | '
+          'companyId=${session.company.remoteId ?? 'n/a'} | '
+          'userId=${session.user.remoteId ?? 'n/a'} | '
+          'clientInstanceId=${session.clientInstanceId ?? 'n/a'}',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
     }
   }
 
@@ -298,6 +364,17 @@ class AuthController extends AsyncNotifier<void> {
   }
 
   void _startSyncInBackground(AppSession session) {
+    if (!session.canStartSync) {
+      AppLogger.info(
+        'sync_coordinator_start_skipped | '
+        'companyId=${session.company.remoteId ?? 'n/a'} | '
+        'userId=${session.user.remoteId ?? 'n/a'} | '
+        'clientInstanceId=${session.clientInstanceId ?? 'n/a'} | '
+        'tenantReady=${session.hasOperationalIdentity} | '
+        'reason=missing_sync_identity_or_offline_fallback',
+      );
+      return;
+    }
     final stopwatch = Stopwatch()..start();
     final kickoff = ref.read(appStartupSyncKickoffProvider);
     AppLogger.info(
@@ -306,6 +383,74 @@ class AuthController extends AsyncNotifier<void> {
     );
     final kickoffFuture = kickoff(session);
     unawaited(_observeSyncKickoff(session, kickoffFuture, stopwatch));
+  }
+
+  Future<AppSession> _restoreCachedSessionOfflineOrThrow(
+    NetworkRequestException cause,
+  ) async {
+    final cachedSession = await ref
+        .read(cachedSessionStorageProvider)
+        .readSession();
+    if (cachedSession == null || !cachedSession.hasOperationalIdentity) {
+      _logOfflineBlocked(
+        reason: 'missing_cached_session',
+        cause: cause,
+        session: cachedSession,
+      );
+      throw const NetworkRequestException(firstAccessRequiresConnectionMessage);
+    }
+
+    String isolationKey;
+    try {
+      isolationKey = SessionIsolation.keyFor(cachedSession);
+    } catch (error) {
+      _logOfflineBlocked(
+        reason: 'invalid_cached_tenant',
+        cause: error,
+        session: cachedSession,
+      );
+      throw const NetworkRequestException(firstAccessRequiresConnectionMessage);
+    }
+
+    final databaseExists = await ref.read(tenantDatabaseExistsProvider)(
+      isolationKey,
+    );
+    if (!databaseExists) {
+      _logOfflineBlocked(
+        reason: 'missing_tenant_database',
+        cause: cause,
+        session: cachedSession,
+      );
+      throw const NetworkRequestException(firstAccessRequiresConnectionMessage);
+    }
+
+    final offlineSession = cachedSession.copyWith(
+      startedAt: DateTime.now(),
+      isOfflineFallback: true,
+    );
+    AppLogger.info(
+      '[Session] offline_cached_session_restored | '
+      'companyId=${offlineSession.company.remoteId} | '
+      'userId=${offlineSession.user.remoteId} | '
+      'clientInstanceId=${offlineSession.clientInstanceId} | '
+      'tenant_key=$isolationKey',
+    );
+    await _applySession(offlineSession);
+    return offlineSession;
+  }
+
+  void _logOfflineBlocked({
+    required String reason,
+    required Object cause,
+    required AppSession? session,
+  }) {
+    AppLogger.warn(
+      '[Session] offline_blocked | reason=$reason | '
+      'companyId=${session?.company.remoteId ?? 'n/a'} | '
+      'userId=${session?.user.remoteId ?? 'n/a'} | '
+      'clientInstanceId=${session?.clientInstanceId ?? 'n/a'} | '
+      'message=$firstAccessRequiresConnectionMessage | cause=$cause',
+    );
   }
 
   Future<void> _observeSyncKickoff(
@@ -350,6 +495,7 @@ class AuthStatusSnapshot {
     required this.isMockAuthenticated,
     required this.isRemoteAuthenticated,
     required this.isPlatformAdmin,
+    required this.isSupportProfile,
     required this.sessionLabel,
     required this.userLabel,
     required this.companyLabel,
@@ -367,6 +513,7 @@ class AuthStatusSnapshot {
   final bool isMockAuthenticated;
   final bool isRemoteAuthenticated;
   final bool isPlatformAdmin;
+  final bool isSupportProfile;
   final String sessionLabel;
   final String userLabel;
   final String companyLabel;

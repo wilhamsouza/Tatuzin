@@ -67,6 +67,7 @@ void main() {
               syncEnabled: true,
             ),
             isOfflineFallback: false,
+            clientInstanceId: 'device-1',
           );
 
       await container.read(backendConnectionStatusProvider.future);
@@ -134,6 +135,7 @@ void main() {
             syncEnabled: true,
           ),
           isOfflineFallback: false,
+          clientInstanceId: 'device-1',
         );
 
     await container.read(backendConnectionStatusProvider.future);
@@ -201,12 +203,13 @@ void main() {
               syncEnabled: true,
             ),
             isOfflineFallback: false,
+            clientInstanceId: 'device-1',
           );
 
       await container.read(backendConnectionStatusProvider.future);
       final snapshot = container.read(accountCloudStatusProvider);
 
-      expect(snapshot.statusLabel, 'Precisa de atencao');
+      expect(snapshot.statusLabel, 'Conflito');
       expect(snapshot.errorCount, 1);
       expect(snapshot.blockedCount, 2);
       expect(snapshot.conflictCount, 1);
@@ -269,6 +272,7 @@ void main() {
             syncEnabled: true,
           ),
           isOfflineFallback: false,
+          clientInstanceId: 'device-1',
         );
 
     await container.read(backendConnectionStatusProvider.future);

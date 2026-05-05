@@ -15,6 +15,8 @@ import 'package:erp_pdv_app/modules/account/presentation/providers/account_cloud
 import 'package:erp_pdv_app/modules/dashboard/domain/entities/operational_dashboard_snapshot.dart';
 import 'package:erp_pdv_app/modules/dashboard/presentation/pages/dashboard_page.dart';
 import 'package:erp_pdv_app/modules/dashboard/presentation/providers/dashboard_providers.dart';
+import 'package:erp_pdv_app/modules/estoque/domain/entities/inventory_item.dart';
+import 'package:erp_pdv_app/modules/estoque/presentation/providers/inventory_providers.dart';
 import 'package:erp_pdv_app/modules/system/presentation/providers/system_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -56,6 +58,9 @@ void main() {
               recentMovements: <OperationalDashboardRecentMovement>[],
             );
           }),
+          inventoryItemOptionsProvider.overrideWith(
+            (ref) async => const <InventoryItem>[],
+          ),
           backendConnectionStatusProvider.overrideWith((ref) async {
             return BackendConnectionStatus(
               isConfigured: true,
@@ -105,7 +110,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(DashboardPage), findsOneWidget);
-      expect(find.text('Dashboard operacional'), findsAtLeastNWidgets(1));
+      expect(find.text('Inicio'), findsAtLeastNWidgets(1));
 
       await container.read(backendConnectionStatusProvider.future);
       final cloudStatus = container.read(accountCloudStatusProvider);
@@ -145,6 +150,9 @@ void main() {
             recentMovements: <OperationalDashboardRecentMovement>[],
           );
         }),
+        inventoryItemOptionsProvider.overrideWith(
+          (ref) async => const <InventoryItem>[],
+        ),
         backendConnectionStatusProvider.overrideWith((ref) async {
           return BackendConnectionStatus(
             isConfigured: true,
@@ -232,6 +240,9 @@ void main() {
             recentMovements: <OperationalDashboardRecentMovement>[],
           );
         }),
+        inventoryItemOptionsProvider.overrideWith(
+          (ref) async => const <InventoryItem>[],
+        ),
         backendConnectionStatusProvider.overrideWith((ref) async {
           return BackendConnectionStatus(
             isConfigured: true,
@@ -336,6 +347,7 @@ AppSession get _trialSession {
     ),
     startedAt: DateTime(2026, 4, 23, 12),
     isOfflineFallback: false,
+    clientInstanceId: 'device-1',
   );
 }
 

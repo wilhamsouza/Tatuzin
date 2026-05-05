@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { requireCloudLicense } from '../../shared/http/auth-middleware';
+import { requireAppContext } from '../../shared/http/auth-middleware';
 import { asyncHandler } from '../../shared/http/async-handler';
 import { validateQuery } from '../../shared/http/validate';
 import {
@@ -22,7 +22,7 @@ inventoryRouter.get('/health', (_request, response) => {
   });
 });
 
-inventoryRouter.use(requireCloudLicense);
+inventoryRouter.use(requireAppContext);
 
 inventoryRouter.get(
   '/summary',

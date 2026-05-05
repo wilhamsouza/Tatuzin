@@ -7,15 +7,21 @@ import 'package:erp_pdv_app/modules/fornecedores/presentation/providers/supplier
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'test_tenant_session.dart';
+
 void main() {
   test(
     'categoryListProvider e categoryOptionsProvider compartilham carga',
     () async {
       final repository = _CountingCategoryRepository();
       final container = ProviderContainer(
-        overrides: [categoryRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          ...testTenantBootstrapOverrides(),
+          categoryRepositoryProvider.overrideWithValue(repository),
+        ],
       );
       addTearDown(container.dispose);
+      setTestTenantSession(container);
 
       final result = await Future.wait([
         container.read(categoryListProvider.future),
@@ -33,9 +39,13 @@ void main() {
     () async {
       final repository = _CountingSupplierRepository();
       final container = ProviderContainer(
-        overrides: [supplierRepositoryProvider.overrideWithValue(repository)],
+        overrides: [
+          ...testTenantBootstrapOverrides(),
+          supplierRepositoryProvider.overrideWithValue(repository),
+        ],
       );
       addTearDown(container.dispose);
+      setTestTenantSession(container);
 
       final result = await Future.wait([
         container.read(supplierListProvider.future),

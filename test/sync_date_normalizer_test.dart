@@ -1,8 +1,11 @@
 import 'package:erp_pdv_app/app/core/sync/sync_date_normalizer.dart';
 import 'package:erp_pdv_app/app/core/sync/sync_status.dart';
+import 'package:erp_pdv_app/app/core/sync/remote_financial_event_record.dart';
 import 'package:erp_pdv_app/modules/caixa/data/models/cash_event_sync_payload.dart';
 import 'package:erp_pdv_app/modules/caixa/data/models/remote_cash_event_record.dart';
 import 'package:erp_pdv_app/modules/caixa/domain/entities/cash_enums.dart';
+import 'package:erp_pdv_app/modules/fiado/data/models/fiado_payment_sync_payload.dart';
+import 'package:erp_pdv_app/modules/fiado/data/models/remote_fiado_payment_record.dart';
 import 'package:erp_pdv_app/modules/vendas/data/models/remote_sale_record.dart';
 import 'package:erp_pdv_app/modules/vendas/data/models/sale_sync_payload.dart';
 import 'package:erp_pdv_app/modules/vendas/domain/entities/sale_enums.dart';
@@ -188,6 +191,46 @@ void main() {
 
       expect(body['createdAt'], '2026-04-28T21:31:45.000Z');
     });
+
+    test('financial_event create serializa createdAt como ISO UTC com Z', () {
+      final record = RemoteFinancialEventRecord(
+        remoteId: '',
+        companyId: 'company-1',
+        saleId: '00000000-0000-4000-8000-000000000001',
+        fiadoId: 'fiado-1',
+        eventType: 'fiado_payment',
+        localUuid: 'payment-local-1',
+        amountCents: 1500,
+        paymentType: 'dinheiro',
+        createdAt: DateTime(2026, 5, 1, 23, 26),
+        updatedAt: DateTime(2026, 5, 1, 23, 26),
+        metadata: const <String, dynamic>{'paymentEntryLocalId': 1},
+      );
+
+      final body = record.toCreateBody();
+      final createdAt = body['createdAt'] as String;
+
+      expect(createdAt, endsWith('Z'));
+      expect(DateTime.tryParse(createdAt), isNotNull);
+      expect(createdAt, isNot(contains('/')));
+      expect(createdAt, isNot(contains('Invalid')));
+    });
+
+    test('fiado payment create serializa createdAt como ISO UTC com Z', () {
+      final payload = _fiadoPaymentPayload(
+        createdAt: DateTime(2026, 5, 1, 23, 26),
+      );
+
+      final body = RemoteFiadoPaymentRecord.fromSyncPayload(
+        payload,
+      ).toCreateBody();
+      final createdAt = body['createdAt'] as String;
+
+      expect(createdAt, endsWith('Z'));
+      expect(DateTime.tryParse(createdAt), isNotNull);
+      expect(createdAt, isNot(contains('/')));
+      expect(createdAt, isNot(contains('Invalid')));
+    });
   });
 }
 
@@ -238,6 +281,25 @@ CashEventSyncPayload _cashEventPayload({required DateTime createdAt}) {
     referenceLocalId: 1,
     referenceRemoteId: 'sale-remote-1',
     description: 'Venda',
+    createdAt: createdAt,
+    updatedAt: createdAt,
+    remoteId: null,
+    syncStatus: SyncStatus.pendingUpload,
+    lastSyncedAt: null,
+  );
+}
+
+FiadoPaymentSyncPayload _fiadoPaymentPayload({required DateTime createdAt}) {
+  return FiadoPaymentSyncPayload(
+    entryId: 1,
+    entryUuid: 'payment-local-1',
+    fiadoId: 1,
+    fiadoUuid: 'fiado-local-1',
+    saleLocalId: 1,
+    saleRemoteId: '00000000-0000-4000-8000-000000000001',
+    amountCents: 1500,
+    paymentMethod: PaymentMethod.cash,
+    notes: null,
     createdAt: createdAt,
     updatedAt: createdAt,
     remoteId: null,

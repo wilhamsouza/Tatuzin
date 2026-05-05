@@ -404,6 +404,16 @@ async function createFixture(label: string) {
       passwordHash,
     },
   });
+  await prisma.license.create({
+    data: {
+      companyId: company.id,
+      plan: 'pro',
+      status: 'ACTIVE',
+      startsAt: new Date(),
+      maxDevices: 5,
+      syncEnabled: true,
+    },
+  });
 
   await prisma.membership.create({
     data: {

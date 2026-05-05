@@ -122,6 +122,12 @@ class ProductBaseInfoSection extends StatelessWidget {
                     ),
                 ],
                 onChanged: isCategoryLoading ? null : onCategoryChanged,
+                validator: (value) {
+                  if (value == null) {
+                    return 'Informe a categoria do produto';
+                  }
+                  return null;
+                },
               ),
               TextFormField(
                 controller: barcodeController,

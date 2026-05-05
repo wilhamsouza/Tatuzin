@@ -1,6 +1,11 @@
 import { createHash, randomBytes } from 'crypto';
 
-import { MembershipRole, Prisma, type Membership } from '@prisma/client';
+import {
+  LicenseStatus,
+  MembershipRole,
+  Prisma,
+  type Membership,
+} from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 import { env } from '../../config/env';
@@ -117,6 +122,8 @@ export class AuthService {
     if (!passwordMatches) {
       throw new AppError('E-mail ou senha invalidos.', 401, 'INVALID_CREDENTIALS');
     }
+
+    this.assertLicenseAllowsAppSession(membership.company.license);
 
     const sessionTokens = await this.sessionService.createSession({
       userId: membership.user.id,
@@ -551,6 +558,40 @@ export class AuthService {
       platform: input.platform,
       appVersion: input.appVersion,
     };
+  }
+
+  private assertLicenseAllowsAppSession(license: {
+    status: string;
+    expiresAt: Date | null;
+  } | null) {
+    if (license == null) {
+      throw new AppError(
+        'Licenca valida obrigatoria para entrar no app.',
+        403,
+        'LICENSE_REQUIRED',
+      );
+    }
+
+    const expiredByDate =
+      license.expiresAt != null && license.expiresAt.getTime() < Date.now();
+    if (license.status === LicenseStatus.EXPIRED || expiredByDate) {
+      throw new AppError(
+        'Licenca expirada para entrar no app.',
+        403,
+        'LICENSE_EXPIRED',
+      );
+    }
+
+    if (
+      license.status !== LicenseStatus.ACTIVE &&
+      license.status !== LicenseStatus.TRIAL
+    ) {
+      throw new AppError(
+        'Licenca ativa obrigatoria para entrar no app.',
+        403,
+        'LICENSE_REQUIRED',
+      );
+    }
   }
 
   private async ensureRegistrationAvailable(input: {

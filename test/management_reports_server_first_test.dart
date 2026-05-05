@@ -20,6 +20,8 @@ import 'package:erp_pdv_app/modules/relatorios/domain/entities/report_variant_su
 import 'package:erp_pdv_app/modules/relatorios/domain/repositories/report_repository.dart';
 import 'package:erp_pdv_app/modules/relatorios/presentation/providers/report_providers.dart';
 
+import 'test_tenant_session.dart';
+
 void main() {
   group('relatorios gerenciais server-first', () {
     test('classifica relatorios gerenciais e operacional por estrategia', () {
@@ -94,11 +96,13 @@ void main() {
         final local = FakeReportRepository();
         final container = ProviderContainer(
           overrides: [
+            ...testTenantBootstrapOverrides(),
             pdvOperationalReportRepositoryProvider.overrideWithValue(local),
             reportRemoteDatasourceProvider.overrideWithValue(remote),
           ],
         );
         addTearDown(container.dispose);
+        setTestTenantSession(container);
 
         final cash = await container.read(cashflowReportProvider.future);
 
@@ -141,11 +145,13 @@ void main() {
         final local = FakeReportRepository();
         final container = ProviderContainer(
           overrides: [
+            ...testTenantBootstrapOverrides(),
             pdvOperationalReportRepositoryProvider.overrideWithValue(local),
             reportRemoteDatasourceProvider.overrideWithValue(remote),
           ],
         );
         addTearDown(container.dispose);
+        setTestTenantSession(container);
 
         final result = await container.read(
           topProductsReportResultProvider.future,
@@ -166,11 +172,13 @@ void main() {
         final local = FakeReportRepository();
         final container = ProviderContainer(
           overrides: [
+            ...testTenantBootstrapOverrides(),
             pdvOperationalReportRepositoryProvider.overrideWithValue(local),
             reportRemoteDatasourceProvider.overrideWithValue(remote),
           ],
         );
         addTearDown(container.dispose);
+        setTestTenantSession(container);
 
         final variants = await container.read(topVariantsReportProvider.future);
         final notice = container.read(

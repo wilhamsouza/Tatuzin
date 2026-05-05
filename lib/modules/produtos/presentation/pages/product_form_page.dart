@@ -977,11 +977,13 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
 
   String _friendlyProductValidationMessage(String message) {
     final normalized = message.toLowerCase();
+    if (normalized.contains('categoryid') ||
+        normalized.contains('category id') ||
+        normalized.contains('category')) {
+      return 'Nao foi possivel criar o produto. Informe a categoria do produto.';
+    }
     if (normalized.contains('name')) {
       return 'Nao foi possivel criar o produto. Informe o nome do produto.';
-    }
-    if (normalized.contains('categoryid')) {
-      return 'Nao foi possivel criar o produto. Selecione uma categoria valida ou salve sem categoria.';
     }
     if (normalized.contains('unitmeasure')) {
       return 'Nao foi possivel criar o produto. Verifique a unidade de medida.';

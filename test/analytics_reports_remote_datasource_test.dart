@@ -115,6 +115,7 @@ AppOperationalContext _remoteContext() {
       ),
       startedAt: DateTime(2026, 4, 28),
       isOfflineFallback: false,
+      clientInstanceId: 'device-1',
     ),
   );
 }

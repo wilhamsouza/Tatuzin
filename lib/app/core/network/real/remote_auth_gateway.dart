@@ -36,14 +36,27 @@ class RemoteAuthGateway implements AuthGateway {
     final stopwatch = Stopwatch()..start();
     _logStepStarted('auth_session_load_started');
     final token = await _tokenStorage.readAccessToken();
+    final clientContext = await _tokenStorage.readClientContext();
     if (token == null) {
       _logStepCompleted('auth_session_loaded', stopwatch, restored: false);
+      return null;
+    }
+    if (clientContext == null) {
+      _logStepFailure(
+        'auth_session_load_started',
+        stopwatch,
+        const AuthenticationException('missing_client_instance_id'),
+      );
+      await _tokenStorage.clear();
       return null;
     }
 
     try {
       final identity = await _fetchIdentity(token);
-      final session = _buildSession(identity);
+      final session = _buildSession(
+        identity,
+        clientInstanceId: clientContext.clientInstanceId,
+      );
       _logStepCompleted(
         'auth_session_loaded',
         stopwatch,
@@ -77,6 +90,7 @@ class RemoteAuthGateway implements AuthGateway {
     final stopwatch = Stopwatch()..start();
     _logStepStarted('auth_session_load_started');
     final token = await _tokenStorage.readAccessToken();
+    final clientContext = await _tokenStorage.readClientContext();
     if (token == null) {
       _logStepFailure(
         'auth_session_load_started',
@@ -87,10 +101,24 @@ class RemoteAuthGateway implements AuthGateway {
         'Nao existe sessao remota salva para atualizar.',
       );
     }
+    if (clientContext == null) {
+      _logStepFailure(
+        'auth_session_load_started',
+        stopwatch,
+        const AuthenticationException('missing_client_instance_id'),
+      );
+      await _tokenStorage.clear();
+      throw const AuthenticationException(
+        'Sessao remota salva sem identificador deste dispositivo.',
+      );
+    }
 
     try {
       final identity = await _fetchIdentity(token);
-      final session = _buildSession(identity);
+      final session = _buildSession(
+        identity,
+        clientInstanceId: clientContext.clientInstanceId,
+      );
       _logStepCompleted(
         'auth_session_loaded',
         stopwatch,
@@ -144,7 +172,10 @@ class RemoteAuthGateway implements AuthGateway {
         stopwatch,
         userRemoteId: userRemoteId,
       );
-      return _buildAuthenticatedSession(response.data);
+      return _buildAuthenticatedSession(
+        response.data,
+        clientInstanceId: clientContext.clientInstanceId,
+      );
     } catch (error, stackTrace) {
       _logStepFailure(
         'auth_session_load_started',
@@ -198,7 +229,10 @@ class RemoteAuthGateway implements AuthGateway {
         stopwatch,
         userRemoteId: userRemoteId,
       );
-      return _buildAuthenticatedSession(response.data);
+      return _buildAuthenticatedSession(
+        response.data,
+        clientInstanceId: clientContext.clientInstanceId,
+      );
     } catch (error, stackTrace) {
       _logStepFailure(
         'auth_session_load_started',
@@ -343,8 +377,9 @@ class RemoteAuthGateway implements AuthGateway {
   }
 
   Future<AppSession> _buildAuthenticatedSession(
-    Map<String, dynamic> authPayload,
-  ) async {
+    Map<String, dynamic> authPayload, {
+    required String clientInstanceId,
+  }) async {
     final accessToken = _readString(
       authPayload,
       'accessToken',
@@ -415,10 +450,14 @@ class RemoteAuthGateway implements AuthGateway {
         companyOverride:
             companyResponse.data['company'] as Map<String, dynamic>?,
       ),
+      clientInstanceId: clientInstanceId,
     );
   }
 
-  AppSession _buildSession(_AuthIdentityPayload payload) {
+  AppSession _buildSession(
+    _AuthIdentityPayload payload, {
+    required String? clientInstanceId,
+  }) {
     return AppSession(
       scope: SessionScope.authenticatedRemote,
       user: AppUser(
@@ -445,6 +484,7 @@ class RemoteAuthGateway implements AuthGateway {
       ),
       startedAt: DateTime.now(),
       isOfflineFallback: false,
+      clientInstanceId: clientInstanceId,
     );
   }
 
@@ -456,6 +496,8 @@ class RemoteAuthGateway implements AuthGateway {
         return 'Administrador';
       case 'OPERATOR':
         return 'Operador';
+      case 'SUPPORT':
+        return 'Suporte';
       default:
         return role;
     }

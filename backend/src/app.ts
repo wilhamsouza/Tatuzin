@@ -7,6 +7,7 @@ import { analyticsReportsRouter } from './modules/analytics/reports/analytics-re
 import { tenantAnalyticsReportsRouter } from './modules/analytics/reports/tenant-analytics-reports.routes';
 import { analyticsSnapshotsRouter } from './modules/analytics/snapshots/analytics-snapshots.routes';
 import { adminRouter } from './modules/admin/admin.routes';
+import { appRouter } from './modules/app/app.routes';
 import { companyRouter, authRouter } from './modules/auth/auth.routes';
 import { crmRouter } from './modules/crm/crm.routes';
 import { costsRouter } from './modules/costs/costs.routes';
@@ -17,10 +18,12 @@ import { customersRouter } from './modules/customers/customers.routes';
 import { fiadoPaymentsRouter } from './modules/fiado/fiado-payments.routes';
 import { financialEventsRouter } from './modules/financial-events/financial-events.routes';
 import { inventoryRouter } from './modules/inventory/inventory.routes';
+import { operationalOrdersRouter } from './modules/operational-orders/operational-orders.routes';
 import { productRecipesRouter } from './modules/product-recipes/product-recipes.routes';
 import { productsRouter } from './modules/products/products.routes';
 import { purchasesRouter } from './modules/purchases/purchases.routes';
 import { salesRouter } from './modules/sales/sales.routes';
+import { syncRouter } from './modules/sync/sync.routes';
 import { suppliesRouter } from './modules/supplies/supplies.routes';
 import { suppliersRouter } from './modules/suppliers/suppliers.routes';
 import { AppError } from './shared/http/app-error';
@@ -70,7 +73,13 @@ export function createApp() {
         );
       },
       methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-Request-Id',
+        'X-Client-Instance-Id',
+        'X-Device-Id',
+      ],
       exposedHeaders: [
         'X-Request-Id',
         'X-RateLimit-Limit',
@@ -106,6 +115,7 @@ export function createApp() {
   });
 
   app.use('/api/auth', authRouter);
+  app.use('/api/app', appRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/admin/analytics/dashboard', analyticsDashboardRouter);
   app.use('/api/admin/analytics/reports', analyticsReportsRouter);
@@ -122,11 +132,13 @@ export function createApp() {
   app.use('/api/suppliers', suppliersRouter);
   app.use('/api/purchases', purchasesRouter);
   app.use('/api/sales', salesRouter);
+  app.use('/api/operational-orders', operationalOrdersRouter);
   app.use('/api/inventory', inventoryRouter);
   app.use('/api/costs', costsRouter);
   app.use('/api/financial-events', financialEventsRouter);
   app.use('/api/fiado', fiadoPaymentsRouter);
   app.use('/api/cash', cashEventsRouter);
+  app.use('/api/sync', syncRouter);
 
   app.use(errorHandler);
 

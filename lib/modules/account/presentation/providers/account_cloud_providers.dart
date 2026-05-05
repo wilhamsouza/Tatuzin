@@ -48,13 +48,13 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
 
   if (!authStatus.isRemoteAuthenticated || session.isLocalDefault) {
     return AccountCloudStatusSnapshot(
-      statusLabel: 'Modo local',
+      statusLabel: 'Login necessario',
       statusMessage:
-          'O Tatuzin esta pronto para operar neste aparelho. Quando voce entrar na conta, a nuvem volta a acompanhar sua empresa.',
+          'Entre com uma conta vinculada a empresa para liberar a operacao neste aparelho.',
       tone: AppStatusTone.neutral,
-      icon: Icons.offline_bolt_rounded,
-      accountModeLabel: 'Modo local',
-      cloudAvailabilityLabel: 'Uso local disponivel',
+      icon: Icons.lock_outline_rounded,
+      accountModeLabel: 'Sem sessao',
+      cloudAvailabilityLabel: 'Primeiro acesso exige internet',
       supportingLabel: hasRecentSync ? 'Ultima sincronizacao' : null,
       supportingValue: hasRecentSync
           ? AppFormatters.shortDateTime(syncOverview.lastProcessedAt!)
@@ -73,7 +73,7 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
     return AccountCloudStatusSnapshot(
       statusLabel: 'Precisa de atencao',
       statusMessage:
-          'Sua empresa ainda nao tem uma licenca de nuvem pronta para sincronizar. O uso local continua disponivel.',
+          'Sua empresa ainda nao tem uma licenca de nuvem pronta para sincronizar. A base local segue vinculada a este tenant.',
       tone: AppStatusTone.warning,
       icon: Icons.info_outline_rounded,
       accountModeLabel: 'Conta conectada',
@@ -92,7 +92,7 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
     return AccountCloudStatusSnapshot(
       statusLabel: 'Precisa de atencao',
       statusMessage:
-          'Sua licenca de nuvem esta suspensa. O app continua funcionando no modo local.',
+          'Sua licenca de nuvem esta suspensa. A base local permanece vinculada a esta empresa enquanto a conta precisa de atencao.',
       tone: AppStatusTone.warning,
       icon: Icons.pause_circle_outline_rounded,
       accountModeLabel: 'Conta conectada',
@@ -111,7 +111,7 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
     return AccountCloudStatusSnapshot(
       statusLabel: 'Precisa de atencao',
       statusMessage:
-          'Sua licenca de nuvem venceu. O uso local continua disponivel enquanto a conta precisa de atencao.',
+          'Sua licenca de nuvem venceu. A base local permanece vinculada a esta empresa enquanto a conta precisa de atencao.',
       tone: AppStatusTone.warning,
       icon: Icons.event_busy_rounded,
       accountModeLabel: 'Conta conectada',
@@ -130,7 +130,7 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
     return AccountCloudStatusSnapshot(
       statusLabel: 'Precisa de atencao',
       statusMessage:
-          'A nuvem desta empresa esta desativada no momento. O uso local continua liberado.',
+          'A nuvem desta empresa esta desativada no momento. A base local permanece vinculada a este tenant.',
       tone: AppStatusTone.warning,
       icon: Icons.cloud_off_rounded,
       accountModeLabel: 'Conta conectada',
@@ -167,7 +167,7 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
     return AccountCloudStatusSnapshot(
       statusLabel: 'Sem internet',
       statusMessage:
-          'Nao conseguimos falar com a nuvem agora. Mesmo assim, o Tatuzin continua funcionando localmente.',
+          'Nao conseguimos falar com a nuvem agora. O Tatuzin usa a base local ja vinculada a esta empresa.',
       tone: AppStatusTone.warning,
       icon: Icons.cloud_off_rounded,
       accountModeLabel: 'Conta conectada',
@@ -196,7 +196,7 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
     return AccountCloudStatusSnapshot(
       statusLabel: 'Precisa de atencao',
       statusMessage:
-          'Sua conta entrou, mas o auto-sync inicial nao conseguiu ser agendado. O uso local continua liberado enquanto a nuvem precisa de revisao.',
+          'Sua conta entrou, mas o auto-sync inicial nao conseguiu ser agendado. A base local permanece vinculada enquanto a nuvem precisa de revisao.',
       tone: AppStatusTone.warning,
       icon: Icons.error_outline_rounded,
       accountModeLabel: 'Conta conectada',
@@ -218,8 +218,14 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
 
   switch (syncOverview.displayState) {
     case SyncDisplayState.attention:
+      final hasConflicts = syncOverview.totalConflicts > 0;
+      final hasErrors = syncOverview.totalErrors > 0;
       return AccountCloudStatusSnapshot(
-        statusLabel: 'Precisa de atencao',
+        statusLabel: hasConflicts
+            ? 'Conflito'
+            : hasErrors
+            ? 'Erro de sync'
+            : 'Precisa de atencao',
         statusMessage: _buildAttentionMessage(
           syncOverview,
           autoSyncSnapshot: autoSyncSnapshot,
@@ -476,9 +482,15 @@ DateTime? _nextOperatorAttemptAt({
 final internalMobileSurfaceAccessProvider =
     Provider<InternalMobileSurfaceAccess>((ref) {
       final authStatus = ref.watch(authStatusProvider);
-      final canOpenTechnicalSystem = kDebugMode || authStatus.isPlatformAdmin;
+      final canOpenTechnicalSystem =
+          kDebugMode ||
+          authStatus.isPlatformAdmin ||
+          authStatus.isSupportProfile;
       final canOpenAdminCloud =
-          authStatus.isRemoteAuthenticated && authStatus.isPlatformAdmin;
+          authStatus.isRemoteAuthenticated &&
+          (kDebugMode ||
+              authStatus.isPlatformAdmin ||
+              authStatus.isSupportProfile);
 
       return InternalMobileSurfaceAccess(
         canOpenTechnicalSystem: canOpenTechnicalSystem,
@@ -636,7 +648,7 @@ String _endpointFor(SyncQueueItem item) {
     'sale_cancellations' => '/sales',
     'fiado_payments' => '/financial-events',
     'financial_events' => '/financial-events',
-    'cash_events' => '/cash-events',
+    'cash_events' => '/cash/events',
     _ => '/${item.featureKey}',
   };
   final remoteId = item.remoteId;

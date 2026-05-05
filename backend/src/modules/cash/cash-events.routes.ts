@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { requireCloudLicense } from '../../shared/http/auth-middleware';
+import { requireAppContext } from '../../shared/http/auth-middleware';
 import { asyncHandler } from '../../shared/http/async-handler';
 import { validateBody } from '../../shared/http/validate';
 import { CashEventsService } from './cash-events.service';
@@ -10,7 +10,7 @@ const cashEventsService = new CashEventsService();
 
 export const cashEventsRouter = Router();
 
-cashEventsRouter.use(requireCloudLicense);
+cashEventsRouter.use(requireAppContext);
 
 cashEventsRouter.post(
   '/events',

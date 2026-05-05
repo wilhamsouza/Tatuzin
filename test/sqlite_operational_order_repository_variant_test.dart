@@ -33,6 +33,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'support/sale_inventory_test_support.dart'
     show createSaleRepository, loadProductStock, loadVariantStock;
+import 'test_tenant_session.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -190,6 +191,7 @@ void main() {
     final repository = _RecordingOperationalOrderRepository();
     final container = ProviderContainer(
       overrides: [
+        ...testTenantBootstrapOverrides(),
         operationalOrderRepositoryProvider.overrideWithValue(repository),
         stockAvailabilityRepositoryProvider.overrideWithValue(
           const _AlwaysAvailableStockAvailabilityRepository(),
@@ -200,6 +202,7 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
+    setTestTenantSession(container);
 
     await container
         .read(operationalOrderItemControllerProvider.notifier)
@@ -229,9 +232,13 @@ void main() {
   test('faturamento recebe CartItem com variante do pedido', () async {
     final saleRepository = _RecordingSaleRepository();
     final container = ProviderContainer(
-      overrides: [saleRepositoryProvider.overrideWithValue(saleRepository)],
+      overrides: [
+        ...testTenantBootstrapOverrides(),
+        saleRepositoryProvider.overrideWithValue(saleRepository),
+      ],
     );
     addTearDown(container.dispose);
+    setTestTenantSession(container);
 
     final detail = _buildOrderDetail(
       item: _buildOrderItem(
@@ -258,9 +265,13 @@ void main() {
     () async {
       final saleRepository = _RecordingSaleRepository();
       final container = ProviderContainer(
-        overrides: [saleRepositoryProvider.overrideWithValue(saleRepository)],
+        overrides: [
+          ...testTenantBootstrapOverrides(),
+          saleRepositoryProvider.overrideWithValue(saleRepository),
+        ],
       );
       addTearDown(container.dispose);
+      setTestTenantSession(container);
 
       final detail = _buildOrderDetail(item: _buildOrderItem());
 
@@ -338,12 +349,14 @@ void main() {
       );
       final container = ProviderContainer(
         overrides: [
+          ...testTenantBootstrapOverrides(),
           saleRepositoryProvider.overrideWithValue(
             createSaleRepository(fixture.database),
           ),
         ],
       );
       addTearDown(container.dispose);
+      setTestTenantSession(container);
 
       await container
           .read(operationalOrderBillingControllerProvider.notifier)
@@ -429,9 +442,13 @@ void main() {
       );
       final saleRepository = createSaleRepository(fixture.database);
       final container = ProviderContainer(
-        overrides: [saleRepositoryProvider.overrideWithValue(saleRepository)],
+        overrides: [
+          ...testTenantBootstrapOverrides(),
+          saleRepositoryProvider.overrideWithValue(saleRepository),
+        ],
       );
       addTearDown(container.dispose);
+      setTestTenantSession(container);
 
       final sale = await container
           .read(operationalOrderBillingControllerProvider.notifier)

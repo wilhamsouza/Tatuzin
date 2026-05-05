@@ -20,6 +20,8 @@ import 'package:erp_pdv_app/modules/clientes/presentation/providers/client_provi
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'test_tenant_session.dart';
+
 void main() {
   test('CRM listagem retorna remoto quando API responde', () async {
     final local = _FakeLocalClientRepository();
@@ -154,11 +156,13 @@ void main() {
     ]);
     final container = ProviderContainer(
       overrides: [
+        ...testTenantBootstrapOverrides(),
         localClientRepositoryProvider.overrideWithValue(local),
         clientRepositoryProvider.overrideWithValue(_FailingClientRepository()),
       ],
     );
     addTearDown(container.dispose);
+    setTestTenantSession(container);
 
     final clients = await container.read(
       pdvCustomerLookupProvider('local').future,
@@ -171,10 +175,12 @@ void main() {
   test('clientListProvider propaga erro e nao fica carregando', () async {
     final container = ProviderContainer(
       overrides: [
+        ...testTenantBootstrapOverrides(),
         clientRepositoryProvider.overrideWithValue(_FailingClientRepository()),
       ],
     );
     addTearDown(container.dispose);
+    setTestTenantSession(container);
 
     await expectLater(
       container.read(clientListProvider.future),
@@ -224,6 +230,7 @@ AppOperationalContext _remoteOperationalContext() {
       ),
       startedAt: DateTime(2026, 4, 26, 10),
       isOfflineFallback: false,
+      clientInstanceId: 'device-1',
     ),
   );
 }

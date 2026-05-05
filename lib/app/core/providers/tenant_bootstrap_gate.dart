@@ -9,12 +9,19 @@ Future<String> requireTenantBootstrapReady(Ref ref, String label) async {
   final session = ref.watch(appSessionProvider);
   final runtimeKey = ref.watch(sessionRuntimeKeyProvider);
 
-  if (!session.isAuthenticated) {
-    AppLogger.info(
-      '[TenantBootstrap] ready true | provider=$label | '
-      'scope=${session.scope.name} | runtime_key=$runtimeKey',
+  if (!session.hasOperationalIdentity) {
+    AppLogger.error(
+      '[TenantBootstrap] ready false | provider=$label | '
+      'scope=${session.scope.name} | runtime_key=$runtimeKey | '
+      'companyId=${session.company.remoteId ?? 'n/a'} | '
+      'userId=${session.user.remoteId ?? 'n/a'} | '
+      'clientInstanceId=${session.clientInstanceId ?? 'n/a'} | '
+      'reason=missing_company_user_or_client_instance',
     );
-    return runtimeKey;
+    throw const AppStartupException(
+      'Entre com uma conta vinculada a uma empresa antes de usar esta area do Tatuzin.',
+      cause: 'missing_company_user_or_client_instance',
+    );
   }
 
   AppLogger.info(

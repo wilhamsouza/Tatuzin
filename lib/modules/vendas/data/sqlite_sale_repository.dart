@@ -4,6 +4,9 @@ import '../../../app/core/app_context/app_operational_context.dart';
 import '../../../app/core/database/app_database.dart';
 import '../../../app/core/database/table_names.dart';
 import '../../../app/core/errors/app_exceptions.dart';
+import '../../../app/core/sync/operational_sync_event.dart';
+import '../../../app/core/sync/operational_sync_queue_repository.dart';
+import '../../../app/core/sync/sqlite_operational_sync_queue_repository.dart';
 import '../../../app/core/sync/sqlite_sync_metadata_repository.dart';
 import '../../../app/core/sync/sqlite_sync_queue_repository.dart';
 import '../../../app/core/sync/sync_error_type.dart';
@@ -40,6 +43,9 @@ class SqliteSaleRepository implements SaleRepository {
         operationalContext: operationalContext,
         syncMetadataRepository: SqliteSyncMetadataRepository(appDatabase),
         syncQueueRepository: SqliteSyncQueueRepository(appDatabase),
+        operationalSyncQueueRepository: SqliteOperationalSyncQueueRepository(
+          appDatabase,
+        ),
       );
 
   SqliteSaleRepository.forDatabase({
@@ -47,11 +53,13 @@ class SqliteSaleRepository implements SaleRepository {
     required AppOperationalContext operationalContext,
     required SqliteSyncMetadataRepository syncMetadataRepository,
     required SqliteSyncQueueRepository syncQueueRepository,
+    OperationalSyncQueueRepository? operationalSyncQueueRepository,
   }) : this._internal(
          databaseLoader: databaseLoader,
          operationalContext: operationalContext,
          syncMetadataRepository: syncMetadataRepository,
          syncQueueRepository: syncQueueRepository,
+         operationalSyncQueueRepository: operationalSyncQueueRepository,
        );
 
   SqliteSaleRepository._internal({
@@ -59,10 +67,12 @@ class SqliteSaleRepository implements SaleRepository {
     required AppOperationalContext operationalContext,
     required SqliteSyncMetadataRepository syncMetadataRepository,
     required SqliteSyncQueueRepository syncQueueRepository,
+    required OperationalSyncQueueRepository? operationalSyncQueueRepository,
   }) : _databaseLoader = databaseLoader,
        _operationalContext = operationalContext,
        _syncMetadataRepository = syncMetadataRepository,
-       _syncQueueRepository = syncQueueRepository {
+       _syncQueueRepository = syncQueueRepository,
+       _operationalSyncQueueRepository = operationalSyncQueueRepository {
     _syncStateSupport = SaleSyncStateSupport(
       syncMetadataRepository: _syncMetadataRepository,
       syncQueueRepository: _syncQueueRepository,
@@ -83,6 +93,7 @@ class SqliteSaleRepository implements SaleRepository {
   final AppOperationalContext _operationalContext;
   final SqliteSyncMetadataRepository _syncMetadataRepository;
   final SqliteSyncQueueRepository _syncQueueRepository;
+  final OperationalSyncQueueRepository? _operationalSyncQueueRepository;
   late final SaleSyncStateSupport _syncStateSupport;
 
   @override
@@ -486,6 +497,8 @@ class SqliteSaleRepository implements SaleRepository {
     );
 
     int? fiadoId;
+    int? paymentMovementId;
+    String? paymentMovementUuid;
     if (saleType == SaleType.cash) {
       if (creditUsedCents > 0) {
         await CustomerCreditDatabaseSupport.applyCreditToSale(
@@ -514,6 +527,8 @@ class SqliteSaleRepository implements SaleRepository {
           movementUuid: cashMovement.uuid,
           createdAt: now,
         );
+        paymentMovementId = cashMovement.id;
+        paymentMovementUuid = cashMovement.uuid;
       }
 
       if (creditGeneratedCents > 0) {
@@ -583,6 +598,20 @@ class SqliteSaleRepository implements SaleRepository {
       );
     }
 
+    await _registerOperationalSaleEvents(
+      txn,
+      saleId: saleId,
+      saleUuid: saleUuid,
+      receiptNumber: receiptNumber,
+      input: input,
+      saleType: saleType,
+      finalCents: finalCents,
+      occurredAt: now,
+      stockChanges: stockChanges,
+      paymentMovementId: paymentMovementId,
+      paymentMovementUuid: paymentMovementUuid,
+    );
+
     return CompletedSale(
       saleId: saleId,
       receiptNumber: receiptNumber,
@@ -595,6 +624,217 @@ class SqliteSaleRepository implements SaleRepository {
       clientId: input.clientId,
       fiadoId: fiadoId,
     );
+  }
+
+  Future<void> _registerOperationalSaleEvents(
+    DatabaseExecutor txn, {
+    required int saleId,
+    required String saleUuid,
+    required String receiptNumber,
+    required CheckoutInput input,
+    required SaleType saleType,
+    required int finalCents,
+    required DateTime occurredAt,
+    required Iterable<InventoryBalanceMutation> stockChanges,
+    required int? paymentMovementId,
+    required String? paymentMovementUuid,
+  }) async {
+    final queue = _operationalSyncQueueRepository;
+    if (queue == null) {
+      return;
+    }
+
+    await queue.enqueue(
+      txn,
+      event: OperationalSyncEvent(
+        eventId: OperationalSyncEvent.buildEventId(
+          entity: 'sale',
+          operation: 'create',
+          localIdentity: saleUuid,
+        ),
+        feature: 'pdv',
+        entity: 'sale',
+        operation: 'create',
+        entityLocalId: saleUuid,
+        occurredAt: occurredAt,
+        payload: <String, dynamic>{
+          'localId': saleId,
+          'uuid': saleUuid,
+          'receiptNumber': receiptNumber,
+          'saleType': saleType.dbValue,
+          'paymentMethod': input.paymentMethod.dbValue,
+          'clientId': input.clientId,
+          'operationalOrderId': input.operationalOrderId,
+          'itemsTotalCents': input.itemsTotalCents,
+          'discountCents': input.discountCents,
+          'surchargeCents': input.surchargeCents,
+          'finalCents': finalCents,
+          'soldAt': occurredAt.toIso8601String(),
+          'notes': SaleValidationSupport.cleanNullable(input.notes),
+        },
+      ),
+    );
+
+    final saleItemRows = await txn.query(
+      TableNames.itensVenda,
+      where: 'venda_id = ?',
+      whereArgs: [saleId],
+      orderBy: 'id ASC',
+    );
+    for (final row in saleItemRows) {
+      final itemUuid = row['uuid'] as String;
+      await queue.enqueue(
+        txn,
+        event: OperationalSyncEvent(
+          eventId: OperationalSyncEvent.buildEventId(
+            entity: 'saleItem',
+            operation: 'create',
+            localIdentity: itemUuid,
+          ),
+          feature: 'pdv',
+          entity: 'saleItem',
+          operation: 'create',
+          entityLocalId: itemUuid,
+          occurredAt: occurredAt,
+          payload: <String, dynamic>{
+            'localId': row['id'],
+            'uuid': itemUuid,
+            'saleLocalId': saleId,
+            'saleUuid': saleUuid,
+            'productId': row['produto_id'],
+            'productVariantId': row['produto_variante_id'],
+            'productNameSnapshot': row['nome_produto_snapshot'],
+            'quantityMil': row['quantidade_mil'],
+            'unitPriceCents': row['valor_unitario_centavos'],
+            'subtotalCents': row['subtotal_centavos'],
+            'unitMeasureSnapshot': row['unidade_medida_snapshot'],
+            'productTypeSnapshot': row['tipo_produto_snapshot'],
+          },
+        ),
+      );
+    }
+
+    if (paymentMovementId != null &&
+        paymentMovementUuid != null &&
+        input.immediateReceivedCents > 0) {
+      await queue.enqueue(
+        txn,
+        event: OperationalSyncEvent(
+          eventId: OperationalSyncEvent.buildEventId(
+            entity: 'payment',
+            operation: 'create',
+            localIdentity: paymentMovementUuid,
+          ),
+          feature: 'pdv',
+          entity: 'payment',
+          operation: 'create',
+          entityLocalId: paymentMovementUuid,
+          occurredAt: occurredAt,
+          payload: <String, dynamic>{
+            'localMovementId': paymentMovementId,
+            'localMovementUuid': paymentMovementUuid,
+            'saleLocalId': saleId,
+            'saleUuid': saleUuid,
+            'receiptNumber': receiptNumber,
+            'paymentMethod': input.paymentMethod.dbValue,
+            'amountCents': input.immediateReceivedCents,
+            'occurredAt': occurredAt.toIso8601String(),
+          },
+        ),
+      );
+    }
+
+    await queue.enqueue(
+      txn,
+      event: OperationalSyncEvent(
+        eventId: OperationalSyncEvent.buildEventId(
+          entity: 'receipt',
+          operation: 'create',
+          localIdentity: receiptNumber,
+        ),
+        feature: 'pdv',
+        entity: 'receipt',
+        operation: 'create',
+        entityLocalId: receiptNumber,
+        occurredAt: occurredAt,
+        payload: <String, dynamic>{
+          'receiptNumber': receiptNumber,
+          'saleLocalId': saleId,
+          'saleUuid': saleUuid,
+          'amountCents': finalCents,
+          'issuedAt': occurredAt.toIso8601String(),
+        },
+      ),
+    );
+
+    for (final change in stockChanges) {
+      final localIdentity =
+          '$saleUuid:${change.productId}:${change.productVariantId ?? 0}';
+      await queue.enqueue(
+        txn,
+        event: OperationalSyncEvent(
+          eventId: OperationalSyncEvent.buildEventId(
+            entity: 'stockDeduction',
+            operation: 'create',
+            localIdentity: localIdentity,
+          ),
+          feature: 'pdv',
+          entity: 'stockDeduction',
+          operation: 'create',
+          entityLocalId: localIdentity,
+          occurredAt: occurredAt,
+          payload: <String, dynamic>{
+            'saleLocalId': saleId,
+            'saleUuid': saleUuid,
+            'productId': change.productId,
+            'productVariantId': change.productVariantId,
+            'quantityDeltaMil': change.quantityDeltaMil,
+            'stockBeforeMil': change.stockBeforeMil,
+            'stockAfterMil': change.stockAfterMil,
+            'occurredAt': occurredAt.toIso8601String(),
+          },
+        ),
+      );
+    }
+
+    if (input.operationalOrderId != null) {
+      final reservationRows = await txn.query(
+        TableNames.estoqueReservas,
+        where: 'venda_id = ?',
+        whereArgs: [saleId],
+        orderBy: 'id ASC',
+      );
+      for (final row in reservationRows) {
+        final reservationUuid = row['uuid'] as String;
+        await queue.enqueue(
+          txn,
+          event: OperationalSyncEvent(
+            eventId: OperationalSyncEvent.buildEventId(
+              entity: 'stockReservation',
+              operation: 'update',
+              localIdentity: reservationUuid,
+            ),
+            feature: 'pdv',
+            entity: 'stockReservation',
+            operation: 'update',
+            entityLocalId: reservationUuid,
+            occurredAt: occurredAt,
+            payload: <String, dynamic>{
+              'localId': row['id'],
+              'uuid': reservationUuid,
+              'operationalOrderId': row['pedido_operacional_id'],
+              'operationalOrderItemId': row['item_pedido_operacional_id'],
+              'productId': row['produto_id'],
+              'productVariantId': row['produto_variante_id'],
+              'quantityMil': row['quantidade_mil'],
+              'status': row['status'],
+              'saleLocalId': saleId,
+              'convertedAt': row['convertido_em_venda_em'],
+            },
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _linkOperationalOrderToSale(
@@ -771,6 +1011,62 @@ class SqliteSaleRepository implements SaleRepository {
       movementId: movementId,
       movementUuid: movementUuid,
       createdAt: createdAt,
+    );
+    await _registerOperationalCashMovementEvent(
+      txn,
+      movementId: movementId,
+      movementUuid: movementUuid,
+      createdAt: createdAt,
+    );
+  }
+
+  Future<void> _registerOperationalCashMovementEvent(
+    DatabaseExecutor txn, {
+    required int movementId,
+    required String movementUuid,
+    required DateTime createdAt,
+  }) async {
+    final queue = _operationalSyncQueueRepository;
+    if (queue == null) {
+      return;
+    }
+
+    final rows = await txn.query(
+      TableNames.caixaMovimentos,
+      where: 'id = ?',
+      whereArgs: [movementId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return;
+    }
+
+    final row = rows.first;
+    await queue.enqueue(
+      txn,
+      event: OperationalSyncEvent(
+        eventId: OperationalSyncEvent.buildEventId(
+          entity: 'cashMovement',
+          operation: 'create',
+          localIdentity: movementUuid,
+        ),
+        feature: 'pdv',
+        entity: 'cashMovement',
+        operation: 'create',
+        entityLocalId: movementUuid,
+        occurredAt: createdAt,
+        payload: <String, dynamic>{
+          'localId': movementId,
+          'uuid': movementUuid,
+          'sessionId': row['sessao_id'],
+          'type': row['tipo_movimento'],
+          'referenceType': row['referencia_tipo'],
+          'referenceId': row['referencia_id'],
+          'amountCents': row['valor_centavos'],
+          'description': row['descricao'],
+          'createdAt': row['criado_em'],
+        },
+      ),
     );
   }
 

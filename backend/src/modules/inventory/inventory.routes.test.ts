@@ -72,6 +72,7 @@ describe('tenant inventory routes', () => {
       token: unlicensed.token,
     });
     assert.equal(blocked.status, 403);
+    assert.equal((blocked.data as { code?: string }).code, 'LICENSE_REQUIRED');
   });
 
   it('filters zeroed and below minimum items and paginates results', async () => {
@@ -165,6 +166,24 @@ async function createFixture(options?: { createLicense?: boolean }) {
       isDefault: true,
     },
   });
+  const clientInstanceId = `${runId}-device-${Date.now()}`;
+
+  if (options?.createLicense !== false) {
+    await prisma.companyDevice.create({
+      data: {
+        companyId: company.id,
+        userId: user.id,
+        clientInstanceId,
+        deviceLabel: 'Inventory Route Test',
+        platform: 'node-test',
+        appVersion: 'inventory-test',
+        status: 'ACTIVE',
+        approvedAt: new Date(),
+        approvedByUserId: user.id,
+        lastSeenAt: new Date(),
+      },
+    });
+  }
 
   await prisma.product.createMany({
     data: [
@@ -222,6 +241,7 @@ async function createFixture(options?: { createLicense?: boolean }) {
       companyId: company.id,
       membershipId: membership.id,
       email: user.email,
+      clientInstanceId,
     }),
   };
 }
@@ -231,6 +251,7 @@ function signToken(input: {
   companyId: string;
   membershipId: string;
   email: string;
+  clientInstanceId: string;
 }) {
   return jwt.sign(
     {
@@ -240,6 +261,7 @@ function signToken(input: {
       membershipRole: 'OPERATOR',
       email: input.email,
       isPlatformAdmin: false,
+      clientInstanceId: input.clientInstanceId,
     },
     env.JWT_SECRET,
     { expiresIn: '15m' },
@@ -273,4 +295,3 @@ async function cleanupFixtures() {
     where: { email: { startsWith: `${runId}-` } },
   });
 }
-

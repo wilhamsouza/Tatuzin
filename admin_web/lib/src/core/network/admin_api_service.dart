@@ -169,6 +169,103 @@ class AdminApiService {
     return AdminCompanyDetail.fromMap(response);
   }
 
+  Future<AdminCompanySyncHealth> fetchCompanySyncHealth(
+    String companyId,
+  ) async {
+    final response = await _apiClient.getJson(
+      '/admin/companies/$companyId/sync/health',
+      accessToken: await _readRequiredToken(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message:
+            'A API nao retornou a saude da sincronizacao no formato esperado.',
+      );
+    }
+
+    return AdminCompanySyncHealth.fromMap(response);
+  }
+
+  Future<List<AdminCompanySyncDevice>> fetchCompanySyncDevices(
+    String companyId,
+  ) async {
+    final response = await _apiClient.getJson(
+      '/admin/companies/$companyId/devices',
+      accessToken: await _readRequiredToken(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return readAdminItems(
+      payload,
+    ).map(AdminCompanySyncDevice.fromMap).toList(growable: false);
+  }
+
+  Future<AdminPaginatedResult<AdminSyncEventDiagnostic>>
+  fetchCompanySyncEvents({required AdminCompanySyncEventsQuery query}) async {
+    final response = await _apiClient.getJson(
+      '/admin/companies/${query.companyId}/sync/events',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return AdminPaginatedResult<AdminSyncEventDiagnostic>(
+      items: readAdminItems(
+        payload,
+      ).map(AdminSyncEventDiagnostic.fromMap).toList(growable: false),
+      pagination: AdminPaginationMeta.fromPayload(payload),
+      filters: readAdminFilters(payload),
+      sort: AdminSortMeta.fromPayload(payload),
+    );
+  }
+
+  Future<AdminPaginatedResult<AdminSyncConflictDiagnostic>>
+  fetchCompanySyncConflicts({
+    required AdminCompanySyncConflictsQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/companies/${query.companyId}/sync/conflicts',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return AdminPaginatedResult<AdminSyncConflictDiagnostic>(
+      items: readAdminItems(
+        payload,
+      ).map(AdminSyncConflictDiagnostic.fromMap).toList(growable: false),
+      pagination: AdminPaginationMeta.fromPayload(payload),
+      filters: readAdminFilters(payload),
+      sort: AdminSortMeta.fromPayload(payload),
+    );
+  }
+
+  Future<AdminPaginatedResult<AdminSyncIncidentDiagnostic>>
+  fetchCompanySyncIncidents({
+    required AdminCompanySyncIncidentsQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/companies/${query.companyId}/sync/incidents',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return AdminPaginatedResult<AdminSyncIncidentDiagnostic>(
+      items: readAdminItems(
+        payload,
+      ).map(AdminSyncIncidentDiagnostic.fromMap).toList(growable: false),
+      pagination: AdminPaginationMeta.fromPayload(payload),
+      filters: readAdminFilters(payload),
+      sort: AdminSortMeta.fromPayload(payload),
+    );
+  }
+
   Future<AdminPaginatedResult<AdminLicenseSnapshot>> fetchLicenses({
     AdminLicensesQuery? query,
   }) async {

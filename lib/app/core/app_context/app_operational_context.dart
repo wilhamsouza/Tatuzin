@@ -23,7 +23,7 @@ class AppOperationalContext {
   bool get isLocalOnly => environment.isLocalOnly;
 
   bool get hasRemoteSession =>
-      session.isRemoteAuthenticated && currentRemoteCompanyId != null;
+      session.isRemoteAuthenticated && session.hasOperationalIdentity;
 
   bool get canUseCloudReads =>
       environment.dataMode != AppDataMode.localOnly &&

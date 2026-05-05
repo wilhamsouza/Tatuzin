@@ -6,6 +6,7 @@ import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/database/database_file_locator.dart';
 import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../carrinho/presentation/providers/cart_provider.dart';
 import '../../data/backup_file_picker_service.dart';
 import '../../data/backup_share_service.dart';
@@ -72,6 +73,10 @@ class BackupActionController extends AsyncNotifier<void> {
   Future<BackupFileInfo> createManualBackup() async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'BackupActionController.createManualBackup',
+      );
       final backup = await ref
           .read(databaseBackupServiceProvider)
           .createBackup();
@@ -133,6 +138,10 @@ class BackupActionController extends AsyncNotifier<void> {
 
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'BackupActionController.restoreSelectedBackup',
+      );
       final result = await ref
           .read(databaseRestoreServiceProvider)
           .restoreFromBackup(candidate.filePath);

@@ -4,6 +4,7 @@ abstract final class AppRouteNames {
   static const forgotPassword = 'forgot-password';
   static const resetPassword = 'reset-password';
   static const dashboard = 'dashboard';
+  static const more = 'more';
   static const accountCloud = 'account-cloud';
   static const categories = 'categories';
   static const categoryForm = 'category-form';
@@ -63,6 +64,7 @@ abstract final class AppRoutePaths {
   static const forgotPassword = '/esqueci-senha';
   static const resetPassword = '/redefinir-senha';
   static const dashboard = '/';
+  static const more = '/mais';
   static const accountCloud = '/conta';
   static const categories = '/categorias';
   static const categoryForm = '/categorias/form';

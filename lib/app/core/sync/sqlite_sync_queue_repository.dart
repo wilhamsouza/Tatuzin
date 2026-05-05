@@ -2,7 +2,9 @@ import 'package:sqflite/sqflite.dart';
 
 import '../database/app_database.dart';
 import '../database/table_names.dart';
+import '../utils/app_logger.dart';
 import 'auto_sync_coordinator.dart';
+import 'operational_sync_policy.dart';
 import 'sqlite_sync_audit_repository.dart';
 import 'sync_audit_event_type.dart';
 import 'sync_conflict_info.dart';
@@ -34,6 +36,18 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
     required SyncQueueOperation operation,
     required DateTime localUpdatedAt,
   }) async {
+    if (OperationalSyncPolicy.isBlockedServerFirstFeature(featureKey) ||
+        OperationalSyncPolicy.blockedServerFirstEntities.contains(
+          entityType.trim(),
+        )) {
+      AppLogger.warn(
+        '[Sync] legacy_queue_blocked code=${OperationalSyncPolicy.entityNotLocalFirstCode} | '
+        'featureKey=$featureKey | entityType=$entityType | '
+        'operation=${operation.storageValue}',
+      );
+      return;
+    }
+
     final now = DateTime.now();
     final correlationKey = _buildCorrelationKey(
       featureKey: featureKey,
@@ -785,10 +799,6 @@ class SqliteSyncQueueRepository implements SyncQueueRepository {
 
     if (item.status == SyncQueueStatus.synced ||
         item.status == SyncQueueStatus.conflict) {
-      return false;
-    }
-
-    if (retryOnly && item.status == SyncQueueStatus.blockedDependency) {
       return false;
     }
 

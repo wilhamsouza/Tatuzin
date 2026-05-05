@@ -10,6 +10,7 @@ class AppSession {
     required this.company,
     required this.startedAt,
     required this.isOfflineFallback,
+    this.clientInstanceId,
   });
 
   factory AppSession.localDefault() {
@@ -18,7 +19,7 @@ class AppSession {
       user: const AppUser.localDefault(),
       company: const CompanyContext.localDefault(),
       startedAt: DateTime.now(),
-      isOfflineFallback: true,
+      isOfflineFallback: false,
     );
   }
 
@@ -27,6 +28,7 @@ class AppSession {
   final CompanyContext company;
   final DateTime startedAt;
   final bool isOfflineFallback;
+  final String? clientInstanceId;
 
   bool get isAuthenticated => scope != SessionScope.localDefault;
 
@@ -36,12 +38,32 @@ class AppSession {
 
   bool get isRemoteAuthenticated => scope == SessionScope.authenticatedRemote;
 
+  bool get hasClientInstanceId {
+    final value = clientInstanceId?.trim();
+    return value != null && value.isNotEmpty;
+  }
+
+  bool get hasOperationalIdentity {
+    return isAuthenticated &&
+        user.hasRemoteIdentity &&
+        company.hasRemoteIdentity &&
+        hasClientInstanceId;
+  }
+
+  bool get canStartSync {
+    return isRemoteAuthenticated &&
+        hasOperationalIdentity &&
+        !isOfflineFallback;
+  }
+
   AppSession copyWith({
     SessionScope? scope,
     AppUser? user,
     CompanyContext? company,
     DateTime? startedAt,
     bool? isOfflineFallback,
+    String? clientInstanceId,
+    bool clearClientInstanceId = false,
   }) {
     return AppSession(
       scope: scope ?? this.scope,
@@ -49,6 +71,9 @@ class AppSession {
       company: company ?? this.company,
       startedAt: startedAt ?? this.startedAt,
       isOfflineFallback: isOfflineFallback ?? this.isOfflineFallback,
+      clientInstanceId: clearClientInstanceId
+          ? null
+          : clientInstanceId ?? this.clientInstanceId,
     );
   }
 }

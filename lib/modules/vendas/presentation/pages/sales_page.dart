@@ -18,6 +18,7 @@ import '../../../../app/routes/route_names.dart';
 import '../../../../app/theme/app_design_tokens.dart';
 import '../../../carrinho/domain/entities/cart_item.dart';
 import '../../../carrinho/presentation/providers/cart_provider.dart';
+import '../../../estoque/presentation/providers/inventory_providers.dart';
 import '../../../produtos/domain/entities/modifier_group.dart';
 import '../../../produtos/domain/entities/modifier_option.dart';
 import '../../../produtos/domain/entities/product.dart';
@@ -612,10 +613,12 @@ class _ProductTile extends ConsumerWidget {
     final product = entry.product;
     final outOfStock = entry.totalStockMil < 1000;
     final stockLabel =
-        'Estoque ${AppFormatters.quantityFromMil(entry.totalStockMil)}';
+        'Disponivel ${AppFormatters.quantityFromMil(entry.totalStockMil)}';
     final secondaryDetails = [
       if (entry.hasVariants)
         '${entry.availableVariants.length} variante${entry.availableVariants.length == 1 ? '' : 's'}',
+      if (entry.totalReservedStockMil > 0)
+        'Reservado ${AppFormatters.quantityFromMil(entry.totalReservedStockMil)}',
       if (product.modifierGroupCount > 0)
         '${product.modifierGroupCount} complemento${product.modifierGroupCount == 1 ? '' : 's'}',
       if (product.barcode?.isNotEmpty ?? false) 'Cód. ${product.barcode}',
@@ -794,10 +797,28 @@ class _ProductTile extends ConsumerWidget {
       return;
     }
 
+    final refreshedProduct = await _refreshProductAvailability(
+      ref,
+      selectedProduct,
+    );
+    if (!context.mounted) {
+      return;
+    }
+    if (refreshedProduct.stockMil < 1000) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Produto sem disponibilidade no momento.'),
+          ),
+        );
+      return;
+    }
+
     final added = await _addProductWithCompatibility(
       context,
       ref,
-      selectedProduct,
+      refreshedProduct,
     );
     if (added == null || !context.mounted) {
       return;
@@ -817,20 +838,84 @@ class _ProductTile extends ConsumerWidget {
 
   Future<Product?> _resolveSelectedProduct(BuildContext context) async {
     if (!entry.hasVariants) {
-      return entry.product;
+      return entry.buildSellableProduct();
     }
 
-    final selectedVariant = await showModalBottomSheet<ProductVariant>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _VariantSelectionSheet(entry: entry),
-    );
+    final selectedVariant =
+        await showModalBottomSheet<SalesCatalogVariantOption>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          builder: (_) => _VariantSelectionSheet(entry: entry),
+        );
     if (selectedVariant == null) {
       return null;
     }
 
     return entry.buildSellableVariantProduct(selectedVariant);
+  }
+
+  Future<Product> _refreshProductAvailability(
+    WidgetRef ref,
+    Product product,
+  ) async {
+    final availability = await ref
+        .read(stockAvailabilityRepositoryProvider)
+        .getAvailability(
+          productId: product.id,
+          productVariantId: product.sellableVariantId,
+        );
+    return _copyProductWithStock(
+      product,
+      stockMil: availability.availableQuantityMil,
+    );
+  }
+
+  Product _copyProductWithStock(Product product, {required int stockMil}) {
+    return Product(
+      id: product.id,
+      uuid: product.uuid,
+      name: product.name,
+      description: product.description,
+      categoryId: product.categoryId,
+      categoryName: product.categoryName,
+      barcode: product.barcode,
+      primaryPhotoPath: product.primaryPhotoPath,
+      productType: product.productType,
+      niche: product.niche,
+      catalogType: product.catalogType,
+      modelName: product.modelName,
+      variantLabel: product.variantLabel,
+      baseProductId: product.baseProductId,
+      baseProductName: product.baseProductName,
+      variantAttributes: product.variantAttributes,
+      variants: product.variants,
+      modifierGroups: product.modifierGroups,
+      sellableVariantId: product.sellableVariantId,
+      sellableVariantSku: product.sellableVariantSku,
+      sellableVariantColorLabel: product.sellableVariantColorLabel,
+      sellableVariantSizeLabel: product.sellableVariantSizeLabel,
+      sellableVariantPriceAdditionalCents:
+          product.sellableVariantPriceAdditionalCents,
+      unitMeasure: product.unitMeasure,
+      costCents: product.costCents,
+      manualCostCents: product.manualCostCents,
+      costSource: product.costSource,
+      variableCostSnapshotCents: product.variableCostSnapshotCents,
+      estimatedGrossMarginCents: product.estimatedGrossMarginCents,
+      estimatedGrossMarginPercentBasisPoints:
+          product.estimatedGrossMarginPercentBasisPoints,
+      lastCostUpdatedAt: product.lastCostUpdatedAt,
+      salePriceCents: product.salePriceCents,
+      stockMil: stockMil,
+      isActive: product.isActive,
+      createdAt: product.createdAt,
+      updatedAt: product.updatedAt,
+      deletedAt: product.deletedAt,
+      remoteId: product.remoteId,
+      syncStatus: product.syncStatus,
+      lastSyncedAt: product.lastSyncedAt,
+    );
   }
 
   Future<bool?> _addProductWithCompatibility(
@@ -878,7 +963,7 @@ class _VariantSelectionSheetState extends State<_VariantSelectionSheet> {
   String? _selectedColor;
 
   List<String> get _sizes => widget.entry.availableVariants
-      .map((variant) => variant.sizeLabel.trim())
+      .map((option) => option.variant.sizeLabel.trim())
       .where((label) => label.isNotEmpty)
       .toSet()
       .toList(growable: false);
@@ -890,14 +975,14 @@ class _VariantSelectionSheetState extends State<_VariantSelectionSheet> {
     }
 
     return widget.entry.availableVariants
-        .where((variant) => variant.sizeLabel.trim() == selectedSize)
-        .map((variant) => variant.colorLabel.trim())
+        .where((option) => option.variant.sizeLabel.trim() == selectedSize)
+        .map((option) => option.variant.colorLabel.trim())
         .where((label) => label.isNotEmpty)
         .toSet()
         .toList(growable: false);
   }
 
-  ProductVariant? get _selectedVariant {
+  SalesCatalogVariantOption? get _selectedVariant {
     final selectedSize = _selectedSize;
     final selectedColor = _selectedColor;
     if (selectedSize == null || selectedColor == null) {
@@ -905,8 +990,8 @@ class _VariantSelectionSheetState extends State<_VariantSelectionSheet> {
     }
 
     for (final variant in widget.entry.availableVariants) {
-      if (variant.sizeLabel.trim() == selectedSize &&
-          variant.colorLabel.trim() == selectedColor) {
+      if (variant.variant.sizeLabel.trim() == selectedSize &&
+          variant.variant.colorLabel.trim() == selectedColor) {
         return variant;
       }
     }
@@ -930,6 +1015,7 @@ class _VariantSelectionSheetState extends State<_VariantSelectionSheet> {
     final colorScheme = theme.colorScheme;
     final product = widget.entry.product;
     final selectedVariant = _selectedVariant;
+    final selectedVariantData = selectedVariant?.variant;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -1085,7 +1171,7 @@ class _VariantSelectionSheetState extends State<_VariantSelectionSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${selectedVariant.sizeLabel} • ${selectedVariant.colorLabel}',
+                        '${selectedVariantData!.sizeLabel} • ${selectedVariantData.colorLabel}',
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
@@ -1094,7 +1180,7 @@ class _VariantSelectionSheetState extends State<_VariantSelectionSheet> {
                       Text(
                         AppFormatters.currencyFromCents(
                           product.salePriceCents +
-                              selectedVariant.priceAdditionalCents,
+                              selectedVariantData.priceAdditionalCents,
                         ),
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w800,
@@ -1102,10 +1188,12 @@ class _VariantSelectionSheetState extends State<_VariantSelectionSheet> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'SKU ${selectedVariant.sku} • Estoque ${AppFormatters.quantityFromMil(selectedVariant.stockMil)}',
+                        'SKU ${selectedVariantData.sku} • Fisico ${AppFormatters.quantityFromMil(selectedVariant.physicalQuantityMil)} • Reservado ${AppFormatters.quantityFromMil(selectedVariant.reservedQuantityMil)} • Disponivel ${AppFormatters.quantityFromMil(selectedVariant.availableQuantityMil)}',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),

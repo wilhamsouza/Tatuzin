@@ -133,6 +133,7 @@ class SupplierSyncController extends AsyncNotifier<void> {
   Future<SyncActionResult> syncNow() async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(ref, 'SupplierSyncController.syncNow');
       final result = await ref.read(supplierHybridRepositoryProvider).syncNow();
       ref.read(appDataRefreshProvider.notifier).state++;
       state = const AsyncData(null);

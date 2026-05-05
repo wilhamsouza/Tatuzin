@@ -544,6 +544,146 @@ class AdminSyncOperationalQuery {
   );
 }
 
+class AdminCompanySyncEventsQuery {
+  const AdminCompanySyncEventsQuery({
+    required this.companyId,
+    this.page = 1,
+    this.limit = 20,
+    this.deviceId,
+    this.status,
+    this.entity,
+    this.feature,
+    this.from,
+    this.to,
+  });
+
+  final String companyId;
+  final int page;
+  final int limit;
+  final String? deviceId;
+  final String? status;
+  final String? entity;
+  final String? feature;
+  final DateTime? from;
+  final DateTime? to;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      'page': '$page',
+      'limit': '$limit',
+      if (_normalized(deviceId) case final value?) 'deviceId': value,
+      if (_normalized(status) case final value?) 'status': value,
+      if (_normalized(entity) case final value?) 'entity': value,
+      if (_normalized(feature) case final value?) 'feature': value,
+      if (from != null) 'from': from!.toIso8601String(),
+      if (to != null) 'to': to!.toIso8601String(),
+    };
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is AdminCompanySyncEventsQuery &&
+        other.companyId == companyId &&
+        other.page == page &&
+        other.limit == limit &&
+        other.deviceId == deviceId &&
+        other.status == status &&
+        other.entity == entity &&
+        other.feature == feature &&
+        other.from == from &&
+        other.to == to;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    companyId,
+    page,
+    limit,
+    deviceId,
+    status,
+    entity,
+    feature,
+    from,
+    to,
+  );
+}
+
+class AdminCompanySyncConflictsQuery {
+  const AdminCompanySyncConflictsQuery({
+    required this.companyId,
+    this.page = 1,
+    this.limit = 20,
+    this.status,
+  });
+
+  final String companyId;
+  final int page;
+  final int limit;
+  final String? status;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      'page': '$page',
+      'limit': '$limit',
+      if (_normalized(status) case final value?) 'status': value,
+    };
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is AdminCompanySyncConflictsQuery &&
+        other.companyId == companyId &&
+        other.page == page &&
+        other.limit == limit &&
+        other.status == status;
+  }
+
+  @override
+  int get hashCode => Object.hash(companyId, page, limit, status);
+}
+
+class AdminCompanySyncIncidentsQuery {
+  const AdminCompanySyncIncidentsQuery({
+    required this.companyId,
+    this.page = 1,
+    this.limit = 20,
+    this.severity,
+    this.from,
+    this.to,
+  });
+
+  final String companyId;
+  final int page;
+  final int limit;
+  final String? severity;
+  final DateTime? from;
+  final DateTime? to;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      'page': '$page',
+      'limit': '$limit',
+      if (_normalized(severity) case final value?) 'severity': value,
+      if (from != null) 'from': from!.toIso8601String(),
+      if (to != null) 'to': to!.toIso8601String(),
+    };
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is AdminCompanySyncIncidentsQuery &&
+        other.companyId == companyId &&
+        other.page == page &&
+        other.limit == limit &&
+        other.severity == severity &&
+        other.from == from &&
+        other.to == to;
+  }
+
+  @override
+  int get hashCode => Object.hash(companyId, page, limit, severity, from, to);
+}
+
 class AdminCompanySummary {
   const AdminCompanySummary({
     required this.id,
@@ -1281,6 +1421,529 @@ class AdminObservedFeature {
         'lastObservedRemoteChangeAt',
       ),
       observationKind: _readString(map, 'observationKind'),
+    );
+  }
+}
+
+class AdminCompanySyncHealth {
+  const AdminCompanySyncHealth({
+    required this.companyId,
+    required this.companyName,
+    required this.companySlug,
+    required this.currentServerVersion,
+    required this.serverFirstSnapshotVersion,
+    required this.status,
+    required this.syncEnabled,
+    required this.license,
+    required this.devices,
+    required this.events,
+    required this.openConflictsCount,
+    required this.lastMaterializedAt,
+    required this.lastSyncAt,
+    required this.deviceSyncStates,
+    required this.lastIncident,
+  });
+
+  final String companyId;
+  final String companyName;
+  final String companySlug;
+  final String currentServerVersion;
+  final String serverFirstSnapshotVersion;
+  final String status;
+  final bool syncEnabled;
+  final AdminCompanySyncLicense? license;
+  final AdminCompanySyncDeviceCounts devices;
+  final AdminCompanySyncEventCounts events;
+  final int openConflictsCount;
+  final DateTime? lastMaterializedAt;
+  final DateTime? lastSyncAt;
+  final List<AdminCompanyDeviceSyncState> deviceSyncStates;
+  final AdminSyncIncidentSummary? lastIncident;
+
+  factory AdminCompanySyncHealth.fromMap(Map<String, dynamic> map) {
+    final lastIncident = map['lastIncident'];
+    return AdminCompanySyncHealth(
+      companyId: _readString(map, 'companyId'),
+      companyName: _readString(map, 'companyName'),
+      companySlug: _readString(map, 'companySlug'),
+      currentServerVersion: _readString(
+        map,
+        'currentServerVersion',
+        fallback: '0',
+      ),
+      serverFirstSnapshotVersion: _readString(
+        map,
+        'serverFirstSnapshotVersion',
+        fallback: '0',
+      ),
+      status: _readString(map, 'status', fallback: 'pending'),
+      syncEnabled: map['syncEnabled'] == true,
+      license: map['license'] is Map<String, dynamic>
+          ? AdminCompanySyncLicense.fromMap(
+              map['license'] as Map<String, dynamic>,
+            )
+          : null,
+      devices: AdminCompanySyncDeviceCounts.fromMap(
+        map['devices'] as Map<String, dynamic>? ?? const <String, dynamic>{},
+      ),
+      events: AdminCompanySyncEventCounts.fromMap(
+        map['events'] as Map<String, dynamic>? ?? const <String, dynamic>{},
+      ),
+      openConflictsCount: _readOptionalInt(map, 'openConflictsCount') ?? 0,
+      lastMaterializedAt: _readOptionalDateTime(map, 'lastMaterializedAt'),
+      lastSyncAt: _readOptionalDateTime(map, 'lastSyncAt'),
+      deviceSyncStates:
+          (map['deviceSyncStates'] as List<dynamic>? ?? const <dynamic>[])
+              .whereType<Map<String, dynamic>>()
+              .map(AdminCompanyDeviceSyncState.fromMap)
+              .toList(growable: false),
+      lastIncident: lastIncident is Map<String, dynamic>
+          ? AdminSyncIncidentSummary.fromMap(lastIncident)
+          : null,
+    );
+  }
+}
+
+class AdminCompanySyncLicense {
+  const AdminCompanySyncLicense({
+    required this.id,
+    required this.companyId,
+    required this.plan,
+    required this.status,
+    required this.startsAt,
+    required this.expiresAt,
+    required this.maxDevices,
+    required this.syncEnabled,
+  });
+
+  final String id;
+  final String companyId;
+  final String plan;
+  final String status;
+  final DateTime? startsAt;
+  final DateTime? expiresAt;
+  final int? maxDevices;
+  final bool syncEnabled;
+
+  factory AdminCompanySyncLicense.fromMap(Map<String, dynamic> map) {
+    return AdminCompanySyncLicense(
+      id: _readString(map, 'id'),
+      companyId: _readString(map, 'companyId'),
+      plan: _readString(map, 'plan'),
+      status: _readString(map, 'status'),
+      startsAt: _readOptionalDateTime(map, 'startsAt'),
+      expiresAt: _readOptionalDateTime(map, 'expiresAt'),
+      maxDevices: _readOptionalInt(map, 'maxDevices'),
+      syncEnabled: map['syncEnabled'] == true,
+    );
+  }
+}
+
+class AdminCompanySyncDeviceCounts {
+  const AdminCompanySyncDeviceCounts({
+    required this.active,
+    required this.blocked,
+    required this.revoked,
+    required this.pending,
+    required this.total,
+  });
+
+  final int active;
+  final int blocked;
+  final int revoked;
+  final int pending;
+  final int total;
+
+  factory AdminCompanySyncDeviceCounts.fromMap(Map<String, dynamic> map) {
+    return AdminCompanySyncDeviceCounts(
+      active: _readOptionalInt(map, 'active') ?? 0,
+      blocked: _readOptionalInt(map, 'blocked') ?? 0,
+      revoked: _readOptionalInt(map, 'revoked') ?? 0,
+      pending: _readOptionalInt(map, 'pending') ?? 0,
+      total: _readOptionalInt(map, 'total') ?? 0,
+    );
+  }
+}
+
+class AdminCompanySyncEventCounts {
+  const AdminCompanySyncEventCounts({
+    required this.accepted,
+    required this.rejected,
+    required this.conflict,
+    required this.failed,
+    required this.duplicate,
+    required this.pending,
+    required this.total,
+  });
+
+  final int accepted;
+  final int rejected;
+  final int conflict;
+  final int failed;
+  final int duplicate;
+  final int pending;
+  final int total;
+
+  factory AdminCompanySyncEventCounts.fromMap(Map<String, dynamic> map) {
+    return AdminCompanySyncEventCounts(
+      accepted: _readOptionalInt(map, 'accepted') ?? 0,
+      rejected: _readOptionalInt(map, 'rejected') ?? 0,
+      conflict: _readOptionalInt(map, 'conflict') ?? 0,
+      failed: _readOptionalInt(map, 'failed') ?? 0,
+      duplicate: _readOptionalInt(map, 'duplicate') ?? 0,
+      pending: _readOptionalInt(map, 'pending') ?? 0,
+      total: _readOptionalInt(map, 'total') ?? 0,
+    );
+  }
+}
+
+class AdminCompanyDeviceSyncState {
+  const AdminCompanyDeviceSyncState({
+    required this.deviceId,
+    required this.deviceLabel,
+    required this.clientInstanceId,
+    required this.status,
+    required this.lastSyncAt,
+    required this.lastSeenAt,
+  });
+
+  final String deviceId;
+  final String? deviceLabel;
+  final String clientInstanceId;
+  final String status;
+  final DateTime? lastSyncAt;
+  final DateTime? lastSeenAt;
+
+  factory AdminCompanyDeviceSyncState.fromMap(Map<String, dynamic> map) {
+    return AdminCompanyDeviceSyncState(
+      deviceId: _readString(map, 'deviceId'),
+      deviceLabel: _readOptionalString(map, 'deviceLabel'),
+      clientInstanceId: _readString(map, 'clientInstanceId'),
+      status: _readString(map, 'status'),
+      lastSyncAt: _readOptionalDateTime(map, 'lastSyncAt'),
+      lastSeenAt: _readOptionalDateTime(map, 'lastSeenAt'),
+    );
+  }
+}
+
+class AdminSyncIncidentSummary {
+  const AdminSyncIncidentSummary({
+    required this.id,
+    required this.code,
+    required this.message,
+    required this.severity,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String code;
+  final String message;
+  final String severity;
+  final DateTime? createdAt;
+
+  factory AdminSyncIncidentSummary.fromMap(Map<String, dynamic> map) {
+    return AdminSyncIncidentSummary(
+      id: _readString(map, 'id'),
+      code: _readString(map, 'code'),
+      message: _readString(map, 'message'),
+      severity: _readString(map, 'severity'),
+      createdAt: _readOptionalDateTime(map, 'createdAt'),
+    );
+  }
+}
+
+class AdminCompanySyncDevice {
+  const AdminCompanySyncDevice({
+    required this.id,
+    required this.deviceLabel,
+    required this.platform,
+    required this.appVersion,
+    required this.status,
+    required this.lastSeenAt,
+    required this.userId,
+    required this.userName,
+    required this.userEmail,
+    required this.clientInstanceId,
+    required this.createdAt,
+    required this.approvedAt,
+    required this.revokedAt,
+    required this.revokedReason,
+  });
+
+  final String id;
+  final String? deviceLabel;
+  final String? platform;
+  final String? appVersion;
+  final String status;
+  final DateTime? lastSeenAt;
+  final String userId;
+  final String userName;
+  final String userEmail;
+  final String clientInstanceId;
+  final DateTime? createdAt;
+  final DateTime? approvedAt;
+  final DateTime? revokedAt;
+  final String? revokedReason;
+
+  factory AdminCompanySyncDevice.fromMap(Map<String, dynamic> map) {
+    return AdminCompanySyncDevice(
+      id: _readString(map, 'id'),
+      deviceLabel: _readOptionalString(map, 'deviceLabel'),
+      platform: _readOptionalString(map, 'platform'),
+      appVersion: _readOptionalString(map, 'appVersion'),
+      status: _readString(map, 'status'),
+      lastSeenAt: _readOptionalDateTime(map, 'lastSeenAt'),
+      userId: _readString(map, 'userId'),
+      userName: _readString(map, 'userName', fallback: 'Usuario'),
+      userEmail: _readString(map, 'userEmail', fallback: 'sem e-mail'),
+      clientInstanceId: _readString(map, 'clientInstanceId'),
+      createdAt: _readOptionalDateTime(map, 'createdAt'),
+      approvedAt: _readOptionalDateTime(map, 'approvedAt'),
+      revokedAt: _readOptionalDateTime(map, 'revokedAt'),
+      revokedReason: _readOptionalString(map, 'revokedReason'),
+    );
+  }
+}
+
+class AdminSyncEventDiagnostic {
+  const AdminSyncEventDiagnostic({
+    required this.id,
+    required this.eventId,
+    required this.feature,
+    required this.entity,
+    required this.operation,
+    required this.entityLocalId,
+    required this.entityServerId,
+    required this.status,
+    required this.occurredAt,
+    required this.createdAt,
+    required this.materializedAt,
+    required this.serverVersion,
+    required this.errorCode,
+    required this.errorMessage,
+    required this.payloadSummary,
+    required this.device,
+    required this.user,
+  });
+
+  final String id;
+  final String eventId;
+  final String feature;
+  final String entity;
+  final String operation;
+  final String? entityLocalId;
+  final String? entityServerId;
+  final String status;
+  final DateTime? occurredAt;
+  final DateTime? createdAt;
+  final DateTime? materializedAt;
+  final String? serverVersion;
+  final String? errorCode;
+  final String? errorMessage;
+  final String? payloadSummary;
+  final AdminSyncDeviceRef device;
+  final AdminSyncUserRef user;
+
+  factory AdminSyncEventDiagnostic.fromMap(Map<String, dynamic> map) {
+    return AdminSyncEventDiagnostic(
+      id: _readString(map, 'id'),
+      eventId: _readString(map, 'eventId'),
+      feature: _readString(map, 'feature'),
+      entity: _readString(map, 'entity'),
+      operation: _readString(map, 'operation'),
+      entityLocalId: _readOptionalString(map, 'entityLocalId'),
+      entityServerId: _readOptionalString(map, 'entityServerId'),
+      status: _readString(map, 'status'),
+      occurredAt: _readOptionalDateTime(map, 'occurredAt'),
+      createdAt: _readOptionalDateTime(map, 'createdAt'),
+      materializedAt: _readOptionalDateTime(map, 'materializedAt'),
+      serverVersion: _readOptionalString(map, 'serverVersion'),
+      errorCode: _readOptionalString(map, 'errorCode'),
+      errorMessage: _readOptionalString(map, 'errorMessage'),
+      payloadSummary: _readOptionalString(map, 'payloadSummary'),
+      device: AdminSyncDeviceRef.fromMap(_readMap(map, 'device')),
+      user: AdminSyncUserRef.fromMap(_readMap(map, 'user')),
+    );
+  }
+}
+
+class AdminSyncConflictDiagnostic {
+  const AdminSyncConflictDiagnostic({
+    required this.id,
+    required this.entity,
+    required this.entityLocalId,
+    required this.entityServerId,
+    required this.code,
+    required this.message,
+    required this.status,
+    required this.createdAt,
+    required this.resolvedAt,
+    required this.payloadSummary,
+    required this.resolutionSummary,
+    required this.device,
+    required this.user,
+    required this.resolvedBy,
+    required this.event,
+  });
+
+  final String id;
+  final String entity;
+  final String? entityLocalId;
+  final String? entityServerId;
+  final String code;
+  final String message;
+  final String status;
+  final DateTime? createdAt;
+  final DateTime? resolvedAt;
+  final String? payloadSummary;
+  final String? resolutionSummary;
+  final AdminSyncDeviceRef device;
+  final AdminSyncUserRef user;
+  final AdminSyncUserRef? resolvedBy;
+  final AdminSyncEventRef event;
+
+  factory AdminSyncConflictDiagnostic.fromMap(Map<String, dynamic> map) {
+    final resolvedBy = map['resolvedBy'];
+    return AdminSyncConflictDiagnostic(
+      id: _readString(map, 'id'),
+      entity: _readString(map, 'entity'),
+      entityLocalId: _readOptionalString(map, 'entityLocalId'),
+      entityServerId: _readOptionalString(map, 'entityServerId'),
+      code: _readString(map, 'code'),
+      message: _readString(map, 'message'),
+      status: _readString(map, 'status'),
+      createdAt: _readOptionalDateTime(map, 'createdAt'),
+      resolvedAt: _readOptionalDateTime(map, 'resolvedAt'),
+      payloadSummary: _readOptionalString(map, 'payloadSummary'),
+      resolutionSummary: _readOptionalString(map, 'resolutionSummary'),
+      device: AdminSyncDeviceRef.fromMap(_readMap(map, 'device')),
+      user: AdminSyncUserRef.fromMap(_readMap(map, 'user')),
+      resolvedBy: resolvedBy is Map<String, dynamic>
+          ? AdminSyncUserRef.fromMap(resolvedBy)
+          : null,
+      event: AdminSyncEventRef.fromMap(_readMap(map, 'event')),
+    );
+  }
+}
+
+class AdminSyncIncidentDiagnostic {
+  const AdminSyncIncidentDiagnostic({
+    required this.id,
+    required this.code,
+    required this.message,
+    required this.severity,
+    required this.createdAt,
+    required this.detailsSummary,
+    required this.device,
+    required this.user,
+    required this.event,
+  });
+
+  final String id;
+  final String code;
+  final String message;
+  final String severity;
+  final DateTime? createdAt;
+  final String? detailsSummary;
+  final AdminSyncDeviceRef? device;
+  final AdminSyncUserRef? user;
+  final AdminSyncEventRef? event;
+
+  factory AdminSyncIncidentDiagnostic.fromMap(Map<String, dynamic> map) {
+    final device = map['device'];
+    final user = map['user'];
+    final event = map['event'];
+    return AdminSyncIncidentDiagnostic(
+      id: _readString(map, 'id'),
+      code: _readString(map, 'code'),
+      message: _readString(map, 'message'),
+      severity: _readString(map, 'severity'),
+      createdAt: _readOptionalDateTime(map, 'createdAt'),
+      detailsSummary: _readOptionalString(map, 'detailsSummary'),
+      device: device is Map<String, dynamic>
+          ? AdminSyncDeviceRef.fromMap(device)
+          : null,
+      user: user is Map<String, dynamic>
+          ? AdminSyncUserRef.fromMap(user)
+          : null,
+      event: event is Map<String, dynamic>
+          ? AdminSyncEventRef.fromMap(event)
+          : null,
+    );
+  }
+}
+
+class AdminSyncDeviceRef {
+  const AdminSyncDeviceRef({
+    required this.id,
+    required this.deviceLabel,
+    required this.clientInstanceId,
+    required this.status,
+  });
+
+  final String id;
+  final String? deviceLabel;
+  final String clientInstanceId;
+  final String status;
+
+  factory AdminSyncDeviceRef.fromMap(Map<String, dynamic> map) {
+    return AdminSyncDeviceRef(
+      id: _readString(map, 'id'),
+      deviceLabel: _readOptionalString(map, 'deviceLabel'),
+      clientInstanceId: _readString(map, 'clientInstanceId'),
+      status: _readString(map, 'status'),
+    );
+  }
+}
+
+class AdminSyncUserRef {
+  const AdminSyncUserRef({
+    required this.id,
+    required this.name,
+    required this.email,
+  });
+
+  final String id;
+  final String name;
+  final String email;
+
+  factory AdminSyncUserRef.fromMap(Map<String, dynamic> map) {
+    return AdminSyncUserRef(
+      id: _readString(map, 'id'),
+      name: _readString(map, 'name', fallback: 'Usuario'),
+      email: _readString(map, 'email', fallback: 'sem e-mail'),
+    );
+  }
+}
+
+class AdminSyncEventRef {
+  const AdminSyncEventRef({
+    required this.id,
+    required this.eventId,
+    required this.feature,
+    required this.entity,
+    required this.operation,
+    required this.status,
+    required this.serverVersion,
+  });
+
+  final String id;
+  final String eventId;
+  final String feature;
+  final String entity;
+  final String operation;
+  final String status;
+  final String? serverVersion;
+
+  factory AdminSyncEventRef.fromMap(Map<String, dynamic> map) {
+    return AdminSyncEventRef(
+      id: _readString(map, 'id'),
+      eventId: _readString(map, 'eventId'),
+      feature: _readString(map, 'feature'),
+      entity: _readString(map, 'entity'),
+      operation: _readString(map, 'operation'),
+      status: _readString(map, 'status'),
+      serverVersion: _readOptionalString(map, 'serverVersion'),
     );
   }
 }

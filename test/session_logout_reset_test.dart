@@ -40,6 +40,7 @@ void main() {
             user: session.user,
             company: session.company,
             isOfflineFallback: session.isOfflineFallback,
+            clientInstanceId: session.clientInstanceId,
           );
       expect(
         (await container.read(appStartupProvider.future)).isSuccess,
@@ -76,6 +77,7 @@ void main() {
             user: session.user,
             company: session.company,
             isOfflineFallback: session.isOfflineFallback,
+            clientInstanceId: session.clientInstanceId,
           );
       expect(
         (await container.read(appStartupProvider.future)).isSuccess,
@@ -149,5 +151,6 @@ AppSession _remoteSession({required String companyId}) {
     ),
     startedAt: DateTime.now(),
     isOfflineFallback: false,
+    clientInstanceId: 'device-1',
   );
 }

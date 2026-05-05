@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:erp_pdv_app/app/theme/app_theme.dart';
 import 'package:erp_pdv_app/app/core/database/app_database.dart';
+import 'package:erp_pdv_app/app/core/errors/app_exceptions.dart';
 import 'package:erp_pdv_app/app/core/providers/app_data_refresh_provider.dart';
 import 'package:erp_pdv_app/app/core/session/app_session.dart';
 import 'package:erp_pdv_app/app/core/session/app_user.dart';
@@ -76,12 +77,16 @@ void main() {
     () async {
       final container = ProviderContainer(
         overrides: [
+          appStartupProvider.overrideWith(
+            (ref) async => const AppStartupState.success(),
+          ),
           salesCatalogRepositoryProvider.overrideWithValue(
             const _FakeProductRepository(<Product>[]),
           ),
         ],
       );
       addTearDown(container.dispose);
+      _setRemoteSession(container);
 
       final catalog = await container.read(salesCatalogProvider.future);
 
@@ -94,12 +99,16 @@ void main() {
     () async {
       final container = ProviderContainer(
         overrides: [
+          appStartupProvider.overrideWith(
+            (ref) async => const AppStartupState.success(),
+          ),
           salesCatalogRepositoryProvider.overrideWithValue(
             _NeverCompletesProductRepository(),
           ),
         ],
       );
       addTearDown(container.dispose);
+      _setRemoteSession(container);
 
       await expectLater(
         container.read(salesCatalogProvider.future),
@@ -114,6 +123,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          appStartupProvider.overrideWith(
+            (ref) async => const AppStartupState.success(),
+          ),
           salesCatalogProvider.overrideWith((ref) async {
             attempts++;
             throw TimeoutException('catalogo travado');
@@ -138,10 +150,14 @@ void main() {
   test('Fiado: banco vazio retorna vazio pelo provider', () async {
     final container = ProviderContainer(
       overrides: [
+        appStartupProvider.overrideWith(
+          (ref) async => const AppStartupState.success(),
+        ),
         fiadoRepositoryProvider.overrideWithValue(_EmptyFiadoRepository()),
       ],
     );
     addTearDown(container.dispose);
+    _setRemoteSession(container);
 
     expect(await container.read(fiadoListProvider.future), isEmpty);
   });
@@ -149,12 +165,16 @@ void main() {
   test('Pedidos: banco vazio retorna fila vazia pelo provider', () async {
     final container = ProviderContainer(
       overrides: [
+        appStartupProvider.overrideWith(
+          (ref) async => const AppStartupState.success(),
+        ),
         operationalOrderRepositoryProvider.overrideWithValue(
           _EmptyOperationalOrderRepository(),
         ),
       ],
     );
     addTearDown(container.dispose);
+    _setRemoteSession(container);
 
     final board = await container.read(operationalOrderBoardProvider.future);
 
@@ -165,10 +185,14 @@ void main() {
   test('Custos: banco vazio retorna resumo zerado e lista vazia', () async {
     final container = ProviderContainer(
       overrides: [
+        appStartupProvider.overrideWith(
+          (ref) async => const AppStartupState.success(),
+        ),
         costRepositoryProvider.overrideWithValue(_EmptyCostRepository()),
       ],
     );
     addTearDown(container.dispose);
+    _setRemoteSession(container);
 
     final overview = await container.read(costOverviewProvider.future);
     final costs = await container.read(costsProvider(CostType.fixed).future);
@@ -181,12 +205,16 @@ void main() {
   test('Estoque: local vazio retorna vazio pelo provider', () async {
     final container = ProviderContainer(
       overrides: [
+        appStartupProvider.overrideWith(
+          (ref) async => const AppStartupState.success(),
+        ),
         inventoryRepositoryProvider.overrideWithValue(
           _EmptyInventoryRepository(),
         ),
       ],
     );
     addTearDown(container.dispose);
+    _setRemoteSession(container);
 
     expect(await container.read(inventoryItemsProvider.future), isEmpty);
   });
@@ -194,10 +222,14 @@ void main() {
   test('Caixa continua respondendo com banco vazio', () async {
     final container = ProviderContainer(
       overrides: [
+        appStartupProvider.overrideWith(
+          (ref) async => const AppStartupState.success(),
+        ),
         cashRepositoryProvider.overrideWithValue(_EmptyCashRepository()),
       ],
     );
     addTearDown(container.dispose);
+    _setRemoteSession(container);
 
     expect(await container.read(currentCashSessionProvider.future), isNull);
   });
@@ -244,7 +276,7 @@ void main() {
     expect(container.read(appDataRefreshProvider), refreshKey);
   });
 
-  test('modo offline continua usando banco local padrao', () {
+  test('sessao sem tenant nao abre banco operacional generico', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
@@ -253,10 +285,8 @@ void main() {
       startsWith('local_default:'),
     );
     expect(
-      AppDatabase.databaseNameForIsolationKey(
-        container.read(sessionIsolationKeyProvider),
-      ),
-      'simples_erp_pdv.db',
+      () => container.read(appDatabaseProvider),
+      throwsA(isA<AppStartupException>()),
     );
   });
 }
@@ -284,6 +314,7 @@ void _setRemoteSession(ProviderContainer container) {
           licenseStatus: 'trial',
           syncEnabled: true,
         ),
+        clientInstanceId: 'device-1',
       );
 }
 

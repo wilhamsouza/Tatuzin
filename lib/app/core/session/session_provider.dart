@@ -32,12 +32,13 @@ final sessionGuardProvider = Provider<SessionGuardSnapshot>((ref) {
   final session = ref.watch(appSessionProvider);
 
   return SessionGuardSnapshot(
-    allowOperationalRoutes: true,
+    allowOperationalRoutes: session.hasOperationalIdentity,
     allowRemoteRoutes:
         environment.dataMode.allowsRemoteRead &&
+        session.hasOperationalIdentity &&
         session.user.canUseRemoteFeatures,
     requiresAuthenticationBeforeRemote:
-        environment.authEnabled && !session.isAuthenticated,
+        environment.authEnabled && !session.hasOperationalIdentity,
   );
 });
 
@@ -56,6 +57,7 @@ class SessionController extends Notifier<AppSession> {
     required AppUser user,
     required CompanyContext company,
     bool isOfflineFallback = false,
+    String? clientInstanceId,
   }) {
     final oldRuntimeKey = _safeRuntimeKeyFor(state);
     final nextState = state.copyWith(
@@ -64,6 +66,8 @@ class SessionController extends Notifier<AppSession> {
       company: company,
       startedAt: DateTime.now(),
       isOfflineFallback: isOfflineFallback,
+      clientInstanceId: clientInstanceId,
+      clearClientInstanceId: clientInstanceId == null,
     );
     final newRuntimeKey = _safeRuntimeKeyFor(nextState);
     AppLogger.info(
@@ -110,6 +114,12 @@ abstract final class SessionIsolation {
   }
 
   static String _companyScopedKey(String prefix, AppSession session) {
+    if (!session.user.hasRemoteIdentity) {
+      throw StateError(
+        'Sessao autenticada sem identificador remoto de usuario. '
+        'O Tatuzin bloqueou o acesso local para evitar operacao sem dono.',
+      );
+    }
     final companyId = session.company.remoteId?.trim();
     if (companyId == null || companyId.isEmpty) {
       throw StateError(

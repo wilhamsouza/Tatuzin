@@ -976,7 +976,19 @@ class SqliteProductRepository implements ProductRepository {
     final buffer = StringBuffer(_selectQuery(includeDeleted: includeDeleted));
 
     if (onlyAvailable) {
-      buffer.write(' AND p.ativo = 1 AND p.estoque_mil > 0');
+      buffer.write('''
+        AND p.ativo = 1
+        AND (
+          p.estoque_mil > 0
+          OR EXISTS (
+            SELECT 1
+            FROM ${TableNames.produtoVariantes} pv_available
+            WHERE pv_available.produto_id = p.id
+              AND pv_available.ativo = 1
+              AND pv_available.estoque_mil > 0
+          )
+        )
+      ''');
     }
 
     if (trimmedQuery.isNotEmpty) {

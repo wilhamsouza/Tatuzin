@@ -60,8 +60,31 @@ void main() {
         expect(session.user.remoteId, 'user-1');
         expect(session.company.remoteId, 'company-1');
         expect(session.company.displayName, 'Tatuzin Foods');
+        expect(session.company.licenseStatus, 'active');
+        expect(session.company.syncEnabled, isTrue);
+        expect(session.clientInstanceId, 'device-123');
       },
     );
+
+    test('restoreSession exige contexto de dispositivo salvo', () async {
+      final apiClient = _RecordingApiClient();
+      final tokenStorage = _MemoryAuthTokenStorage(
+        accessToken: 'access-token-1',
+        refreshToken: 'refresh-token-1',
+      );
+
+      final gateway = RemoteAuthGateway(
+        apiClient: apiClient,
+        tokenStorage: tokenStorage,
+      );
+
+      final session = await gateway.restoreSession();
+
+      expect(session, isNull);
+      expect(apiClient.calls, isEmpty);
+      expect(await tokenStorage.readAccessToken(), isNull);
+      expect(await tokenStorage.readRefreshToken(), isNull);
+    });
 
     test(
       'login falha com timeout especifico quando /companies/current demora',

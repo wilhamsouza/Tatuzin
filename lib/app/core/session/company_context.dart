@@ -93,10 +93,10 @@ class CompanyContext {
       return 'Licenca cloud ainda nao configurada para esta empresa.';
     }
     if (isSuspendedLicense) {
-      return 'A licenca desta empresa esta suspensa. O uso local continua liberado.';
+      return 'A licenca desta empresa esta suspensa. A base local permanece vinculada a este tenant.';
     }
     if (isExpiredLicense) {
-      return 'A licenca desta empresa expirou. O uso local continua liberado.';
+      return 'A licenca desta empresa expirou. A base local permanece vinculada a este tenant.';
     }
     if (!syncEnabled) {
       return 'A sincronizacao cloud foi desativada para esta empresa.';

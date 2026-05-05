@@ -34,10 +34,15 @@ class AppUser {
 
   bool get canUseRemoteFeatures => hasRemoteIdentity;
 
+  bool get isSupportProfile {
+    final normalizedRole = roleLabel.trim().toLowerCase();
+    return normalizedRole == 'suporte' || normalizedRole == 'support';
+  }
+
   String get statusLabel {
     switch (kind) {
       case AppUserKind.localOperator:
-        return 'Sessao local';
+        return 'Sem sessao';
       case AppUserKind.mockAuthenticated:
         return 'Sessao mock';
       case AppUserKind.remoteAuthenticated:

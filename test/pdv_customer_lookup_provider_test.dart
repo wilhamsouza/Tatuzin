@@ -6,6 +6,8 @@ import 'package:erp_pdv_app/modules/clientes/presentation/providers/client_provi
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'test_tenant_session.dart';
+
 void main() {
   test('PDV customer lookup usa cache local sem chamar provider CRM', () async {
     final localRepository = _FakeLocalClientRepository([
@@ -14,11 +16,13 @@ void main() {
     final crmRepository = _ThrowingClientRepository();
     final container = ProviderContainer(
       overrides: [
+        ...testTenantBootstrapOverrides(),
         localClientRepositoryProvider.overrideWithValue(localRepository),
         clientRepositoryProvider.overrideWithValue(crmRepository),
       ],
     );
     addTearDown(container.dispose);
+    setTestTenantSession(container);
 
     final clients = await container.read(
       pdvCustomerLookupProvider('Ana').future,
@@ -37,6 +41,7 @@ void main() {
       ]);
       final container = ProviderContainer(
         overrides: [
+          ...testTenantBootstrapOverrides(),
           localClientRepositoryProvider.overrideWithValue(
             _FakeLocalClientRepository([_client(id: 1, name: 'Ana Local')]),
           ),
@@ -44,6 +49,7 @@ void main() {
         ],
       );
       addTearDown(container.dispose);
+      setTestTenantSession(container);
 
       final clients = await container.read(
         clientLookupProvider('Bruno').future,

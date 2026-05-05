@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { requireCloudLicense } from '../../shared/http/auth-middleware';
+import { requireAppContext } from '../../shared/http/auth-middleware';
 import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { asyncHandler } from '../../shared/http/async-handler';
 import { validateBody, validateQuery } from '../../shared/http/validate';
@@ -23,7 +23,7 @@ suppliersRouter.get('/health', (_request, response) => {
   });
 });
 
-suppliersRouter.use(requireCloudLicense);
+suppliersRouter.use(requireAppContext);
 
 suppliersRouter.get(
   '/',

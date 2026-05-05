@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'crypto';
 
 import {
+  LicenseStatus,
   SessionClientType,
   type DeviceSession,
   type Prisma,
@@ -9,6 +10,10 @@ import jwt, { type SignOptions } from 'jsonwebtoken';
 
 import { env } from '../../config/env';
 import { prisma } from '../../database/prisma';
+import {
+  CompanyDeviceService,
+  type CompanyDeviceDto,
+} from '../app/company-device.service';
 import { AppError } from '../../shared/http/app-error';
 import { logger } from '../../shared/observability/logger';
 
@@ -83,6 +88,7 @@ export type SessionTokenBundle = {
   expiresIn: string;
   refreshTokenExpiresAt: string;
   session: SessionSummaryDto;
+  device: SessionDeviceDto;
 };
 
 export type RefreshedSessionBundle = SessionTokenBundle & {
@@ -117,18 +123,34 @@ export type SessionSummaryDto = {
   revokedReason: string | null;
 };
 
+export type SessionDeviceDto = {
+  id: string;
+  clientInstanceId: string;
+  status: string;
+  deviceLabel: string | null;
+  platform: string | null;
+  appVersion: string | null;
+  lastSeenAt: string | null;
+};
+
 export class AuthSessionService {
+  constructor(
+    private readonly companyDeviceService = new CompanyDeviceService(),
+  ) {}
+
   async createSession(input: SessionIssueInput): Promise<SessionTokenBundle> {
     const client = this.resolveClientInput(input.clientInput, input.userId);
 
-    if (client.clientType === SessionClientType.MOBILE_APP) {
-      await this.ensureDeviceCapacity({
-        companyId: input.companyId,
-        userId: input.userId,
-        maxDevices: input.licenseMaxDevices,
-        clientInstanceId: client.clientInstanceId,
-      });
-    }
+    const device = await this.companyDeviceService.registerOrResolve({
+      companyId: input.companyId,
+      userId: input.userId,
+      membershipRole: input.membershipRole,
+      licenseMaxDevices: input.licenseMaxDevices,
+      clientInstanceId: client.clientInstanceId,
+      deviceLabel: client.deviceLabel,
+      platform: client.platform,
+      appVersion: client.appVersion,
+    });
 
     await this.revokeSessionsForClient({
       companyId: input.companyId,
@@ -173,11 +195,14 @@ export class AuthSessionService {
         deviceLabel: session.deviceLabel,
         platform: session.platform,
         appVersion: session.appVersion,
+        deviceId: device.id,
+        deviceStatus: device.status,
       },
     });
 
     return this.buildSessionTokenBundle({
       session,
+      device,
       refreshToken,
       refreshTokenExpiresAt,
       userId: input.userId,
@@ -303,6 +328,8 @@ export class AuthSessionService {
       );
     }
 
+    this.assertLicenseAllowsSessionRestore(membership.company.license);
+
     const client = this.resolveClientInput(input.clientInput, existingSession.userId);
     if (
       input.clientInput?.clientInstanceId != null &&
@@ -343,6 +370,17 @@ export class AuthSessionService {
       );
     }
 
+    const device = await this.companyDeviceService.registerOrResolve({
+      companyId: existingSession.companyId,
+      userId: existingSession.userId,
+      membershipRole: membership.role,
+      licenseMaxDevices: membership.company.license?.maxDevices ?? null,
+      clientInstanceId: existingSession.clientInstanceId,
+      deviceLabel: client.deviceLabel ?? existingSession.deviceLabel,
+      platform: client.platform ?? existingSession.platform,
+      appVersion: client.appVersion ?? existingSession.appVersion,
+    });
+
     const refreshToken = this.generateOpaqueToken();
     const refreshTokenExpiresAt = this.buildRefreshTokenExpiry(new Date());
 
@@ -375,6 +413,7 @@ export class AuthSessionService {
     return {
       ...this.buildSessionTokenBundle({
         session,
+        device,
         refreshToken,
         refreshTokenExpiresAt,
         userId: membership.user.id,
@@ -402,6 +441,7 @@ export class AuthSessionService {
         companyId: true,
         membershipId: true,
         clientType: true,
+        clientInstanceId: true,
         lastSeenAt: true,
         revokedAt: true,
         refreshTokenExpiresAt: true,
@@ -473,6 +513,7 @@ export class AuthSessionService {
       sessionId: session.id,
       sessionClientType: session.clientType,
       membershipRole: session.membership.role,
+      clientInstanceId: session.clientInstanceId,
     };
   }
 
@@ -713,65 +754,6 @@ export class AuthSessionService {
     };
   }
 
-  private async ensureDeviceCapacity(input: {
-    companyId: string;
-    userId: string;
-    maxDevices: number | null;
-    clientInstanceId: string;
-  }) {
-    const maxDevices = input.maxDevices;
-    if (maxDevices == null || maxDevices <= 0) {
-      return;
-    }
-
-    const activeSessions = await prisma.deviceSession.findMany({
-      where: {
-        companyId: input.companyId,
-        clientType: SessionClientType.MOBILE_APP,
-        revokedAt: null,
-        refreshTokenExpiresAt: {
-          gt: new Date(),
-        },
-      },
-      select: {
-        clientInstanceId: true,
-      },
-    });
-
-    const distinctActiveDevices = new Set(
-      activeSessions.map((session) => session.clientInstanceId),
-    );
-
-    if (distinctActiveDevices.has(input.clientInstanceId)) {
-      return;
-    }
-
-    if (distinctActiveDevices.size < maxDevices) {
-      return;
-    }
-
-    await this.recordAudit({
-      action: 'device_limit_reached',
-      actorUserId: input.userId,
-      subjectUserId: input.userId,
-      companyId: input.companyId,
-      details: {
-        maxDevices,
-        activeDevices: distinctActiveDevices.size,
-      },
-    });
-
-    throw new AppError(
-      'O limite de dispositivos cloud desta empresa foi atingido. Libere uma sessao ativa ou fale com o suporte.',
-      409,
-      'DEVICE_LIMIT_REACHED',
-      {
-        maxDevices,
-        activeDevices: distinctActiveDevices.size,
-      },
-    );
-  }
-
   private async revokeSessionsForClient(input: {
     companyId: string;
     clientType: SessionClientType;
@@ -855,6 +837,7 @@ export class AuthSessionService {
 
   private buildSessionTokenBundle(input: {
     session: DeviceSessionWithRelations;
+    device: CompanyDeviceDto;
     refreshToken: string;
     refreshTokenExpiresAt: Date;
     userId: string;
@@ -873,12 +856,14 @@ export class AuthSessionService {
         membershipId: input.membershipId,
         membershipRole: input.membershipRole,
         sessionId: input.session.id,
+        clientInstanceId: input.session.clientInstanceId,
       }),
       refreshToken: input.refreshToken,
       tokenType: 'Bearer',
       expiresIn: env.ACCESS_TOKEN_TTL,
       refreshTokenExpiresAt: input.refreshTokenExpiresAt.toISOString(),
       session: this.toSessionSummaryDto(input.session),
+      device: this.toSessionDeviceDto(input.device),
     };
   }
 
@@ -890,6 +875,7 @@ export class AuthSessionService {
     membershipId: string;
     membershipRole: string;
     sessionId: string;
+    clientInstanceId: string;
   }) {
     const signOptions: SignOptions = {
       subject: input.userId,
@@ -904,6 +890,7 @@ export class AuthSessionService {
         email: input.userEmail,
         isPlatformAdmin: input.userIsPlatformAdmin,
         sessionId: input.sessionId,
+        clientInstanceId: input.clientInstanceId,
       },
       env.JWT_SECRET,
       signOptions,
@@ -915,9 +902,21 @@ export class AuthSessionService {
     fallbackUserId: string,
   ) {
     const clientType = this.normalizeClientType(rawInput?.clientType);
-    const clientInstanceId =
-      this.normalizeOptionalString(rawInput?.clientInstanceId) ??
-      `legacy:${this.toPublicClientType(clientType)}:${fallbackUserId}`;
+    const clientInstanceId = this.normalizeOptionalString(
+      rawInput?.clientInstanceId,
+    );
+
+    if (clientInstanceId == null) {
+      throw new AppError(
+        'Identificador do aparelho obrigatorio para abrir sessao.',
+        400,
+        'DEVICE_REQUIRED',
+        {
+          clientType: this.toPublicClientType(clientType),
+          userId: fallbackUserId,
+        },
+      );
+    }
 
     return {
       clientType,
@@ -965,6 +964,40 @@ export class AuthSessionService {
     return normalized.length === 0 ? null : normalized;
   }
 
+  private assertLicenseAllowsSessionRestore(license: {
+    status: string;
+    expiresAt: Date | null;
+  } | null) {
+    if (license == null) {
+      throw new AppError(
+        'Licenca valida obrigatoria para restaurar a sessao do app.',
+        403,
+        'LICENSE_REQUIRED',
+      );
+    }
+
+    const expiredByDate =
+      license.expiresAt != null && license.expiresAt.getTime() < Date.now();
+    if (license.status === LicenseStatus.EXPIRED || expiredByDate) {
+      throw new AppError(
+        'Licenca expirada para restaurar a sessao do app.',
+        403,
+        'LICENSE_EXPIRED',
+      );
+    }
+
+    if (
+      license.status !== LicenseStatus.ACTIVE &&
+      license.status !== LicenseStatus.TRIAL
+    ) {
+      throw new AppError(
+        'Licenca ativa obrigatoria para restaurar a sessao do app.',
+        403,
+        'LICENSE_REQUIRED',
+      );
+    }
+  }
+
   private buildRefreshTokenExpiry(now: Date) {
     return new Date(
       now.getTime() + env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
@@ -1001,6 +1034,18 @@ export class AuthSessionService {
       refreshTokenExpiresAt: session.refreshTokenExpiresAt.toISOString(),
       revokedAt: session.revokedAt?.toISOString() ?? null,
       revokedReason: session.revokedReason,
+    };
+  }
+
+  private toSessionDeviceDto(device: CompanyDeviceDto): SessionDeviceDto {
+    return {
+      id: device.id,
+      clientInstanceId: device.clientInstanceId,
+      status: device.status,
+      deviceLabel: device.deviceLabel,
+      platform: device.platform,
+      appVersion: device.appVersion,
+      lastSeenAt: device.lastSeenAt,
     };
   }
 

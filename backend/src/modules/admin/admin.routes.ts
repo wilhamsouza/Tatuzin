@@ -8,10 +8,16 @@ import { createRateLimit } from '../../shared/http/rate-limit';
 import { validateBody, validateQuery } from '../../shared/http/validate';
 import {
   type AdminAuditQueryInput,
+  type AdminCompanySyncConflictsQueryInput,
+  type AdminCompanySyncEventsQueryInput,
+  type AdminCompanySyncIncidentsQueryInput,
   type AdminCompaniesQueryInput,
   type AdminLicensesQueryInput,
   type AdminSyncOperationalQueryInput,
   type AdminSyncQueryInput,
+  adminCompanySyncConflictsQuerySchema,
+  adminCompanySyncEventsQuerySchema,
+  adminCompanySyncIncidentsQuerySchema,
   adminAuditQuerySchema,
   adminCompaniesQuerySchema,
   adminLicensePatchSchema,
@@ -19,9 +25,11 @@ import {
   adminSyncOperationalQuerySchema,
   adminSyncQuerySchema,
 } from './admin.schemas';
+import { AdminSyncHealthService } from './admin-sync-health.service';
 import { AdminService } from './admin.service';
 
 const adminService = new AdminService();
+const adminSyncHealthService = new AdminSyncHealthService();
 
 export const adminRouter = Router();
 
@@ -58,6 +66,63 @@ adminRouter.get(
       ? request.params.id[0]
       : request.params.id;
     const payload = await adminService.getCompany(companyId);
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/companies/:companyId/sync/health',
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await adminSyncHealthService.getHealth(companyId);
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/companies/:companyId/sync/events',
+  validateQuery(adminCompanySyncEventsQuerySchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await adminSyncHealthService.listEvents(
+      companyId,
+      request.query as unknown as AdminCompanySyncEventsQueryInput,
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/companies/:companyId/sync/conflicts',
+  validateQuery(adminCompanySyncConflictsQuerySchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await adminSyncHealthService.listConflicts(
+      companyId,
+      request.query as unknown as AdminCompanySyncConflictsQueryInput,
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/companies/:companyId/sync/incidents',
+  validateQuery(adminCompanySyncIncidentsQuerySchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await adminSyncHealthService.listIncidents(
+      companyId,
+      request.query as unknown as AdminCompanySyncIncidentsQueryInput,
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/companies/:companyId/devices',
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await adminSyncHealthService.listDevices(companyId);
     response.json(payload);
   }),
 );
@@ -142,6 +207,10 @@ adminRouter.get(
     response.json(summary);
   }),
 );
+
+function readParam(value: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 adminRouter.get(
   '/sync/summary',

@@ -60,7 +60,7 @@ class FakeAuthGateway implements AuthGateway {
     String identifier = 'mock.operator@simples.local',
     String passwordHint = '123456',
     String displayName = 'Operador SaaS Mock',
-    String companyName = 'Empresa Demo SaaS',
+    String companyName = 'Empresa Mock SaaS',
     bool isPlatformAdmin = true,
     String roleLabel = 'Administrador mock',
   }) {
@@ -81,16 +81,17 @@ class FakeAuthGateway implements AuthGateway {
       ),
       company: CompanyContext(
         localId: null,
-        remoteId: 'cmp_mock_demo_001',
+        remoteId: 'cmp_mock_tenant_001',
         displayName: companyName,
         legalName: '$companyName LTDA',
         documentNumber: '00.000.000/0001-00',
-        licensePlan: 'demo',
+        licensePlan: 'trial',
         licenseStatus: 'active',
         syncEnabled: true,
       ),
       startedAt: DateTime.now(),
-      isOfflineFallback: passwordHint == 'offline',
+      isOfflineFallback: false,
+      clientInstanceId: 'mock-client-instance-001',
     );
   }
 }

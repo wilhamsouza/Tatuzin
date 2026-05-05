@@ -51,7 +51,7 @@ class RemoteFinancialEventRecord {
       'localUuid': localUuid,
       'amountCents': amountCents,
       'paymentType': paymentType,
-      'createdAt': createdAt.toIso8601String(),
+      'createdAt': createdAt.toUtc().toIso8601String(),
       'metadata': metadata,
     };
   }

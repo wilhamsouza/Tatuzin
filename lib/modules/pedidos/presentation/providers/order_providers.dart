@@ -354,6 +354,10 @@ class CreateOperationalOrderController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'CreateOperationalOrderController.createDraft',
+      );
       final id = await ref
           .read(operationalOrderRepositoryProvider)
           .create(
@@ -387,6 +391,10 @@ class OperationalOrderDraftController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'OperationalOrderDraftController.save',
+      );
       await ref
           .read(operationalOrderRepositoryProvider)
           .updateDraft(
@@ -433,6 +441,10 @@ class OperationalOrderItemController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'OperationalOrderItemController.addItemWithModifiers',
+      );
       final quantityMil = quantityUnits * 1000;
       await _ensureStockAvailableForItem(
         productId: productId,
@@ -495,6 +507,10 @@ class OperationalOrderItemController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'OperationalOrderItemController.updateItemWithModifiers',
+      );
       final quantityMil = quantityUnits * 1000;
       await _ensureStockAvailableForItem(
         productId: productId,
@@ -541,6 +557,10 @@ class OperationalOrderItemController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'OperationalOrderItemController.removeItem',
+      );
       await ref
           .read(operationalOrderRepositoryProvider)
           .removeItem(orderItemId);
@@ -617,6 +637,10 @@ class OperationalOrderStatusController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'OperationalOrderStatusController.updateStatus',
+      );
       await ref
           .read(operationalOrderRepositoryProvider)
           .updateStatus(orderId, status);
@@ -641,6 +665,10 @@ class OperationalOrderBillingController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'OperationalOrderBillingController.invoice',
+      );
       if (detail.linkedSaleId != null) {
         throw ValidationException(
           'Pedido #${detail.order.id} ja foi faturado na venda #${detail.linkedSaleId}.',

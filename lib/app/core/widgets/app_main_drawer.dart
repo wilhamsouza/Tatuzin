@@ -89,10 +89,10 @@ class AppMainDrawer extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                 children: [
                   _DrawerGroup(
-                    label: 'Visão geral',
+                    label: 'Inicio',
                     children: [
                       _DrawerItem(
-                        label: 'Dashboard operacional',
+                        label: 'Inicio',
                         icon: Icons.space_dashboard_rounded,
                         isSelected: currentPath == AppRoutePaths.dashboard,
                         onTap: () => _navigateTo(
@@ -105,10 +105,10 @@ class AppMainDrawer extends ConsumerWidget {
                     ],
                   ),
                   _DrawerGroup(
-                    label: 'Operação',
+                    label: 'Caixa',
                     children: [
                       _DrawerItem(
-                        label: 'Vendas',
+                        label: 'Nova venda',
                         icon: Icons.point_of_sale_rounded,
                         isSelected: currentPath == AppRoutePaths.sales,
                         onTap: () => _navigateTo(
@@ -119,14 +119,25 @@ class AppMainDrawer extends ConsumerWidget {
                         ),
                       ),
                       _DrawerItem(
-                        label: 'Pedidos',
-                        icon: Icons.receipt_long_rounded,
-                        isSelected: currentPath == AppRoutePaths.orders,
+                        label: 'Carrinho',
+                        icon: Icons.shopping_cart_rounded,
+                        isSelected: currentPath == AppRoutePaths.cart,
                         onTap: () => _navigateTo(
                           context,
                           currentPath: currentPath,
-                          path: AppRoutePaths.orders,
-                          routeName: AppRouteNames.orders,
+                          path: AppRoutePaths.cart,
+                          routeName: AppRouteNames.cart,
+                        ),
+                      ),
+                      _DrawerItem(
+                        label: 'Receber pagamento',
+                        icon: Icons.payments_rounded,
+                        isSelected: currentPath == AppRoutePaths.checkout,
+                        onTap: () => _navigateTo(
+                          context,
+                          currentPath: currentPath,
+                          path: AppRoutePaths.checkout,
+                          routeName: AppRouteNames.checkout,
                         ),
                       ),
                       _DrawerItem(
@@ -141,32 +152,59 @@ class AppMainDrawer extends ConsumerWidget {
                         ),
                       ),
                       _DrawerItem(
-                        label: 'Fiado',
-                        icon: Icons.receipt_long_rounded,
-                        isSelected: currentPath == AppRoutePaths.fiado,
+                        label: 'Vendas realizadas',
+                        icon: Icons.history_rounded,
+                        isSelected: currentPath == AppRoutePaths.salesHistory,
                         onTap: () => _navigateTo(
                           context,
                           currentPath: currentPath,
-                          path: AppRoutePaths.fiado,
-                          routeName: AppRouteNames.fiado,
+                          path: AppRoutePaths.salesHistory,
+                          routeName: AppRouteNames.salesHistory,
                         ),
                       ),
                     ],
                   ),
                   _DrawerGroup(
-                    label: 'Cadastros',
+                    label: 'Pedidos',
                     children: [
                       _DrawerItem(
-                        label: 'Clientes',
-                        icon: Icons.people_alt_rounded,
-                        isSelected: currentPath == AppRoutePaths.clients,
+                        label: 'Pedidos em aberto',
+                        icon: Icons.receipt_long_rounded,
+                        isSelected: currentPath == AppRoutePaths.orders,
                         onTap: () => _navigateTo(
                           context,
                           currentPath: currentPath,
-                          path: AppRoutePaths.clients,
-                          routeName: AppRouteNames.clients,
+                          path: AppRoutePaths.orders,
+                          routeName: AppRouteNames.orders,
                         ),
                       ),
+                      _DrawerItem(
+                        label: 'Em separacao/preparo',
+                        icon: Icons.room_service_rounded,
+                        isSelected: currentPath == AppRoutePaths.orders,
+                        onTap: () => _navigateTo(
+                          context,
+                          currentPath: currentPath,
+                          path: AppRoutePaths.orders,
+                          routeName: AppRouteNames.orders,
+                        ),
+                      ),
+                      _DrawerItem(
+                        label: 'Finalizados e cancelados',
+                        icon: Icons.fact_check_rounded,
+                        isSelected: currentPath == AppRoutePaths.orders,
+                        onTap: () => _navigateTo(
+                          context,
+                          currentPath: currentPath,
+                          path: AppRoutePaths.orders,
+                          routeName: AppRouteNames.orders,
+                        ),
+                      ),
+                    ],
+                  ),
+                  _DrawerGroup(
+                    label: 'Produtos',
+                    children: [
                       _DrawerItem(
                         label: 'Produtos',
                         icon: Icons.inventory_2_rounded,
@@ -176,52 +214,6 @@ class AppMainDrawer extends ConsumerWidget {
                           currentPath: currentPath,
                           path: AppRoutePaths.products,
                           routeName: AppRouteNames.products,
-                        ),
-                      ),
-                      _DrawerItem(
-                        label: 'Estoque',
-                        icon: Icons.inventory_2_outlined,
-                        isSelected: currentPath == AppRoutePaths.inventory,
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.inventory,
-                          routeName: AppRouteNames.inventory,
-                        ),
-                      ),
-                      _DrawerItem(
-                        label: 'Inventario fisico',
-                        icon: Icons.fact_check_rounded,
-                        isSelected:
-                            currentPath == AppRoutePaths.inventoryCounts,
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.inventoryCounts,
-                          routeName: AppRouteNames.inventoryCounts,
-                        ),
-                      ),
-                      _DrawerItem(
-                        label: 'Insumos',
-                        icon: Icons.scale_rounded,
-                        isSelected: currentPath == AppRoutePaths.supplies,
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.supplies,
-                          routeName: AppRouteNames.supplies,
-                        ),
-                      ),
-                      _DrawerItem(
-                        label: 'Lucratividade',
-                        icon: Icons.insights_rounded,
-                        isSelected:
-                            currentPath == AppRoutePaths.productProfitability,
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.productProfitability,
-                          routeName: AppRouteNames.productProfitability,
                         ),
                       ),
                       _DrawerItem(
@@ -236,50 +228,69 @@ class AppMainDrawer extends ConsumerWidget {
                         ),
                       ),
                       _DrawerItem(
-                        label: 'Fornecedores',
-                        icon: Icons.local_shipping_outlined,
-                        isSelected: currentPath == AppRoutePaths.suppliers,
+                        label: 'Variacoes',
+                        icon: Icons.layers_outlined,
+                        isSelected:
+                            currentPath == AppRoutePaths.products ||
+                            currentPath == AppRoutePaths.productForm,
                         onTap: () => _navigateTo(
                           context,
                           currentPath: currentPath,
-                          path: AppRoutePaths.suppliers,
-                          routeName: AppRouteNames.suppliers,
+                          path: AppRoutePaths.products,
+                          routeName: AppRouteNames.products,
+                        ),
+                      ),
+                      _DrawerItem(
+                        label: 'Estoque do produto',
+                        icon: Icons.inventory_2_outlined,
+                        isSelected: currentPath == AppRoutePaths.inventory,
+                        onTap: () => _navigateTo(
+                          context,
+                          currentPath: currentPath,
+                          path: AppRoutePaths.inventory,
+                          routeName: AppRouteNames.inventory,
                         ),
                       ),
                     ],
                   ),
                   _DrawerGroup(
-                    label: 'Compras',
+                    label: 'Mais',
                     children: [
                       _DrawerItem(
-                        label: 'Compras',
-                        icon: Icons.shopping_bag_outlined,
-                        isSelected: currentPath == AppRoutePaths.purchases,
+                        label: 'Mais opcoes',
+                        icon: Icons.apps_rounded,
+                        isSelected: currentPath == AppRoutePaths.more,
                         onTap: () => _navigateTo(
                           context,
                           currentPath: currentPath,
-                          path: AppRoutePaths.purchases,
-                          routeName: AppRouteNames.purchases,
+                          path: AppRoutePaths.more,
+                          routeName: AppRouteNames.more,
                         ),
                       ),
-                    ],
-                  ),
-                  _DrawerGroup(
-                    label: 'Gestão',
-                    children: [
                       _DrawerItem(
-                        label: 'Custos',
-                        icon: Icons.request_quote_rounded,
-                        isSelected: currentPath == AppRoutePaths.costs,
+                        label: 'Clientes',
+                        icon: Icons.people_alt_rounded,
+                        isSelected: currentPath == AppRoutePaths.clients,
                         onTap: () => _navigateTo(
                           context,
                           currentPath: currentPath,
-                          path: AppRoutePaths.costs,
-                          routeName: AppRouteNames.costs,
+                          path: AppRoutePaths.clients,
+                          routeName: AppRouteNames.clients,
                         ),
                       ),
                       _DrawerItem(
-                        label: 'Relatórios',
+                        label: 'Clientes devendo',
+                        icon: Icons.receipt_long_rounded,
+                        isSelected: currentPath == AppRoutePaths.fiado,
+                        onTap: () => _navigateTo(
+                          context,
+                          currentPath: currentPath,
+                          path: AppRoutePaths.fiado,
+                          routeName: AppRouteNames.fiado,
+                        ),
+                      ),
+                      _DrawerItem(
+                        label: 'Relatorios',
                         icon: Icons.assessment_rounded,
                         isSelected: currentPath == AppRoutePaths.reports,
                         onTap: () => _navigateTo(
@@ -289,31 +300,17 @@ class AppMainDrawer extends ConsumerWidget {
                           routeName: AppRouteNames.reports,
                         ),
                       ),
-                    ],
-                  ),
-                  _DrawerGroup(
-                    label: 'Conta',
-                    children: [
                       _DrawerItem(
-                        label: 'Conta e nuvem',
-                        icon: Icons.account_circle_outlined,
-                        isSelected: currentPath == AppRoutePaths.accountCloud,
+                        label: 'Configuracoes',
+                        icon: Icons.settings_rounded,
+                        isSelected:
+                            currentPath == AppRoutePaths.accountCloud ||
+                            currentPath == AppRoutePaths.backup,
                         onTap: () => _navigateTo(
                           context,
                           currentPath: currentPath,
                           path: AppRoutePaths.accountCloud,
                           routeName: AppRouteNames.accountCloud,
-                        ),
-                      ),
-                      _DrawerItem(
-                        label: 'Backup e restauração',
-                        icon: Icons.backup_rounded,
-                        isSelected: currentPath == AppRoutePaths.backup,
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.backup,
-                          routeName: AppRouteNames.backup,
                         ),
                       ),
                     ],
@@ -432,10 +429,12 @@ class AppMainDrawer extends ConsumerWidget {
       }
       messenger.showSnackBar(
         const SnackBar(
-          content: Text('Você saiu da conta. O app continua no modo local.'),
+          content: Text(
+            'Voce saiu da conta. Entre novamente para acessar a empresa.',
+          ),
         ),
       );
-      router.goNamed(AppRouteNames.accountCloud);
+      router.goNamed(AppRouteNames.login);
     } catch (_) {
       if (!context.mounted) {
         return;

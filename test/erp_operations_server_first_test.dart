@@ -34,6 +34,8 @@ import 'package:erp_pdv_app/modules/vendas/domain/entities/sale_enums.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'test_tenant_session.dart';
+
 void main() {
   test('Compras leitura usa API primeiro', () async {
     final local = _FakeLocalPurchaseRepository();
@@ -129,12 +131,14 @@ void main() {
   test('Provider de compras propaga erro e nao fica carregando', () async {
     final container = ProviderContainer(
       overrides: [
+        ...testTenantBootstrapOverrides(),
         purchaseRepositoryProvider.overrideWithValue(
           _FailingPurchaseRepository(),
         ),
       ],
     );
     addTearDown(container.dispose);
+    setTestTenantSession(container);
 
     await expectLater(
       container.read(purchaseListProvider.future),
@@ -184,6 +188,7 @@ AppOperationalContext _remoteOperationalContext() {
       ),
       startedAt: DateTime(2026, 4, 26, 10),
       isOfflineFallback: false,
+      clientInstanceId: 'device-1',
     ),
   );
 }

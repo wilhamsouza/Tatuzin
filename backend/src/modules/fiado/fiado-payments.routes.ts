@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { requireCloudLicense } from '../../shared/http/auth-middleware';
+import { requireAppContext } from '../../shared/http/auth-middleware';
 import { asyncHandler } from '../../shared/http/async-handler';
 import { validateBody } from '../../shared/http/validate';
 import { fiadoPaymentCreateSchema } from './fiado-payments.schemas';
@@ -10,7 +10,7 @@ const fiadoPaymentsService = new FiadoPaymentsService();
 
 export const fiadoPaymentsRouter = Router();
 
-fiadoPaymentsRouter.use(requireCloudLicense);
+fiadoPaymentsRouter.use(requireAppContext);
 
 fiadoPaymentsRouter.post(
   '/payments',

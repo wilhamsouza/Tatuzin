@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/widgets/app_card.dart';
+import '../../../../app/core/widgets/app_list_tile_card.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_metric_card.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
@@ -12,8 +13,10 @@ import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../../../app/theme/app_design_tokens.dart';
+import '../../../account/presentation/providers/account_cloud_providers.dart';
+import '../../../estoque/domain/services/inventory_alert_service.dart';
+import '../../../estoque/presentation/providers/inventory_providers.dart';
 import '../../../historico_vendas/presentation/providers/sale_history_providers.dart';
-import '../../domain/entities/managerial_dashboard_readiness.dart';
 import '../providers/dashboard_providers.dart';
 import '../../domain/entities/operational_dashboard_snapshot.dart';
 
@@ -23,12 +26,13 @@ class DashboardPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final snapshotAsync = ref.watch(operationalDashboardSnapshotProvider);
-    final managerialReadiness = ref.watch(managerialDashboardReadinessProvider);
+    final accountCloud = ref.watch(accountCloudStatusProvider);
+    final inventoryItemsAsync = ref.watch(inventoryItemOptionsProvider);
     final tokens = context.appColors;
     final layout = context.appLayout;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Dashboard operacional')),
+      appBar: AppBar(title: const Text('Inicio')),
       drawer: const AppMainDrawer(),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -44,10 +48,9 @@ class DashboardPage extends ConsumerWidget {
           ),
           children: [
             AppPageHeader(
-              title: 'Dashboard operacional',
-              subtitle:
-                  'Venda, caixa, pedidos, fiado e movimentos locais da base atual. Esta home nao representa consolidacao oficial multiusuario.',
-              badgeLabel: 'Operacao local',
+              title: 'Inicio',
+              subtitle: 'Veja como esta sua loja hoje.',
+              badgeLabel: 'Resumo de hoje',
               badgeIcon: Icons.space_dashboard_rounded,
               trailing: Wrap(
                 spacing: 8,
@@ -61,7 +64,7 @@ class DashboardPage extends ConsumerWidget {
                   OutlinedButton.icon(
                     icon: const Icon(Icons.receipt_long_rounded),
                     onPressed: () => context.pushNamed(AppRouteNames.orders),
-                    label: const Text('Pedidos'),
+                    label: const Text('Novo pedido'),
                   ),
                 ],
               ),
@@ -70,13 +73,17 @@ class DashboardPage extends ConsumerWidget {
             SizedBox(height: layout.sectionGap),
             snapshotAsync.when(
               data: (snapshot) {
+                final inventorySummary = InventoryAlertService.summarize(
+                  inventoryItemsAsync.valueOrNull ?? const [],
+                );
+                final lowStockCount = inventorySummary.belowMinimumItems;
+                final pendingSendCount = accountCloud.pendingCount;
+
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     AppSectionCard(
-                      title: 'Indicadores operacionais locais',
-                      subtitle:
-                          'Leitura rapida da sessao e da fila local de trabalho. Nada aqui deve ser tratado como relatorio gerencial consolidado.',
+                      title: 'Resumo de hoje',
                       child: GridView.count(
                         crossAxisCount: 2,
                         shrinkWrap: true,
@@ -86,27 +93,37 @@ class DashboardPage extends ConsumerWidget {
                         childAspectRatio: 1.12,
                         children: [
                           AppMetricCard(
-                            label: 'Vendido hoje',
+                            label: 'Vendas de hoje',
                             value: AppFormatters.currencyFromCents(
                               snapshot.soldTodayCents,
                             ),
-                            caption: 'Vendas ativas conhecidas nesta base',
+                            caption: 'Total vendido no dia',
                             icon: Icons.point_of_sale_rounded,
                             accentColor: tokens.sales.base,
                             onTap: () => _openTodaySales(context, ref),
                           ),
                           AppMetricCard(
-                            label: 'Caixa atual',
+                            label: 'Caixa',
                             value: AppFormatters.currencyFromCents(
                               snapshot.currentCashCents,
                             ),
-                            caption: 'Saldo local da sessao em aberto',
+                            caption: 'Saldo da sessao em aberto',
                             icon: Icons.account_balance_wallet_rounded,
                             accentColor: tokens.cashflowPositive.base,
                             onTap: () => context.pushNamed(AppRouteNames.cash),
                           ),
                           AppMetricCard(
-                            label: 'Fiado operacional',
+                            label: 'Pedidos em aberto',
+                            value:
+                                '${snapshot.activeOperationalOrdersCount} pedido(s)',
+                            caption: 'Rascunho, preparo ou retirada',
+                            icon: Icons.pending_actions_rounded,
+                            accentColor: tokens.info.base,
+                            onTap: () =>
+                                context.pushNamed(AppRouteNames.orders),
+                          ),
+                          AppMetricCard(
+                            label: 'Clientes devendo',
                             value: AppFormatters.currencyFromCents(
                               snapshot.pendingFiadoCents,
                             ),
@@ -116,30 +133,104 @@ class DashboardPage extends ConsumerWidget {
                             accentColor: tokens.warning.base,
                             onTap: () => context.pushNamed(AppRouteNames.fiado),
                           ),
-                          AppMetricCard(
-                            label: 'Pendencias operacionais',
-                            value:
-                                '${snapshot.activeOperationalOrdersCount} pedido(s)',
-                            caption:
-                                'Pedidos em rascunho, separacao ou retirada',
-                            icon: Icons.pending_actions_rounded,
-                            accentColor: tokens.info.base,
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: layout.sectionGap),
+                    AppSectionCard(
+                      title: 'Acoes rapidas',
+                      tone: AppCardTone.muted,
+                      child: GridView.count(
+                        crossAxisCount: 2,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisSpacing: layout.gridGap,
+                        mainAxisSpacing: layout.gridGap,
+                        childAspectRatio: 1.56,
+                        children: [
+                          AppQuickActionCard(
+                            title: 'Nova venda',
+                            subtitle: 'Abrir PDV',
+                            icon: Icons.point_of_sale_rounded,
+                            palette: tokens.sales,
+                            onTap: () => context.pushNamed(AppRouteNames.sales),
+                          ),
+                          AppQuickActionCard(
+                            title: 'Novo pedido',
+                            subtitle: 'Abrir atendimento',
+                            icon: Icons.receipt_long_rounded,
+                            palette: tokens.info,
                             onTap: () =>
                                 context.pushNamed(AppRouteNames.orders),
+                          ),
+                          AppQuickActionCard(
+                            title: 'Receber fiado',
+                            subtitle: 'Baixar conta',
+                            icon: Icons.payments_rounded,
+                            palette: tokens.warning,
+                            onTap: () => context.pushNamed(AppRouteNames.fiado),
+                          ),
+                          AppQuickActionCard(
+                            title: 'Cadastrar produto',
+                            subtitle: 'Novo item',
+                            icon: Icons.add_box_rounded,
+                            palette: tokens.cashflowPositive,
+                            onTap: () =>
+                                context.pushNamed(AppRouteNames.productForm),
                           ),
                         ],
                       ),
                     ),
                     SizedBox(height: layout.sectionGap),
                     AppSectionCard(
+                      title: 'Alertas',
+                      child: lowStockCount == 0 && pendingSendCount == 0
+                          ? const AppStateCard(
+                              title: 'Nada urgente agora',
+                              message:
+                                  'Quando sua loja precisar de atencao, os avisos aparecem aqui.',
+                              compact: true,
+                            )
+                          : Column(
+                              children: [
+                                if (lowStockCount > 0) ...[
+                                  _DashboardAlertTile(
+                                    title: 'Produtos com estoque baixo',
+                                    subtitle:
+                                        '$lowStockCount produto(s) precisam de reposicao.',
+                                    icon: Icons.inventory_2_outlined,
+                                    tone: AppCardTone.warning,
+                                    onTap: () => context.pushNamed(
+                                      AppRouteNames.inventory,
+                                    ),
+                                  ),
+                                ],
+                                if (lowStockCount > 0 && pendingSendCount > 0)
+                                  SizedBox(height: layout.blockGap),
+                                if (pendingSendCount > 0)
+                                  _DashboardAlertTile(
+                                    title: 'Vendas aguardando envio',
+                                    subtitle:
+                                        '$pendingSendCount registro(s) aguardando envio.',
+                                    icon: Icons.schedule_send_rounded,
+                                    tone: AppCardTone.info,
+                                    onTap: () => context.pushNamed(
+                                      AppRouteNames.accountCloud,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                    ),
+                    SizedBox(height: layout.sectionGap),
+                    AppSectionCard(
                       title: 'Movimentos recentes',
                       subtitle:
-                          'Ultimos registros do caixa local para apoio rapido da operacao.',
+                          'Ultimos registros do caixa para apoio rapido da loja.',
                       child: snapshot.recentMovements.isEmpty
                           ? const AppStateCard(
                               title: 'Sem movimentos recentes',
                               message:
-                                  'Assim que o caixa registrar entradas ou saidas locais, elas aparecem aqui.',
+                                  'Assim que o caixa registrar entradas ou saidas, elas aparecem aqui.',
                               compact: true,
                             )
                           : Column(
@@ -165,18 +256,18 @@ class DashboardPage extends ConsumerWidget {
               loading: () => const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
                 child: AppStateCard(
-                  title: 'Atualizando painel operacional',
-                  message: 'Buscando a leitura local mais recente do dia.',
+                  title: 'Atualizando inicio',
+                  message: 'Buscando o resumo mais recente do dia.',
                   tone: AppStateTone.loading,
                   compact: true,
                 ),
               ),
               error: (error, _) => AppSectionCard(
-                title: 'Falha ao carregar o dashboard operacional',
+                title: 'Falha ao carregar o inicio',
                 subtitle: error.toString(),
                 tone: AppCardTone.danger,
                 child: AppStateCard(
-                  title: 'Nao foi possivel atualizar a home operacional',
+                  title: 'Nao foi possivel atualizar o inicio',
                   message: 'Puxe para baixo ou tente novamente em instantes.',
                   tone: AppStateTone.error,
                   compact: true,
@@ -184,85 +275,6 @@ class DashboardPage extends ConsumerWidget {
                   onAction: () =>
                       ref.invalidate(operationalDashboardSnapshotProvider),
                 ),
-              ),
-            ),
-            SizedBox(height: layout.sectionGap),
-            AppSectionCard(
-              title: managerialReadiness.title,
-              subtitle: managerialReadiness.message,
-              tone: AppCardTone.muted,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: layout.space4,
-                      vertical: layout.space3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: tokens.info.base.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(layout.radiusMd),
-                    ),
-                    child: Text(
-                      managerialReadiness.sourceLabel,
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: tokens.info.base,
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: layout.blockGap),
-                  for (final indicator in managerialReadiness.plannedIndicators)
-                    Padding(
-                      padding: EdgeInsets.only(bottom: layout.blockGap),
-                      child: _ManagerialIndicatorTile(indicator: indicator),
-                    ),
-                ],
-              ),
-            ),
-            SizedBox(height: layout.sectionGap),
-            AppSectionCard(
-              title: 'Acoes rapidas',
-              subtitle:
-                  'Atalhos diretos da operacao local, com a mesma linguagem visual do restante do app.',
-              tone: AppCardTone.muted,
-              child: GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: layout.gridGap,
-                mainAxisSpacing: layout.gridGap,
-                childAspectRatio: 1.56,
-                children: [
-                  AppQuickActionCard(
-                    title: 'Nova venda',
-                    subtitle: 'Abrir PDV',
-                    icon: Icons.point_of_sale_rounded,
-                    palette: tokens.sales,
-                    onTap: () => context.pushNamed(AppRouteNames.sales),
-                  ),
-                  AppQuickActionCard(
-                    title: 'Caixa',
-                    subtitle: 'Sessao atual',
-                    icon: Icons.account_balance_wallet_rounded,
-                    palette: tokens.cashflowPositive,
-                    onTap: () => context.pushNamed(AppRouteNames.cash),
-                  ),
-                  AppQuickActionCard(
-                    title: 'Receber nota',
-                    subtitle: 'Fiado',
-                    icon: Icons.receipt_long_rounded,
-                    palette: tokens.warning,
-                    onTap: () => context.pushNamed(AppRouteNames.fiado),
-                  ),
-                  AppQuickActionCard(
-                    title: 'Nova compra',
-                    subtitle: 'Entrada de estoque',
-                    icon: Icons.shopping_bag_outlined,
-                    palette: tokens.info,
-                    onTap: () => context.pushNamed(AppRouteNames.purchaseForm),
-                  ),
-                ],
               ),
             ),
           ],
@@ -369,36 +381,52 @@ class _RecentMovementTile extends StatelessWidget {
   }
 }
 
-class _ManagerialIndicatorTile extends StatelessWidget {
-  const _ManagerialIndicatorTile({required this.indicator});
+class _DashboardAlertTile extends StatelessWidget {
+  const _DashboardAlertTile({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.tone,
+    required this.onTap,
+  });
 
-  final ManagerialDashboardPlannedIndicator indicator;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final AppCardTone tone;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final layout = context.appLayout;
+    final colors = context.appColors;
+    final palette = switch (tone) {
+      AppCardTone.warning => colors.warning,
+      AppCardTone.info => colors.info,
+      AppCardTone.danger => colors.danger,
+      AppCardTone.success => colors.success,
+      _ => colors.brand,
+    };
 
-    return AppCard(
-      padding: EdgeInsets.all(layout.compactCardPadding),
-      tone: AppCardTone.muted,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            indicator.title,
-            style: Theme.of(
-              context,
-            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          SizedBox(height: layout.space2),
-          Text(
-            indicator.reason,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
+    return AppListTileCard(
+      title: title,
+      subtitle: subtitle,
+      tone: tone,
+      leading: DecoratedBox(
+        decoration: BoxDecoration(
+          color: palette.base.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(layout.radiusMd),
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(layout.space4),
+          child: Icon(icon, color: palette.base, size: layout.iconMd),
+        ),
       ),
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+      onTap: onTap,
     );
   }
 }

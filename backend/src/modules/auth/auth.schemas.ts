@@ -12,6 +12,8 @@ const optionalClientString = (maxLength: number) =>
     .max(maxLength)
     .optional();
 
+const requiredClientInstanceId = z.string().trim().min(1).max(120);
+
 export const sessionClientSchema = z.object({
   clientType: sessionClientTypeSchema.optional(),
   clientInstanceId: optionalClientString(120),
@@ -30,7 +32,7 @@ export const loginSchema = z.object({
     .min(6, 'A senha precisa ter pelo menos 6 caracteres.')
     .max(72),
   clientType: sessionClientTypeSchema,
-  clientInstanceId: optionalClientString(120),
+  clientInstanceId: requiredClientInstanceId,
   deviceLabel: optionalClientString(120),
   platform: optionalClientString(60),
   appVersion: optionalClientString(40),
@@ -66,7 +68,7 @@ export const registerSchema = z.object({
     .min(8, 'A senha precisa ter pelo menos 8 caracteres.')
     .max(72),
   clientType: sessionClientTypeSchema,
-  clientInstanceId: optionalClientString(120),
+  clientInstanceId: requiredClientInstanceId,
   deviceLabel: optionalClientString(120),
   platform: optionalClientString(60),
   appVersion: optionalClientString(40),
@@ -89,7 +91,7 @@ export const registerInitialSchema = z.object({
     .min(6, 'A senha precisa ter pelo menos 6 caracteres.')
     .max(72),
   clientType: sessionClientTypeSchema,
-  clientInstanceId: optionalClientString(120),
+  clientInstanceId: requiredClientInstanceId,
   deviceLabel: optionalClientString(120),
   platform: optionalClientString(60),
   appVersion: optionalClientString(40),
@@ -102,7 +104,7 @@ export const forgotPasswordSchema = z.object({
 export const refreshSchema = z.object({
   refreshToken: z.string().trim().min(24).max(512),
   clientType: sessionClientTypeSchema.optional(),
-  clientInstanceId: optionalClientString(120),
+  clientInstanceId: requiredClientInstanceId,
   deviceLabel: optionalClientString(120),
   platform: optionalClientString(60),
   appVersion: optionalClientString(40),

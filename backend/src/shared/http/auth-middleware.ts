@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 
 import { prisma } from '../../database/prisma';
+import { AppContextService } from '../../modules/app/app-context.service';
 import { AuthSessionService } from '../../modules/auth/auth-session.service';
 import { env } from '../../config/env';
 import { AppError } from './app-error';
@@ -14,9 +15,11 @@ interface JwtPayload {
   email: string;
   isPlatformAdmin: boolean;
   sessionId?: string;
+  clientInstanceId?: string;
 }
 
 const authSessionService = new AuthSessionService();
+const appContextService = new AppContextService();
 
 export async function requireAuth(
   request: Request,
@@ -40,6 +43,7 @@ export async function requireAuth(
           sessionId: string;
           sessionClientType: string;
           membershipRole: string;
+          clientInstanceId: string;
         }
       | undefined;
 
@@ -69,6 +73,11 @@ export async function requireAuth(
       accessToken: token,
       sessionId: validatedSession?.sessionId,
       sessionClientType: validatedSession?.sessionClientType,
+      clientInstanceId:
+        validatedSession?.clientInstanceId ??
+        (typeof payload.clientInstanceId === 'string'
+          ? payload.clientInstanceId
+          : undefined),
     };
 
     next();
@@ -83,6 +92,33 @@ export async function requireAuth(
             error,
           ),
     );
+  }
+}
+
+export async function requireAppContext(
+  request: Request,
+  response: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    await new Promise<void>((resolve, reject) => {
+      void requireAuth(request, response, (error?: unknown) => {
+        if (error != null) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+
+    request.appContext = await appContextService.resolveFromRequest(request);
+    next();
+  } catch (error) {
+    appContextService.logBootstrapOutcome({
+      blockedReason:
+        error instanceof AppError ? error.code : 'APP_CONTEXT_REQUIRED',
+    });
+    next(error);
   }
 }
 

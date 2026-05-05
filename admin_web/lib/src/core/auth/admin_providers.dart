@@ -61,6 +61,61 @@ final adminCompanyDetailProvider =
       return ref.watch(adminApiServiceProvider).fetchCompanyDetail(companyId);
     });
 
+final adminCompanySyncHealthProvider =
+    FutureProvider.family<AdminCompanySyncHealth, String>((
+      ref,
+      companyId,
+    ) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchCompanySyncHealth(companyId);
+    });
+
+final adminCompanySyncDevicesProvider =
+    FutureProvider.family<List<AdminCompanySyncDevice>, String>((
+      ref,
+      companyId,
+    ) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchCompanySyncDevices(companyId);
+    });
+
+final adminCompanySyncEventsProvider =
+    FutureProvider.family<
+      AdminPaginatedResult<AdminSyncEventDiagnostic>,
+      AdminCompanySyncEventsQuery
+    >((ref, query) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchCompanySyncEvents(query: query);
+    });
+
+final adminCompanySyncConflictsProvider =
+    FutureProvider.family<
+      AdminPaginatedResult<AdminSyncConflictDiagnostic>,
+      AdminCompanySyncConflictsQuery
+    >((ref, query) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchCompanySyncConflicts(query: query);
+    });
+
+final adminCompanySyncIncidentsProvider =
+    FutureProvider.family<
+      AdminPaginatedResult<AdminSyncIncidentDiagnostic>,
+      AdminCompanySyncIncidentsQuery
+    >((ref, query) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchCompanySyncIncidents(query: query);
+    });
+
 final adminLicensesProvider =
     FutureProvider.family<
       AdminPaginatedResult<AdminLicenseSnapshot>,

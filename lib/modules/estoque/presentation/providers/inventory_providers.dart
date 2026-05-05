@@ -200,6 +200,10 @@ class InventoryActionController extends AsyncNotifier<void> {
   Future<void> adjustStock(InventoryAdjustmentInput input) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'InventoryActionController.adjustStock',
+      );
       await ref.read(inventoryRepositoryProvider).adjustStock(input);
       ref.read(appDataRefreshProvider.notifier).state++;
       state = const AsyncData(null);
@@ -217,6 +221,10 @@ class InventoryCountActionController extends AsyncNotifier<void> {
   Future<InventoryCountSession> createSession(String name) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'InventoryCountActionController.createSession',
+      );
       final session = await ref
           .read(inventoryCountRepositoryProvider)
           .createSession(name: name);
@@ -232,6 +240,10 @@ class InventoryCountActionController extends AsyncNotifier<void> {
   Future<InventoryCountItem> upsertItem(InventoryCountItemInput input) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'InventoryCountActionController.upsertItem',
+      );
       final item = await ref
           .read(inventoryCountRepositoryProvider)
           .upsertItem(input);
@@ -247,6 +259,10 @@ class InventoryCountActionController extends AsyncNotifier<void> {
   Future<void> markSessionReviewed(int sessionId) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'InventoryCountActionController.markSessionReviewed',
+      );
       await ref
           .read(inventoryCountRepositoryProvider)
           .markSessionReviewed(sessionId);
@@ -263,6 +279,10 @@ class InventoryCountActionController extends AsyncNotifier<void> {
   ) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'InventoryCountActionController.recalculateItemFromCurrentStock',
+      );
       final item = await ref
           .read(inventoryCountRepositoryProvider)
           .recalculateItemFromCurrentStock(countItemId);
@@ -278,6 +298,10 @@ class InventoryCountActionController extends AsyncNotifier<void> {
   Future<InventoryCountItem> keepRecordedDifference(int countItemId) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'InventoryCountActionController.keepRecordedDifference',
+      );
       final item = await ref
           .read(inventoryCountRepositoryProvider)
           .keepRecordedDifference(countItemId);
@@ -293,6 +317,10 @@ class InventoryCountActionController extends AsyncNotifier<void> {
   Future<void> applySession(int sessionId) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(
+        ref,
+        'InventoryCountActionController.applySession',
+      );
       await ref.read(inventoryCountRepositoryProvider).applySession(sessionId);
       ref.read(appDataRefreshProvider.notifier).state++;
       state = const AsyncData(null);

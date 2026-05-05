@@ -126,6 +126,7 @@ class CostActionController extends AsyncNotifier<void> {
   Future<int> createCost(CreateCostInput input) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(ref, 'CostActionController.createCost');
       final id = await ref.read(costRepositoryProvider).createCost(input);
       ref.read(appDataRefreshProvider.notifier).state++;
       state = const AsyncData(null);
@@ -142,6 +143,7 @@ class CostActionController extends AsyncNotifier<void> {
   }) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(ref, 'CostActionController.updateCost');
       final cost = await ref
           .read(costRepositoryProvider)
           .updateCost(costId: costId, input: input);
@@ -157,6 +159,7 @@ class CostActionController extends AsyncNotifier<void> {
   Future<CostEntry> markPaid(MarkCostPaidInput input) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(ref, 'CostActionController.markPaid');
       final cost = await ref.read(costRepositoryProvider).markCostPaid(input);
       ref.read(appDataRefreshProvider.notifier).state++;
       state = const AsyncData(null);
@@ -170,6 +173,7 @@ class CostActionController extends AsyncNotifier<void> {
   Future<CostEntry> cancelCost({required int costId, String? notes}) async {
     state = const AsyncLoading();
     try {
+      await requireTenantBootstrapReady(ref, 'CostActionController.cancelCost');
       final cost = await ref
           .read(costRepositoryProvider)
           .cancelCost(costId: costId, notes: notes);

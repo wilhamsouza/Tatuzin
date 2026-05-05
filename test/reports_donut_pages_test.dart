@@ -206,6 +206,7 @@ AuthStatusSnapshot _authStatus() {
     isMockAuthenticated: false,
     isRemoteAuthenticated: false,
     isPlatformAdmin: false,
+    isSupportProfile: false,
     sessionLabel: 'Modo local',
     userLabel: 'Operador local',
     companyLabel: 'Tatuzin',

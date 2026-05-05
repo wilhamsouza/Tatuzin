@@ -12,8 +12,12 @@ import 'package:erp_pdv_app/app/core/session/company_context.dart';
 import 'package:erp_pdv_app/app/core/session/session_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues({});
+
   test('signInRemote with trial company completes bootstrap', () async {
     final session = _remoteSession(licenseStatus: 'trial');
     final syncKickoffs = <String>[];
@@ -117,6 +121,7 @@ void main() {
             syncEnabled: true,
           ),
           isOfflineFallback: false,
+          clientInstanceId: 'device-1',
         );
 
     final state = await container.read(appStartupProvider.future);
@@ -144,6 +149,7 @@ void main() {
             user: _remoteUser(),
             company: _remoteCompany(),
             isOfflineFallback: false,
+            clientInstanceId: 'device-1',
           );
 
       final state = await container.read(appStartupProvider.future);
@@ -178,6 +184,7 @@ void main() {
             user: _remoteUser(),
             company: _remoteCompany(),
             isOfflineFallback: false,
+            clientInstanceId: 'device-1',
           );
 
       final state = await container.read(appStartupProvider.future);
@@ -209,6 +216,7 @@ void main() {
           user: _remoteUser(),
           company: _remoteCompany(),
           isOfflineFallback: false,
+          clientInstanceId: 'device-1',
         );
 
     final state = await container.read(appStartupProvider.future);
@@ -237,6 +245,7 @@ void main() {
           user: _remoteUser(),
           company: _remoteCompany(),
           isOfflineFallback: false,
+          clientInstanceId: 'device-1',
         );
 
     final state = await container.read(appStartupProvider.future);
@@ -265,6 +274,7 @@ void main() {
             user: _remoteUser(),
             company: _remoteCompany(),
             isOfflineFallback: false,
+            clientInstanceId: 'device-1',
           );
 
       final state = await container.read(appStartupProvider.future);
@@ -294,6 +304,7 @@ void main() {
             user: _remoteUser(),
             company: _remoteCompany(),
             isOfflineFallback: false,
+            clientInstanceId: 'device-1',
           );
 
       final state = await container.read(appStartupProvider.future);
@@ -351,6 +362,7 @@ AppSession _remoteSession({required String licenseStatus}) {
     company: _remoteCompany(licenseStatus: licenseStatus),
     startedAt: DateTime(2026, 4, 23, 12),
     isOfflineFallback: false,
+    clientInstanceId: 'device-1',
   );
 }
 

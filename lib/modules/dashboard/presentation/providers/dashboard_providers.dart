@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/provider_guard.dart';
-import '../../../../app/core/session/session_provider.dart';
+import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../data/sqlite_operational_dashboard_repository.dart';
 import '../../domain/entities/managerial_dashboard_readiness.dart';
 import '../../domain/entities/operational_dashboard_snapshot.dart';
@@ -18,7 +18,10 @@ final operationalDashboardRepositoryProvider =
 
 final operationalDashboardSnapshotProvider =
     FutureProvider<OperationalDashboardSnapshot>((ref) async {
-      ref.watch(sessionRuntimeKeyProvider);
+      await requireTenantBootstrapReady(
+        ref,
+        'operationalDashboardSnapshotProvider',
+      );
       ref.watch(appDataRefreshProvider);
       return runProviderGuarded(
         'operationalDashboardSnapshotProvider',

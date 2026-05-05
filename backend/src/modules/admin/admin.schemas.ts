@@ -49,6 +49,50 @@ const nullableIntField = z
     return value;
   });
 
+const adminSyncListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+const optionalDateQuery = z
+  .union([z.string(), z.undefined()])
+  .transform((value) => {
+    if (value == null) {
+      return undefined;
+    }
+
+    const normalized = value.trim();
+    return normalized.length === 0 ? undefined : normalized;
+  })
+  .refine(
+    (value) => value === undefined || !Number.isNaN(new Date(value).getTime()),
+    { message: 'Data invalida para filtro administrativo de sync.' },
+  )
+  .transform((value) => (value === undefined ? undefined : new Date(value)));
+
+const syncEventStatusQuerySchema = z
+  .enum([
+    'pending',
+    'accepted',
+    'duplicate',
+    'rejected',
+    'conflict',
+    'failed',
+    'PENDING',
+    'ACCEPTED',
+    'DUPLICATE',
+    'REJECTED',
+    'CONFLICT',
+    'FAILED',
+  ])
+  .transform((value) => value.toUpperCase())
+  .optional();
+
+const syncConflictStatusQuerySchema = z
+  .enum(['open', 'resolved', 'ignored', 'OPEN', 'RESOLVED', 'IGNORED'])
+  .transform((value) => value.toUpperCase())
+  .optional();
+
 export const adminLicensePatchSchema = z
   .object({
     plan: z.string().trim().min(1).max(60).optional(),
@@ -115,6 +159,28 @@ export const adminSyncQuerySchema = paginationQuerySchema.extend({
 
 export const adminSyncOperationalQuerySchema = adminSyncQuerySchema;
 
+export const adminCompanySyncEventsQuerySchema =
+  adminSyncListQuerySchema.extend({
+    deviceId: optionalQueryString(80),
+    status: syncEventStatusQuerySchema,
+    entity: optionalQueryString(80),
+    feature: optionalQueryString(80),
+    from: optionalDateQuery,
+    to: optionalDateQuery,
+  });
+
+export const adminCompanySyncConflictsQuerySchema =
+  adminSyncListQuerySchema.extend({
+    status: syncConflictStatusQuerySchema,
+  });
+
+export const adminCompanySyncIncidentsQuerySchema =
+  adminSyncListQuerySchema.extend({
+    severity: optionalQueryString(40),
+    from: optionalDateQuery,
+    to: optionalDateQuery,
+  });
+
 export type AdminLicensePatchInput = z.infer<typeof adminLicensePatchSchema>;
 export type AdminCompaniesQueryInput = z.infer<typeof adminCompaniesQuerySchema>;
 export type AdminLicensesQueryInput = z.infer<typeof adminLicensesQuerySchema>;
@@ -122,4 +188,13 @@ export type AdminAuditQueryInput = z.infer<typeof adminAuditQuerySchema>;
 export type AdminSyncQueryInput = z.infer<typeof adminSyncQuerySchema>;
 export type AdminSyncOperationalQueryInput = z.infer<
   typeof adminSyncOperationalQuerySchema
+>;
+export type AdminCompanySyncEventsQueryInput = z.infer<
+  typeof adminCompanySyncEventsQuerySchema
+>;
+export type AdminCompanySyncConflictsQueryInput = z.infer<
+  typeof adminCompanySyncConflictsQuerySchema
+>;
+export type AdminCompanySyncIncidentsQueryInput = z.infer<
+  typeof adminCompanySyncIncidentsQuerySchema
 >;

@@ -35,6 +35,7 @@ void main() {
             user: session.user,
             company: session.company,
             isOfflineFallback: session.isOfflineFallback,
+            clientInstanceId: session.clientInstanceId,
           );
       await container.read(appStartupProvider.future);
 
@@ -210,5 +211,6 @@ AppSession _remoteSession() {
     ),
     startedAt: DateTime.now(),
     isOfflineFallback: false,
+    clientInstanceId: 'device-1',
   );
 }

@@ -131,7 +131,7 @@ describe('tenant analytics reports routes', () => {
     assert.equal(response.status, 403);
     assert.equal(
       (response.data as { code?: string }).code,
-      'LICENSE_NOT_CONFIGURED',
+      'LICENSE_REQUIRED',
     );
   });
 
@@ -220,6 +220,24 @@ async function createTenantFixture(options?: { createLicense?: boolean }) {
       isDefault: true,
     },
   });
+  const clientInstanceId = `${runId}-device-${Date.now()}`;
+
+  if (options?.createLicense !== false) {
+    await prisma.companyDevice.create({
+      data: {
+        companyId: company.id,
+        userId: user.id,
+        clientInstanceId,
+        deviceLabel: 'Tenant Analytics Test',
+        platform: 'node-test',
+        appVersion: 'tenant-analytics-test',
+        status: 'ACTIVE',
+        approvedAt: new Date(),
+        approvedByUserId: user.id,
+        lastSeenAt: new Date(),
+      },
+    });
+  }
 
   const customer = await prisma.customer.create({
     data: {
@@ -301,6 +319,7 @@ async function createTenantFixture(options?: { createLicense?: boolean }) {
       membershipId: membership.id,
       email: user.email,
       isPlatformAdmin: false,
+      clientInstanceId,
     }),
   };
 }
@@ -311,6 +330,7 @@ function signToken(input: {
   membershipId: string;
   email: string;
   isPlatformAdmin: boolean;
+  clientInstanceId: string;
 }) {
   return jwt.sign(
     {
@@ -320,6 +340,7 @@ function signToken(input: {
       membershipRole: 'OPERATOR',
       email: input.email,
       isPlatformAdmin: input.isPlatformAdmin,
+      clientInstanceId: input.clientInstanceId,
     },
     env.JWT_SECRET,
     { expiresIn: '15m' },

@@ -138,6 +138,7 @@ AppSession _remoteSession({
     ),
     startedAt: DateTime.now(),
     isOfflineFallback: false,
+    clientInstanceId: 'device-1',
   );
 }
 
@@ -149,6 +150,7 @@ Future<void> _switchTo(ProviderContainer container, AppSession session) async {
         user: session.user,
         company: session.company,
         isOfflineFallback: session.isOfflineFallback,
+        clientInstanceId: session.clientInstanceId,
       );
   await container.read(appStartupProvider.future);
 }

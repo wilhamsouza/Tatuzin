@@ -28,6 +28,12 @@ SyncErrorInfo resolveSyncError(Object error) {
           type: SyncErrorType.conflict,
         );
       }
+      if (statusCode == 422) {
+        return SyncErrorInfo(
+          message: _normalizeValidationMessage(error.message),
+          type: SyncErrorType.validation,
+        );
+      }
       if (statusCode >= 500) {
         return SyncErrorInfo(
           message: error.message,
@@ -59,4 +65,13 @@ SyncErrorInfo resolveSyncError(Object error) {
   }
 
   return SyncErrorInfo(message: error.toString(), type: SyncErrorType.unknown);
+}
+
+String _normalizeValidationMessage(String message) {
+  final normalized = message.toLowerCase();
+  if (normalized.contains('createdat') &&
+      normalized.contains('invalid datetime')) {
+    return 'Falha ao sincronizar evento financeiro. Data invalida no evento local (createdAt).';
+  }
+  return message;
 }

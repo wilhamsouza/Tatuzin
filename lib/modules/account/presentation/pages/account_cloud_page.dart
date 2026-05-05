@@ -338,7 +338,7 @@ class AccountCloudPage extends ConsumerWidget {
           AppSectionCard(
             title: 'Sessao',
             subtitle:
-                'Entre, saia ou recupere sua conta quando quiser usar a nuvem sem perder o modo local.',
+                'Entre, saia ou recupere sua conta para manter a empresa local vinculada ao seu login.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -379,9 +379,9 @@ class AccountCloudPage extends ConsumerWidget {
                 Text(
                   authStatus.canAttemptRemoteLogin
                       ? authStatus.isRemoteAuthenticated
-                            ? 'Ao sair da conta, o Tatuzin continua disponivel em modo local neste dispositivo.'
-                            : 'Mesmo sem entrar na conta, voce pode continuar vendendo e usando o app no modo local.'
-                      : 'A nuvem nao esta disponivel neste momento. Seu uso local continua liberado normalmente.',
+                            ? 'Ao sair da conta, o Tatuzin volta para a tela de entrada neste dispositivo.'
+                            : 'Entre uma vez com internet para liberar a base local da sua empresa neste dispositivo.'
+                      : 'Conecte-se a internet para entrar no Tatuzin pela primeira vez neste dispositivo.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
@@ -393,12 +393,12 @@ class AccountCloudPage extends ConsumerWidget {
           AppSectionCard(
             title: 'Ajuda e suporte',
             subtitle:
-                'Quando a nuvem precisa de atencao, sua operacao local continua disponivel neste aparelho.',
+                'Quando a internet oscila, a operacao local continua disponivel apenas para sessoes ja validadas.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Se voce precisar renovar o acesso, basta entrar novamente na sua conta. Em caso de internet instavel, o Tatuzin continua funcionando localmente.',
+                  'Se voce precisar renovar o acesso, entre novamente na sua conta. Em caso de internet instavel, o Tatuzin usa o tenant local ja vinculado a esta empresa.',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
@@ -512,11 +512,11 @@ class AccountCloudPage extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Voce saiu da conta. O Tatuzin continua no modo local.',
+            'Voce saiu da conta. Entre novamente para acessar a empresa.',
           ),
         ),
       );
-      context.goNamed(AppRouteNames.accountCloud);
+      context.goNamed(AppRouteNames.login);
     } catch (error) {
       if (!context.mounted) {
         return;
