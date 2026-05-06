@@ -14,7 +14,7 @@ import 'core/sync/sync_providers.dart';
 import 'core/utils/app_logger.dart';
 import 'core/widgets/app_async_value_view.dart';
 import 'routes/app_router.dart';
-import 'theme/app_theme.dart';
+import 'core/theme/app_theme.dart';
 
 class ErpPdvApp extends ConsumerStatefulWidget {
   const ErpPdvApp({super.key});

@@ -45,7 +45,7 @@ class AccountCloudPage extends ConsumerWidget {
     final internalAccess = ref.watch(internalMobileSurfaceAccessProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Conta e nuvem')),
+      appBar: AppBar(titleSpacing: 0, title: const _AccountCloudAppBarTitle()),
       drawer: const AppMainDrawer(),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -594,6 +594,30 @@ class AccountCloudPage extends ConsumerWidget {
           },
         ) ??
         _SignOutDecision.cancel;
+  }
+}
+
+class _AccountCloudAppBarTitle extends StatelessWidget {
+  const _AccountCloudAppBarTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Conta e nuvem'),
+        Text(
+          'Licenca, empresa e sincronizacao',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
   }
 }
 

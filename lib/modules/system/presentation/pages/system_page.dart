@@ -173,7 +173,7 @@ class _SystemPageState extends ConsumerState<SystemPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Sistema')),
+      appBar: AppBar(titleSpacing: 0, title: const _SystemAppBarTitle()),
       drawer: const AppMainDrawer(),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -867,6 +867,30 @@ class _SystemPageState extends ConsumerState<SystemPage> {
         return;
       }
     }
+  }
+}
+
+class _SystemAppBarTitle extends StatelessWidget {
+  const _SystemAppBarTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Sistema'),
+        Text(
+          'Diagnostico e suporte',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
   }
 }
 

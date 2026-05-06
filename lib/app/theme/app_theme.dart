@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/app_colors.dart';
 import 'app_design_tokens.dart';
 
 abstract final class AppTheme {
-  static const primary = Color(0xFF7B5234);
-  static const secondary = Color(0xFFA1714C);
-  static const background = Color(0xFFFFFCF9);
-  static const surface = Color(0xFFFFFEFC);
-  static const onSurface = Color(0xFF2F241D);
-  static const success = Color(0xFF22C55E);
-  static const error = Color(0xFFEF4444);
-  static const warning = Color(0xFFB7791F);
+  static const primary = AppColors.primary;
+  static const secondary = AppColors.primaryLight;
+  static const background = AppColors.surface2;
+  static const surface = AppColors.surface;
+  static const onSurface = AppColors.text1;
+  static const success = AppColors.success;
+  static const error = AppColors.error;
+  static const warning = AppColors.warning;
 
   static ThemeData light() {
     final seededScheme = ColorScheme.fromSeed(
@@ -21,38 +22,39 @@ abstract final class AppTheme {
     final colorScheme = seededScheme.copyWith(
       primary: primary,
       onPrimary: Colors.white,
-      primaryContainer: const Color(0xFFF3E6DA),
-      onPrimaryContainer: const Color(0xFF4E2F1C),
+      primaryContainer: AppColors.primaryDim,
+      onPrimaryContainer: AppColors.text2,
       secondary: secondary,
       onSecondary: Colors.white,
-      secondaryContainer: const Color(0xFFF6EADF),
-      onSecondaryContainer: const Color(0xFF5A3922),
+      secondaryContainer: AppColors.salesBackground,
+      onSecondaryContainer: AppColors.text2,
       surface: surface,
       onSurface: onSurface,
+      onSurfaceVariant: AppColors.text3,
       surfaceContainerLowest: Colors.white,
-      surfaceContainerLow: const Color(0xFFFBF7F2),
-      surfaceContainer: const Color(0xFFF6EFE8),
-      surfaceContainerHigh: const Color(0xFFF0E7DE),
-      surfaceContainerHighest: const Color(0xFFE8DDD2),
-      outline: const Color(0xFFD6C8BD),
-      outlineVariant: const Color(0xFFE9DDD4),
+      surfaceContainerLow: AppColors.surface2,
+      surfaceContainer: AppColors.surface3,
+      surfaceContainerHigh: AppColors.borderLight,
+      surfaceContainerHighest: AppColors.border,
+      outline: AppColors.border,
+      outlineVariant: AppColors.borderLight,
       error: error,
       onError: Colors.white,
-      errorContainer: const Color(0xFFFEE2E2),
+      errorContainer: AppColors.errorBackground,
       onErrorContainer: const Color(0xFF7F1D1D),
       tertiary: success,
       onTertiary: Colors.white,
-      tertiaryContainer: const Color(0xFFDCFCE7),
-      onTertiaryContainer: const Color(0xFF166534),
-      shadow: const Color(0xFF1F1B2D),
-      scrim: const Color(0xFF111827),
+      tertiaryContainer: AppColors.successBackground,
+      onTertiaryContainer: const Color(0xFF065F46),
+      shadow: AppColors.text1,
+      scrim: AppColors.text1,
     );
 
     const layoutTokens = AppLayoutTokens(
-      radiusSm: 10,
+      radiusSm: 8,
       radiusMd: 12,
-      radiusLg: 14,
-      radiusXl: 16,
+      radiusLg: 16,
+      radiusXl: 20,
       radiusSheet: 24,
       radiusPill: 999,
       space2: 4,
@@ -65,25 +67,25 @@ abstract final class AppTheme {
       space9: 18,
       space10: 20,
       space11: 24,
-      pagePadding: 16,
+      pagePadding: 18,
       pagePaddingCompact: 12,
-      sectionGap: 14,
+      sectionGap: 16,
       blockGap: 12,
-      gridGap: 10,
+      gridGap: 12,
       iconSm: 16,
       iconMd: 18,
-      iconLg: 20,
+      iconLg: 22,
       inputHeight: 48,
       actionHeight: 48,
       compactActionHeight: 40,
-      quickActionHeight: 44,
+      quickActionHeight: 46,
       cardPadding: 16,
       compactCardPadding: 12,
-      headerPadding: 12,
+      headerPadding: 16,
       bottomBarPadding: 12,
       sheetPadding: 16,
-      shadowBlur: 14,
-      shadowOffsetY: 6,
+      shadowBlur: 18,
+      shadowOffsetY: 8,
     );
 
     final colorTokens = AppColorTokens(
@@ -99,63 +101,63 @@ abstract final class AppTheme {
       brand: AppTonePalette(
         base: colorScheme.primary,
         onBase: colorScheme.onPrimary,
-        surface: colorScheme.primaryContainer.withValues(alpha: 0.58),
+        surface: colorScheme.primaryContainer,
         onSurface: colorScheme.onPrimaryContainer,
-        border: colorScheme.primary.withValues(alpha: 0.14),
+        border: AppColors.primaryBorder,
       ),
-      info: AppTonePalette(
-        base: colorScheme.primary,
-        onBase: colorScheme.onPrimary,
-        surface: colorScheme.primaryContainer.withValues(alpha: 0.52),
-        onSurface: colorScheme.onPrimaryContainer,
-        border: colorScheme.primary.withValues(alpha: 0.14),
+      info: const AppTonePalette(
+        base: AppColors.info,
+        onBase: Colors.white,
+        surface: AppColors.infoBackground,
+        onSurface: Color(0xFF1D4ED8),
+        border: Color(0xFFBFDBFE),
       ),
       success: AppTonePalette(
         base: colorScheme.tertiary,
         onBase: colorScheme.onTertiary,
-        surface: colorScheme.tertiaryContainer.withValues(alpha: 0.72),
+        surface: colorScheme.tertiaryContainer,
         onSurface: colorScheme.onTertiaryContainer,
-        border: colorScheme.tertiary.withValues(alpha: 0.18),
+        border: const Color(0xFFA7F3D0),
       ),
-      warning: AppTonePalette(
+      warning: const AppTonePalette(
         base: warning,
         onBase: Colors.white,
-        surface: colorScheme.secondaryContainer.withValues(alpha: 0.72),
-        onSurface: colorScheme.onSecondaryContainer,
-        border: warning.withValues(alpha: 0.18),
+        surface: AppColors.warningBackground,
+        onSurface: Color(0xFF92400E),
+        border: Color(0xFFFCD34D),
       ),
       danger: AppTonePalette(
         base: colorScheme.error,
         onBase: colorScheme.onError,
-        surface: colorScheme.errorContainer.withValues(alpha: 0.72),
+        surface: colorScheme.errorContainer,
         onSurface: colorScheme.onErrorContainer,
-        border: colorScheme.error.withValues(alpha: 0.18),
+        border: const Color(0xFFFCA5A5),
       ),
       sales: const AppTonePalette(
-        base: Color(0xFF8C6239),
+        base: AppColors.primaryLight,
         onBase: Colors.white,
-        surface: Color(0xFFF4E6D8),
-        onSurface: Color(0xFF5A3922),
-        border: Color(0xFFD2B89D),
+        surface: AppColors.salesBackground,
+        onSurface: AppColors.text2,
+        border: AppColors.primaryBorder,
       ),
       cashflowPositive: const AppTonePalette(
-        base: Color(0xFF166534),
+        base: AppColors.success,
         onBase: Colors.white,
-        surface: Color(0xFFDCFCE7),
-        onSurface: Color(0xFF166534),
-        border: Color(0xFF86EFAC),
+        surface: AppColors.successBackground,
+        onSurface: Color(0xFF065F46),
+        border: Color(0xFFA7F3D0),
       ),
       cashflowNegative: const AppTonePalette(
-        base: Color(0xFFB91C1C),
+        base: AppColors.error,
         onBase: Colors.white,
-        surface: Color(0xFFFEE2E2),
+        surface: AppColors.errorBackground,
         onSurface: Color(0xFF991B1B),
         border: Color(0xFFFCA5A5),
       ),
       stockLow: const AppTonePalette(
-        base: Color(0xFF9A6700),
+        base: AppColors.warning,
         onBase: Colors.white,
-        surface: Color(0xFFFEF3C7),
+        surface: AppColors.stockBackground,
         onSurface: Color(0xFF92400E),
         border: Color(0xFFF6C453),
       ),
@@ -176,14 +178,15 @@ abstract final class AppTheme {
       selection: AppTonePalette(
         base: colorScheme.primary,
         onBase: colorScheme.onPrimary,
-        surface: colorScheme.primaryContainer.withValues(alpha: 0.4),
+        surface: colorScheme.primaryContainer,
         onSurface: colorScheme.onPrimaryContainer,
-        border: colorScheme.primary.withValues(alpha: 0.2),
+        border: AppColors.primaryBorder,
       ),
     );
 
     final base = ThemeData(
       useMaterial3: true,
+      fontFamily: 'NotoSans',
       colorScheme: colorScheme,
       scaffoldBackgroundColor: colorTokens.pageBackground,
       extensions: <ThemeExtension<dynamic>>[colorTokens, layoutTokens],
@@ -193,17 +196,17 @@ abstract final class AppTheme {
       displaySmall: base.textTheme.displaySmall?.copyWith(
         color: onSurface,
         fontWeight: FontWeight.w800,
-        letterSpacing: -0.9,
+        letterSpacing: 0,
       ),
       headlineMedium: base.textTheme.headlineMedium?.copyWith(
         color: onSurface,
         fontWeight: FontWeight.w800,
-        letterSpacing: -0.5,
+        letterSpacing: 0,
       ),
       headlineSmall: base.textTheme.headlineSmall?.copyWith(
         color: onSurface,
         fontWeight: FontWeight.w800,
-        letterSpacing: -0.3,
+        letterSpacing: 0,
       ),
       titleLarge: base.textTheme.titleLarge?.copyWith(
         color: onSurface,
@@ -248,7 +251,7 @@ abstract final class AppTheme {
       ),
       appBarTheme: AppBarTheme(
         centerTitle: false,
-        backgroundColor: colorTokens.pageBackground,
+        backgroundColor: colorTokens.cardBackground,
         foregroundColor: onSurface,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -436,7 +439,7 @@ abstract final class AppTheme {
         ),
       ),
       chipTheme: base.chipTheme.copyWith(
-        backgroundColor: colorTokens.sectionBackground,
+        backgroundColor: colorTokens.cardBackground,
         selectedColor: colorTokens.selection.surface,
         secondarySelectedColor: colorTokens.selection.surface,
         disabledColor: colorTokens.disabled.surface,
@@ -451,7 +454,7 @@ abstract final class AppTheme {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(layoutTokens.radiusPill),
         ),
-        side: BorderSide.none,
+        side: BorderSide(color: colorTokens.outlineSoft),
         padding: EdgeInsets.symmetric(
           horizontal: layoutTokens.space4,
           vertical: layoutTokens.space2,
@@ -469,6 +472,7 @@ abstract final class AppTheme {
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
+        elevation: 0,
         indicatorColor: colorTokens.selection.surface,
         iconTheme: WidgetStateProperty.resolveWith((states) {
           return IconThemeData(
@@ -500,6 +504,22 @@ abstract final class AppTheme {
           borderRadius: BorderRadius.circular(layoutTokens.space3),
         ),
         side: BorderSide(color: colorScheme.outline),
+      ),
+      drawerTheme: DrawerThemeData(
+        backgroundColor: colorTokens.cardBackground,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.horizontal(
+            right: Radius.circular(layoutTokens.radiusSheet),
+          ),
+        ),
+      ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: colorTokens.cardBackground,
+        selectedItemColor: colorScheme.primary,
+        unselectedItemColor: colorScheme.onSurfaceVariant,
+        elevation: 0,
+        type: BottomNavigationBarType.fixed,
       ),
     );
   }

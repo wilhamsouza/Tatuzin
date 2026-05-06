@@ -65,8 +65,27 @@ class _SalesPageState extends ConsumerState<SalesPage> {
     return Scaffold(
       drawer: const AppMainDrawer(),
       appBar: AppBar(
-        title: const Text('Vendas'),
+        titleSpacing: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('PDV'),
+            Text(
+              'Ponto de Venda',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
         actions: [
+          IconButton(
+            tooltip: 'Ler codigo de barras',
+            onPressed: _scanBarcode,
+            icon: const Icon(Icons.qr_code_scanner_rounded),
+          ),
           IconButton(
             tooltip: 'Abrir carrinho',
             onPressed: () => context.pushNamed(AppRouteNames.cart),
@@ -196,7 +215,6 @@ class _SalesPageState extends ConsumerState<SalesPage> {
                 cartItems: cart.totalItems,
                 totalCents: cart.totalCents,
                 onOpenCart: () => context.pushNamed(AppRouteNames.cart),
-                onOpenCheckout: () => context.pushNamed(AppRouteNames.checkout),
               ),
             ),
     );
@@ -486,13 +504,11 @@ class _BottomCartBar extends StatelessWidget {
     required this.cartItems,
     required this.totalCents,
     required this.onOpenCart,
-    required this.onOpenCheckout,
   });
 
   final int cartItems;
   final int totalCents;
   final VoidCallback onOpenCart;
-  final VoidCallback onOpenCheckout;
 
   @override
   Widget build(BuildContext context) {
@@ -524,21 +540,12 @@ class _BottomCartBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        Flexible(
+        SizedBox(
+          width: 172,
           child: _BottomActionButton(
-            label: 'Carrinho',
-            icon: Icons.shopping_cart_rounded,
+            label: 'Ver Carrinho',
+            icon: Icons.arrow_forward_rounded,
             onPressed: onOpenCart,
-            filled: false,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Flexible(
-          flex: 2,
-          child: _BottomActionButton(
-            label: 'Finalizar venda',
-            icon: Icons.check_circle_outline_rounded,
-            onPressed: onOpenCheckout,
             filled: true,
           ),
         ),

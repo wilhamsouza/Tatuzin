@@ -53,9 +53,36 @@ class _ProductsPageState extends ConsumerState<ProductsPage> {
 
     final productsAsync = ref.watch(productListProvider);
     final layout = context.appLayout;
+    final totalLabel = productsAsync.maybeWhen(
+      data: (products) => '${products.length} item(ns)',
+      orElse: () => 'Catalogo',
+    );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Produtos')),
+      appBar: AppBar(
+        titleSpacing: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Produtos'),
+            Text(
+              totalLabel,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        actions: const [
+          IconButton(
+            tooltip: 'Filtros do catalogo',
+            onPressed: null,
+            icon: Icon(Icons.filter_list_rounded),
+          ),
+        ],
+      ),
       drawer: const AppMainDrawer(),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {

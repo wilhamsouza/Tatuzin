@@ -719,7 +719,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                               textAlign: TextAlign.right,
                               style: theme.textTheme.titleLarge?.copyWith(
                                 fontWeight: FontWeight.w800,
-                                letterSpacing: -0.3,
+                                letterSpacing: 0,
                               ),
                             ),
                           ],
@@ -743,7 +743,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                             label: Text(
                               isSubmitting
                                   ? 'Finalizando...'
-                                  : 'Finalizar venda',
+                                  : 'Confirmar Venda - ${AppFormatters.currencyFromCents(cart.totalCents)}',
                             ),
                           ),
                         ),

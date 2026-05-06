@@ -64,9 +64,42 @@ class _CashPageState extends ConsumerState<CashPage> {
     final actionState = ref.watch(cashActionControllerProvider);
     final operatorName = ref.watch(currentCashOperatorNameProvider);
     final layout = context.appLayout;
+    final currentSession = currentSessionAsync.valueOrNull;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Caixa')),
+      appBar: AppBar(
+        titleSpacing: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Caixa'),
+            Text(
+              'Sessao operacional',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          Padding(
+            padding: EdgeInsets.only(right: layout.space6),
+            child: Center(
+              child: AppStatusBadge(
+                label: currentSession?.status.label ?? 'Fechado',
+                tone: currentSession?.isOpen == true
+                    ? AppStatusTone.success
+                    : AppStatusTone.neutral,
+                icon: currentSession?.isOpen == true
+                    ? Icons.lock_open_rounded
+                    : Icons.lock_outline_rounded,
+              ),
+            ),
+          ),
+        ],
+      ),
       drawer: const AppMainDrawer(),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -84,8 +117,8 @@ class _CashPageState extends ConsumerState<CashPage> {
             AppPageHeader(
               title: 'Caixa operacional',
               subtitle:
-                  'Sessão atual, saldo físico e ações do operador $operatorName.',
-              badgeLabel: 'Operação do caixa',
+                  'SessÃ£o atual, saldo fÃ­sico e aÃ§Ãµes do operador $operatorName.',
+              badgeLabel: 'OperaÃ§Ã£o do caixa',
               badgeIcon: Icons.account_balance_wallet_rounded,
             ),
             const SizedBox(height: 14),
@@ -131,15 +164,15 @@ class _CashPageState extends ConsumerState<CashPage> {
             ],
             SizedBox(height: layout.sectionGap),
             AppSectionCard(
-              title: 'Movimentações',
+              title: 'MovimentaÃ§Ãµes',
               subtitle:
-                  'Mostrando ${visibleMovements.length} movimentações${filteredMovements.length != visibleMovements.length ? ' de ${filteredMovements.length}' : ''}.',
+                  'Mostrando ${visibleMovements.length} movimentaÃ§Ãµes${filteredMovements.length != visibleMovements.length ? ' de ${filteredMovements.length}' : ''}.',
               padding: const EdgeInsets.all(16),
               child: movementsAsync.when(
                 data: (_) {
                   if (filteredMovements.isEmpty) {
                     return const Text(
-                      'Nenhuma movimentação encontrada para o filtro selecionado.',
+                      'Nenhuma movimentaÃ§Ã£o encontrada para o filtro selecionado.',
                     );
                   }
                   return Column(
@@ -187,18 +220,18 @@ class _CashPageState extends ConsumerState<CashPage> {
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (error, _) =>
-                    Text('Falha ao carregar movimentações: $error'),
+                    Text('Falha ao carregar movimentaÃ§Ãµes: $error'),
               ),
             ),
             SizedBox(height: layout.sectionGap),
             AppSectionCard(
-              title: 'Histórico de sessões',
-              subtitle: 'Fechamentos recentes e divergências de caixa.',
+              title: 'HistÃ³rico de sessÃµes',
+              subtitle: 'Fechamentos recentes e divergÃªncias de caixa.',
               padding: const EdgeInsets.all(16),
               child: sessionsAsync.when(
                 data: (sessions) {
                   if (sessions.isEmpty) {
-                    return const Text('Nenhuma sessão registrada ainda.');
+                    return const Text('Nenhuma sessÃ£o registrada ainda.');
                   }
                   return Column(
                     children: [
@@ -214,7 +247,7 @@ class _CashPageState extends ConsumerState<CashPage> {
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (error, _) =>
-                    Text('Falha ao carregar histórico: $error'),
+                    Text('Falha ao carregar histÃ³rico: $error'),
               ),
             ),
           ],
@@ -266,7 +299,7 @@ class _CashPageState extends ConsumerState<CashPage> {
               TextField(
                 controller: notesController,
                 decoration: const InputDecoration(
-                  labelText: 'Observação',
+                  labelText: 'ObservaÃ§Ã£o',
                   hintText: 'Opcional',
                 ),
               ),
@@ -311,12 +344,12 @@ class _CashPageState extends ConsumerState<CashPage> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Abertura automática do caixa'),
+        title: const Text('Abertura automÃ¡tica do caixa'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Informe o troco inicial para iniciar a sessão.'),
+            const Text('Informe o troco inicial para iniciar a sessÃ£o.'),
             const SizedBox(height: 12),
             TextField(
               controller: amountController,
@@ -359,7 +392,7 @@ class _CashPageState extends ConsumerState<CashPage> {
             .read(cashActionControllerProvider.notifier)
             .closeSession(
               countedBalanceCents: session.expectedBalanceCents,
-              notes: 'Sessão encerrada sem confirmação do troco inicial.',
+              notes: 'SessÃ£o encerrada sem confirmaÃ§Ã£o do troco inicial.',
             );
         if (!mounted) return;
         AppFeedback.success(context, 'Caixa fechado.');
@@ -455,7 +488,7 @@ class _CashPageState extends ConsumerState<CashPage> {
                 ),
                 const SizedBox(height: 14),
                 _SummaryLine(
-                  label: 'Período',
+                  label: 'PerÃ­odo',
                   value:
                       '${AppFormatters.shortDateTime(session.openedAt)} - agora',
                 ),
@@ -485,7 +518,7 @@ class _CashPageState extends ConsumerState<CashPage> {
                   ),
                 ),
                 _SummaryLine(
-                  label: 'Fiado recebido por cartão',
+                  label: 'Fiado recebido por cartÃ£o',
                   value: AppFormatters.currencyFromCents(
                     session.fiadoReceiptsCardCents,
                   ),
@@ -516,7 +549,7 @@ class _CashPageState extends ConsumerState<CashPage> {
                   controller: notesController,
                   maxLines: 3,
                   decoration: const InputDecoration(
-                    labelText: 'Observação de fechamento',
+                    labelText: 'ObservaÃ§Ã£o de fechamento',
                     hintText: 'Opcional',
                   ),
                 ),
@@ -616,7 +649,7 @@ class _CashPageState extends ConsumerState<CashPage> {
               TextField(
                 controller: descriptionController,
                 maxLines: 3,
-                decoration: const InputDecoration(labelText: 'Descrição'),
+                decoration: const InputDecoration(labelText: 'DescriÃ§Ã£o'),
               ),
             ],
           ),
@@ -697,7 +730,7 @@ class _CurrentSessionSection extends StatelessWidget {
 
     if (session == null) {
       return AppSectionCard(
-        title: 'Sessão atual',
+        title: 'SessÃ£o atual',
         subtitle: 'Nenhum caixa aberto no momento.',
         padding: const EdgeInsets.all(16),
         trailing: const AppStatusBadge(
@@ -714,18 +747,20 @@ class _CurrentSessionSection extends StatelessWidget {
     }
 
     final current = session!;
+    final dinheiroFisicoCents =
+        current.physicalBalanceCents - current.totalFiadoReceiptsCents;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AppSectionCard(
-          title: 'Sessão atual',
+          title: 'SessÃ£o atual',
           subtitle: current.awaitingInitialFloatConfirmation
-              ? 'Abertura pendente de confirmação do troco inicial.'
+              ? 'Abertura pendente de confirmaÃ§Ã£o do troco inicial.'
               : 'Caixa ${current.isOpen ? 'aberto' : 'fechado'} desde ${AppFormatters.shortDateTime(current.openedAt)}.',
           padding: const EdgeInsets.all(16),
           trailing: current.awaitingInitialFloatConfirmation
               ? const AppStatusBadge(
-                  label: 'Aguardando confirmação',
+                  label: 'Aguardando confirmaÃ§Ã£o',
                   tone: AppStatusTone.warning,
                   icon: Icons.hourglass_top_rounded,
                 )
@@ -741,56 +776,73 @@ class _CurrentSessionSection extends StatelessWidget {
             children: [
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerLowest,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: colorScheme.outlineVariant),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF0F7B5C), Color(0xFF17A878)],
+                  ),
+                  borderRadius: BorderRadius.circular(18),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Saldo em caixa',
-                            style: Theme.of(context).textTheme.bodySmall
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Sessao #${current.id}',
+                            style: Theme.of(context).textTheme.titleSmall
                                 ?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white.withValues(alpha: 0.82),
+                                  fontWeight: FontWeight.w800,
                                 ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            AppFormatters.currencyFromCents(
-                              current.physicalBalanceCents,
-                            ),
-                            style: Theme.of(context).textTheme.headlineSmall
-                                ?.copyWith(fontWeight: FontWeight.w800),
-                          ),
-                        ],
+                        ),
+                        AppStatusBadge(
+                          label: current.status.label,
+                          tone: current.isOpen
+                              ? AppStatusTone.success
+                              : AppStatusTone.neutral,
+                          icon: current.isOpen
+                              ? Icons.lock_open_rounded
+                              : Icons.lock_outline_rounded,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Caixa atual',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.72),
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          'Saldo esperado',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: colorScheme.onSurfaceVariant),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          AppFormatters.currencyFromCents(
-                            current.expectedBalanceCents,
+                    const SizedBox(height: 4),
+                    Text(
+                      AppFormatters.currencyFromCents(
+                        current.expectedBalanceCents,
+                      ),
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
                           ),
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                color: colorScheme.primary,
-                              ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 14,
+                      runSpacing: 8,
+                      children: [
+                        _HeroInfoPill(
+                          icon: Icons.schedule_rounded,
+                          label:
+                              'Abertura ${AppFormatters.shortDateTime(current.openedAt)}',
+                        ),
+                        _HeroInfoPill(
+                          icon: Icons.person_outline_rounded,
+                          label: current.operatorName,
                         ),
                       ],
                     ),
@@ -816,7 +868,7 @@ class _CurrentSessionSection extends StatelessWidget {
                   ),
                   _InfoLine(label: 'Operador', value: current.operatorName),
                   _InfoLine(
-                    label: 'Duração',
+                    label: 'DuraÃ§Ã£o',
                     value: _formatDuration(
                       (current.closedAt ?? DateTime.now()).difference(
                         current.openedAt,
@@ -844,7 +896,7 @@ class _CurrentSessionSection extends StatelessWidget {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Troco inicial não informado. Confirme a abertura para liberar suprimento, sangria e contagem.',
+                          'Troco inicial nÃ£o informado. Confirme a abertura para liberar suprimento, sangria e contagem.',
                           style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(color: colorScheme.onPrimaryContainer),
                         ),
@@ -873,7 +925,7 @@ class _CurrentSessionSection extends StatelessWidget {
                 Align(
                   alignment: Alignment.centerRight,
                   child: Text(
-                    'Atualizado às ${TimeOfDay.fromDateTime(updatedAt!).format(context)}',
+                    'Atualizado Ã s ${TimeOfDay.fromDateTime(updatedAt!).format(context)}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
@@ -882,10 +934,10 @@ class _CurrentSessionSection extends StatelessWidget {
           ),
         ),
         AppSectionCard(
-          title: 'Ações principais',
+          title: 'AÃ§Ãµes principais',
           subtitle: current.awaitingInitialFloatConfirmation
               ? 'Confirme a abertura antes de seguir.'
-              : 'Operações mais usadas no caixa.',
+              : 'OperaÃ§Ãµes mais usadas no caixa.',
           padding: const EdgeInsets.all(16),
           child: Wrap(
             spacing: 10,
@@ -940,7 +992,7 @@ class _CurrentSessionSection extends StatelessWidget {
         const SizedBox(height: 14),
         AppSectionCard(
           title: 'Resumo financeiro',
-          subtitle: 'Toque em um bloco para filtrar as movimentações abaixo.',
+          subtitle: 'Toque em um bloco para filtrar as movimentaÃ§Ãµes abaixo.',
           padding: const EdgeInsets.all(16),
           child: GridView.count(
             crossAxisCount: 2,
@@ -951,46 +1003,46 @@ class _CurrentSessionSection extends StatelessWidget {
             childAspectRatio: 1.18,
             children: [
               _CashMetricCard(
-                label: 'Entradas',
-                valueCents: current.cashEntriesCents,
-                caption: 'Vendas em dinheiro',
+                label: 'Fundo abertura',
+                valueCents: current.initialFloatCents,
+                caption: 'Troco inicial',
                 icon: Icons.arrow_downward_rounded,
                 accentColor: AppTheme.success,
                 semanticLabel:
-                    'Entradas em dinheiro ${AppFormatters.currencyFromCents(current.cashEntriesCents)}',
-                onTap: () => onSelectFilter(CashMovementFilter.sales),
+                    'Fundo de abertura ${AppFormatters.currencyFromCents(current.initialFloatCents)}',
+                onTap: () => onSelectFilter(CashMovementFilter.all),
               ),
               _CashMetricCard(
-                label: 'Saídas',
-                valueCents: current.withdrawalsCents,
-                caption: 'Sangrias registradas',
-                icon: Icons.arrow_upward_rounded,
-                accentColor: AppTheme.warning,
-                semanticLabel:
-                    'Saídas ${AppFormatters.currencyFromCents(current.withdrawalsCents)}',
-                onTap: () => onSelectFilter(CashMovementFilter.sangria),
-              ),
-              _CashMetricCard(
-                label: 'Saldo físico',
-                valueCents: current.physicalBalanceCents,
-                caption: 'Dinheiro em caixa agora',
+                label: 'Dinheiro fisico',
+                valueCents: dinheiroFisicoCents,
+                caption: 'Sem fiado recebido',
                 icon: Icons.account_balance_wallet_rounded,
                 accentColor: Theme.of(context).colorScheme.primary,
                 semanticLabel:
-                    'Saldo físico em caixa ${AppFormatters.currencyFromCents(current.physicalBalanceCents)}',
+                    'Dinheiro fisico ${AppFormatters.currencyFromCents(dinheiroFisicoCents)}',
                 onTap: () => onSelectFilter(CashMovementFilter.all),
                 infoMessage:
-                    'Saldo físico considera troco inicial, vendas em dinheiro, fiado recebido em dinheiro, suprimentos e sangrias.',
+                    'Exibicao visual separada: fiado recebido aparece em KPI proprio.',
               ),
               _CashMetricCard(
                 label: 'Fiado recebido',
                 valueCents: current.totalFiadoReceiptsCents,
-                caption: 'Dinheiro, Pix e cartão',
+                caption: 'Dinheiro, Pix e cartao',
                 icon: Icons.receipt_long_rounded,
                 accentColor: AppTheme.secondary,
                 semanticLabel:
                     'Fiado recebido ${AppFormatters.currencyFromCents(current.totalFiadoReceiptsCents)}',
                 onTap: () => onSelectFilter(CashMovementFilter.fiado),
+              ),
+              _CashMetricCard(
+                label: 'Total vendas',
+                valueCents: current.totalSalesCents,
+                caption: 'Vendas em dinheiro',
+                icon: Icons.point_of_sale_rounded,
+                accentColor: AppTheme.success,
+                semanticLabel:
+                    'Total de vendas ${AppFormatters.currencyFromCents(current.totalSalesCents)}',
+                onTap: () => onSelectFilter(CashMovementFilter.sales),
               ),
             ],
           ),
@@ -1003,6 +1055,39 @@ class _CurrentSessionSection extends StatelessWidget {
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
     return '${hours}h ${minutes.toString().padLeft(2, '0')}min';
+  }
+}
+
+class _HeroInfoPill extends StatelessWidget {
+  const _HeroInfoPill({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: Colors.white.withValues(alpha: 0.86)),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Colors.white.withValues(alpha: 0.86),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1138,7 +1223,7 @@ class _MovementTile extends StatelessWidget {
                     AppFormatters.shortDateTime(movement.createdAt),
                     if (movement.paymentMethod != null)
                       movement.paymentMethod!.label,
-                  ].join(' • '),
+                  ].join(' â€¢ '),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -1191,10 +1276,10 @@ class _SessionHistoryTile extends StatelessWidget {
         : difference == null
         ? 'Fechado'
         : isNegativeDifference
-        ? 'Diferença negativa'
+        ? 'DiferenÃ§a negativa'
         : isPositiveDifference
-        ? 'Diferença positiva'
-        : 'Fechado sem diferença';
+        ? 'DiferenÃ§a positiva'
+        : 'Fechado sem diferenÃ§a';
     final badgeBackground = isNegativeDifference
         ? negativePalette.surface
         : isPositiveDifference
@@ -1212,7 +1297,7 @@ class _SessionHistoryTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  session.isOpen ? 'Sessão em aberto' : 'Sessão encerrada',
+                  session.isOpen ? 'SessÃ£o em aberto' : 'SessÃ£o encerrada',
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 const SizedBox(height: 2),
@@ -1226,7 +1311,7 @@ class _SessionHistoryTile extends StatelessWidget {
                     'Abertura ${AppFormatters.shortDateTime(session.openedAt)}',
                     if (session.closedAt != null)
                       'Fechamento ${AppFormatters.shortDateTime(session.closedAt!)}',
-                  ].join(' • '),
+                  ].join(' â€¢ '),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -1370,7 +1455,7 @@ class _DifferenceBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        'Diferença calculada: ${differenceCents > 0 ? '+' : ''}${AppFormatters.currencyFromCents(differenceCents)}',
+        'DiferenÃ§a calculada: ${differenceCents > 0 ? '+' : ''}${AppFormatters.currencyFromCents(differenceCents)}',
         style: Theme.of(context).textTheme.titleSmall?.copyWith(color: color),
       ),
     );

@@ -3,8 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../../../app/core/widgets/app_input.dart';
+import '../../../../app/core/widgets/app_list_tile_card.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
+import '../../../../app/core/widgets/app_page_header.dart';
+import '../../../../app/core/widgets/app_state_card.dart';
+import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
+import '../../../../app/theme/app_design_tokens.dart';
 import '../../domain/entities/category.dart';
 import '../providers/category_providers.dart';
 
@@ -30,13 +36,21 @@ class CategoriesPage extends ConsumerWidget {
       ),
       body: Column(
         children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 12, 20, 12),
+            child: AppPageHeader(
+              title: 'Categorias',
+              subtitle:
+                  'Organize o catalogo por familias de produtos e leitura de venda.',
+              badgeLabel: 'Cadastros',
+              badgeIcon: Icons.category_rounded,
+            ),
+          ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-            child: TextField(
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search),
-                hintText: 'Buscar por nome',
-              ),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: AppInput(
+              prefixIcon: const Icon(Icons.search),
+              hintText: 'Buscar por nome',
               onChanged: (value) {
                 ref.read(categorySearchQueryProvider.notifier).state = value;
               },
@@ -46,10 +60,14 @@ class CategoriesPage extends ConsumerWidget {
             child: categoriesAsync.when(
               data: (categories) {
                 if (categories.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('Nenhuma categoria cadastrada ainda.'),
+                  return const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: AppStateCard(
+                      title: 'Nenhuma categoria cadastrada',
+                      message:
+                          'Cadastre categorias para melhorar busca, relatorios e PDV.',
+                      icon: Icons.category_outlined,
+                      compact: true,
                     ),
                   );
                 }
@@ -70,12 +88,23 @@ class CategoriesPage extends ConsumerWidget {
                   ),
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => const Padding(
+                padding: EdgeInsets.all(24),
+                child: AppStateCard(
+                  title: 'Carregando categorias',
+                  message: 'Atualizando a lista de categorias.',
+                  tone: AppStateTone.loading,
+                  compact: true,
+                ),
+              ),
               error: (error, stackTrace) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text('Falha ao carregar categorias: $error'),
+                return Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: AppStateCard(
+                    title: 'Falha ao carregar categorias',
+                    message: '$error',
+                    tone: AppStateTone.error,
+                    compact: true,
                   ),
                 );
               },
@@ -96,43 +125,58 @@ class _CategoryTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Card(
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        title: Text(category.name),
-        subtitle: Text(category.description ?? 'Sem descricao'),
-        leading: CircleAvatar(
-          backgroundColor: category.isActive
-              ? colorScheme.primaryContainer
-              : colorScheme.surfaceContainerHighest,
+    return AppListTileCard(
+      title: category.name,
+      subtitle: category.description ?? 'Sem descricao',
+      leading: DecoratedBox(
+        decoration: BoxDecoration(
+          color: category.isActive
+              ? context.appColors.brand.surface
+              : context.appColors.disabled.surface,
+          borderRadius: BorderRadius.circular(context.appLayout.radiusMd),
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(context.appLayout.space4),
           child: Icon(
-            category.isActive ? Icons.category : Icons.category_outlined,
-            color: colorScheme.onPrimaryContainer,
+            category.isActive
+                ? Icons.category_rounded
+                : Icons.category_outlined,
+            color: category.isActive
+                ? colorScheme.primary
+                : colorScheme.onSurfaceVariant,
           ),
         ),
-        trailing: Wrap(
-          spacing: 4,
-          children: [
-            IconButton(
-              tooltip: 'Editar',
-              onPressed: () async {
-                final updated = await context.pushNamed(
-                  AppRouteNames.categoryForm,
-                  extra: category,
-                );
-                if (updated == true) {
-                  ref.invalidate(categoryListProvider);
-                }
-              },
-              icon: const Icon(Icons.edit_outlined),
-            ),
-            IconButton(
-              tooltip: 'Excluir',
-              onPressed: () => _delete(context, ref),
-              icon: const Icon(Icons.delete_outline),
-            ),
-          ],
+      ),
+      badges: [
+        AppStatusBadge(
+          label: category.isActive ? 'Ativa' : 'Inativa',
+          tone: category.isActive
+              ? AppStatusTone.success
+              : AppStatusTone.neutral,
         ),
+      ],
+      trailing: Wrap(
+        spacing: 4,
+        children: [
+          IconButton(
+            tooltip: 'Editar',
+            onPressed: () async {
+              final updated = await context.pushNamed(
+                AppRouteNames.categoryForm,
+                extra: category,
+              );
+              if (updated == true) {
+                ref.invalidate(categoryListProvider);
+              }
+            },
+            icon: const Icon(Icons.edit_outlined),
+          ),
+          IconButton(
+            tooltip: 'Excluir',
+            onPressed: () => _delete(context, ref),
+            icon: const Icon(Icons.delete_outline),
+          ),
+        ],
       ),
     );
   }

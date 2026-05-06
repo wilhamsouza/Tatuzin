@@ -8,7 +8,9 @@ import '../../../../app/core/widgets/app_button.dart';
 import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_input.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
+import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
+import '../../../../app/theme/app_design_tokens.dart';
 import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../domain/entities/cost_entry.dart';
 import '../../domain/entities/cost_overview.dart';
@@ -93,9 +95,10 @@ class _CostsPageState extends ConsumerState<CostsPage> {
       viewFilter: _viewFilter,
       typeFilter: _typeFilter,
     );
+    final layout = context.appLayout;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Custos')),
+      appBar: AppBar(titleSpacing: 0, title: const _CostsAppBarTitle()),
       drawer: const AppMainDrawer(),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: actionState.isLoading
@@ -111,8 +114,22 @@ class _CostsPageState extends ConsumerState<CostsPage> {
       body: RefreshIndicator(
         onRefresh: () => _refreshCosts(ref),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+          padding: EdgeInsets.fromLTRB(
+            layout.pagePadding,
+            layout.space5,
+            layout.pagePadding,
+            120,
+          ),
           children: [
+            const AppPageHeader(
+              title: 'Custos',
+              subtitle:
+                  'Despesas fixas, variaveis, vencimentos e pagamento sem misturar com o caixa operacional.',
+              badgeLabel: 'Financeiro',
+              badgeIcon: Icons.account_balance_rounded,
+              emphasized: true,
+            ),
+            SizedBox(height: layout.sectionGap),
             _FilterSection(
               selectedView: _viewFilter,
               selectedType: _typeFilter,
@@ -238,6 +255,30 @@ class _CostsPageState extends ConsumerState<CostsPage> {
   }
 }
 
+class _CostsAppBarTitle extends StatelessWidget {
+  const _CostsAppBarTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Custos'),
+        Text(
+          'Financeiro e insumos indiretos',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _FilterSection extends StatelessWidget {
   const _FilterSection({
     required this.selectedView,
@@ -312,7 +353,7 @@ class _SummaryGrid extends StatelessWidget {
         title: 'Variaveis em aberto',
         value: AppFormatters.currencyFromCents(overview.pendingVariableCents),
         supporting: '${overview.openVariableCount} custo(s)',
-        accentColor: const Color(0xFFF97316),
+        accentColor: context.appColors.warning.base,
         icon: Icons.payments_outlined,
         onTap: () => onOpenBucket(
           const _CostBucketConfig(

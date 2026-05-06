@@ -6,6 +6,7 @@ import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/widgets/app_input.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
+import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../domain/entities/supplier.dart';
 import '../providers/supplier_providers.dart';
@@ -57,10 +58,14 @@ class SuppliersPage extends ConsumerWidget {
             child: suppliersAsync.when(
               data: (suppliers) {
                 if (suppliers.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('Nenhum fornecedor cadastrado ainda.'),
+                  return const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: AppStateCard(
+                      title: 'Nenhum fornecedor cadastrado',
+                      message:
+                          'Cadastre fornecedores para organizar compras, documentos e contatos.',
+                      icon: Icons.local_shipping_outlined,
+                      compact: true,
                     ),
                   );
                 }
@@ -110,11 +115,24 @@ class SuppliersPage extends ConsumerWidget {
                   ),
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => const Padding(
+                padding: EdgeInsets.all(24),
+                child: AppStateCard(
+                  title: 'Carregando fornecedores',
+                  message: 'Preparando a lista de parceiros.',
+                  tone: AppStateTone.loading,
+                  compact: true,
+                ),
+              ),
               error: (error, _) => Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text('Falha ao carregar fornecedores: $error'),
+                  child: AppStateCard(
+                    title: 'Falha ao carregar fornecedores',
+                    message: '$error',
+                    tone: AppStateTone.error,
+                    compact: true,
+                  ),
                 ),
               ),
             ),

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../app/core/widgets/app_input.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
+import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../domain/entities/purchase_status.dart';
 import '../providers/purchase_providers.dart';
@@ -79,10 +80,14 @@ class PurchasesPage extends ConsumerWidget {
             child: purchasesAsync.when(
               data: (purchases) {
                 if (purchases.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('Nenhuma compra encontrada para os filtros.'),
+                  return const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: AppStateCard(
+                      title: 'Nenhuma compra encontrada',
+                      message:
+                          'Ajuste filtros ou registre uma nova compra para abastecimento.',
+                      icon: Icons.shopping_bag_outlined,
+                      compact: true,
                     ),
                   );
                 }
@@ -109,11 +114,24 @@ class PurchasesPage extends ConsumerWidget {
                   ),
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => const Padding(
+                padding: EdgeInsets.all(24),
+                child: AppStateCard(
+                  title: 'Carregando compras',
+                  message: 'Buscando compras e pagamentos vinculados.',
+                  tone: AppStateTone.loading,
+                  compact: true,
+                ),
+              ),
               error: (error, _) => Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text('Falha ao carregar compras: $error'),
+                  child: AppStateCard(
+                    title: 'Falha ao carregar compras',
+                    message: '$error',
+                    tone: AppStateTone.error,
+                    compact: true,
+                  ),
                 ),
               ),
             ),

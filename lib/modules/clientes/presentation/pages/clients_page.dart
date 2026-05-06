@@ -5,11 +5,13 @@ import 'package:go_router/go_router.dart';
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/widgets/app_feedback.dart';
+import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_input.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/routes/route_names.dart';
+import '../../../../app/theme/app_design_tokens.dart';
 import '../../domain/entities/client.dart';
 import '../providers/client_providers.dart';
 import '../support/customer_credit_action_dialog.dart';
@@ -20,9 +22,29 @@ class ClientsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final clientsAsync = ref.watch(clientListProvider);
+    final totalLabel = clientsAsync.maybeWhen(
+      data: (clients) => '${clients.length} cliente(s)',
+      orElse: () => 'CRM',
+    );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Clientes')),
+      appBar: AppBar(
+        titleSpacing: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Clientes'),
+            Text(
+              totalLabel,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
       drawer: const AppMainDrawer(),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
@@ -46,6 +68,11 @@ class ClientsPage extends ConsumerWidget {
               badgeIcon: Icons.people_alt_rounded,
             ),
           ),
+          if (clientsAsync.valueOrNull != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: _ClientSummaryCard(clients: clientsAsync.valueOrNull!),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
             child: AppInput(
@@ -120,6 +147,106 @@ class ClientsPage extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ClientSummaryCard extends StatelessWidget {
+  const _ClientSummaryCard({required this.clients});
+
+  final List<Client> clients;
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = context.appLayout;
+    final colors = context.appColors;
+    final today = DateTime.now();
+    final startOfDay = DateTime(today.year, today.month, today.day);
+    final newToday = clients
+        .where((client) => client.createdAt.isAfter(startOfDay))
+        .length;
+    final totalDebt = clients.fold<int>(
+      0,
+      (total, client) => total + client.debtorBalanceCents,
+    );
+
+    return AppCard(
+      color: colors.brand.surface,
+      borderColor: colors.brand.border,
+      padding: EdgeInsets.all(layout.cardPadding),
+      child: Row(
+        children: [
+          Expanded(
+            child: _SummaryMetric(
+              label: 'Total',
+              value: '${clients.length}',
+              icon: Icons.people_alt_rounded,
+              color: colors.brand.base,
+            ),
+          ),
+          SizedBox(width: layout.space5),
+          Expanded(
+            child: _SummaryMetric(
+              label: 'Fiado',
+              value: AppFormatters.currencyFromCents(totalDebt),
+              icon: Icons.receipt_long_rounded,
+              color: colors.warning.base,
+            ),
+          ),
+          SizedBox(width: layout.space5),
+          Expanded(
+            child: _SummaryMetric(
+              label: 'Novos hoje',
+              value: '$newToday',
+              icon: Icons.person_add_alt_1_rounded,
+              color: colors.info.base,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryMetric extends StatelessWidget {
+  const _SummaryMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
 }

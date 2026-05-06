@@ -24,6 +24,7 @@ import '../widgets/report_comparison_card.dart';
 import '../widgets/report_donut_chart_card.dart';
 import '../widgets/report_filter_toolbar.dart';
 import '../widgets/report_kpi_grid.dart';
+import '../widgets/report_period_bar.dart';
 import '../widgets/report_shortcut_card.dart';
 
 class ReportsPage extends ConsumerWidget {
@@ -59,7 +60,7 @@ class ReportsPage extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Relatorios')),
+      appBar: AppBar(titleSpacing: 0, title: const _ReportsAppBarTitle()),
       drawer: const AppMainDrawer(),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -82,6 +83,12 @@ class ReportsPage extends ConsumerWidget {
               badgeIcon: Icons.insights_rounded,
               emphasized: true,
             ),
+            const ReportPeriodBar(
+              title: 'Periodo',
+              subtitle:
+                  'Hoje, semana, mes e ano usam os dados reais do periodo selecionado.',
+            ),
+            SizedBox(height: layout.sectionGap),
             const ReportFilterToolbar(page: ReportPageKey.overview),
             const ReportDataOriginBanner(page: ReportPageKey.overview),
             SizedBox(height: layout.sectionGap),
@@ -591,5 +598,29 @@ class ReportsPage extends ConsumerWidget {
       default:
         return ReportFocus.inventoryAlerts;
     }
+  }
+}
+
+class _ReportsAppBarTitle extends StatelessWidget {
+  const _ReportsAppBarTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Relatorios'),
+        Text(
+          'KPIs, graficos e rankings',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
   }
 }

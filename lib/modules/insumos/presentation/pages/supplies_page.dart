@@ -46,7 +46,7 @@ class _SuppliesPageState extends ConsumerState<SuppliesPage> {
     final layout = context.appLayout;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Insumos')),
+      appBar: AppBar(titleSpacing: 0, title: const _SuppliesAppBarTitle()),
       drawer: const AppMainDrawer(),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
@@ -197,6 +197,30 @@ class _SuppliesPageState extends ConsumerState<SuppliesPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SuppliesAppBarTitle extends StatelessWidget {
+  const _SuppliesAppBarTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Insumos'),
+        Text(
+          'Composicao, estoque e recompra',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }
