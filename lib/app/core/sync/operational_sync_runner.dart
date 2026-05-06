@@ -19,6 +19,7 @@ class OperationalSyncRunner {
        _onCacheSnapshotChanged = onCacheSnapshotChanged;
 
   static const int maxEventsPerBatch = 100;
+  static const stalePushingAfter = Duration(minutes: 2);
   static const _serverFirstSnapshotFeatures = <String>[
     'products',
     'categories',
@@ -56,6 +57,8 @@ class OperationalSyncRunner {
         conflictCount: conflictCount,
       );
     }
+
+    await _queueRepository.recoverStalePushing(staleAfter: stalePushingAfter);
 
     final pending = await _queueRepository.listPending(
       limit: maxEventsPerBatch,
@@ -132,9 +135,9 @@ class OperationalSyncRunner {
       }
     }
 
-    if (_shouldContinue()) {
-      await _pullAndRefreshSnapshot();
-    }
+    final refreshOutcome = _shouldContinue()
+        ? await _pullAndRefreshSnapshot()
+        : const _RefreshOutcome();
 
     return _result(
       retryOnly: retryOnly,
@@ -143,10 +146,19 @@ class OperationalSyncRunner {
       syncedCount: syncedCount,
       failedCount: failedCount,
       conflictCount: conflictCount,
+      pullFailed: refreshOutcome.pullFailed,
+      snapshotFailed: refreshOutcome.snapshotFailed,
+      lastPullError: refreshOutcome.lastPullError,
+      lastSnapshotError: refreshOutcome.lastSnapshotError,
     );
   }
 
-  Future<void> _pullAndRefreshSnapshot() async {
+  Future<_RefreshOutcome> _pullAndRefreshSnapshot() async {
+    var pullFailed = false;
+    var snapshotFailed = false;
+    String? lastPullError;
+    String? lastSnapshotError;
+
     try {
       final checkpoint = await _queueRepository.readCheckpoint();
       final pull = await _remoteDataSource.pullChanges(
@@ -160,16 +172,38 @@ class OperationalSyncRunner {
       if (status.currentServerVersion.trim().isNotEmpty) {
         await _queueRepository.saveCheckpoint(status.currentServerVersion);
       }
+      await _queueRepository.recordPullSucceeded(completedAt: DateTime.now());
+    } catch (error, stackTrace) {
+      pullFailed = true;
+      lastPullError = error.toString();
+      await _queueRepository.recordPullFailed(
+        message: lastPullError,
+        failedAt: DateTime.now(),
+      );
+      AppLogger.error(
+        '[OperationalSync] pull_failed_after_push',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return _RefreshOutcome(
+        pullFailed: pullFailed,
+        snapshotFailed: snapshotFailed,
+        lastPullError: lastPullError,
+        lastSnapshotError: lastSnapshotError,
+      );
+    }
 
+    try {
       final previousSnapshotVersion = await _queueRepository
           .readSnapshotVersion();
       final snapshot = await _snapshotRemoteDataSource.fetchSnapshot(
         features: _serverFirstSnapshotFeatures,
       );
+      await _queueRepository.recordSnapshotSucceeded(
+        serverFirstSnapshotVersion: snapshot.serverFirstSnapshotVersion,
+        completedAt: DateTime.now(),
+      );
       if (snapshot.serverFirstSnapshotVersion != previousSnapshotVersion) {
-        await _queueRepository.saveSnapshotVersion(
-          snapshot.serverFirstSnapshotVersion,
-        );
         _onCacheSnapshotChanged();
         AppLogger.info(
           '[OperationalSync] server_first_snapshot_changed '
@@ -177,12 +211,25 @@ class OperationalSyncRunner {
         );
       }
     } catch (error, stackTrace) {
+      snapshotFailed = true;
+      lastSnapshotError = error.toString();
+      await _queueRepository.recordSnapshotFailed(
+        message: lastSnapshotError,
+        failedAt: DateTime.now(),
+      );
       AppLogger.error(
-        '[OperationalSync] pull_or_snapshot_failed',
+        '[OperationalSync] snapshot_failed_after_push',
         error: error,
         stackTrace: stackTrace,
       );
     }
+
+    return _RefreshOutcome(
+      pullFailed: pullFailed,
+      snapshotFailed: snapshotFailed,
+      lastPullError: lastPullError,
+      lastSnapshotError: lastSnapshotError,
+    );
   }
 
   Future<Map<String, String>> _loadConflictIdsByEventId() async {
@@ -225,6 +272,10 @@ class OperationalSyncRunner {
     int syncedCount = 0,
     int failedCount = 0,
     int conflictCount = 0,
+    bool pullFailed = false,
+    bool snapshotFailed = false,
+    String? lastPullError,
+    String? lastSnapshotError,
   }) {
     return SyncBatchResult(
       processedCount: processedCount,
@@ -235,6 +286,24 @@ class OperationalSyncRunner {
       reprocessedOnly: retryOnly,
       startedAt: startedAt,
       finishedAt: DateTime.now(),
+      pullFailed: pullFailed,
+      snapshotFailed: snapshotFailed,
+      lastPullError: lastPullError,
+      lastSnapshotError: lastSnapshotError,
     );
   }
+}
+
+class _RefreshOutcome {
+  const _RefreshOutcome({
+    this.pullFailed = false,
+    this.snapshotFailed = false,
+    this.lastPullError,
+    this.lastSnapshotError,
+  });
+
+  final bool pullFailed;
+  final bool snapshotFailed;
+  final String? lastPullError;
+  final String? lastSnapshotError;
 }

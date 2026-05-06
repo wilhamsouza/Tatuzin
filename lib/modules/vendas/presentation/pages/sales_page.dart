@@ -15,7 +15,7 @@ import '../../../../app/core/widgets/app_input.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../../carrinho/domain/entities/cart_item.dart';
 import '../../../carrinho/presentation/providers/cart_provider.dart';
 import '../../../estoque/presentation/providers/inventory_providers.dart';

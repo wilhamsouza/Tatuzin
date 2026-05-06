@@ -20,6 +20,9 @@ class SyncQueueFeatureSummary {
     required this.lastError,
     required this.lastErrorType,
     required this.lastErrorAt,
+    this.partialStatus,
+    this.lastPullError,
+    this.lastSnapshotError,
   });
 
   final String featureKey;
@@ -39,6 +42,9 @@ class SyncQueueFeatureSummary {
   final String? lastError;
   final SyncErrorType? lastErrorType;
   final DateTime? lastErrorAt;
+  final String? partialStatus;
+  final String? lastPullError;
+  final String? lastSnapshotError;
 
   int get pendingForDisplay => pendingCount + staleProcessingCount;
 
@@ -47,15 +53,27 @@ class SyncQueueFeatureSummary {
   bool get hasAttention =>
       errorCount > 0 || blockedCount > 0 || conflictCount > 0;
 
+  bool get hasServerDataStale =>
+      partialStatus == 'pushOkPullFailed' ||
+      partialStatus == 'snapshotFailed' ||
+      (lastPullError != null && lastPullError!.trim().isNotEmpty) ||
+      (lastSnapshotError != null && lastSnapshotError!.trim().isNotEmpty);
+
   SyncDisplayState get displayState {
-    if (hasAttention) {
-      return SyncDisplayState.attention;
+    if (conflictCount > 0) {
+      return SyncDisplayState.conflict;
+    }
+    if (errorCount > 0 || blockedCount > 0) {
+      return SyncDisplayState.error;
     }
     if (hasActiveProcessing) {
       return SyncDisplayState.syncing;
     }
     if (pendingForDisplay > 0) {
       return SyncDisplayState.pending;
+    }
+    if (hasServerDataStale) {
+      return SyncDisplayState.serverDataStale;
     }
     return SyncDisplayState.synced;
   }

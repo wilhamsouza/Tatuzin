@@ -9,7 +9,7 @@ import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/core/widgets/app_summary_block.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../domain/entities/supply_inventory.dart';
 import '../providers/supply_providers.dart';
 

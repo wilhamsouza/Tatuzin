@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/app_design_tokens.dart';
+import '../theme/app_design_tokens.dart';
 
 enum AppStatusTone { neutral, info, success, warning, danger }
 

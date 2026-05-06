@@ -196,6 +196,9 @@ final syncHealthOverviewProvider = Provider<SyncHealthOverview>((ref) {
   DateTime? lastProcessedAt;
   DateTime? lastErrorAt;
   DateTime? nextRetryAt;
+  var hasServerDataStale = false;
+  String? lastPullError;
+  String? lastSnapshotError;
 
   for (final summary in summaries) {
     totalPending += summary.pendingCount;
@@ -223,6 +226,10 @@ final syncHealthOverviewProvider = Provider<SyncHealthOverview>((ref) {
         (nextRetryAt == null || summary.nextRetryAt!.isBefore(nextRetryAt))) {
       nextRetryAt = summary.nextRetryAt;
     }
+
+    hasServerDataStale = hasServerDataStale || summary.hasServerDataStale;
+    lastPullError ??= summary.lastPullError;
+    lastSnapshotError ??= summary.lastSnapshotError;
   }
 
   return SyncHealthOverview(
@@ -241,6 +248,9 @@ final syncHealthOverviewProvider = Provider<SyncHealthOverview>((ref) {
       nextRetryAt: nextRetryAt,
       lastProcessedAt: lastProcessedAt,
     ),
+    hasServerDataStale: hasServerDataStale,
+    lastPullError: lastPullError,
+    lastSnapshotError: lastSnapshotError,
   );
 });
 
@@ -290,7 +300,8 @@ final hybridOperationalTruthSnapshotProvider =
             syncHealth.totalPending > 0 ||
             syncHealth.totalErrors > 0 ||
             syncHealth.totalBlocked > 0 ||
-            syncHealth.totalConflicts > 0,
+            syncHealth.totalConflicts > 0 ||
+            syncHealth.hasServerDataStale,
       );
     });
 
@@ -443,6 +454,9 @@ class SyncHealthOverview {
     required this.lastProcessedAt,
     required this.lastErrorAt,
     required this.nextRetryAt,
+    this.hasServerDataStale = false,
+    this.lastPullError,
+    this.lastSnapshotError,
   });
 
   final int totalPending;
@@ -457,6 +471,9 @@ class SyncHealthOverview {
   final DateTime? lastProcessedAt;
   final DateTime? lastErrorAt;
   final DateTime? nextRetryAt;
+  final bool hasServerDataStale;
+  final String? lastPullError;
+  final String? lastSnapshotError;
 
   int get totalPendingForDisplay => totalPending + totalStaleProcessing;
 
@@ -466,14 +483,20 @@ class SyncHealthOverview {
       totalErrors > 0 || totalBlocked > 0 || totalConflicts > 0;
 
   SyncDisplayState get displayState {
-    if (hasAttention) {
-      return SyncDisplayState.attention;
+    if (totalConflicts > 0) {
+      return SyncDisplayState.conflict;
+    }
+    if (totalErrors > 0 || totalBlocked > 0) {
+      return SyncDisplayState.error;
     }
     if (hasActiveProcessing) {
       return SyncDisplayState.syncing;
     }
     if (totalPendingForDisplay > 0) {
       return SyncDisplayState.pending;
+    }
+    if (hasServerDataStale) {
+      return SyncDisplayState.serverDataStale;
     }
     return SyncDisplayState.synced;
   }

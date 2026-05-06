@@ -10,7 +10,7 @@ import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_summary_block.dart';
 import '../../../../app/routes/route_names.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../domain/entities/operational_order.dart';
 import '../../domain/entities/operational_order_summary.dart';

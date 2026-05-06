@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/widgets/app_bottom_sheet_container.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../../categorias/domain/entities/category.dart';
 import '../../../clientes/domain/entities/client.dart';
 import '../../../fornecedores/domain/entities/supplier.dart';

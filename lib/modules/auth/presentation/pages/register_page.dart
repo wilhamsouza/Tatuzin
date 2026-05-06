@@ -9,7 +9,7 @@ import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_input.dart';
 import '../../../../app/core/widgets/tatuzin_brand.dart';
 import '../../../../app/routes/route_names.dart';
-import '../../../../app/theme/app_theme.dart';
+import '../../../../app/core/theme/app_theme.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});

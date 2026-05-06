@@ -5,7 +5,7 @@ import '../../../../../app/core/utils/quantity_parser.dart';
 import '../../../../../app/core/widgets/app_card.dart';
 import '../../../../../app/core/widgets/app_section_card.dart';
 import '../../../../../app/core/widgets/app_status_badge.dart';
-import '../../../../../app/theme/app_design_tokens.dart';
+import '../../../../../app/core/theme/app_design_tokens.dart';
 import '../../../../insumos/domain/entities/supply.dart';
 import '../../../domain/services/product_cost_calculator.dart';
 import 'product_form_models.dart';

@@ -4,7 +4,7 @@ import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_selector_chip.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../domain/entities/operational_order.dart';
 import '../../domain/entities/operational_order_summary.dart';
 import '../support/order_ui_support.dart';

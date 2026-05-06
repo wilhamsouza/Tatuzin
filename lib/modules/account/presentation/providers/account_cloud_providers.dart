@@ -217,15 +217,37 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
   }
 
   switch (syncOverview.displayState) {
-    case SyncDisplayState.attention:
-      final hasConflicts = syncOverview.totalConflicts > 0;
-      final hasErrors = syncOverview.totalErrors > 0;
+    case SyncDisplayState.conflict:
       return AccountCloudStatusSnapshot(
-        statusLabel: hasConflicts
-            ? 'Conflito'
-            : hasErrors
-            ? 'Erro de sync'
-            : 'Precisa de atencao',
+        statusLabel: 'Com conflito',
+        statusMessage: _buildAttentionMessage(
+          syncOverview,
+          autoSyncSnapshot: autoSyncSnapshot,
+        ),
+        tone: AppStatusTone.warning,
+        icon: Icons.warning_amber_rounded,
+        accountModeLabel: 'Conta conectada',
+        cloudAvailabilityLabel: 'Requer revisao',
+        supportingLabel: hasRecentSync
+            ? 'Ultima sincronizacao'
+            : 'Ultima verificacao',
+        supportingValue: hasRecentSync
+            ? AppFormatters.shortDateTime(syncOverview.lastProcessedAt!)
+            : AppFormatters.shortDateTime(connection.checkedAt),
+        syncingNowCount: syncingNowCount,
+        pendingCount: pendingCount,
+        errorCount: syncOverview.totalErrors,
+        blockedCount: syncOverview.totalBlocked,
+        conflictCount: syncOverview.totalConflicts,
+        lastSyncedAt: syncOverview.lastProcessedAt,
+        nextRetryAt: _nextOperatorAttemptAt(
+          syncOverview: syncOverview,
+          autoSyncSnapshot: autoSyncSnapshot,
+        ),
+      );
+    case SyncDisplayState.error:
+      return AccountCloudStatusSnapshot(
+        statusLabel: 'Erro de sincronizacao',
         statusMessage: _buildAttentionMessage(
           syncOverview,
           autoSyncSnapshot: autoSyncSnapshot,
@@ -240,6 +262,33 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
         supportingValue: hasRecentSync
             ? AppFormatters.shortDateTime(syncOverview.lastProcessedAt!)
             : AppFormatters.shortDateTime(connection.checkedAt),
+        syncingNowCount: syncingNowCount,
+        pendingCount: pendingCount,
+        errorCount: syncOverview.totalErrors,
+        blockedCount: syncOverview.totalBlocked,
+        conflictCount: syncOverview.totalConflicts,
+        lastSyncedAt: syncOverview.lastProcessedAt,
+        nextRetryAt: _nextOperatorAttemptAt(
+          syncOverview: syncOverview,
+          autoSyncSnapshot: autoSyncSnapshot,
+        ),
+      );
+    case SyncDisplayState.serverDataStale:
+      return AccountCloudStatusSnapshot(
+        statusLabel: 'Dados do servidor desatualizados',
+        statusMessage:
+            'Suas operacoes locais foram preservadas, mas nao conseguimos atualizar os dados vindos do servidor agora.',
+        tone: AppStatusTone.warning,
+        icon: Icons.cloud_off_outlined,
+        accountModeLabel: 'Conta conectada',
+        cloudAvailabilityLabel: 'Atualizacao pendente',
+        supportingLabel: syncOverview.lastSnapshotError != null
+            ? 'Falha ao atualizar dados'
+            : 'Falha ao puxar dados',
+        supportingValue:
+            syncOverview.lastSnapshotError ??
+            syncOverview.lastPullError ??
+            'Tente sincronizar novamente.',
         syncingNowCount: syncingNowCount,
         pendingCount: pendingCount,
         errorCount: syncOverview.totalErrors,
@@ -279,7 +328,7 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
       );
     case SyncDisplayState.pending:
       return AccountCloudStatusSnapshot(
-        statusLabel: 'Pendencias para sincronizar',
+        statusLabel: 'Pendente',
         statusMessage: _buildPendingMessage(
           syncOverview,
           autoSyncSnapshot: autoSyncSnapshot,

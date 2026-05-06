@@ -128,6 +128,10 @@ describe('operational local-first sync routes', () => {
       buildEvent('product-rejected', 'product'),
       buildEvent('customer-rejected', 'customer'),
       buildEvent('supplier-rejected', 'supplier'),
+      buildEvent('purchase-rejected', 'purchase'),
+      buildEvent('cost-rejected', 'cost'),
+      buildEvent('report-rejected', 'report'),
+      buildEvent('fiado-rejected', 'fiado'),
     ]);
 
     assert.equal(response.status, 202);
@@ -135,13 +139,17 @@ describe('operational local-first sync routes', () => {
       rejected: Array<{ eventId: string; code: string }>;
       summary: { rejected: number };
     };
-    assert.equal(payload.summary.rejected, 3);
+    assert.equal(payload.summary.rejected, 7);
     assert.deepEqual(
       payload.rejected.map((item) => [item.eventId, item.code]),
       [
         ['product-rejected', 'ENTITY_NOT_LOCAL_FIRST'],
         ['customer-rejected', 'ENTITY_NOT_LOCAL_FIRST'],
         ['supplier-rejected', 'ENTITY_NOT_LOCAL_FIRST'],
+        ['purchase-rejected', 'ENTITY_NOT_LOCAL_FIRST'],
+        ['cost-rejected', 'ENTITY_NOT_LOCAL_FIRST'],
+        ['report-rejected', 'ENTITY_NOT_LOCAL_FIRST'],
+        ['fiado-rejected', 'ENTITY_NOT_LOCAL_FIRST'],
       ],
     );
   });
@@ -256,6 +264,7 @@ describe('operational local-first sync routes', () => {
       },
     });
     assert.equal(cashSession.status, 'closed');
+    assert.equal(cashSession.lastLocalSequence, null);
 
     const reopenResponse = await push(fixture, [
       buildEvent('cash-session-reopen-conflict', 'cashSession', {
@@ -270,6 +279,88 @@ describe('operational local-first sync routes', () => {
       conflicts: Array<{ code: string }>;
     };
     assert.equal(payload.conflicts[0]?.code, 'CASH_SESSION_CLOSED');
+  });
+
+  it('guards cashSession updates with lastLocalSequence', async () => {
+    const fixture = await createFixture();
+    const entityLocalId = `${runId}-cash-session-sequence`;
+    await push(fixture, [
+      buildEvent('cash-session-sequence-create', 'cashSession', {
+        feature: 'cash',
+        entityLocalId,
+        payload: {
+          status: 'open',
+          openingBalanceCents: 1000,
+          _sync: { entityLocalId, localSequence: 1 },
+        },
+      }),
+    ]);
+    const created = await prisma.cashSession.findUniqueOrThrow({
+      where: {
+        companyId_localUuid: {
+          companyId: fixture.companyId,
+          localUuid: entityLocalId,
+        },
+      },
+    });
+    assert.equal(created.lastLocalSequence, 1);
+
+    const update = await push(fixture, [
+      buildEvent('cash-session-sequence-update-newer', 'cashSession', {
+        feature: 'cash',
+        operation: 'update',
+        entityLocalId,
+        payload: {
+          status: 'open',
+          expectedBalanceCents: 1500,
+          _sync: { entityLocalId, localSequence: 3 },
+        },
+      }),
+    ]);
+
+    assert.equal(
+      (update.data as { summary: { accepted: number } }).summary.accepted,
+      1,
+    );
+    const afterUpdate = await prisma.cashSession.findUniqueOrThrow({
+      where: {
+        companyId_localUuid: {
+          companyId: fixture.companyId,
+          localUuid: entityLocalId,
+        },
+      },
+    });
+    assert.equal(afterUpdate.expectedBalanceCents, 1500);
+    assert.equal(afterUpdate.lastLocalSequence, 3);
+
+    const stale = await push(fixture, [
+      buildEvent('cash-session-sequence-update-stale', 'cashSession', {
+        feature: 'cash',
+        operation: 'update',
+        entityLocalId,
+        payload: {
+          status: 'open',
+          expectedBalanceCents: 900,
+          _sync: { entityLocalId, localSequence: 2 },
+        },
+      }),
+    ]);
+
+    assert.equal(
+      (stale.data as { conflicts: Array<{ code: string }> }).conflicts[0]
+        ?.code,
+      'STALE_LOCAL_SEQUENCE',
+    );
+    const afterStale = await prisma.cashSession.findUniqueOrThrow({
+      where: {
+        companyId_localUuid: {
+          companyId: fixture.companyId,
+          localUuid: entityLocalId,
+        },
+      },
+    });
+    assert.equal(afterStale.expectedBalanceCents, 1500);
+    assert.equal(afterStale.lastLocalSequence, 3);
   });
 
   it('materializes cashMovement/create and keeps it idempotent', async () => {
@@ -314,6 +405,54 @@ describe('operational local-first sync routes', () => {
     assert.equal(cashEventsCount, 1);
   });
 
+  it('deduplicates cashMovement/create by _sync idempotencyKey', async () => {
+    const fixture = await createFixture();
+    const cashSessionLocalId = `${runId}-movement-sync-cash-session`;
+    const idempotencyKey = `${runId}-cash-movement-sync-key`;
+    await push(fixture, [
+      buildEvent('movement-sync-cash-session-create', 'cashSession', {
+        feature: 'cash',
+        entityLocalId: cashSessionLocalId,
+        payload: { status: 'open' },
+      }),
+    ]);
+
+    await push(fixture, [
+      buildEvent('cash-movement-sync-create-a', 'cashMovement', {
+        feature: 'cash',
+        entityLocalId: `${runId}-cash-movement-sync-a`,
+        payload: {
+          cashSessionLocalId,
+          amountCents: -500,
+          eventType: 'sangria',
+          _sync: { idempotencyKey, localSequence: 1 },
+        },
+      }),
+    ]);
+    const duplicate = await push(fixture, [
+      buildEvent('cash-movement-sync-create-b', 'cashMovement', {
+        feature: 'cash',
+        entityLocalId: `${runId}-cash-movement-sync-b`,
+        payload: {
+          cashSessionLocalId,
+          amountCents: -500,
+          eventType: 'sangria',
+          _sync: { idempotencyKey, localSequence: 2 },
+        },
+      }),
+    ]);
+
+    assert.equal(
+      (duplicate.data as { summary: { duplicates: number } }).summary
+        .duplicates,
+      1,
+    );
+    const cashEventsCount = await prisma.cashEvent.count({
+      where: { companyId: fixture.companyId, localUuid: idempotencyKey },
+    });
+    assert.equal(cashEventsCount, 1);
+  });
+
   it('materializes sale/create without duplicating the sale domain record', async () => {
     const fixture = await createFixture();
     const entityLocalId = `${runId}-sale-domain`;
@@ -337,6 +476,49 @@ describe('operational local-first sync routes', () => {
       where: { companyId: fixture.companyId, localUuid: entityLocalId },
     });
     assert.equal(salesCount, 1);
+  });
+
+  it('deduplicates sale/create by _sync entityLocalId with different eventIds', async () => {
+    const fixture = await createFixture();
+    const entityLocalId = `${runId}-sale-sync-domain`;
+
+    const first = await push(fixture, [
+      buildEvent('sale-sync-domain-create-a', 'sale', {
+        entityLocalId: `${entityLocalId}-transport-a`,
+        payload: {
+          status: 'finalized',
+          totalCents: 8800,
+          _sync: { entityLocalId, localSequence: 1 },
+        },
+      }),
+    ]);
+    const second = await push(fixture, [
+      buildEvent('sale-sync-domain-create-b', 'sale', {
+        entityLocalId: `${entityLocalId}-transport-b`,
+        payload: {
+          status: 'finalized',
+          totalCents: 8800,
+          _sync: { entityLocalId, localSequence: 2 },
+        },
+      }),
+    ]);
+
+    assert.equal(first.status, 202);
+    assert.equal(
+      (second.data as { summary: { duplicates: number } }).summary.duplicates,
+      1,
+    );
+    const salesCount = await prisma.sale.count({
+      where: { companyId: fixture.companyId, localUuid: entityLocalId },
+    });
+    const syncEvent = await prisma.syncEvent.findFirstOrThrow({
+      where: {
+        companyId: fixture.companyId,
+        eventId: 'sale-sync-domain-create-a',
+      },
+    });
+    assert.equal(salesCount, 1);
+    assert.equal(syncEvent.entityLocalId, entityLocalId);
   });
 
   it('creates SALE_NOT_FOUND conflicts for saleItem and payment without sale', async () => {
@@ -405,6 +587,51 @@ describe('operational local-first sync routes', () => {
     assert.equal((duplicate.data as { summary: { duplicates: number } }).summary.duplicates, 1);
     const paymentsCount = await prisma.financialEvent.count({
       where: { companyId: fixture.companyId, eventType: 'sale_payment' },
+    });
+    assert.equal(paymentsCount, 1);
+  });
+
+  it('deduplicates payment/create by _sync idempotencyKey', async () => {
+    const fixture = await createFixture();
+    const saleLocalId = `${runId}-payment-sync-sale`;
+    const idempotencyKey = `${runId}-payment-sync-key`;
+    await push(fixture, [
+      buildEvent('payment-sync-sale-create', 'sale', {
+        entityLocalId: saleLocalId,
+        payload: { status: 'finalized', totalCents: 2500 },
+      }),
+    ]);
+    await push(fixture, [
+      buildEvent('payment-sync-create-a', 'payment', {
+        entityLocalId: `${runId}-payment-sync-a`,
+        payload: {
+          saleLocalId,
+          amountCents: 2500,
+          paymentMethod: 'pix',
+          _sync: { idempotencyKey, localSequence: 1 },
+        },
+      }),
+    ]);
+
+    const duplicate = await push(fixture, [
+      buildEvent('payment-sync-create-b', 'payment', {
+        entityLocalId: `${runId}-payment-sync-b`,
+        payload: {
+          saleLocalId,
+          amountCents: 2500,
+          paymentMethod: 'pix',
+          _sync: { idempotencyKey, localSequence: 2 },
+        },
+      }),
+    ]);
+
+    assert.equal(
+      (duplicate.data as { summary: { duplicates: number } }).summary
+        .duplicates,
+      1,
+    );
+    const paymentsCount = await prisma.financialEvent.count({
+      where: { companyId: fixture.companyId, localUuid: idempotencyKey },
     });
     assert.equal(paymentsCount, 1);
   });
@@ -507,6 +734,70 @@ describe('operational local-first sync routes', () => {
         ['stock-deduction-missing-variant', 'STOCK_VARIANT_NOT_FOUND'],
       ],
     );
+  });
+
+  it('deduplicates stockReservation/create and stockDeduction/create by _sync idempotencyKey', async () => {
+    const fixture = await createFixture();
+    const product = await createProduct(fixture, { stockMil: 10_000 });
+    const reservationKey = `${runId}-stock-reservation-sync-key`;
+    const deductionKey = `${runId}-stock-deduction-sync-key`;
+
+    await push(fixture, [
+      buildEvent('stock-reservation-sync-create-a', 'stockReservation', {
+        entityLocalId: `${runId}-stock-reservation-sync-a`,
+        payload: {
+          productId: product.id,
+          quantityMil: 1000,
+          _sync: { idempotencyKey: reservationKey, localSequence: 1 },
+        },
+      }),
+      buildEvent('stock-deduction-sync-create-a', 'stockDeduction', {
+        entityLocalId: `${runId}-stock-deduction-sync-a`,
+        payload: {
+          productId: product.id,
+          quantityDeltaMil: -1000,
+          _sync: { idempotencyKey: deductionKey, localSequence: 1 },
+        },
+      }),
+    ]);
+
+    const duplicate = await push(fixture, [
+      buildEvent('stock-reservation-sync-create-b', 'stockReservation', {
+        entityLocalId: `${runId}-stock-reservation-sync-b`,
+        payload: {
+          productId: product.id,
+          quantityMil: 1000,
+          _sync: { idempotencyKey: reservationKey, localSequence: 2 },
+        },
+      }),
+      buildEvent('stock-deduction-sync-create-b', 'stockDeduction', {
+        entityLocalId: `${runId}-stock-deduction-sync-b`,
+        payload: {
+          productId: product.id,
+          quantityDeltaMil: -1000,
+          _sync: { idempotencyKey: deductionKey, localSequence: 2 },
+        },
+      }),
+    ]);
+
+    assert.equal(
+      (duplicate.data as { summary: { duplicates: number } }).summary
+        .duplicates,
+      2,
+    );
+    const [reservationsCount, deductionsCount, updatedProduct] =
+      await Promise.all([
+        prisma.stockReservation.count({
+          where: { companyId: fixture.companyId, localUuid: reservationKey },
+        }),
+        prisma.stockDeduction.count({
+          where: { companyId: fixture.companyId, localUuid: deductionKey },
+        }),
+        prisma.product.findUniqueOrThrow({ where: { id: product.id } }),
+      ]);
+    assert.equal(reservationsCount, 1);
+    assert.equal(deductionsCount, 1);
+    assert.equal(updatedProduct.stockMil, 9000);
   });
 
   it('creates SyncIncident when materialization fails unexpectedly', async () => {
@@ -643,7 +934,128 @@ describe('operational local-first sync routes', () => {
     });
     assert.equal(order.status, 'closed');
     assert.equal(order.totalCents, 2000);
+    assert.equal(order.lastLocalSequence, null);
     assert.notEqual(order.closedAt, null);
+  });
+
+  it('accepts two operationalOrder updates with increasing localSequence', async () => {
+    const fixture = await createFixture();
+    const orderLocalId = `${runId}-operational-order-sequence`;
+    await push(fixture, [
+      buildEvent('operational-order-sequence-create', 'operationalOrder', {
+        entityLocalId: orderLocalId,
+        payload: {
+          status: 'open',
+          totalCents: 1000,
+          _sync: { entityLocalId: orderLocalId, localSequence: 1 },
+        },
+      }),
+    ]);
+    const created = await prisma.operationalOrder.findUniqueOrThrow({
+      where: {
+        companyId_localUuid: {
+          companyId: fixture.companyId,
+          localUuid: orderLocalId,
+        },
+      },
+    });
+    assert.equal(created.lastLocalSequence, 1);
+
+    const firstUpdate = await push(fixture, [
+      buildEvent('operational-order-sequence-update-a', 'operationalOrder', {
+        operation: 'update',
+        entityLocalId: orderLocalId,
+        payload: {
+          status: 'open',
+          totalCents: 1200,
+          _sync: { entityLocalId: orderLocalId, localSequence: 2 },
+        },
+      }),
+    ]);
+    const secondUpdate = await push(fixture, [
+      buildEvent('operational-order-sequence-update-b', 'operationalOrder', {
+        operation: 'update',
+        entityLocalId: orderLocalId,
+        payload: {
+          status: 'open',
+          totalCents: 1500,
+          _sync: { entityLocalId: orderLocalId, localSequence: 3 },
+        },
+      }),
+    ]);
+
+    assert.equal(
+      (firstUpdate.data as { summary: { accepted: number } }).summary.accepted,
+      1,
+    );
+    assert.equal(
+      (secondUpdate.data as { summary: { accepted: number } }).summary.accepted,
+      1,
+    );
+    const order = await prisma.operationalOrder.findUniqueOrThrow({
+      where: {
+        companyId_localUuid: {
+          companyId: fixture.companyId,
+          localUuid: orderLocalId,
+        },
+      },
+    });
+    assert.equal(order.totalCents, 1500);
+    assert.equal(order.lastLocalSequence, 3);
+  });
+
+  it('does not let stale operationalOrder localSequence overwrite newer state', async () => {
+    const fixture = await createFixture();
+    const orderLocalId = `${runId}-operational-order-stale-sequence`;
+    await push(fixture, [
+      buildEvent('operational-order-stale-create', 'operationalOrder', {
+        entityLocalId: orderLocalId,
+        payload: {
+          status: 'open',
+          totalCents: 1000,
+          _sync: { entityLocalId: orderLocalId, localSequence: 10 },
+        },
+      }),
+    ]);
+    await push(fixture, [
+      buildEvent('operational-order-stale-update-newer', 'operationalOrder', {
+        operation: 'update',
+        entityLocalId: orderLocalId,
+        payload: {
+          status: 'open',
+          totalCents: 2000,
+          _sync: { entityLocalId: orderLocalId, localSequence: 20 },
+        },
+      }),
+    ]);
+
+    const stale = await push(fixture, [
+      buildEvent('operational-order-stale-update-older', 'operationalOrder', {
+        operation: 'update',
+        entityLocalId: orderLocalId,
+        payload: {
+          status: 'open',
+          totalCents: 1500,
+          _sync: { entityLocalId: orderLocalId, localSequence: 15 },
+        },
+      }),
+    ]);
+
+    assert.equal(
+      (stale.data as { conflicts: Array<{ code: string }> }).conflicts[0]
+        ?.code,
+      'STALE_LOCAL_SEQUENCE',
+    );
+    const order = await prisma.operationalOrder.findUniqueOrThrow({
+      where: {
+        companyId_localUuid: {
+          companyId: fixture.companyId,
+          localUuid: orderLocalId,
+        },
+      },
+    });
+    assert.equal(order.totalCents, 2000);
+    assert.equal(order.lastLocalSequence, 20);
   });
 
   it('materializes operationalOrderItem/create', async () => {
@@ -743,6 +1155,53 @@ describe('operational local-first sync routes', () => {
     assert.equal((duplicate.data as { summary: { duplicates: number } }).summary.duplicates, 1);
     const count = await prisma.operationalOrderItem.count({
       where: { companyId: fixture.companyId, localUuid: itemLocalId },
+    });
+    assert.equal(count, 1);
+  });
+
+  it('deduplicates operationalOrderItem/create by _sync idempotencyKey', async () => {
+    const fixture = await createFixture();
+    const orderLocalId = `${runId}-order-item-sync-order`;
+    const itemKey = `${runId}-order-item-sync-key`;
+    await push(fixture, [
+      buildEvent('order-item-sync-order-create', 'operationalOrder', {
+        entityLocalId: orderLocalId,
+        payload: { status: 'open', totalCents: 1000 },
+      }),
+    ]);
+    await push(fixture, [
+      buildEvent('order-item-sync-create-a', 'operationalOrderItem', {
+        entityLocalId: `${runId}-order-item-sync-a`,
+        payload: {
+          operationalOrderLocalId: orderLocalId,
+          description: 'Cafe',
+          quantityMil: 1000,
+          totalCents: 1000,
+          _sync: { idempotencyKey: itemKey, localSequence: 1 },
+        },
+      }),
+    ]);
+
+    const duplicate = await push(fixture, [
+      buildEvent('order-item-sync-create-b', 'operationalOrderItem', {
+        entityLocalId: `${runId}-order-item-sync-b`,
+        payload: {
+          operationalOrderLocalId: orderLocalId,
+          description: 'Cafe',
+          quantityMil: 1000,
+          totalCents: 1000,
+          _sync: { idempotencyKey: itemKey, localSequence: 2 },
+        },
+      }),
+    ]);
+
+    assert.equal(
+      (duplicate.data as { summary: { duplicates: number } }).summary
+        .duplicates,
+      1,
+    );
+    const count = await prisma.operationalOrderItem.count({
+      where: { companyId: fixture.companyId, localUuid: itemKey },
     });
     assert.equal(count, 1);
   });

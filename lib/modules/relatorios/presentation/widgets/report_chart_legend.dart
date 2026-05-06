@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../data/support/report_donut_support.dart';
 import '../../domain/entities/report_donut_slice.dart';
 

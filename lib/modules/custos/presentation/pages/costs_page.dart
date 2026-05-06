@@ -10,7 +10,7 @@ import '../../../../app/core/widgets/app_input.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../domain/entities/cost_entry.dart';
 import '../../domain/entities/cost_overview.dart';
@@ -395,17 +395,22 @@ class _SummaryGrid extends StatelessWidget {
       ),
     ];
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: 1.32,
-      ),
-      itemCount: cards.length,
-      itemBuilder: (context, index) => _SummaryCard(data: cards[index]),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth < 340 ? 1 : 2;
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            mainAxisExtent: 150,
+          ),
+          itemCount: cards.length,
+          itemBuilder: (context, index) => _SummaryCard(data: cards[index]),
+        );
+      },
     );
   }
 }

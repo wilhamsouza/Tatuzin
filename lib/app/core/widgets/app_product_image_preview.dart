@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../../theme/app_design_tokens.dart';
+import '../theme/app_design_tokens.dart';
 
 class AppProductImagePreview extends StatelessWidget {
   const AppProductImagePreview({

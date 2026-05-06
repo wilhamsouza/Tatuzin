@@ -1,4 +1,11 @@
-enum SyncDisplayState { syncing, pending, attention, synced }
+enum SyncDisplayState {
+  syncing,
+  pending,
+  conflict,
+  error,
+  serverDataStale,
+  synced,
+}
 
 extension SyncDisplayStateX on SyncDisplayState {
   String get label {
@@ -6,9 +13,13 @@ extension SyncDisplayStateX on SyncDisplayState {
       case SyncDisplayState.syncing:
         return 'Sincronizando';
       case SyncDisplayState.pending:
-        return 'Pendencias para sincronizar';
-      case SyncDisplayState.attention:
-        return 'Precisa de atencao';
+        return 'Pendente';
+      case SyncDisplayState.conflict:
+        return 'Com conflito';
+      case SyncDisplayState.error:
+        return 'Erro de sincronizacao';
+      case SyncDisplayState.serverDataStale:
+        return 'Dados do servidor desatualizados';
       case SyncDisplayState.synced:
         return 'Sincronizado';
     }

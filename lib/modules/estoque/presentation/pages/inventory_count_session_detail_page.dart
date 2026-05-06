@@ -15,7 +15,7 @@ import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../domain/entities/inventory_count_item.dart';
 import '../../domain/entities/inventory_count_item_input.dart';
 import '../../domain/entities/inventory_count_session.dart';

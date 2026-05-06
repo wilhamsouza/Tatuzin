@@ -13,6 +13,72 @@ export function asRecord(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+export type SyncPayloadMetadata = {
+  eventId: string | null;
+  entityLocalId: string | null;
+  entityServerId: string | null;
+  localSequence: number | null;
+  idempotencyKey: string | null;
+};
+
+export function syncMetadataFor(
+  event: SyncPushEventInput,
+  payload: Record<string, unknown>,
+): SyncPayloadMetadata {
+  const sync = asRecord(payload['_sync']);
+  return {
+    eventId: firstIdentity(sync, ['eventId']) ?? clean(event.eventId),
+    entityLocalId:
+      firstIdentity(sync, ['entityLocalId', 'localUuid', 'localId']) ??
+      clean(event.entityLocalId) ??
+      firstIdentity(payload, [
+        'uuid',
+        'localUuid',
+        'localId',
+        'id',
+        'localMovementUuid',
+        'receiptNumber',
+        'number',
+      ]),
+    entityServerId:
+      firstIdentity(sync, ['entityServerId', 'serverId']) ??
+      clean(event.entityServerId),
+    localSequence:
+      firstInt(sync, ['localSequence', 'localRevision', 'sequence']) ??
+      firstInt(payload, ['localSequence', 'localRevision', 'sequence']),
+    idempotencyKey:
+      firstIdentity(sync, ['idempotencyKey']) ??
+      firstIdentity(payload, ['idempotencyKey']),
+  };
+}
+
+export function localSequenceFor(
+  event: SyncPushEventInput,
+  payload: Record<string, unknown>,
+) {
+  return syncMetadataFor(event, payload).localSequence;
+}
+
+export function domainIdentityFor(
+  event: SyncPushEventInput,
+  payload: Record<string, unknown>,
+  domainKeys: string[] = [],
+  options: { preferIdempotencyKey?: boolean } = {},
+) {
+  const metadata = syncMetadataFor(event, payload);
+  const idempotencyKey = explicitIdempotencyKeyFor(event, payload);
+  if (options.preferIdempotencyKey && idempotencyKey != null) {
+    return idempotencyKey;
+  }
+
+  return (
+    metadata.entityLocalId ??
+    firstIdentity(payload, domainKeys) ??
+    idempotencyKey ??
+    localIdentityFor(event, payload)
+  );
+}
+
 export function firstString(
   payload: Record<string, unknown>,
   keys: string[],
@@ -52,8 +118,9 @@ export function localIdentityFor(
   event: SyncPushEventInput,
   payload: Record<string, unknown>,
 ) {
+  const metadata = syncMetadataFor(event, payload);
   return (
-    clean(event.entityLocalId) ??
+    metadata.entityLocalId ??
     firstIdentity(payload, [
       'uuid',
       'localUuid',
@@ -62,8 +129,8 @@ export function localIdentityFor(
       'localMovementUuid',
       'receiptNumber',
       'number',
-      'idempotencyKey',
-    ])
+    ]) ??
+    explicitIdempotencyKeyFor(event, payload)
   );
 }
 
@@ -171,4 +238,23 @@ export function jsonPayload(
 function clean(value: string | null | undefined) {
   const trimmed = value?.trim();
   return trimmed == null || trimmed.length === 0 ? null : trimmed;
+}
+
+function explicitIdempotencyKeyFor(
+  event: SyncPushEventInput,
+  payload: Record<string, unknown>,
+) {
+  const metadata = syncMetadataFor(event, payload);
+  const key = metadata.idempotencyKey;
+  if (key == null) {
+    return null;
+  }
+
+  const eventId = clean(event.eventId);
+  const metadataEventId = metadata.eventId;
+  if (key === eventId || key === metadataEventId) {
+    return null;
+  }
+
+  return key;
 }

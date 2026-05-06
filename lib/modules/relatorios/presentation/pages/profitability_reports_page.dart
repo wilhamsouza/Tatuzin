@@ -7,7 +7,7 @@ import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../data/support/report_donut_support.dart';
 import '../../data/support/report_export_mapper.dart';
 import '../../data/support/report_filter_preset_support.dart';

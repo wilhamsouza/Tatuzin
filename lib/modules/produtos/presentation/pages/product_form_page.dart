@@ -8,7 +8,7 @@ import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/utils/money_parser.dart';
 import '../../../../app/core/utils/quantity_parser.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../../categorias/domain/entities/category.dart';
 import '../../../categorias/presentation/providers/category_providers.dart';
 import '../../../insumos/domain/entities/supply.dart';

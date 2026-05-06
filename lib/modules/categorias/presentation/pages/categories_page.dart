@@ -10,7 +10,7 @@ import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../domain/entities/category.dart';
 import '../providers/category_providers.dart';
 

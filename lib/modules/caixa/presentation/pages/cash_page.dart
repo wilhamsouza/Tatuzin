@@ -15,8 +15,8 @@ import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/core/widgets/app_summary_block.dart';
 import '../../../../app/routes/route_names.dart';
-import '../../../../app/theme/app_design_tokens.dart';
-import '../../../../app/theme/app_theme.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_theme.dart';
 import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../domain/entities/cash_enums.dart';
 import '../../domain/entities/cash_manual_movement_input.dart';
@@ -994,57 +994,62 @@ class _CurrentSessionSection extends StatelessWidget {
           title: 'Resumo financeiro',
           subtitle: 'Toque em um bloco para filtrar as movimentaÃ§Ãµes abaixo.',
           padding: const EdgeInsets.all(16),
-          child: GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
-            childAspectRatio: 1.18,
-            children: [
-              _CashMetricCard(
-                label: 'Fundo abertura',
-                valueCents: current.initialFloatCents,
-                caption: 'Troco inicial',
-                icon: Icons.arrow_downward_rounded,
-                accentColor: AppTheme.success,
-                semanticLabel:
-                    'Fundo de abertura ${AppFormatters.currencyFromCents(current.initialFloatCents)}',
-                onTap: () => onSelectFilter(CashMovementFilter.all),
-              ),
-              _CashMetricCard(
-                label: 'Dinheiro fisico',
-                valueCents: dinheiroFisicoCents,
-                caption: 'Sem fiado recebido',
-                icon: Icons.account_balance_wallet_rounded,
-                accentColor: Theme.of(context).colorScheme.primary,
-                semanticLabel:
-                    'Dinheiro fisico ${AppFormatters.currencyFromCents(dinheiroFisicoCents)}',
-                onTap: () => onSelectFilter(CashMovementFilter.all),
-                infoMessage:
-                    'Exibicao visual separada: fiado recebido aparece em KPI proprio.',
-              ),
-              _CashMetricCard(
-                label: 'Fiado recebido',
-                valueCents: current.totalFiadoReceiptsCents,
-                caption: 'Dinheiro, Pix e cartao',
-                icon: Icons.receipt_long_rounded,
-                accentColor: AppTheme.secondary,
-                semanticLabel:
-                    'Fiado recebido ${AppFormatters.currencyFromCents(current.totalFiadoReceiptsCents)}',
-                onTap: () => onSelectFilter(CashMovementFilter.fiado),
-              ),
-              _CashMetricCard(
-                label: 'Total vendas',
-                valueCents: current.totalSalesCents,
-                caption: 'Vendas em dinheiro',
-                icon: Icons.point_of_sale_rounded,
-                accentColor: AppTheme.success,
-                semanticLabel:
-                    'Total de vendas ${AppFormatters.currencyFromCents(current.totalSalesCents)}',
-                onTap: () => onSelectFilter(CashMovementFilter.sales),
-              ),
-            ],
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth < 340 ? 1 : 2;
+              return GridView.count(
+                crossAxisCount: columns,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                mainAxisExtent: 154,
+                children: [
+                  _CashMetricCard(
+                    label: 'Fundo abertura',
+                    valueCents: current.initialFloatCents,
+                    caption: 'Troco inicial',
+                    icon: Icons.arrow_downward_rounded,
+                    accentColor: AppTheme.success,
+                    semanticLabel:
+                        'Fundo de abertura ${AppFormatters.currencyFromCents(current.initialFloatCents)}',
+                    onTap: () => onSelectFilter(CashMovementFilter.all),
+                  ),
+                  _CashMetricCard(
+                    label: 'Dinheiro fisico',
+                    valueCents: dinheiroFisicoCents,
+                    caption: 'Sem fiado recebido',
+                    icon: Icons.account_balance_wallet_rounded,
+                    accentColor: Theme.of(context).colorScheme.primary,
+                    semanticLabel:
+                        'Dinheiro fisico ${AppFormatters.currencyFromCents(dinheiroFisicoCents)}',
+                    onTap: () => onSelectFilter(CashMovementFilter.all),
+                    infoMessage:
+                        'Exibicao visual separada: fiado recebido aparece em KPI proprio.',
+                  ),
+                  _CashMetricCard(
+                    label: 'Fiado recebido',
+                    valueCents: current.totalFiadoReceiptsCents,
+                    caption: 'Dinheiro, Pix e cartao',
+                    icon: Icons.receipt_long_rounded,
+                    accentColor: AppTheme.secondary,
+                    semanticLabel:
+                        'Fiado recebido ${AppFormatters.currencyFromCents(current.totalFiadoReceiptsCents)}',
+                    onTap: () => onSelectFilter(CashMovementFilter.fiado),
+                  ),
+                  _CashMetricCard(
+                    label: 'Total vendas',
+                    valueCents: current.totalSalesCents,
+                    caption: 'Vendas em dinheiro',
+                    icon: Icons.point_of_sale_rounded,
+                    accentColor: AppTheme.success,
+                    semanticLabel:
+                        'Total de vendas ${AppFormatters.currencyFromCents(current.totalSalesCents)}',
+                    onTap: () => onSelectFilter(CashMovementFilter.sales),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ],

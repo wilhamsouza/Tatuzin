@@ -1,11 +1,11 @@
 import {
   firstDate,
+  domainIdentityFor,
   firstIdentity,
   firstInt,
   firstString,
   firstUuid,
   isClosedStatus,
-  localIdentityFor,
 } from './payload-utils';
 import type {
   SyncMaterializerInput,
@@ -24,7 +24,19 @@ export class CashMovementMaterializer {
       };
     }
 
-    const localUuid = localIdentityFor(input.event, input.payload);
+    const localUuid = domainIdentityFor(
+      input.event,
+      input.payload,
+      [
+        'localMovementUuid',
+        'movementUuid',
+        'uuid',
+        'localUuid',
+        'localId',
+        'id',
+      ],
+      { preferIdempotencyKey: true },
+    );
     if (localUuid == null) {
       return {
         outcome: 'rejected',

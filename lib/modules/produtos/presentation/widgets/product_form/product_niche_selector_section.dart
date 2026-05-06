@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../../app/core/widgets/app_card.dart';
 import '../../../../../app/core/widgets/app_section_card.dart';
 import '../../../../../app/core/widgets/app_summary_block.dart';
-import '../../../../../app/theme/app_design_tokens.dart';
+import '../../../../../app/core/theme/app_design_tokens.dart';
 import '../../../domain/entities/product.dart';
 
 class ProductNicheSelectorSection extends StatelessWidget {

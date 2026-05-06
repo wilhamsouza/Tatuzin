@@ -1,9 +1,9 @@
 import {
+  domainIdentityFor,
   firstDate,
-  firstIdentity,
   firstString,
-  localIdentityFor,
   positiveInt,
+  syncMetadataFor,
 } from './payload-utils';
 import { SaleMaterializer } from './sale.materializer';
 import type {
@@ -25,13 +25,20 @@ export class PaymentMaterializer {
       };
     }
 
-    const localUuid =
-      firstIdentity(input.payload, [
+    const localUuid = domainIdentityFor(
+      input.event,
+      input.payload,
+      [
         'paymentLocalId',
         'paymentUuid',
-        'idempotencyKey',
         'paymentKey',
-      ]) ?? localIdentityFor(input.event, input.payload);
+        'uuid',
+        'localUuid',
+        'localId',
+        'id',
+      ],
+      { preferIdempotencyKey: true },
+    );
     if (localUuid == null) {
       return {
         outcome: 'rejected',
@@ -86,6 +93,7 @@ export class PaymentMaterializer {
           source: 'operational_sync',
           receiptNumber: firstString(input.payload, ['receiptNumber']),
           eventId: input.event.eventId,
+          sync: syncMetadataFor(input.event, input.payload),
         },
         createdAt: firstDate(input.payload, ['occurredAt', 'createdAt'], new Date()),
       },

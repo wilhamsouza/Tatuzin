@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/app_design_tokens.dart';
+import '../theme/app_design_tokens.dart';
 
 class AppSeparator extends StatelessWidget {
   const AppSeparator({super.key, this.indent = 0, this.endIndent = 0});

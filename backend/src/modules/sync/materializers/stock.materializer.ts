@@ -1,10 +1,10 @@
 import {
   absPositiveInt,
+  domainIdentityFor,
   firstDate,
   firstString,
   firstUuid,
   jsonPayload,
-  localIdentityFor,
   positiveInt,
 } from './payload-utils';
 import { SaleMaterializer } from './sale.materializer';
@@ -33,7 +33,20 @@ export class StockMaterializer {
   async materializeReservation(
     input: SyncMaterializerInput,
   ): Promise<SyncMaterializerResult> {
-    const localUuid = localIdentityFor(input.event, input.payload);
+    const localUuid = domainIdentityFor(
+      input.event,
+      input.payload,
+      [
+        'reservationLocalId',
+        'reservationUuid',
+        'stockReservationLocalId',
+        'uuid',
+        'localUuid',
+        'localId',
+        'id',
+      ],
+      { preferIdempotencyKey: true },
+    );
     if (localUuid == null) {
       return {
         outcome: 'rejected',
@@ -127,7 +140,20 @@ export class StockMaterializer {
       };
     }
 
-    const localUuid = localIdentityFor(input.event, input.payload);
+    const localUuid = domainIdentityFor(
+      input.event,
+      input.payload,
+      [
+        'deductionLocalId',
+        'deductionUuid',
+        'stockDeductionLocalId',
+        'uuid',
+        'localUuid',
+        'localId',
+        'id',
+      ],
+      { preferIdempotencyKey: true },
+    );
     if (localUuid == null) {
       return {
         outcome: 'rejected',

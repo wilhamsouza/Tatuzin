@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../domain/entities/report_sales_trend_point.dart';
 import 'report_empty_state.dart';
 

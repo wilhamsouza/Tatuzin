@@ -1,9 +1,11 @@
 import {
+  domainIdentityFor,
   firstDate,
   firstIdentity,
   firstString,
   firstUuid,
   isUuid,
+  localSequenceFor,
   localIdentityFor,
   nonNegativeInt,
   positiveInt,
@@ -29,6 +31,7 @@ type OperationalOrderLike = {
   closedAt: Date | null;
   cancelledAt: Date | null;
   convertedSaleId: string | null;
+  lastLocalSequence: number | null;
   updatedAt: Date;
 };
 
@@ -147,7 +150,16 @@ export class OperationalOrderMaterializer {
       };
     }
 
-    const localUuid = localIdentityFor(input.event, input.payload);
+    const localUuid = domainIdentityFor(input.event, input.payload, [
+      'operationalOrderLocalId',
+      'operationalOrderLocalUuid',
+      'orderLocalId',
+      'orderUuid',
+      'uuid',
+      'localUuid',
+      'localId',
+      'id',
+    ]);
     if (localUuid == null) {
       return {
         outcome: 'rejected',
@@ -164,6 +176,7 @@ export class OperationalOrderMaterializer {
         },
       },
     });
+    const localSequence = localSequenceFor(input.event, input.payload);
 
     if (input.event.operation === 'create' && existing != null) {
       return {
@@ -180,6 +193,28 @@ export class OperationalOrderMaterializer {
         payload: {
           entityLocalId: input.event.entityLocalId,
           localUuid,
+        },
+      };
+    }
+
+    if (
+      existing != null &&
+      ['update', 'upsert'].includes(input.event.operation) &&
+      localSequence != null &&
+      existing.lastLocalSequence != null &&
+      existing.lastLocalSequence > localSequence
+    ) {
+      return {
+        outcome: 'conflict',
+        code: 'STALE_LOCAL_SEQUENCE',
+        message:
+          'Evento operacional possui localSequence anterior ao ultimo evento materializado para a entidade.',
+        payload: {
+          entity: input.event.entity,
+          entityLocalId: input.event.entityLocalId,
+          localUuid,
+          localSequence,
+          latestLocalSequence: existing.lastLocalSequence,
         },
       };
     }
@@ -216,6 +251,8 @@ export class OperationalOrderMaterializer {
       notes: firstString(input.payload, ['notes', 'description']) ?? existing?.notes,
       closedAt: this.closedAt(input, existing, requestedStatus, now),
       cancelledAt: this.cancelledAt(input, existing, requestedStatus, now),
+      lastLocalSequence:
+        localSequence ?? existing?.lastLocalSequence ?? null,
     };
 
     if (existing == null) {
@@ -259,7 +296,25 @@ export class OperationalOrderMaterializer {
       };
     }
 
-    const localUuid = localIdentityFor(input.event, input.payload);
+    const localUuid = domainIdentityFor(
+      input.event,
+      input.payload,
+      [
+        'operationalOrderItemLocalId',
+        'operationalOrderItemLocalUuid',
+        'itemLocalId',
+        'itemUuid',
+        'uuid',
+        'localUuid',
+        'localId',
+        'id',
+      ],
+      {
+        preferIdempotencyKey: ['create', 'append'].includes(
+          input.event.operation,
+        ),
+      },
+    );
     if (localUuid == null) {
       return {
         outcome: 'rejected',

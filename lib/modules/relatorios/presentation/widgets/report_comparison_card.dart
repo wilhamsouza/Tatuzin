@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../app/core/widgets/app_section_card.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 
 class ReportComparisonCard extends StatelessWidget {
   const ReportComparisonCard({

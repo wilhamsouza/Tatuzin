@@ -4,6 +4,11 @@ import { ZodError } from 'zod';
 import { prisma } from '../../database/prisma';
 import { AppError } from '../../shared/http/app-error';
 import type { AppContext } from '../app/app-context.types';
+import {
+  asRecord as asPayloadRecord,
+  localSequenceFor,
+  syncMetadataFor,
+} from './materializers/payload-utils';
 import { SyncMaterializerService } from './materializers/sync-materializer.service';
 import { SyncCheckpointService } from './sync-checkpoint.service';
 import { SyncConflictService } from './sync-conflict.service';
@@ -312,12 +317,14 @@ export class SyncEventService {
 
     try {
       return await prisma.$transaction(async (tx) => {
-        const materialized = await this.materializer.materialize({
-          tx,
-          context,
-          event,
-          payload: event.payload,
-        });
+        const materialized =
+          (await this.detectStaleLocalSequence(tx, context, event)) ??
+          (await this.materializer.materialize({
+            tx,
+            context,
+            event,
+            payload: event.payload,
+          }));
 
         if (materialized.outcome === 'duplicate') {
           const syncEvent = await tx.syncEvent.create({
@@ -687,13 +694,150 @@ export class SyncEventService {
   }
 
   private normalizeEvent(event: SyncPushEventInput): SyncPushEventInput {
+    const metadata = syncMetadataFor(event, event.payload);
     return {
       ...event,
       operation: event.operation.trim().toLowerCase(),
       entity: event.entity.trim(),
       feature: event.feature.trim(),
       eventId: event.eventId.trim(),
+      entityLocalId: metadata.entityLocalId ?? event.entityLocalId,
+      entityServerId: metadata.entityServerId ?? event.entityServerId,
     };
+  }
+
+  private async detectStaleLocalSequence(
+    tx: Prisma.TransactionClient,
+    context: AppContext,
+    event: SyncPushEventInput,
+  ): Promise<{
+    outcome: 'conflict';
+    code: string;
+    message: string;
+    payload: Prisma.InputJsonValue;
+  } | null> {
+    if (!['update', 'upsert'].includes(event.operation)) {
+      return null;
+    }
+
+    const metadata = syncMetadataFor(event, event.payload);
+    const localSequence = metadata.localSequence;
+    const entityLocalId = metadata.entityLocalId;
+    if (localSequence == null || entityLocalId == null) {
+      return null;
+    }
+
+    const domainLastLocalSequence = await this.findDomainLastLocalSequence(
+      tx,
+      context,
+      event.entity,
+      entityLocalId,
+    );
+    if (domainLastLocalSequence != null) {
+      return null;
+    }
+
+    // Fallback for entities without lastLocalSequence, or legacy rows that
+    // still have it null.
+    const previousEvents = await tx.syncEvent.findMany({
+      where: {
+        companyId: context.company.id,
+        entity: event.entity,
+        entityLocalId,
+        status: SyncEventStatus.ACCEPTED,
+        serverVersion: {
+          not: null,
+        },
+      },
+      orderBy: [{ serverVersion: 'desc' }, { createdAt: 'desc' }],
+      take: 20,
+      select: {
+        eventId: true,
+        serverVersion: true,
+        payload: true,
+      },
+    });
+
+    for (const previous of previousEvents) {
+      const previousPayload = asPayloadRecord(previous.payload);
+      const previousSequence = localSequenceFor(
+        {
+          eventId: previous.eventId,
+          feature: event.feature,
+          entity: event.entity,
+          operation: event.operation,
+          entityLocalId,
+          occurredAt: event.occurredAt,
+          payload: previousPayload,
+        },
+        previousPayload,
+      );
+
+      if (previousSequence == null) {
+        continue;
+      }
+
+      if (previousSequence > localSequence) {
+        return {
+          outcome: 'conflict',
+          code: 'STALE_LOCAL_SEQUENCE',
+          message:
+            'Evento operacional possui localSequence anterior ao ultimo evento materializado para a entidade.',
+          payload: {
+            entity: event.entity,
+            entityLocalId,
+            eventId: event.eventId,
+            localSequence,
+            latestLocalSequence: previousSequence,
+            latestEventId: previous.eventId,
+            latestServerVersion: previous.serverVersion?.toString() ?? null,
+          },
+        };
+      }
+
+      return null;
+    }
+
+    return null;
+  }
+
+  private async findDomainLastLocalSequence(
+    tx: Prisma.TransactionClient,
+    context: AppContext,
+    entity: string,
+    entityLocalId: string,
+  ) {
+    if (entity === 'operationalOrder') {
+      const order = await tx.operationalOrder.findUnique({
+        where: {
+          companyId_localUuid: {
+            companyId: context.company.id,
+            localUuid: entityLocalId,
+          },
+        },
+        select: {
+          lastLocalSequence: true,
+        },
+      });
+      return order?.lastLocalSequence ?? null;
+    }
+
+    if (entity === 'cashSession') {
+      const cashSession = await tx.cashSession.findUnique({
+        where: {
+          companyId_localUuid: {
+            companyId: context.company.id,
+            localUuid: entityLocalId,
+          },
+        },
+        select: {
+          lastLocalSequence: true,
+        },
+      });
+      return cashSession?.lastLocalSequence ?? null;
+    }
+
+    return null;
   }
 
   private toEventDto(event: {

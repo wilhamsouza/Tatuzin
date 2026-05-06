@@ -5,7 +5,7 @@ import '../../../../../app/core/widgets/app_summary_block.dart';
 import '../../../../../app/core/utils/money_parser.dart';
 import '../../../../../app/core/utils/quantity_parser.dart';
 import '../../../../../app/core/widgets/app_section_card.dart';
-import '../../../../../app/theme/app_design_tokens.dart';
+import '../../../../../app/core/theme/app_design_tokens.dart';
 import '../../../../categorias/domain/entities/category.dart';
 import '../../../domain/entities/base_product.dart';
 

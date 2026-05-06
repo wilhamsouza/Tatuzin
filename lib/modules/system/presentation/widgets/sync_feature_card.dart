@@ -113,6 +113,11 @@ class SyncFeatureCard extends StatelessWidget {
                   label: '${summary?.conflictCount ?? 0} conflito',
                   icon: Icons.warning_amber_rounded,
                 ),
+              if (summary?.hasServerDataStale == true)
+                const _Chip(
+                  label: 'Dados do servidor desatualizados',
+                  icon: Icons.cloud_off_outlined,
+                ),
             ],
           ),
           const SizedBox(height: 12),
@@ -190,6 +195,9 @@ class SyncFeatureCard extends StatelessWidget {
     if (summary?.hasAttention == true) {
       return colorScheme.errorContainer;
     }
+    if (summary?.hasServerDataStale == true) {
+      return colorScheme.secondaryContainer;
+    }
     if (summary?.hasActiveProcessing == true) {
       return colorScheme.primaryContainer;
     }
@@ -202,6 +210,9 @@ class SyncFeatureCard extends StatelessWidget {
   Color _statusOnColor(ColorScheme colorScheme) {
     if (summary?.hasAttention == true) {
       return colorScheme.onErrorContainer;
+    }
+    if (summary?.hasServerDataStale == true) {
+      return colorScheme.onSecondaryContainer;
     }
     if (summary?.hasActiveProcessing == true) {
       return colorScheme.onPrimaryContainer;

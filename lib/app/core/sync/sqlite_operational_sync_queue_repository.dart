@@ -17,7 +17,16 @@ class SqliteOperationalSyncQueueRepository
 
   static const _checkpointKey = 'pdv.last_pulled_server_version';
   static const _snapshotVersionKey = 'server_first.snapshot_version';
+  static const _partialStatusKey = 'pdv.partial_status';
+  static const _lastPullErrorKey = 'pdv.last_pull_error';
+  static const _lastPullErrorAtKey = 'pdv.last_pull_error_at';
+  static const _lastPullSucceededAtKey = 'pdv.last_pull_succeeded_at';
+  static const _lastSnapshotErrorKey = 'server_first.last_snapshot_error';
+  static const _lastSnapshotErrorAtKey = 'server_first.last_snapshot_error_at';
+  static const _lastSnapshotSucceededAtKey =
+      'server_first.last_snapshot_succeeded_at';
   static const _featureKey = 'pdv';
+  static const stalePushingThreshold = Duration(minutes: 2);
 
   final AppDatabase _appDatabase;
 
@@ -99,23 +108,21 @@ class SqliteOperationalSyncQueueRepository
             OperationalSyncQueueStatus.failed.storageValue,
           ];
     final placeholders = List.filled(statuses.length, '?').join(', ');
+    final retryWhere = ignoreRetryBackoff
+        ? ''
+        : ' AND (next_retry_at IS NULL OR next_retry_at <= ?)';
+    final retryArgs = ignoreRetryBackoff
+        ? const <Object?>[]
+        : <Object?>[currentTime.toIso8601String()];
     final rows = await database.query(
       TableNames.operationalSyncEvents,
-      where: 'status IN ($placeholders)',
-      whereArgs: statuses,
+      where: 'status IN ($placeholders)$retryWhere',
+      whereArgs: <Object?>[...statuses, ...retryArgs],
       orderBy: 'created_at ASC, id ASC',
       limit: limit,
     );
 
-    return rows
-        .map(_mapRow)
-        .where(
-          (item) =>
-              ignoreRetryBackoff ||
-              item.nextRetryAt == null ||
-              !item.nextRetryAt!.isAfter(currentTime),
-        )
-        .toList(growable: false);
+    return rows.map(_mapRow).toList(growable: false);
   }
 
   @override
@@ -234,7 +241,8 @@ class SqliteOperationalSyncQueueRepository
         error_code = ?,
         error_message = ?,
         updated_at = ?,
-        last_pushed_at = ?
+        last_pushed_at = ?,
+        pushing_started_at = NULL
       WHERE id IN ($placeholders)
       ''',
       <Object?>[
@@ -247,6 +255,49 @@ class SqliteOperationalSyncQueueRepository
         ...ids,
       ],
     );
+  }
+
+  @override
+  Future<int> recoverStalePushing({
+    required Duration staleAfter,
+    DateTime? now,
+  }) async {
+    final database = await _appDatabase.database;
+    final currentTime = now ?? DateTime.now();
+    final cutoff = currentTime.subtract(staleAfter).toIso8601String();
+    final recovered = await database.rawUpdate(
+      '''
+      UPDATE ${TableNames.operationalSyncEvents}
+      SET
+        status = ?,
+        next_retry_at = NULL,
+        error_code = COALESCE(error_code, ?),
+        error_message = COALESCE(error_message, ?),
+        updated_at = ?,
+        last_pushed_at = COALESCE(last_pushed_at, pushing_started_at),
+        pushing_started_at = NULL
+      WHERE status = ?
+        AND pushing_started_at IS NOT NULL
+        AND pushing_started_at <= ?
+      ''',
+      <Object?>[
+        OperationalSyncQueueStatus.pending.storageValue,
+        'SYNC_PUSH_STALE',
+        'Envio operacional anterior ficou interrompido e voltou para a fila.',
+        currentTime.toIso8601String(),
+        OperationalSyncQueueStatus.pushing.storageValue,
+        cutoff,
+      ],
+    );
+
+    if (recovered > 0) {
+      AppLogger.warn(
+        '[OperationalSync] stale_pushing_recovered count=$recovered '
+        'stale_after_seconds=${staleAfter.inSeconds}',
+      );
+    }
+
+    return recovered;
   }
 
   @override
@@ -270,18 +321,79 @@ class SqliteOperationalSyncQueueRepository
   }
 
   @override
+  Future<void> recordPullSucceeded({required DateTime completedAt}) async {
+    await _saveState(_lastPullSucceededAtKey, completedAt.toIso8601String());
+    await _deleteState(_lastPullErrorKey);
+    await _deleteState(_lastPullErrorAtKey);
+    if (!await _hasState(_lastSnapshotErrorKey)) {
+      await _saveState(_partialStatusKey, 'ok');
+    }
+  }
+
+  @override
+  Future<void> recordPullFailed({
+    required String message,
+    required DateTime failedAt,
+  }) async {
+    await _saveState(_partialStatusKey, 'pushOkPullFailed');
+    await _saveState(_lastPullErrorKey, _summarizeMessage(message));
+    await _saveState(_lastPullErrorAtKey, failedAt.toIso8601String());
+  }
+
+  @override
+  Future<void> recordSnapshotSucceeded({
+    required String serverFirstSnapshotVersion,
+    required DateTime completedAt,
+  }) async {
+    await saveSnapshotVersion(serverFirstSnapshotVersion);
+    await _saveState(
+      _lastSnapshotSucceededAtKey,
+      completedAt.toIso8601String(),
+    );
+    await _deleteState(_lastSnapshotErrorKey);
+    await _deleteState(_lastSnapshotErrorAtKey);
+    if (!await _hasState(_lastPullErrorKey)) {
+      await _saveState(_partialStatusKey, 'ok');
+    }
+  }
+
+  @override
+  Future<void> recordSnapshotFailed({
+    required String message,
+    required DateTime failedAt,
+  }) async {
+    await _saveState(_partialStatusKey, 'snapshotFailed');
+    await _saveState(_lastSnapshotErrorKey, _summarizeMessage(message));
+    await _saveState(_lastSnapshotErrorAtKey, failedAt.toIso8601String());
+  }
+
+  @override
   Future<List<SyncQueueFeatureSummary>> listFeatureSummaries() async {
     final database = await _appDatabase.database;
+    final partialStatus = await _readState(_partialStatusKey);
+    final lastPullError = await _readState(_lastPullErrorKey);
+    final lastPullErrorAt = _parseDateTime(
+      await _readState(_lastPullErrorAtKey),
+    );
+    final lastSnapshotError = await _readState(_lastSnapshotErrorKey);
+    final lastSnapshotErrorAt = _parseDateTime(
+      await _readState(_lastSnapshotErrorAtKey),
+    );
     final rows = await database.query(
       TableNames.operationalSyncEvents,
       orderBy: 'updated_at DESC, id DESC',
     );
-    if (rows.isEmpty) {
+    if (rows.isEmpty &&
+        partialStatus == null &&
+        lastPullError == null &&
+        lastSnapshotError == null) {
       return const <SyncQueueFeatureSummary>[];
     }
 
     var pendingCount = 0;
     var processingCount = 0;
+    var activeProcessingCount = 0;
+    var staleProcessingCount = 0;
     var acceptedCount = 0;
     var errorCount = 0;
     var conflictCount = 0;
@@ -301,6 +413,11 @@ class SqliteOperationalSyncQueueRepository
           break;
         case OperationalSyncQueueStatus.pushing:
           processingCount++;
+          if (_isStalePushing(item, DateTime.now())) {
+            staleProcessingCount++;
+          } else {
+            activeProcessingCount++;
+          }
           break;
         case OperationalSyncQueueStatus.accepted:
         case OperationalSyncQueueStatus.duplicate:
@@ -341,8 +458,8 @@ class SqliteOperationalSyncQueueRepository
         totalTracked: rows.length,
         pendingCount: pendingCount,
         processingCount: processingCount,
-        activeProcessingCount: processingCount,
-        staleProcessingCount: 0,
+        activeProcessingCount: activeProcessingCount,
+        staleProcessingCount: staleProcessingCount,
         syncedCount: acceptedCount,
         errorCount: errorCount,
         blockedCount: 0,
@@ -350,9 +467,13 @@ class SqliteOperationalSyncQueueRepository
         totalAttemptCount: totalAttempts,
         lastProcessedAt: lastProcessedAt,
         nextRetryAt: nextRetryAt,
-        lastError: lastError,
+        lastError: lastError ?? lastPullError ?? lastSnapshotError,
         lastErrorType: lastErrorType,
-        lastErrorAt: lastErrorAt,
+        lastErrorAt:
+            lastErrorAt ?? _latestDate(lastPullErrorAt, lastSnapshotErrorAt),
+        partialStatus: partialStatus,
+        lastPullError: lastPullError,
+        lastSnapshotError: lastSnapshotError,
       ),
     ];
   }
@@ -378,10 +499,17 @@ class SqliteOperationalSyncQueueRepository
         'next_retry_at': null,
         'updated_at': processedAt.toIso8601String(),
         'last_pushed_at': processedAt.toIso8601String(),
+        'pushing_started_at': null,
       },
       where: 'event_id = ?',
       whereArgs: [eventId],
     );
+  }
+
+  bool _isStalePushing(OperationalSyncQueueItem item, DateTime now) {
+    final pushingStartedAt = item.pushingStartedAt;
+    return pushingStartedAt != null &&
+        now.difference(pushingStartedAt) >= stalePushingThreshold;
   }
 
   Future<String?> _readState(String key) async {
@@ -407,6 +535,38 @@ class SqliteOperationalSyncQueueRepository
       {'key': key, 'value': value, 'updated_at': now},
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+
+  Future<void> _deleteState(String key) async {
+    final database = await _appDatabase.database;
+    await database.delete(
+      TableNames.operationalSyncState,
+      where: 'key = ?',
+      whereArgs: [key],
+    );
+  }
+
+  Future<bool> _hasState(String key) async {
+    final value = await _readState(key);
+    return value != null && value.trim().isNotEmpty;
+  }
+
+  String _summarizeMessage(String message) {
+    final normalized = message.trim();
+    if (normalized.length <= 400) {
+      return normalized;
+    }
+    return '${normalized.substring(0, 400)}...';
+  }
+
+  DateTime? _latestDate(DateTime? first, DateTime? second) {
+    if (first == null) {
+      return second;
+    }
+    if (second == null) {
+      return first;
+    }
+    return first.isAfter(second) ? first : second;
   }
 
   OperationalSyncQueueItem _mapRow(Map<String, Object?> row) {

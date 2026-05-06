@@ -7,6 +7,7 @@ import {
   isOpenStatus,
   jsonPayload,
   localIdentityFor,
+  localSequenceFor,
   normalizeCashSessionStatus,
 } from './payload-utils';
 import type {
@@ -35,9 +36,32 @@ export class CashSessionMaterializer {
         },
       },
     });
+    const localSequence = localSequenceFor(input.event, input.payload);
 
     if (input.event.operation === 'create' && existing != null) {
       return { outcome: 'duplicate', entityServerId: existing.id };
+    }
+
+    if (
+      existing != null &&
+      ['update', 'upsert'].includes(input.event.operation) &&
+      localSequence != null &&
+      existing.lastLocalSequence != null &&
+      existing.lastLocalSequence > localSequence
+    ) {
+      return {
+        outcome: 'conflict',
+        code: 'STALE_LOCAL_SEQUENCE',
+        message:
+          'Evento operacional possui localSequence anterior ao ultimo evento materializado para a entidade.',
+        payload: {
+          entity: input.event.entity,
+          entityLocalId: input.event.entityLocalId,
+          localUuid,
+          localSequence,
+          latestLocalSequence: existing.lastLocalSequence,
+        },
+      };
     }
 
     const requestedStatus = normalizeCashSessionStatus(
@@ -87,6 +111,8 @@ export class CashSessionMaterializer {
         existing?.expectedBalanceCents,
       notes: firstString(input.payload, ['notes', 'description']),
       payload: jsonPayload(input.payload),
+      lastLocalSequence:
+        localSequence ?? existing?.lastLocalSequence ?? null,
     };
 
     if (existing == null) {

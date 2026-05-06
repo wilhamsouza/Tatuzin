@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 
 class ReportChartInsight extends StatelessWidget {
   const ReportChartInsight({super.key, required this.text});

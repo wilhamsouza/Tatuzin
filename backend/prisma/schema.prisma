@@ -1002,6 +1002,7 @@ model CashSession {
   expectedBalanceCents Int?
   notes                String?
   payload              Json?
+  lastLocalSequence    Int?
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
   company              Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -1019,30 +1020,31 @@ model CashSession {
 }
 
 model OperationalOrder {
-  id              String                 @id @default(uuid())
-  companyId       String
-  localUuid       String
-  cashSessionId   String?
-  customerId      String?
-  sellerUserId    String?
-  deviceId        String?
-  status          String                 @default("open")
-  subtotalCents   Int                    @default(0)
-  discountCents   Int                    @default(0)
-  totalCents      Int                    @default(0)
-  notes           String?
-  closedAt        DateTime?
-  cancelledAt     DateTime?
-  convertedSaleId String?                @unique
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  company         Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  cashSession     CashSession?           @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
-  customer        Customer?              @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  sellerUser      User?                  @relation(fields: [sellerUserId], references: [id], onDelete: SetNull)
-  device          CompanyDevice?         @relation(fields: [deviceId], references: [id], onDelete: SetNull)
-  convertedSale   Sale?                  @relation("OperationalOrderConvertedSale", fields: [convertedSaleId], references: [id], onDelete: SetNull)
-  items           OperationalOrderItem[]
+  id                String                 @id @default(uuid())
+  companyId         String
+  localUuid         String
+  cashSessionId     String?
+  customerId        String?
+  sellerUserId      String?
+  deviceId          String?
+  status            String                 @default("open")
+  subtotalCents     Int                    @default(0)
+  discountCents     Int                    @default(0)
+  totalCents        Int                    @default(0)
+  notes             String?
+  closedAt          DateTime?
+  cancelledAt       DateTime?
+  convertedSaleId   String?                @unique
+  lastLocalSequence Int?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  company           Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  cashSession       CashSession?           @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  customer          Customer?              @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  sellerUser        User?                  @relation(fields: [sellerUserId], references: [id], onDelete: SetNull)
+  device            CompanyDevice?         @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  convertedSale     Sale?                  @relation("OperationalOrderConvertedSale", fields: [convertedSaleId], references: [id], onDelete: SetNull)
+  items             OperationalOrderItem[]
 
   @@unique([companyId, localUuid])
   @@index([companyId])

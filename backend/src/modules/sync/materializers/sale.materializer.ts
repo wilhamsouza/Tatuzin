@@ -1,10 +1,10 @@
 import {
+  domainIdentityFor,
   firstDate,
   firstIdentity,
   firstString,
   firstUuid,
   isUuid,
-  localIdentityFor,
   nonNegativeInt,
   positiveInt,
 } from './payload-utils';
@@ -55,7 +55,20 @@ export class SaleMaterializer {
       };
     }
 
-    const localUuid = localIdentityFor(input.event, input.payload);
+    const localUuid = domainIdentityFor(
+      input.event,
+      input.payload,
+      [
+        'saleUuid',
+        'saleLocalUuid',
+        'saleLocalId',
+        'uuid',
+        'localUuid',
+        'localId',
+        'id',
+      ],
+      { preferIdempotencyKey: true },
+    );
     if (localUuid == null) {
       return {
         outcome: 'rejected',
@@ -173,7 +186,21 @@ export class SaleMaterializer {
       };
     }
 
-    const localUuid = localIdentityFor(input.event, input.payload);
+    const localUuid = domainIdentityFor(
+      input.event,
+      input.payload,
+      [
+        'saleItemLocalId',
+        'saleItemUuid',
+        'itemLocalId',
+        'itemUuid',
+        'uuid',
+        'localUuid',
+        'localId',
+        'id',
+      ],
+      { preferIdempotencyKey: true },
+    );
     if (localUuid == null) {
       return {
         outcome: 'rejected',
@@ -281,7 +308,20 @@ export class SaleMaterializer {
     }
 
     if (input.event.entity === 'sale') {
-      const eventLocalUuid = localIdentityFor(input.event, input.payload);
+      const eventLocalUuid = domainIdentityFor(
+        input.event,
+        input.payload,
+        [
+          'saleUuid',
+          'saleLocalUuid',
+          'saleLocalId',
+          'uuid',
+          'localUuid',
+          'localId',
+          'id',
+        ],
+        { preferIdempotencyKey: true },
+      );
       if (eventLocalUuid != null) {
         return input.tx.sale.findUnique({
           where: {

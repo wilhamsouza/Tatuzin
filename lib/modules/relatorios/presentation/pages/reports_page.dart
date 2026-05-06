@@ -9,7 +9,7 @@ import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/routes/route_names.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../data/support/report_donut_support.dart';
 import '../../data/support/report_filter_preset_support.dart';
@@ -210,196 +210,217 @@ class ReportsPage extends ConsumerWidget {
                     subtitle:
                         'Abra o relatorio certo sem perder o contexto do periodo.',
                     padding: const EdgeInsets.all(14),
-                    child: Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        SizedBox(
-                          width: 320,
-                          child: ReportShortcutCard(
-                            title: 'Vendas',
-                            subtitle:
-                                'Faturamento, tendencia e itens vendidos.',
-                            icon: Icons.shopping_bag_outlined,
-                            palette: context.appColors.sales,
-                            onTap: () =>
-                                context.pushNamed(AppRouteNames.salesReports),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 320,
-                          child: ReportShortcutCard(
-                            title: 'Caixa',
-                            subtitle: 'Entradas, saidas e fluxo do caixa real.',
-                            icon: Icons.payments_outlined,
-                            palette: context.appColors.cashflowPositive,
-                            onTap: () =>
-                                context.pushNamed(AppRouteNames.cashReports),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 320,
-                          child: ReportShortcutCard(
-                            title: 'Estoque',
-                            subtitle: 'Saude, itens criticos e movimentacoes.',
-                            icon: Icons.inventory_2_outlined,
-                            palette: context.appColors.stockLow,
-                            onTap: () => context.pushNamed(
-                              AppRouteNames.inventoryReports,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final shortcutWidth = constraints.maxWidth < 320
+                            ? constraints.maxWidth
+                            : 320.0;
+                        return Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            SizedBox(
+                              width: shortcutWidth,
+                              child: ReportShortcutCard(
+                                title: 'Vendas',
+                                subtitle:
+                                    'Faturamento, tendencia e itens vendidos.',
+                                icon: Icons.shopping_bag_outlined,
+                                palette: context.appColors.sales,
+                                onTap: () => context.pushNamed(
+                                  AppRouteNames.salesReports,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 320,
-                          child: ReportShortcutCard(
-                            title: 'Clientes',
-                            subtitle: 'Ranking, fiado aberto e haver.',
-                            icon: Icons.people_alt_outlined,
-                            palette: context.appColors.info,
-                            onTap: () => context.pushNamed(
-                              AppRouteNames.customerReports,
+                            SizedBox(
+                              width: shortcutWidth,
+                              child: ReportShortcutCard(
+                                title: 'Caixa',
+                                subtitle:
+                                    'Entradas, saidas e fluxo do caixa real.',
+                                icon: Icons.payments_outlined,
+                                palette: context.appColors.cashflowPositive,
+                                onTap: () => context.pushNamed(
+                                  AppRouteNames.cashReports,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 320,
-                          child: ReportShortcutCard(
-                            title: 'Compras',
-                            subtitle: 'Fornecedores, reposicao e pendencias.',
-                            icon: Icons.local_shipping_outlined,
-                            palette: context.appColors.interactive,
-                            onTap: () => context.pushNamed(
-                              AppRouteNames.purchaseReports,
+                            SizedBox(
+                              width: shortcutWidth,
+                              child: ReportShortcutCard(
+                                title: 'Estoque',
+                                subtitle:
+                                    'Saude, itens criticos e movimentacoes.',
+                                icon: Icons.inventory_2_outlined,
+                                palette: context.appColors.stockLow,
+                                onTap: () => context.pushNamed(
+                                  AppRouteNames.inventoryReports,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 320,
-                          child: ReportShortcutCard(
-                            title: 'Lucratividade',
-                            subtitle: 'Receita, custo, lucro e margem.',
-                            icon: Icons.show_chart_rounded,
-                            palette: context.appColors.success,
-                            onTap: () => context.pushNamed(
-                              AppRouteNames.profitabilityReports,
+                            SizedBox(
+                              width: shortcutWidth,
+                              child: ReportShortcutCard(
+                                title: 'Clientes',
+                                subtitle: 'Ranking, fiado aberto e haver.',
+                                icon: Icons.people_alt_outlined,
+                                palette: context.appColors.info,
+                                onTap: () => context.pushNamed(
+                                  AppRouteNames.customerReports,
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      ],
+                            SizedBox(
+                              width: shortcutWidth,
+                              child: ReportShortcutCard(
+                                title: 'Compras',
+                                subtitle:
+                                    'Fornecedores, reposicao e pendencias.',
+                                icon: Icons.local_shipping_outlined,
+                                palette: context.appColors.interactive,
+                                onTap: () => context.pushNamed(
+                                  AppRouteNames.purchaseReports,
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                              width: shortcutWidth,
+                              child: ReportShortcutCard(
+                                title: 'Lucratividade',
+                                subtitle: 'Receita, custo, lucro e margem.',
+                                icon: Icons.show_chart_rounded,
+                                palette: context.appColors.success,
+                                onTap: () => context.pushNamed(
+                                  AppRouteNames.profitabilityReports,
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                   SizedBox(height: layout.sectionGap),
-                  Wrap(
-                    spacing: layout.space8,
-                    runSpacing: layout.space8,
-                    children: [
-                      SizedBox(
-                        width: 520,
-                        child: ReportDonutChartCard(
-                          title: 'Recebimentos por forma',
-                          subtitle: 'Como o dinheiro entrou no periodo.',
-                          slices: _buildPaymentSlices(
-                            context,
-                            overview.paymentSummaries,
-                          ),
-                          totalLabel: 'Total recebido',
-                          totalValue: AppFormatters.currencyFromCents(
-                            overview.totalReceivedCents,
-                          ),
-                          insight: _buildPaymentInsight(
-                            _buildPaymentSlices(
-                              context,
-                              overview.paymentSummaries,
-                            ),
-                          ),
-                          onSliceTap: (slice) {
-                            final method = _paymentMethodFromLabel(slice.label);
-                            if (method == null) {
-                              return;
-                            }
-                            openDrilldown(
-                              page: ReportPageKey.sales,
-                              routeName: AppRouteNames.salesReports,
-                              nextFilter: filter.copyWith(
-                                paymentMethod: method,
-                                focus: ReportFocus.salesPaymentMethods,
-                                onlyCanceled: false,
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final chartWidth = constraints.maxWidth >= 1080
+                          ? (constraints.maxWidth - layout.space8) / 2
+                          : constraints.maxWidth;
+                      return Wrap(
+                        spacing: layout.space8,
+                        runSpacing: layout.space8,
+                        children: [
+                          SizedBox(
+                            width: chartWidth,
+                            child: ReportDonutChartCard(
+                              title: 'Recebimentos por forma',
+                              subtitle: 'Como o dinheiro entrou no periodo.',
+                              slices: _buildPaymentSlices(
+                                context,
+                                overview.paymentSummaries,
                               ),
-                              sourceLabel:
-                                  'Recebimentos por forma: ${slice.label}',
-                              message:
-                                  'A pagina de vendas abriu com a forma ${slice.label} em destaque para aprofundar o recebimento ligado as vendas.',
-                              isFocusOnly: true,
-                            );
-                          },
-                          emptyTitle: 'Sem recebimentos',
-                          emptyMessage:
-                              'As formas de pagamento vao aparecer aqui quando houver movimento.',
-                        ),
-                      ),
-                      SizedBox(
-                        width: 520,
-                        child: inventoryAsync.when(
-                          data: (summary) {
-                            final slices = _buildInventoryHealthSlices(
-                              context,
-                              summary,
-                            );
-                            return ReportDonutChartCard(
-                              title: 'Saude do estoque',
-                              subtitle:
-                                  'Panorama rapido entre itens saudaveis e em alerta.',
-                              slices: slices,
-                              totalLabel: 'Itens monitorados',
-                              totalValue: '${summary.totalItemsCount}',
-                              insight: _buildInventoryInsight(summary),
+                              totalLabel: 'Total recebido',
+                              totalValue: AppFormatters.currencyFromCents(
+                                overview.totalReceivedCents,
+                              ),
+                              insight: _buildPaymentInsight(
+                                _buildPaymentSlices(
+                                  context,
+                                  overview.paymentSummaries,
+                                ),
+                              ),
                               onSliceTap: (slice) {
-                                final nextFocus = _inventoryFocusFromSlice(
+                                final method = _paymentMethodFromLabel(
                                   slice.label,
                                 );
+                                if (method == null) {
+                                  return;
+                                }
                                 openDrilldown(
-                                  page: ReportPageKey.inventory,
-                                  routeName: AppRouteNames.inventoryReports,
-                                  nextFilter: nextFocus == null
-                                      ? filter.copyWith(
-                                          clearFocus: true,
-                                          onlyCanceled: false,
-                                        )
-                                      : filter.copyWith(
-                                          focus: nextFocus,
-                                          onlyCanceled: false,
-                                        ),
+                                  page: ReportPageKey.sales,
+                                  routeName: AppRouteNames.salesReports,
+                                  nextFilter: filter.copyWith(
+                                    paymentMethod: method,
+                                    focus: ReportFocus.salesPaymentMethods,
+                                    onlyCanceled: false,
+                                  ),
                                   sourceLabel:
-                                      'Saude do estoque: ${slice.label}',
+                                      'Recebimentos por forma: ${slice.label}',
                                   message:
-                                      'O relatorio de estoque abriu priorizando ${slice.label.toLowerCase()} para facilitar a proxima acao.',
+                                      'A pagina de vendas abriu com a forma ${slice.label} em destaque para aprofundar o recebimento ligado as vendas.',
                                   isFocusOnly: true,
                                 );
                               },
-                              emptyTitle: 'Sem estoque monitorado',
+                              emptyTitle: 'Sem recebimentos',
                               emptyMessage:
-                                  'Os indicadores de estoque vao aparecer aqui quando houver itens cadastrados.',
-                            );
-                          },
-                          loading: () => const AppStateCard(
-                            title: 'Carregando saude do estoque',
-                            message: 'Consolidando os alertas do periodo.',
-                            tone: AppStateTone.loading,
-                            compact: true,
+                                  'As formas de pagamento vao aparecer aqui quando houver movimento.',
+                            ),
                           ),
-                          error: (error, _) => AppStateCard(
-                            title: 'Falha ao carregar saude do estoque',
-                            message: '$error',
-                            tone: AppStateTone.error,
-                            compact: true,
-                            actionLabel: 'Tentar novamente',
-                            onAction: () => ref
-                                .read(appDataRefreshProvider.notifier)
-                                .state++,
+                          SizedBox(
+                            width: chartWidth,
+                            child: inventoryAsync.when(
+                              data: (summary) {
+                                final slices = _buildInventoryHealthSlices(
+                                  context,
+                                  summary,
+                                );
+                                return ReportDonutChartCard(
+                                  title: 'Saude do estoque',
+                                  subtitle:
+                                      'Panorama rapido entre itens saudaveis e em alerta.',
+                                  slices: slices,
+                                  totalLabel: 'Itens monitorados',
+                                  totalValue: '${summary.totalItemsCount}',
+                                  insight: _buildInventoryInsight(summary),
+                                  onSliceTap: (slice) {
+                                    final nextFocus = _inventoryFocusFromSlice(
+                                      slice.label,
+                                    );
+                                    openDrilldown(
+                                      page: ReportPageKey.inventory,
+                                      routeName: AppRouteNames.inventoryReports,
+                                      nextFilter: nextFocus == null
+                                          ? filter.copyWith(
+                                              clearFocus: true,
+                                              onlyCanceled: false,
+                                            )
+                                          : filter.copyWith(
+                                              focus: nextFocus,
+                                              onlyCanceled: false,
+                                            ),
+                                      sourceLabel:
+                                          'Saude do estoque: ${slice.label}',
+                                      message:
+                                          'O relatorio de estoque abriu priorizando ${slice.label.toLowerCase()} para facilitar a proxima acao.',
+                                      isFocusOnly: true,
+                                    );
+                                  },
+                                  emptyTitle: 'Sem estoque monitorado',
+                                  emptyMessage:
+                                      'Os indicadores de estoque vao aparecer aqui quando houver itens cadastrados.',
+                                );
+                              },
+                              loading: () => const AppStateCard(
+                                title: 'Carregando saude do estoque',
+                                message: 'Consolidando os alertas do periodo.',
+                                tone: AppStateTone.loading,
+                                compact: true,
+                              ),
+                              error: (error, _) => AppStateCard(
+                                title: 'Falha ao carregar saude do estoque',
+                                message: '$error',
+                                tone: AppStateTone.error,
+                                compact: true,
+                                actionLabel: 'Tentar novamente',
+                                onAction: () => ref
+                                    .read(appDataRefreshProvider.notifier)
+                                    .state++,
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    ],
+                        ],
+                      );
+                    },
                   ),
                   SizedBox(height: layout.sectionGap),
                   topProductsAsync.when(

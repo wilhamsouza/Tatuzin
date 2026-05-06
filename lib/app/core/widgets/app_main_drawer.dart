@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../modules/account/presentation/providers/account_cloud_providers.dart';
 import '../../routes/route_names.dart';
-import '../../theme/app_design_tokens.dart';
+import '../theme/app_design_tokens.dart';
 import '../constants/app_constants.dart';
 import '../session/auth_provider.dart';
 import 'app_status_badge.dart';

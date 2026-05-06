@@ -73,7 +73,7 @@ void main() {
       await container.read(backendConnectionStatusProvider.future);
       final snapshot = container.read(accountCloudStatusProvider);
 
-      expect(snapshot.statusLabel, 'Pendencias para sincronizar');
+      expect(snapshot.statusLabel, 'Pendente');
       expect(snapshot.pendingCount, 3);
       expect(snapshot.syncingNowCount, 0);
     },
@@ -209,10 +209,81 @@ void main() {
       await container.read(backendConnectionStatusProvider.future);
       final snapshot = container.read(accountCloudStatusProvider);
 
-      expect(snapshot.statusLabel, 'Conflito');
+      expect(snapshot.statusLabel, 'Com conflito');
       expect(snapshot.errorCount, 1);
       expect(snapshot.blockedCount, 2);
       expect(snapshot.conflictCount, 1);
+    },
+  );
+
+  test(
+    'shows server data stale when push ok but pull or snapshot failed',
+    () async {
+      final container = ProviderContainer(
+        overrides: [
+          backendConnectionStatusProvider.overrideWith(
+            (ref) async => BackendConnectionStatus(
+              isConfigured: true,
+              isReachable: true,
+              companyLookupSucceeded: true,
+              endpointLabel: 'API',
+              message: 'online',
+              checkedAt: DateTime(2026, 4, 21, 9),
+            ),
+          ),
+          syncHealthOverviewProvider.overrideWith(
+            (ref) => const SyncHealthOverview(
+              totalPending: 0,
+              totalProcessing: 0,
+              totalActiveProcessing: 0,
+              totalStaleProcessing: 0,
+              totalSynced: 2,
+              totalErrors: 0,
+              totalBlocked: 0,
+              totalConflicts: 0,
+              totalAttempts: 2,
+              lastProcessedAt: null,
+              lastErrorAt: null,
+              nextRetryAt: null,
+              hasServerDataStale: true,
+              lastSnapshotError: 'snapshot offline',
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container
+          .read(appSessionProvider.notifier)
+          .setAuthenticatedSession(
+            scope: SessionScope.authenticatedRemote,
+            user: const AppUser(
+              localId: 1,
+              remoteId: 'user-1',
+              displayName: 'Operador',
+              email: 'operador@tatuzin.app',
+              roleLabel: 'Operador',
+              kind: AppUserKind.remoteAuthenticated,
+            ),
+            company: const CompanyContext(
+              localId: 1,
+              remoteId: 'company-1',
+              displayName: 'Tatuzin',
+              legalName: 'Tatuzin LTDA',
+              documentNumber: '123',
+              licensePlan: 'pro',
+              licenseStatus: 'active',
+              syncEnabled: true,
+            ),
+            isOfflineFallback: false,
+            clientInstanceId: 'device-1',
+          );
+
+      await container.read(backendConnectionStatusProvider.future);
+      final snapshot = container.read(accountCloudStatusProvider);
+
+      expect(snapshot.statusLabel, 'Dados do servidor desatualizados');
+      expect(snapshot.supportingValue, 'snapshot offline');
     },
   );
 

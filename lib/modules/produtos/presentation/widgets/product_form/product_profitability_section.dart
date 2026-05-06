@@ -4,7 +4,7 @@ import '../../../../../app/core/formatters/app_formatters.dart';
 import '../../../../../app/core/widgets/app_section_card.dart';
 import '../../../../../app/core/widgets/app_summary_block.dart';
 import '../../../../../app/core/widgets/app_status_badge.dart';
-import '../../../../../app/theme/app_design_tokens.dart';
+import '../../../../../app/core/theme/app_design_tokens.dart';
 import '../../../domain/services/product_cost_calculator.dart';
 
 class ProductProfitabilitySection extends StatelessWidget {

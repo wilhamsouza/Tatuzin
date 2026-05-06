@@ -4,7 +4,7 @@ import '../../../../../app/core/widgets/app_card.dart';
 import '../../../../../app/core/widgets/app_product_image_preview.dart';
 import '../../../../../app/core/widgets/app_section_card.dart';
 import '../../../../../app/core/widgets/app_status_badge.dart';
-import '../../../../../app/theme/app_design_tokens.dart';
+import '../../../../../app/core/theme/app_design_tokens.dart';
 import 'product_form_models.dart';
 
 class ProductPhotosSection extends StatelessWidget {

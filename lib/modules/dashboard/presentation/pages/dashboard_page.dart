@@ -13,7 +13,7 @@ import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../../account/presentation/providers/account_cloud_providers.dart';
 import '../../../estoque/domain/services/inventory_alert_service.dart';
 import '../../../estoque/presentation/providers/inventory_providers.dart';
@@ -152,41 +152,48 @@ class DashboardPage extends ConsumerWidget {
                     SizedBox(height: layout.sectionGap),
                     AppSectionCard(
                       title: 'Acesso rapido',
-                      child: GridView.count(
-                        crossAxisCount: 4,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        crossAxisSpacing: layout.gridGap,
-                        mainAxisSpacing: layout.gridGap,
-                        childAspectRatio: 0.78,
-                        children: [
-                          _QuickAccessItem(
-                            label: 'Nova venda',
-                            icon: Icons.point_of_sale_rounded,
-                            palette: tokens.sales,
-                            onTap: () => context.pushNamed(AppRouteNames.sales),
-                          ),
-                          _QuickAccessItem(
-                            label: 'Cliente',
-                            icon: Icons.person_add_alt_1_rounded,
-                            palette: tokens.info,
-                            onTap: () =>
-                                context.pushNamed(AppRouteNames.clientForm),
-                          ),
-                          _QuickAccessItem(
-                            label: 'Caixa',
-                            icon: Icons.account_balance_wallet_rounded,
-                            palette: tokens.cashflowPositive,
-                            onTap: () => context.pushNamed(AppRouteNames.cash),
-                          ),
-                          _QuickAccessItem(
-                            label: 'Relatorio',
-                            icon: Icons.insights_rounded,
-                            palette: tokens.success,
-                            onTap: () =>
-                                context.pushNamed(AppRouteNames.reports),
-                          ),
-                        ],
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isCompact = constraints.maxWidth < 420;
+                          return GridView.count(
+                            crossAxisCount: isCompact ? 2 : 4,
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            crossAxisSpacing: layout.gridGap,
+                            mainAxisSpacing: layout.gridGap,
+                            childAspectRatio: isCompact ? 1.36 : 0.68,
+                            children: [
+                              _QuickAccessItem(
+                                label: 'Nova venda',
+                                icon: Icons.point_of_sale_rounded,
+                                palette: tokens.sales,
+                                onTap: () =>
+                                    context.pushNamed(AppRouteNames.sales),
+                              ),
+                              _QuickAccessItem(
+                                label: 'Cliente',
+                                icon: Icons.person_add_alt_1_rounded,
+                                palette: tokens.info,
+                                onTap: () =>
+                                    context.pushNamed(AppRouteNames.clientForm),
+                              ),
+                              _QuickAccessItem(
+                                label: 'Caixa',
+                                icon: Icons.account_balance_wallet_rounded,
+                                palette: tokens.cashflowPositive,
+                                onTap: () =>
+                                    context.pushNamed(AppRouteNames.cash),
+                              ),
+                              _QuickAccessItem(
+                                label: 'Relatorio',
+                                icon: Icons.insights_rounded,
+                                palette: tokens.success,
+                                onTap: () =>
+                                    context.pushNamed(AppRouteNames.reports),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ),
                     SizedBox(height: layout.sectionGap),

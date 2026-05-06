@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../app/core/widgets/app_quick_action_card.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 
 class ReportShortcutCard extends StatelessWidget {
   const ReportShortcutCard({

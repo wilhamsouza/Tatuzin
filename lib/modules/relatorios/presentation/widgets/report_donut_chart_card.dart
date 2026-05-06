@@ -4,7 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../app/core/widgets/app_section_card.dart';
-import '../../../../app/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../data/support/report_donut_support.dart';
 import '../../domain/entities/report_donut_slice.dart';
 import 'report_chart_center_label.dart';

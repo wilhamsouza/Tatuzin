@@ -57,6 +57,11 @@ abstract interface class OperationalSyncQueueRepository {
     required DateTime? nextRetryAt,
   });
 
+  Future<int> recoverStalePushing({
+    required Duration staleAfter,
+    DateTime? now,
+  });
+
   Future<String> readCheckpoint();
 
   Future<void> saveCheckpoint(String serverVersion);
@@ -64,6 +69,23 @@ abstract interface class OperationalSyncQueueRepository {
   Future<String?> readSnapshotVersion();
 
   Future<void> saveSnapshotVersion(String serverFirstSnapshotVersion);
+
+  Future<void> recordPullSucceeded({required DateTime completedAt});
+
+  Future<void> recordPullFailed({
+    required String message,
+    required DateTime failedAt,
+  });
+
+  Future<void> recordSnapshotSucceeded({
+    required String serverFirstSnapshotVersion,
+    required DateTime completedAt,
+  });
+
+  Future<void> recordSnapshotFailed({
+    required String message,
+    required DateTime failedAt,
+  });
 
   Future<List<SyncQueueFeatureSummary>> listFeatureSummaries();
 }

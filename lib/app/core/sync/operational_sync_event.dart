@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 class OperationalSyncEvent {
   const OperationalSyncEvent({
@@ -30,11 +31,26 @@ class OperationalSyncEvent {
       if (_notBlank(entityLocalId)) 'entityLocalId': entityLocalId,
       if (_notBlank(entityServerId)) 'entityServerId': entityServerId,
       'occurredAt': occurredAt.toUtc().toIso8601String(),
-      'payload': payload,
+      'payload': payloadWithSyncMetadata,
     };
   }
 
-  String encodePayload() => jsonEncode(payload);
+  Map<String, dynamic> get payloadWithSyncMetadata {
+    final existingMetadata = payload['_sync'];
+    return <String, dynamic>{
+      ...payload,
+      '_sync': <String, dynamic>{
+        if (existingMetadata is Map<String, dynamic>) ...existingMetadata,
+        'eventId': eventId,
+        if (_notBlank(entityLocalId)) 'entityLocalId': entityLocalId,
+        if (_notBlank(entityServerId)) 'entityServerId': entityServerId,
+        'localSequence': occurredAt.microsecondsSinceEpoch,
+        'idempotencyKey': eventId,
+      },
+    };
+  }
+
+  String encodePayload() => jsonEncode(payloadWithSyncMetadata);
 
   static OperationalSyncEvent fromJson(Map<String, dynamic> json) {
     final payload = json['payload'];
@@ -82,7 +98,23 @@ class OperationalSyncEvent {
     required String operation,
     required Object localIdentity,
   }) {
-    return '$entity:$operation:$localIdentity';
+    return _uuidV4();
+  }
+
+  static final Random _secureRandom = Random.secure();
+
+  static String _uuidV4() {
+    final bytes = List<int>.generate(16, (_) => _secureRandom.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return '${hex.substring(0, 8)}-'
+        '${hex.substring(8, 12)}-'
+        '${hex.substring(12, 16)}-'
+        '${hex.substring(16, 20)}-'
+        '${hex.substring(20)}';
   }
 
   static bool _notBlank(String? value) {

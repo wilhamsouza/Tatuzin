@@ -76,6 +76,11 @@ class SystemSyncHealthSection extends StatelessWidget {
                 label: '${syncHealth.totalConflicts} conflito(s)',
                 icon: Icons.warning_amber_rounded,
               ),
+              if (syncHealth.hasServerDataStale)
+                const SystemModeChip(
+                  label: 'Dados do servidor desatualizados',
+                  icon: Icons.cloud_off_outlined,
+                ),
             ],
           ),
           const SizedBox(height: 14),
@@ -140,6 +145,17 @@ class SystemSyncHealthSection extends StatelessWidget {
             Text(
               'Proximo retry automatico elegivel em ${AppFormatters.shortDateTime(syncHealth.nextRetryAt!)}.',
               style: theme.textTheme.bodyMedium,
+            ),
+          ],
+          if (syncHealth.hasServerDataStale) ...[
+            const SizedBox(height: 8),
+            Text(
+              syncHealth.lastSnapshotError != null
+                  ? 'Erro ao atualizar dados do servidor: ${syncHealth.lastSnapshotError}.'
+                  : 'Erro ao buscar atualizacoes do servidor: ${syncHealth.lastPullError ?? 'tente sincronizar novamente'}.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.error,
+              ),
             ),
           ],
           if (autoSyncSnapshot.lastResult != null) ...[
