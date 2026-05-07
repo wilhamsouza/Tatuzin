@@ -1,28 +1,28 @@
-import { Prisma, SyncEventStatus } from '@prisma/client';
-import { ZodError } from 'zod';
+import { Prisma, SyncEventStatus } from "@prisma/client";
+import { ZodError } from "zod";
 
-import { prisma } from '../../database/prisma';
-import { AppError } from '../../shared/http/app-error';
-import type { AppContext } from '../app/app-context.types';
+import { prisma } from "../../database/prisma";
+import { AppError } from "../../shared/http/app-error";
+import type { AppContext } from "../app/app-context.types";
 import {
   asRecord as asPayloadRecord,
   localSequenceFor,
   syncMetadataFor,
-} from './materializers/payload-utils';
-import { SyncMaterializerService } from './materializers/sync-materializer.service';
-import { SyncCheckpointService } from './sync-checkpoint.service';
-import { SyncConflictService } from './sync-conflict.service';
+} from "./materializers/payload-utils";
+import { SyncMaterializerService } from "./materializers/sync-materializer.service";
+import { SyncCheckpointService } from "./sync-checkpoint.service";
+import { SyncConflictService } from "./sync-conflict.service";
 import {
   ALLOWED_LOCAL_FIRST_SYNC_ENTITIES,
   SyncPolicyService,
-} from './sync-policy.service';
+} from "./sync-policy.service";
 import {
   syncPushBatchSchema,
   syncPushEventSchema,
   type SyncPullQueryInput,
   type SyncPushEventInput,
-} from './sync.schemas';
-import { SyncVersionService } from './sync-version.service';
+} from "./sync.schemas";
+import { SyncVersionService } from "./sync-version.service";
 
 const MAX_EVENTS_PER_PUSH = 100;
 
@@ -37,6 +37,28 @@ type PushItemResult = {
 type RejectedItemResult = PushItemResult & {
   code: string;
   message: string;
+  details?: Prisma.InputJsonValue;
+};
+
+type PullProjectionResult = {
+  projection: Prisma.InputJsonValue | null;
+  warning: string | null;
+};
+
+type PullSyncEvent = {
+  id: string;
+  eventId: string;
+  feature: string;
+  entity: string;
+  operation: string;
+  entityLocalId: string | null;
+  entityServerId: string | null;
+  occurredAt: Date;
+  payload: Prisma.JsonValue;
+  status: SyncEventStatus;
+  serverVersion: bigint | null;
+  materializedAt: Date | null;
+  createdAt: Date;
 };
 
 export class SyncEventService {
@@ -53,15 +75,15 @@ export class SyncEventService {
     if (!batch.success) {
       await this.createIncident({
         context,
-        code: 'INVALID_SYNC_BATCH',
-        message: 'Batch de sincronizacao invalido.',
-        severity: 'warn',
+        code: "INVALID_SYNC_BATCH",
+        message: "Batch de sincronizacao invalido.",
+        severity: "warn",
         details: this.zodDetails(batch.error),
       });
       throw new AppError(
-        'Batch de sincronizacao invalido.',
+        "Batch de sincronizacao invalido.",
         422,
-        'INVALID_SYNC_BATCH',
+        "INVALID_SYNC_BATCH",
         this.zodDetails(batch.error),
       );
     }
@@ -69,18 +91,18 @@ export class SyncEventService {
     if (batch.data.events.length > MAX_EVENTS_PER_PUSH) {
       await this.createIncident({
         context,
-        code: 'SYNC_BATCH_TOO_LARGE',
-        message: 'O push aceita no maximo 100 eventos por requisicao.',
-        severity: 'warn',
+        code: "SYNC_BATCH_TOO_LARGE",
+        message: "O push aceita no maximo 100 eventos por requisicao.",
+        severity: "warn",
         details: {
           count: batch.data.events.length,
           max: MAX_EVENTS_PER_PUSH,
         },
       });
       throw new AppError(
-        'O push aceita no maximo 100 eventos por requisicao.',
+        "O push aceita no maximo 100 eventos por requisicao.",
         413,
-        'SYNC_BATCH_TOO_LARGE',
+        "SYNC_BATCH_TOO_LARGE",
         {
           count: batch.data.events.length,
           max: MAX_EVENTS_PER_PUSH,
@@ -104,11 +126,11 @@ export class SyncEventService {
 
       const normalizedEvent = this.normalizeEvent(parsedEvent.data);
       const result = await this.processEvent(context, normalizedEvent);
-      if (result.bucket === 'accepted') {
+      if (result.bucket === "accepted") {
         accepted.push(result.item);
-      } else if (result.bucket === 'duplicates') {
+      } else if (result.bucket === "duplicates") {
         duplicates.push(result.item);
-      } else if (result.bucket === 'conflicts') {
+      } else if (result.bucket === "conflicts") {
         conflicts.push(result.item);
       } else {
         rejected.push(result.item);
@@ -158,9 +180,16 @@ export class SyncEventService {
                 in: features,
               },
             }),
+        ...(query.includeOwnEvents
+          ? {}
+          : {
+              deviceId: {
+                not: context.device.id,
+              },
+            }),
       },
       orderBy: {
-        serverVersion: 'asc',
+        serverVersion: "asc",
       },
       take: query.limit,
     });
@@ -184,13 +213,18 @@ export class SyncEventService {
       context.company.id,
     );
 
+    const changes = await Promise.all(
+      events.map((event) => this.toPullChangeDto(context, event)),
+    );
+
     return {
       ok: true,
       sinceVersion: sinceVersion.toString(),
       currentServerVersion: currentServerVersion.toString(),
       nextSinceVersion: latestVersion.toString(),
       hasMore: events.length === query.limit,
-      events: events.map((event) => this.toEventDto(event)),
+      changes,
+      events: changes,
     };
   }
 
@@ -214,12 +248,12 @@ export class SyncEventService {
           companyId: context.company.id,
         },
         orderBy: {
-          createdAt: 'desc',
+          createdAt: "desc",
         },
         take: 5,
       }),
       prisma.syncEvent.groupBy({
-        by: ['status'],
+        by: ["status"],
         where: {
           companyId: context.company.id,
         },
@@ -235,7 +269,7 @@ export class SyncEventService {
           },
         },
         orderBy: {
-          materializedAt: 'desc',
+          materializedAt: "desc",
         },
         select: {
           materializedAt: true,
@@ -267,8 +301,7 @@ export class SyncEventService {
         createdAt: incident.createdAt.toISOString(),
       })),
       device: context.device,
-      serverFirstSnapshotVersion:
-        state.serverFirstSnapshotVersion.toString(),
+      serverFirstSnapshotVersion: state.serverFirstSnapshotVersion.toString(),
     };
   }
 
@@ -285,7 +318,7 @@ export class SyncEventService {
 
     if (duplicate != null) {
       return {
-        bucket: 'duplicates' as const,
+        bucket: "duplicates" as const,
         item: {
           eventId: duplicate.eventId,
           entity: duplicate.entity,
@@ -298,21 +331,21 @@ export class SyncEventService {
 
     if (!this.policy.isLocalFirstEntity(event.entity)) {
       const item = await this.rejectEvent(context, event, {
-        code: 'ENTITY_NOT_LOCAL_FIRST',
+        code: "ENTITY_NOT_LOCAL_FIRST",
         message:
-          'Esta entidade e server-first/cache e nao pode ser enviada por /sync/push.',
+          "Esta entidade e server-first/cache e nao pode ser enviada por /sync/push.",
         createIncident: true,
       });
-      return { bucket: 'rejected' as const, item };
+      return { bucket: "rejected" as const, item };
     }
 
     if (!this.policy.isAllowedOperation(event.operation)) {
       const item = await this.rejectEvent(context, event, {
-        code: 'INVALID_OPERATION',
+        code: "INVALID_OPERATION",
         message:
-          'Operacao invalida para sync. Use create, update, delete, upsert ou append.',
+          "Operacao invalida para sync. Use create, update, delete, upsert ou append.",
       });
-      return { bucket: 'rejected' as const, item };
+      return { bucket: "rejected" as const, item };
     }
 
     try {
@@ -326,7 +359,7 @@ export class SyncEventService {
             payload: event.payload,
           }));
 
-        if (materialized.outcome === 'duplicate') {
+        if (materialized.outcome === "duplicate") {
           const syncEvent = await tx.syncEvent.create({
             data: {
               companyId: context.company.id,
@@ -347,7 +380,7 @@ export class SyncEventService {
           });
 
           return {
-            bucket: 'duplicates' as const,
+            bucket: "duplicates" as const,
             item: {
               eventId: event.eventId,
               entity: event.entity,
@@ -358,7 +391,7 @@ export class SyncEventService {
           };
         }
 
-        if (materialized.outcome === 'rejected') {
+        if (materialized.outcome === "rejected") {
           const syncEvent = await tx.syncEvent.create({
             data: {
               companyId: context.company.id,
@@ -379,7 +412,7 @@ export class SyncEventService {
           });
 
           return {
-            bucket: 'rejected' as const,
+            bucket: "rejected" as const,
             item: {
               eventId: syncEvent.eventId,
               entity: syncEvent.entity,
@@ -388,11 +421,12 @@ export class SyncEventService {
               entityServerId: syncEvent.entityServerId,
               code: materialized.code,
               message: materialized.message,
+              details: materialized.details,
             },
           };
         }
 
-        if (materialized.outcome === 'conflict') {
+        if (materialized.outcome === "conflict") {
           const serverVersion = await this.versionService.nextCompanyVersion(
             tx,
             context.company.id,
@@ -445,13 +479,13 @@ export class SyncEventService {
               syncEventId: syncEvent.id,
               code: materialized.code,
               message: materialized.message,
-              severity: 'warn',
+              severity: "warn",
               details: materialized.payload ?? {},
             },
           });
 
           return {
-            bucket: 'conflicts' as const,
+            bucket: "conflicts" as const,
             item: {
               eventId: event.eventId,
               entity: event.entity,
@@ -460,6 +494,7 @@ export class SyncEventService {
               entityServerId: syncEvent.entityServerId,
               code: materialized.code,
               message: materialized.message,
+              details: materialized.payload ?? {},
             },
           };
         }
@@ -499,7 +534,7 @@ export class SyncEventService {
         });
 
         return {
-          bucket: 'accepted' as const,
+          bucket: "accepted" as const,
           item: {
             eventId: event.eventId,
             entity: event.entity,
@@ -511,7 +546,7 @@ export class SyncEventService {
       });
     } catch (error) {
       const item = await this.failEvent(context, event, error);
-      return { bucket: 'rejected' as const, item };
+      return { bucket: "rejected" as const, item };
     }
   }
 
@@ -521,35 +556,37 @@ export class SyncEventService {
     error: ZodError,
   ): Promise<RejectedItemResult> {
     const raw = this.asRecord(rawEvent);
-    const eventId = this.stringField(raw, 'eventId') ?? 'unknown';
-    const feature = this.stringField(raw, 'feature') ?? 'unknown';
-    const entity = this.stringField(raw, 'entity') ?? 'unknown';
-    const operation = this.stringField(raw, 'operation') ?? 'unknown';
-    const message = 'Evento de sincronizacao invalido.';
+    const eventId = this.stringField(raw, "eventId") ?? "unknown";
+    const feature = this.stringField(raw, "feature") ?? "unknown";
+    const entity = this.stringField(raw, "entity") ?? "unknown";
+    const operation = this.stringField(raw, "operation") ?? "unknown";
+    const message = "Evento de sincronizacao invalido.";
 
-    if (eventId !== 'unknown') {
-      await this.createRejectedSyncEvent(context, {
-        eventId,
-        feature,
-        entity,
-        operation,
-        entityLocalId: this.stringField(raw, 'entityLocalId') ?? undefined,
-        entityServerId: this.stringField(raw, 'entityServerId') ?? undefined,
-        occurredAt: this.validIsoDate(
-          this.stringField(raw, 'occurredAt'),
-        ),
-        payload: this.asRecord(raw.payload),
-      }, {
-        code: 'INVALID_SYNC_EVENT',
-        message,
-      });
+    if (eventId !== "unknown") {
+      await this.createRejectedSyncEvent(
+        context,
+        {
+          eventId,
+          feature,
+          entity,
+          operation,
+          entityLocalId: this.stringField(raw, "entityLocalId") ?? undefined,
+          entityServerId: this.stringField(raw, "entityServerId") ?? undefined,
+          occurredAt: this.validIsoDate(this.stringField(raw, "occurredAt")),
+          payload: this.asRecord(raw.payload),
+        },
+        {
+          code: "INVALID_SYNC_EVENT",
+          message,
+        },
+      );
     }
 
     await this.createIncident({
       context,
-      code: 'INVALID_SYNC_EVENT',
+      code: "INVALID_SYNC_EVENT",
       message,
-      severity: 'warn',
+      severity: "warn",
       details: this.zodDetails(error),
     });
 
@@ -559,7 +596,7 @@ export class SyncEventService {
       operation,
       serverVersion: null,
       entityServerId: null,
-      code: 'INVALID_SYNC_EVENT',
+      code: "INVALID_SYNC_EVENT",
       message,
     };
   }
@@ -573,7 +610,11 @@ export class SyncEventService {
       createIncident?: boolean;
     },
   ): Promise<RejectedItemResult> {
-    const syncEvent = await this.createRejectedSyncEvent(context, event, rejection);
+    const syncEvent = await this.createRejectedSyncEvent(
+      context,
+      event,
+      rejection,
+    );
 
     if (rejection.createIncident === true) {
       await this.createIncident({
@@ -581,7 +622,7 @@ export class SyncEventService {
         syncEventId: syncEvent.id,
         code: rejection.code,
         message: rejection.message,
-        severity: 'warn',
+        severity: "warn",
         details: {
           entity: event.entity,
           operation: event.operation,
@@ -606,7 +647,7 @@ export class SyncEventService {
     error: unknown,
   ): Promise<RejectedItemResult> {
     const details = this.errorDetails(error);
-    const message = 'Falha inesperada ao materializar evento operacional.';
+    const message = "Falha inesperada ao materializar evento operacional.";
     const syncEvent = await prisma.syncEvent.create({
       data: {
         companyId: context.company.id,
@@ -621,7 +662,7 @@ export class SyncEventService {
         occurredAt: new Date(event.occurredAt),
         payload: event.payload as Prisma.InputJsonValue,
         status: SyncEventStatus.FAILED,
-        rejectionCode: 'SYNC_MATERIALIZATION_FAILED',
+        rejectionCode: "SYNC_MATERIALIZATION_FAILED",
         rejectionMessage: message,
       },
     });
@@ -629,9 +670,9 @@ export class SyncEventService {
     await this.createIncident({
       context,
       syncEventId: syncEvent.id,
-      code: 'SYNC_MATERIALIZATION_FAILED',
+      code: "SYNC_MATERIALIZATION_FAILED",
       message,
-      severity: 'error',
+      severity: "error",
       details,
     });
 
@@ -641,7 +682,7 @@ export class SyncEventService {
       operation: event.operation,
       serverVersion: null,
       entityServerId: event.entityServerId ?? null,
-      code: 'SYNC_MATERIALIZATION_FAILED',
+      code: "SYNC_MATERIALIZATION_FAILED",
       message,
     };
   }
@@ -711,12 +752,12 @@ export class SyncEventService {
     context: AppContext,
     event: SyncPushEventInput,
   ): Promise<{
-    outcome: 'conflict';
+    outcome: "conflict";
     code: string;
     message: string;
     payload: Prisma.InputJsonValue;
   } | null> {
-    if (!['update', 'upsert'].includes(event.operation)) {
+    if (!["update", "upsert"].includes(event.operation)) {
       return null;
     }
 
@@ -749,7 +790,7 @@ export class SyncEventService {
           not: null,
         },
       },
-      orderBy: [{ serverVersion: 'desc' }, { createdAt: 'desc' }],
+      orderBy: [{ serverVersion: "desc" }, { createdAt: "desc" }],
       take: 20,
       select: {
         eventId: true,
@@ -779,10 +820,10 @@ export class SyncEventService {
 
       if (previousSequence > localSequence) {
         return {
-          outcome: 'conflict',
-          code: 'STALE_LOCAL_SEQUENCE',
+          outcome: "conflict",
+          code: "STALE_LOCAL_SEQUENCE",
           message:
-            'Evento operacional possui localSequence anterior ao ultimo evento materializado para a entidade.',
+            "Evento operacional possui localSequence anterior ao ultimo evento materializado para a entidade.",
           payload: {
             entity: event.entity,
             entityLocalId,
@@ -807,7 +848,7 @@ export class SyncEventService {
     entity: string,
     entityLocalId: string,
   ) {
-    if (entity === 'operationalOrder') {
+    if (entity === "operationalOrder") {
       const order = await tx.operationalOrder.findUnique({
         where: {
           companyId_localUuid: {
@@ -822,7 +863,7 @@ export class SyncEventService {
       return order?.lastLocalSequence ?? null;
     }
 
-    if (entity === 'cashSession') {
+    if (entity === "cashSession") {
       const cashSession = await tx.cashSession.findUnique({
         where: {
           companyId_localUuid: {
@@ -840,21 +881,474 @@ export class SyncEventService {
     return null;
   }
 
-  private toEventDto(event: {
-    id: string;
-    eventId: string;
-    feature: string;
-    entity: string;
-    operation: string;
-    entityLocalId: string | null;
-    entityServerId: string | null;
-    occurredAt: Date;
-    payload: Prisma.JsonValue;
-    status: SyncEventStatus;
-    serverVersion: bigint | null;
-    materializedAt: Date | null;
-    createdAt: Date;
-  }) {
+  private async toPullChangeDto(context: AppContext, event: PullSyncEvent) {
+    const projection = await this.projectionForEvent(context, event);
+    if (
+      projection.projection == null &&
+      projection.warning === "PROJECTION_NOT_FOUND"
+    ) {
+      await this.createProjectionIncident(context, event);
+    }
+
+    return {
+      ...this.toEventDto(event),
+      projection: projection.projection,
+      projectionWarning: projection.warning,
+    };
+  }
+
+  private async projectionForEvent(
+    context: AppContext,
+    event: PullSyncEvent,
+  ): Promise<PullProjectionResult> {
+    if (event.status !== SyncEventStatus.ACCEPTED) {
+      return {
+        projection: null,
+        warning: "SYNC_EVENT_NOT_ACCEPTED",
+      };
+    }
+
+    if (event.operation === "delete") {
+      return {
+        projection: null,
+        warning: "DELETE_PROJECTION_NOT_AVAILABLE",
+      };
+    }
+
+    if (event.entityServerId == null) {
+      return {
+        projection: null,
+        warning: "PROJECTION_NOT_AVAILABLE_FOR_ENTITY",
+      };
+    }
+
+    const projection = await this.findProjection(context, event);
+    if (projection == null) {
+      return {
+        projection: null,
+        warning: this.supportsProjection(event.entity)
+          ? "PROJECTION_NOT_FOUND"
+          : "PROJECTION_NOT_AVAILABLE_FOR_ENTITY",
+      };
+    }
+
+    return {
+      projection,
+      warning: null,
+    };
+  }
+
+  private async findProjection(
+    context: AppContext,
+    event: PullSyncEvent,
+  ): Promise<Prisma.InputJsonValue | null> {
+    switch (event.entity) {
+      case "cashSession":
+        return this.cashSessionProjection(context.company.id, event);
+      case "cashMovement":
+        return this.cashMovementProjection(context.company.id, event);
+      case "operationalOrder":
+        return this.operationalOrderProjection(context.company.id, event);
+      case "operationalOrderItem":
+        return this.operationalOrderItemProjection(context.company.id, event);
+      case "sale":
+        return this.saleProjection(context.company.id, event);
+      case "saleItem":
+        return this.saleItemProjection(context.company.id, event);
+      case "payment":
+        return this.paymentProjection(context.company.id, event);
+      case "receipt":
+        return this.receiptProjection(context.company.id, event);
+      case "stockReservation":
+        return this.stockReservationProjection(context.company.id, event);
+      case "stockDeduction":
+        return this.stockDeductionProjection(context.company.id, event);
+      default:
+        return null;
+    }
+  }
+
+  private supportsProjection(entity: string) {
+    return [
+      "cashSession",
+      "cashMovement",
+      "operationalOrder",
+      "operationalOrderItem",
+      "sale",
+      "saleItem",
+      "payment",
+      "receipt",
+      "stockReservation",
+      "stockDeduction",
+    ].includes(entity);
+  }
+
+  private async cashSessionProjection(companyId: string, event: PullSyncEvent) {
+    const cashSession = await prisma.cashSession.findFirst({
+      where: { id: event.entityServerId!, companyId },
+      select: {
+        id: true,
+        localUuid: true,
+        status: true,
+        openedAt: true,
+        closedAt: true,
+        openingBalanceCents: true,
+        closingBalanceCents: true,
+        expectedBalanceCents: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    if (cashSession == null) {
+      return null;
+    }
+
+    return {
+      entityServerId: cashSession.id,
+      id: cashSession.id,
+      localUuid: cashSession.localUuid,
+      status: cashSession.status,
+      openedAt: cashSession.openedAt?.toISOString() ?? null,
+      closedAt: cashSession.closedAt?.toISOString() ?? null,
+      totals: {
+        openingBalanceCents: cashSession.openingBalanceCents,
+        closingBalanceCents: cashSession.closingBalanceCents,
+        expectedBalanceCents: cashSession.expectedBalanceCents,
+      },
+      createdAt: cashSession.createdAt.toISOString(),
+      updatedAt: cashSession.updatedAt.toISOString(),
+    };
+  }
+
+  private async cashMovementProjection(
+    companyId: string,
+    event: PullSyncEvent,
+  ) {
+    const movement = await prisma.cashEvent.findFirst({
+      where: { id: event.entityServerId!, companyId },
+      select: {
+        id: true,
+        cashSessionId: true,
+        eventType: true,
+        amountCents: true,
+        notes: true,
+        createdAt: true,
+      },
+    });
+    if (movement == null) {
+      return null;
+    }
+
+    return {
+      entityServerId: movement.id,
+      id: movement.id,
+      cashSessionId: movement.cashSessionId,
+      type: movement.eventType,
+      amountCents: movement.amountCents,
+      reason: movement.notes,
+      createdAt: movement.createdAt.toISOString(),
+    };
+  }
+
+  private async operationalOrderProjection(
+    companyId: string,
+    event: PullSyncEvent,
+  ) {
+    const order = await prisma.operationalOrder.findFirst({
+      where: { id: event.entityServerId!, companyId },
+      select: {
+        id: true,
+        localUuid: true,
+        status: true,
+        subtotalCents: true,
+        discountCents: true,
+        totalCents: true,
+        convertedSaleId: true,
+        createdAt: true,
+        updatedAt: true,
+        closedAt: true,
+        cancelledAt: true,
+        _count: {
+          select: {
+            items: true,
+          },
+        },
+      },
+    });
+    if (order == null) {
+      return null;
+    }
+
+    return {
+      entityServerId: order.id,
+      id: order.id,
+      localUuid: order.localUuid,
+      status: order.status,
+      totals: {
+        subtotalCents: order.subtotalCents,
+        discountCents: order.discountCents,
+        totalCents: order.totalCents,
+      },
+      convertedSaleId: order.convertedSaleId,
+      itemsCount: order._count.items,
+      timestamps: {
+        createdAt: order.createdAt.toISOString(),
+        updatedAt: order.updatedAt.toISOString(),
+        closedAt: order.closedAt?.toISOString() ?? null,
+        cancelledAt: order.cancelledAt?.toISOString() ?? null,
+      },
+    };
+  }
+
+  private async operationalOrderItemProjection(
+    companyId: string,
+    event: PullSyncEvent,
+  ) {
+    const item = await prisma.operationalOrderItem.findFirst({
+      where: { id: event.entityServerId!, companyId },
+      select: {
+        id: true,
+        operationalOrderId: true,
+        productId: true,
+        productVariantId: true,
+        description: true,
+        quantityMil: true,
+        unitPriceCents: true,
+        totalCents: true,
+      },
+    });
+    if (item == null) {
+      return null;
+    }
+
+    return {
+      entityServerId: item.id,
+      id: item.id,
+      operationalOrderId: item.operationalOrderId,
+      productId: item.productId,
+      productVariantId: item.productVariantId,
+      description: item.description,
+      quantityMil: item.quantityMil,
+      totals: {
+        unitPriceCents: item.unitPriceCents,
+        totalCents: item.totalCents,
+      },
+    };
+  }
+
+  private async saleProjection(companyId: string, event: PullSyncEvent) {
+    const sale = await prisma.sale.findFirst({
+      where: { id: event.entityServerId!, companyId },
+      select: {
+        id: true,
+        localUuid: true,
+        status: true,
+        totalAmountCents: true,
+        totalCostCents: true,
+        receiptNumber: true,
+        cashSessionId: true,
+        soldAt: true,
+        createdAt: true,
+      },
+    });
+    if (sale == null) {
+      return null;
+    }
+
+    return {
+      entityServerId: sale.id,
+      id: sale.id,
+      localUuid: sale.localUuid,
+      status: sale.status,
+      total: {
+        totalAmountCents: sale.totalAmountCents,
+        totalCostCents: sale.totalCostCents,
+      },
+      receiptNumber: sale.receiptNumber,
+      cashSessionId: sale.cashSessionId,
+      soldAt: sale.soldAt.toISOString(),
+      createdAt: sale.createdAt.toISOString(),
+    };
+  }
+
+  private async saleItemProjection(companyId: string, event: PullSyncEvent) {
+    const item = await prisma.saleItem.findFirst({
+      where: {
+        id: event.entityServerId!,
+        sale: {
+          companyId,
+        },
+      },
+      select: {
+        id: true,
+        saleId: true,
+        productId: true,
+        productNameSnapshot: true,
+        quantityMil: true,
+        unitPriceCents: true,
+        totalPriceCents: true,
+        totalCostCents: true,
+      },
+    });
+    if (item == null) {
+      return null;
+    }
+
+    return {
+      entityServerId: item.id,
+      id: item.id,
+      saleId: item.saleId,
+      productId: item.productId,
+      productVariantId: null,
+      description: item.productNameSnapshot,
+      quantityMil: item.quantityMil,
+      totals: {
+        unitPriceCents: item.unitPriceCents,
+        totalPriceCents: item.totalPriceCents,
+        totalCostCents: item.totalCostCents,
+      },
+    };
+  }
+
+  private async paymentProjection(companyId: string, event: PullSyncEvent) {
+    const payment = await prisma.financialEvent.findFirst({
+      where: { id: event.entityServerId!, companyId },
+      select: {
+        id: true,
+        saleId: true,
+        amountCents: true,
+        paymentType: true,
+        createdAt: true,
+      },
+    });
+    if (payment == null) {
+      return null;
+    }
+
+    return {
+      entityServerId: payment.id,
+      id: payment.id,
+      saleId: payment.saleId,
+      financialEventId: payment.id,
+      amountCents: payment.amountCents,
+      method: payment.paymentType,
+      createdAt: payment.createdAt.toISOString(),
+    };
+  }
+
+  private async receiptProjection(companyId: string, event: PullSyncEvent) {
+    const sale = await prisma.sale.findFirst({
+      where: { id: event.entityServerId!, companyId },
+      select: {
+        id: true,
+        receiptNumber: true,
+        updatedAt: true,
+      },
+    });
+    if (sale == null) {
+      return null;
+    }
+
+    return {
+      entityServerId: sale.id,
+      saleId: sale.id,
+      receiptNumber: sale.receiptNumber,
+      emittedAt:
+        event.materializedAt?.toISOString() ?? sale.updatedAt.toISOString(),
+    };
+  }
+
+  private async stockReservationProjection(
+    companyId: string,
+    event: PullSyncEvent,
+  ) {
+    const reservation = await prisma.stockReservation.findFirst({
+      where: { id: event.entityServerId!, companyId },
+      select: {
+        id: true,
+        productId: true,
+        productVariantId: true,
+        quantityMil: true,
+        status: true,
+      },
+    });
+    if (reservation == null) {
+      return null;
+    }
+
+    return {
+      entityServerId: reservation.id,
+      id: reservation.id,
+      productId: reservation.productId,
+      productVariantId: reservation.productVariantId,
+      quantityMil: reservation.quantityMil,
+      status: reservation.status,
+    };
+  }
+
+  private async stockDeductionProjection(
+    companyId: string,
+    event: PullSyncEvent,
+  ) {
+    const deduction = await prisma.stockDeduction.findFirst({
+      where: { id: event.entityServerId!, companyId },
+      select: {
+        id: true,
+        saleId: true,
+        productId: true,
+        productVariantId: true,
+        quantityMil: true,
+      },
+    });
+    if (deduction == null) {
+      return null;
+    }
+
+    return {
+      entityServerId: deduction.id,
+      id: deduction.id,
+      saleId: deduction.saleId,
+      productId: deduction.productId,
+      productVariantId: deduction.productVariantId,
+      quantityMil: deduction.quantityMil,
+    };
+  }
+
+  private async createProjectionIncident(
+    context: AppContext,
+    event: PullSyncEvent,
+  ) {
+    const existing = await prisma.syncIncident.findFirst({
+      where: {
+        syncEventId: event.id,
+        code: "PULL_PROJECTION_MISSING",
+      },
+      select: {
+        id: true,
+      },
+    });
+    if (existing != null) {
+      return;
+    }
+
+    await this.createIncident({
+      context,
+      syncEventId: event.id,
+      code: "PULL_PROJECTION_MISSING",
+      message:
+        "Evento operacional materializado nao possui projection reconstruivel no pull.",
+      severity: "warn",
+      details: {
+        entity: event.entity,
+        operation: event.operation,
+        entityLocalId: event.entityLocalId,
+        entityServerId: event.entityServerId,
+        serverVersion: event.serverVersion?.toString() ?? null,
+      },
+    });
+  }
+
+  private toEventDto(event: PullSyncEvent) {
     return {
       id: event.id,
       eventId: event.eventId,
@@ -890,7 +1384,7 @@ export class SyncEventService {
   }
 
   private asRecord(value: unknown): Record<string, unknown> {
-    if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+    if (value == null || typeof value !== "object" || Array.isArray(value)) {
       return {};
     }
 
@@ -899,7 +1393,7 @@ export class SyncEventService {
 
   private stringField(payload: Record<string, unknown>, key: string) {
     const value = payload[key];
-    return typeof value === 'string' && value.trim().length > 0
+    return typeof value === "string" && value.trim().length > 0
       ? value.trim()
       : null;
   }

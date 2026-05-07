@@ -2,6 +2,8 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../../app/core/database/table_names.dart';
 import '../../../../app/core/errors/app_exceptions.dart';
+import '../../../../app/core/utils/app_logger.dart';
+import '../../../carrinho/domain/entities/cart_item.dart';
 import '../../domain/entities/checkout_input.dart';
 import '../../domain/entities/sale_enums.dart';
 
@@ -57,6 +59,21 @@ class SaleValidationSupport {
       throw const ValidationException(
         'Somente vendas em dinheiro podem transformar troco em haver.',
       );
+    }
+
+    for (final item in input.items) {
+      if (!item.hasOperationalRemoteIdentity) {
+        AppLogger.warn(
+          '[Checkout] blocked sale item without remote identity | '
+          'productLocalId=${item.productId} '
+          'productVariantLocalId=${item.productVariantId} '
+          'missingProductRemote=${item.productRemoteId?.trim().isEmpty ?? true} '
+          'missingVariantRemote=${item.productVariantId != null && (item.productVariantRemoteId?.trim().isEmpty ?? true)}',
+        );
+        throw ValidationException(
+          '${item.productName}: $operationalProductMissingRemoteMessage',
+        );
+      }
     }
   }
 

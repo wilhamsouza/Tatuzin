@@ -281,6 +281,7 @@ CartItem _simpleCartItem({
     unitPriceCents: 9900,
     unitMeasure: 'un',
     productType: 'unidade',
+    productRemoteId: '11111111-1111-4111-8111-111111111111',
   );
 }
 
@@ -305,6 +306,8 @@ CartItem _variantCartItem({
     unitPriceCents: 9900,
     unitMeasure: 'un',
     productType: 'grade',
+    productRemoteId: '11111111-1111-4111-8111-111111111111',
+    productVariantRemoteId: '22222222-2222-4222-8222-222222222222',
   );
 }
 
@@ -323,8 +326,8 @@ class _BillingReservationFixture {
   final SqliteOperationalOrderRepository orderRepository;
   final SqliteSaleRepository saleRepository;
 
-  Future<void> insertSimpleProduct({required int stockMil}) {
-    return database.insert(TableNames.produtos, {
+  Future<void> insertSimpleProduct({required int stockMil}) async {
+    await database.insert(TableNames.produtos, {
       'id': 1,
       'uuid': 'product-1',
       'nome': 'Camiseta Basic',
@@ -341,6 +344,20 @@ class _BillingReservationFixture {
       'criado_em': _fixedNowIso,
       'atualizado_em': _fixedNowIso,
       'deletado_em': null,
+    });
+    await database.insert(TableNames.syncRegistros, {
+      'feature_key': 'products',
+      'local_id': 1,
+      'local_uuid': 'product-1',
+      'remote_id': '11111111-1111-4111-8111-111111111111',
+      'sync_status': 'synced',
+      'origin': 'remote',
+      'created_at': _fixedNowIso,
+      'updated_at': _fixedNowIso,
+      'last_synced_at': _fixedNowIso,
+      'last_error': null,
+      'last_error_type': null,
+      'last_error_at': null,
     });
   }
 
@@ -373,6 +390,9 @@ class _BillingReservationFixture {
     return database.insert(TableNames.produtoVariantes, {
       'id': id,
       'uuid': 'variant-$id',
+      'remote_id': id == 10
+          ? '22222222-2222-4222-8222-222222222222'
+          : '33333333-3333-4333-8333-333333333333',
       'produto_id': 1,
       'sku': sku,
       'cor': 'Preta',

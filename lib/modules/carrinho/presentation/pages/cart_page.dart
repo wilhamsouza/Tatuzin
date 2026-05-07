@@ -503,6 +503,26 @@ class _CartPageState extends ConsumerState<CartPage> {
     CartState cart,
   ) async {
     try {
+      CartItem? unsyncedItem;
+      for (final item in cart.items) {
+        if (!item.hasOperationalRemoteIdentity) {
+          unsyncedItem = item;
+          break;
+        }
+      }
+      if (unsyncedItem != null) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(
+                '${unsyncedItem.productName}: $operationalProductMissingRemoteMessage',
+              ),
+            ),
+          );
+        return;
+      }
+
       final repository = ref.read(operationalOrderRepositoryProvider);
       final orderId = await repository.create(
         const OperationalOrderInput(status: OperationalOrderStatus.open),

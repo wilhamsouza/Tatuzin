@@ -21,6 +21,7 @@ import 'app_snapshot_remote_datasource.dart';
 import 'financial_event_sync_processor.dart';
 import 'financial_events_remote_datasource.dart';
 import 'operational_sync_queue_repository.dart';
+import 'operational_sync_projection_applier.dart';
 import 'operational_sync_remote_datasource.dart';
 import 'operational_sync_runner.dart';
 import 'real_app_snapshot_remote_datasource.dart';
@@ -53,6 +54,15 @@ final operationalSyncRemoteDataSourceProvider =
       return RealOperationalSyncRemoteDataSource(
         apiClient: ref.watch(realApiClientProvider),
         tokenStorage: ref.watch(authTokenStorageProvider),
+      );
+    });
+
+final operationalSyncProjectionApplierProvider =
+    Provider<OperationalSyncProjectionApplier>((ref) {
+      final session = ref.watch(appSessionProvider);
+      return SqliteOperationalSyncProjectionApplier(
+        appDatabase: ref.watch(appDatabaseProvider),
+        companyRemoteId: session.company.remoteId,
       );
     });
 
@@ -140,6 +150,7 @@ final operationalSyncRunnerProvider = Provider<OperationalSyncRunner>((ref) {
   return OperationalSyncRunner(
     queueRepository: ref.watch(operationalSyncQueueRepositoryProvider),
     remoteDataSource: ref.watch(operationalSyncRemoteDataSourceProvider),
+    projectionApplier: ref.watch(operationalSyncProjectionApplierProvider),
     snapshotRemoteDataSource: ref.watch(appSnapshotRemoteDataSourceProvider),
     shouldContinue: () {
       return !isDisposed &&

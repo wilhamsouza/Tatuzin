@@ -1,5 +1,7 @@
 import '../utils/app_logger.dart';
 import 'app_snapshot_remote_datasource.dart';
+import 'operational_sync_policy.dart';
+import 'operational_sync_projection_applier.dart';
 import 'operational_sync_queue_item.dart';
 import 'operational_sync_queue_repository.dart';
 import 'operational_sync_remote_datasource.dart';
@@ -9,16 +11,22 @@ class OperationalSyncRunner {
   const OperationalSyncRunner({
     required OperationalSyncQueueRepository queueRepository,
     required OperationalSyncRemoteDataSource remoteDataSource,
+    OperationalSyncProjectionApplier projectionApplier =
+        const NoopOperationalSyncProjectionApplier(),
     required AppSnapshotRemoteDataSource snapshotRemoteDataSource,
     required bool Function() shouldContinue,
     required void Function() onCacheSnapshotChanged,
   }) : _queueRepository = queueRepository,
        _remoteDataSource = remoteDataSource,
+       _projectionApplier = projectionApplier,
        _snapshotRemoteDataSource = snapshotRemoteDataSource,
        _shouldContinue = shouldContinue,
        _onCacheSnapshotChanged = onCacheSnapshotChanged;
 
   static const int maxEventsPerBatch = 100;
+  static const int pullLimitPerPage = 100;
+  static const int maxPullPagesPerRun = 10;
+  static const int maxPullChangesPerRun = 1000;
   static const stalePushingAfter = Duration(minutes: 2);
   static const _serverFirstSnapshotFeatures = <String>[
     'products',
@@ -33,6 +41,7 @@ class OperationalSyncRunner {
 
   final OperationalSyncQueueRepository _queueRepository;
   final OperationalSyncRemoteDataSource _remoteDataSource;
+  final OperationalSyncProjectionApplier _projectionApplier;
   final AppSnapshotRemoteDataSource _snapshotRemoteDataSource;
   final bool Function() _shouldContinue;
   final void Function() _onCacheSnapshotChanged;
@@ -161,15 +170,13 @@ class OperationalSyncRunner {
 
     try {
       final checkpoint = await _queueRepository.readCheckpoint();
-      final pull = await _remoteDataSource.pullChanges(
-        sinceVersion: checkpoint,
-        features: const <String>['pdv'],
-        limit: 100,
-      );
-      await _queueRepository.saveCheckpoint(pull.nextSinceVersion);
-
+      final pullOutcome = await _pullOperationalPages(checkpoint);
       final status = await _remoteDataSource.getStatus();
-      if (status.currentServerVersion.trim().isNotEmpty) {
+      if (pullOutcome.canFastForwardWithStatus &&
+          _isVersionAhead(
+            status.currentServerVersion,
+            pullOutcome.appliedCheckpoint,
+          )) {
         await _queueRepository.saveCheckpoint(status.currentServerVersion);
       }
       await _queueRepository.recordPullSucceeded(completedAt: DateTime.now());
@@ -230,6 +237,203 @@ class OperationalSyncRunner {
       lastPullError: lastPullError,
       lastSnapshotError: lastSnapshotError,
     );
+  }
+
+  Future<_PullPagesOutcome> _pullOperationalPages(String checkpoint) async {
+    var sinceVersion = checkpoint;
+    var safeCheckpoint = checkpoint;
+    var pageCount = 0;
+    var processedChanges = 0;
+    var pulledAnyChange = false;
+
+    while (_shouldContinue()) {
+      if (pageCount >= maxPullPagesPerRun) {
+        AppLogger.warn(
+          '[OperationalSync] pull_page_limit_reached '
+          'pages=$pageCount checkpoint=$safeCheckpoint',
+        );
+        return _PullPagesOutcome(
+          appliedCheckpoint: safeCheckpoint,
+          reachedSafetyLimit: true,
+        );
+      }
+      if (processedChanges >= maxPullChangesPerRun) {
+        AppLogger.warn(
+          '[OperationalSync] pull_change_limit_reached '
+          'changes=$processedChanges checkpoint=$safeCheckpoint',
+        );
+        return _PullPagesOutcome(
+          appliedCheckpoint: safeCheckpoint,
+          reachedSafetyLimit: true,
+        );
+      }
+
+      final pageStartingCheckpoint = safeCheckpoint;
+      final pull = await _remoteDataSource.pullChanges(
+        sinceVersion: sinceVersion,
+        features: const <String>['pdv'],
+        limit: pullLimitPerPage,
+      );
+      pageCount++;
+
+      if (pull.changes.isEmpty) {
+        if (pull.hasMore) {
+          AppLogger.warn(
+            '[OperationalSync] pull_page_empty_with_has_more '
+            'page=$pageCount checkpoint=$safeCheckpoint',
+          );
+        }
+        return _PullPagesOutcome(
+          appliedCheckpoint: safeCheckpoint,
+          canFastForwardWithStatus: !pulledAnyChange && !pull.hasMore,
+        );
+      }
+
+      pulledAnyChange = true;
+      final remainingChanges = maxPullChangesPerRun - processedChanges;
+      final applyOutcome = await _applyPulledChanges(
+        pull,
+        startingCheckpoint: safeCheckpoint,
+        maxChanges: remainingChanges,
+      );
+      safeCheckpoint = applyOutcome.safeCheckpoint;
+      processedChanges += applyOutcome.processedChanges;
+
+      if (applyOutcome.reachedChangeLimit) {
+        AppLogger.warn(
+          '[OperationalSync] pull_change_limit_reached '
+          'changes=$processedChanges checkpoint=$safeCheckpoint',
+        );
+        return _PullPagesOutcome(
+          appliedCheckpoint: safeCheckpoint,
+          reachedSafetyLimit: true,
+        );
+      }
+
+      if (!pull.hasMore) {
+        return _PullPagesOutcome(appliedCheckpoint: safeCheckpoint);
+      }
+
+      if (!_isVersionAhead(safeCheckpoint, pageStartingCheckpoint)) {
+        AppLogger.warn(
+          '[OperationalSync] pull_page_non_advancing '
+          'page=$pageCount checkpoint=$safeCheckpoint',
+        );
+        return _PullPagesOutcome(
+          appliedCheckpoint: safeCheckpoint,
+          reachedSafetyLimit: true,
+        );
+      }
+
+      sinceVersion = safeCheckpoint;
+    }
+
+    return _PullPagesOutcome(
+      appliedCheckpoint: safeCheckpoint,
+      reachedSafetyLimit: true,
+    );
+  }
+
+  Future<_ApplyPulledChangesOutcome> _applyPulledChanges(
+    OperationalSyncPullResponse pull, {
+    required String startingCheckpoint,
+    required int maxChanges,
+  }) async {
+    var safeCheckpoint = startingCheckpoint;
+    if (pull.changes.isEmpty) {
+      return _ApplyPulledChangesOutcome(safeCheckpoint: safeCheckpoint);
+    }
+
+    final orderedChanges = pull.changes.toList(growable: false)
+      ..sort(_comparePulledChanges);
+    var processedChanges = 0;
+    for (final change in orderedChanges) {
+      if (processedChanges >= maxChanges) {
+        return _ApplyPulledChangesOutcome(
+          safeCheckpoint: safeCheckpoint,
+          processedChanges: processedChanges,
+          reachedChangeLimit: true,
+        );
+      }
+
+      final changeVersion = change.serverVersion;
+      if (changeVersion == null || changeVersion.trim().isEmpty) {
+        continue;
+      }
+      if (!_isVersionAhead(changeVersion, safeCheckpoint)) {
+        AppLogger.warn(
+          '[OperationalSync] pull_change_non_advancing '
+          'eventId=${change.eventId} entity=${change.entity} '
+          'serverVersion=$changeVersion checkpoint=$safeCheckpoint',
+        );
+        continue;
+      }
+      processedChanges++;
+
+      if (!OperationalSyncPolicy.isLocalFirstEntity(change.entity)) {
+        AppLogger.warn(
+          '[OperationalSync] pull_change_ignored entity=${change.entity} '
+          'eventId=${change.eventId} reason=not_local_first',
+        );
+        safeCheckpoint = changeVersion;
+        await _queueRepository.saveCheckpoint(safeCheckpoint);
+        continue;
+      }
+
+      if (change.projection == null) {
+        if (pull.usesProjectionContract && change.projectionWarning != null) {
+          const message =
+              '$operationalSyncPartialDataMessage. Tente sincronizar novamente.';
+          AppLogger.warn(
+            '[OperationalSync] pull_projection_warning eventId=${change.eventId} '
+            'entity=${change.entity} warning=${change.projectionWarning}',
+          );
+          throw const _OperationalSyncPullProjectionWarning(message);
+        }
+
+        safeCheckpoint = changeVersion;
+        await _queueRepository.saveCheckpoint(safeCheckpoint);
+        continue;
+      }
+
+      await _projectionApplier.apply(change);
+      safeCheckpoint = changeVersion;
+      await _queueRepository.saveCheckpoint(safeCheckpoint);
+    }
+
+    return _ApplyPulledChangesOutcome(
+      safeCheckpoint: safeCheckpoint,
+      processedChanges: processedChanges,
+    );
+  }
+
+  int _comparePulledChanges(
+    OperationalSyncPulledEvent left,
+    OperationalSyncPulledEvent right,
+  ) {
+    final leftVersion = left.serverVersion?.trim();
+    final rightVersion = right.serverVersion?.trim();
+    if (leftVersion == null || leftVersion.isEmpty) {
+      return rightVersion == null || rightVersion.isEmpty ? 0 : 1;
+    }
+    if (rightVersion == null || rightVersion.isEmpty) {
+      return -1;
+    }
+    final leftNumber = int.tryParse(leftVersion);
+    final rightNumber = int.tryParse(rightVersion);
+    if (leftNumber != null && rightNumber != null) {
+      return leftNumber.compareTo(rightNumber);
+    }
+    return leftVersion.compareTo(rightVersion);
+  }
+
+  bool _isVersionAhead(String candidate, String current) {
+    final candidateValue = int.tryParse(candidate.trim());
+    final currentValue = int.tryParse(current.trim());
+    if (candidateValue != null && currentValue != null) {
+      return candidateValue > currentValue;
+    }
+    return candidate.trim().isNotEmpty && candidate != current;
   }
 
   Future<Map<String, String>> _loadConflictIdsByEventId() async {
@@ -306,4 +510,37 @@ class _RefreshOutcome {
   final bool snapshotFailed;
   final String? lastPullError;
   final String? lastSnapshotError;
+}
+
+class _PullPagesOutcome {
+  const _PullPagesOutcome({
+    required this.appliedCheckpoint,
+    this.canFastForwardWithStatus = false,
+    this.reachedSafetyLimit = false,
+  });
+
+  final String appliedCheckpoint;
+  final bool canFastForwardWithStatus;
+  final bool reachedSafetyLimit;
+}
+
+class _ApplyPulledChangesOutcome {
+  const _ApplyPulledChangesOutcome({
+    required this.safeCheckpoint,
+    this.processedChanges = 0,
+    this.reachedChangeLimit = false,
+  });
+
+  final String safeCheckpoint;
+  final int processedChanges;
+  final bool reachedChangeLimit;
+}
+
+class _OperationalSyncPullProjectionWarning implements Exception {
+  const _OperationalSyncPullProjectionWarning(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
 }

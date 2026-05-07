@@ -190,10 +190,12 @@ CartItem buildSimpleCartItem({
   required int availableStockMil,
   int unitPriceCents = 9000,
   String? barcode,
+  String? productRemoteId = '11111111-1111-4111-8111-111111111111',
 }) {
   return CartItem(
     id: 'cart-$productId-$quantityMil',
     productId: productId,
+    productRemoteId: productRemoteId,
     productName: productName,
     baseProductId: null,
     baseProductName: null,
@@ -216,11 +218,15 @@ CartItem buildVariantCartItem({
   required int quantityMil,
   required int availableStockMil,
   int unitPriceCents = 12000,
+  String? productRemoteId = '11111111-1111-4111-8111-111111111111',
+  String? productVariantRemoteId = '22222222-2222-4222-8222-222222222222',
 }) {
   return CartItem(
     id: 'cart-$productId-$variantId-$quantityMil',
     productId: productId,
     productVariantId: variantId,
+    productRemoteId: productRemoteId,
+    productVariantRemoteId: productVariantRemoteId,
     productName: productName,
     baseProductId: null,
     baseProductName: null,

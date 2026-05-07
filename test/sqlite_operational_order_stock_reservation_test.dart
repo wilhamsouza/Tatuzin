@@ -504,8 +504,11 @@ Future<_OrderReservationFixture> _openFixture({
   );
 }
 
-Future<void> _insertProduct(DatabaseExecutor db, {required int stockMil}) {
-  return db.insert(TableNames.produtos, {
+Future<void> _insertProduct(
+  DatabaseExecutor db, {
+  required int stockMil,
+}) async {
+  await db.insert(TableNames.produtos, {
     'id': 1,
     'uuid': 'product-1',
     'nome': 'Camiseta Basic',
@@ -522,6 +525,20 @@ Future<void> _insertProduct(DatabaseExecutor db, {required int stockMil}) {
     'criado_em': _fixedNowIso,
     'atualizado_em': _fixedNowIso,
     'deletado_em': null,
+  });
+  await db.insert(TableNames.syncRegistros, {
+    'feature_key': 'products',
+    'local_id': 1,
+    'local_uuid': 'product-1',
+    'remote_id': '11111111-1111-4111-8111-111111111111',
+    'sync_status': 'synced',
+    'origin': 'remote',
+    'created_at': _fixedNowIso,
+    'updated_at': _fixedNowIso,
+    'last_synced_at': _fixedNowIso,
+    'last_error': null,
+    'last_error_type': null,
+    'last_error_at': null,
   });
 }
 
@@ -585,6 +602,9 @@ class _OrderReservationFixture {
     return database.insert(TableNames.produtoVariantes, {
       'id': id,
       'uuid': 'variant-$id',
+      'remote_id': id == 10
+          ? '22222222-2222-4222-8222-222222222222'
+          : '33333333-3333-4333-8333-333333333333',
       'produto_id': 1,
       'sku': 'CAM-PRE-P',
       'cor': 'Preta',

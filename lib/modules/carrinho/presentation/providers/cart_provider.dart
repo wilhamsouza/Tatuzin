@@ -19,6 +19,17 @@ class CartController extends Notifier<CartState> {
   }
 
   bool addProduct(Product product) {
+    if (!product.hasOperationalRemoteIdentity) {
+      AppLogger.warn(
+        '[Carrinho] blocked product without remote identity | '
+        'productLocalId=${product.id} '
+        'productVariantLocalId=${product.sellableVariantId} '
+        'missingProductRemote=${product.remoteId?.trim().isEmpty ?? true} '
+        'missingVariantRemote=${product.sellableVariantId != null && (product.sellableVariantRemoteId?.trim().isEmpty ?? true)}',
+      );
+      return false;
+    }
+
     if (product.hasVariants && product.sellableVariantId == null) {
       return false;
     }
@@ -57,6 +68,17 @@ class CartController extends Notifier<CartState> {
     List<CartItemModifier> modifiers = const <CartItemModifier>[],
     String? notes,
   }) {
+    if (!product.hasOperationalRemoteIdentity) {
+      AppLogger.warn(
+        '[Carrinho] blocked customized product without remote identity | '
+        'productLocalId=${product.id} '
+        'productVariantLocalId=${product.sellableVariantId} '
+        'missingProductRemote=${product.remoteId?.trim().isEmpty ?? true} '
+        'missingVariantRemote=${product.sellableVariantId != null && (product.sellableVariantRemoteId?.trim().isEmpty ?? true)}',
+      );
+      return false;
+    }
+
     if (product.hasVariants && product.sellableVariantId == null) {
       return false;
     }

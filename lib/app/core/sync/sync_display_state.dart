@@ -19,7 +19,7 @@ extension SyncDisplayStateX on SyncDisplayState {
       case SyncDisplayState.error:
         return 'Erro de sincronizacao';
       case SyncDisplayState.serverDataStale:
-        return 'Dados do servidor desatualizados';
+        return 'Dados parcialmente atualizados';
       case SyncDisplayState.synced:
         return 'Sincronizado';
     }

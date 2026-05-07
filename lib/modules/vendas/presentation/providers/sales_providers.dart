@@ -13,6 +13,7 @@ import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 import '../../../../app/core/utils/app_logger.dart';
+import '../../../carrinho/domain/entities/cart_item.dart';
 import '../../../carrinho/presentation/providers/cart_provider.dart';
 import '../../../estoque/domain/entities/stock_availability.dart';
 import '../../../estoque/domain/entities/stock_reservation.dart';
@@ -489,6 +490,19 @@ class SalesQuickAddController {
       return const SalesQuickAddResult(
         type: SalesQuickAddResultType.notFound,
         message: 'Nenhum produto encontrado para o código informado.',
+      );
+    }
+
+    if (!matchedProduct.hasOperationalRemoteIdentity) {
+      AppLogger.warn(
+        '[PDV] blocked barcode add without remote identity | '
+        'productLocalId=${matchedProduct.id} '
+        'productVariantLocalId=${matchedProduct.sellableVariantId}',
+      );
+      return SalesQuickAddResult(
+        type: SalesQuickAddResultType.invalid,
+        product: matchedProduct,
+        message: operationalProductMissingRemoteMessage,
       );
     }
 

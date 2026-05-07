@@ -54,7 +54,7 @@ void main() {
       );
       addTearDown(database.close);
 
-      await _insertProduct(database);
+      await _insertProduct(database, insertSyncIdentity: false);
       final orderId = await _insertLegacyOrder(database);
       await database.insert(TableNames.pedidosOperacionaisItens, {
         'uuid': 'legacy-order-item',
@@ -169,7 +169,7 @@ void main() {
 
       const productRemoteId = '11111111-1111-4111-8111-111111111111';
       const variantRemoteId = '22222222-2222-4222-8222-222222222222';
-      await _insertProduct(fixture.database);
+      await _insertProduct(fixture.database, insertSyncIdentity: false);
       await _insertProductRemoteIdentity(
         fixture.database,
         remoteId: productRemoteId,
@@ -608,8 +608,12 @@ Future<_RepositoryFixture> _openRepositoryFixture() async {
   );
 }
 
-Future<void> _insertProduct(DatabaseExecutor db, {int stockMil = 3000}) {
-  return db.insert(TableNames.produtos, {
+Future<void> _insertProduct(
+  DatabaseExecutor db, {
+  int stockMil = 3000,
+  bool insertSyncIdentity = true,
+}) async {
+  await db.insert(TableNames.produtos, {
     'id': 1,
     'uuid': 'product-1',
     'nome': 'Camiseta Basic',
@@ -627,6 +631,9 @@ Future<void> _insertProduct(DatabaseExecutor db, {int stockMil = 3000}) {
     'atualizado_em': _fixedNowIso,
     'deletado_em': null,
   });
+  if (insertSyncIdentity) {
+    await _insertProductRemoteIdentity(db);
+  }
 }
 
 Future<void> _insertProductVariant(
@@ -640,10 +647,15 @@ Future<void> _insertProductVariant(
   int stockMil = 3000,
   int sortOrder = 0,
 }) {
+  final resolvedRemoteId =
+      remoteId ??
+      (id == 10
+          ? '22222222-2222-4222-8222-222222222222'
+          : '33333333-3333-4333-8333-333333333333');
   return db.insert(TableNames.produtoVariantes, {
     'id': id,
     'uuid': uuid,
-    'remote_id': remoteId,
+    'remote_id': resolvedRemoteId,
     'produto_id': 1,
     'sku': sku,
     'cor': color,
@@ -790,6 +802,7 @@ Product _buildProduct({required int sellableVariantId, required String size}) {
   return Product(
     id: 1,
     uuid: 'product-1',
+    remoteId: '11111111-1111-4111-8111-111111111111',
     name: 'Camiseta Basic',
     description: null,
     categoryId: null,
@@ -804,6 +817,9 @@ Product _buildProduct({required int sellableVariantId, required String size}) {
     baseProductId: 1,
     baseProductName: 'Camiseta Basic',
     sellableVariantId: sellableVariantId,
+    sellableVariantRemoteId: sellableVariantId == 10
+        ? '22222222-2222-4222-8222-222222222222'
+        : '33333333-3333-4333-8333-333333333333',
     sellableVariantSku: 'CAM-BASIC-PRETA-$size',
     sellableVariantColorLabel: 'Preta',
     sellableVariantSizeLabel: size,

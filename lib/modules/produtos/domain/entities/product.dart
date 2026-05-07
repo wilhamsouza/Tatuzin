@@ -148,6 +148,14 @@ class Product {
 
   bool get isSellableVariant => sellableVariantId != null;
 
+  bool get hasOperationalRemoteIdentity {
+    final hasProductRemote = remoteId?.trim().isNotEmpty ?? false;
+    final hasVariantRemote =
+        sellableVariantId == null ||
+        (sellableVariantRemoteId?.trim().isNotEmpty ?? false);
+    return hasProductRemote && hasVariantRemote;
+  }
+
   bool get hasPhoto =>
       primaryPhotoPath != null && primaryPhotoPath!.trim().isNotEmpty;
 

@@ -16,6 +16,7 @@ import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../../../app/core/theme/app_design_tokens.dart';
+import '../../../../app/core/utils/app_logger.dart';
 import '../../../carrinho/domain/entities/cart_item.dart';
 import '../../../carrinho/presentation/providers/cart_provider.dart';
 import '../../../estoque/presentation/providers/inventory_providers.dart';
@@ -811,6 +812,20 @@ class _ProductTile extends ConsumerWidget {
     if (!context.mounted) {
       return;
     }
+    if (!refreshedProduct.hasOperationalRemoteIdentity) {
+      AppLogger.warn(
+        '[PDV] blocked add to cart without remote identity | '
+        'productLocalId=${refreshedProduct.id} '
+        'productVariantLocalId=${refreshedProduct.sellableVariantId}',
+      );
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text(operationalProductMissingRemoteMessage)),
+        );
+      return;
+    }
+
     if (refreshedProduct.stockMil < 1000) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()

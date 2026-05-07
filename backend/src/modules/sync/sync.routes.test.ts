@@ -1,20 +1,35 @@
-import assert from 'node:assert/strict';
-import { after, before, beforeEach, describe, it } from 'node:test';
-import type { AddressInfo } from 'node:net';
+import assert from "node:assert/strict";
+import { after, before, beforeEach, describe, it } from "node:test";
+import type { AddressInfo } from "node:net";
 
-import type { Server } from 'http';
-import jwt from 'jsonwebtoken';
+import type { Server } from "http";
+import jwt from "jsonwebtoken";
 
-import { createApp } from '../../app';
-import { env } from '../../config/env';
-import { prisma } from '../../database/prisma';
+import { createApp } from "../../app";
+import { env } from "../../config/env";
+import { prisma } from "../../database/prisma";
 
 const runId = `sync-real-${Date.now()}`;
 
 let server: Server;
-let apiBaseUrl = '';
+let apiBaseUrl = "";
 
-describe('operational local-first sync routes', () => {
+type PullResponse = {
+  hasMore: boolean;
+  nextSinceVersion: string;
+  events: PullChange[];
+  changes: PullChange[];
+};
+
+type PullChange = {
+  eventId: string;
+  entity: string;
+  entityServerId: string | null;
+  projection: Record<string, any> | null;
+  projectionWarning: string | null;
+};
+
+describe("operational local-first sync routes", () => {
   before(async () => {
     await prisma.$connect();
     server = createApp().listen(0);
@@ -34,34 +49,34 @@ describe('operational local-first sync routes', () => {
     await prisma.$disconnect();
   });
 
-  it('rejects push without app context', async () => {
-    const response = await requestJson('POST', '/sync/push', {
+  it("rejects push without app context", async () => {
+    const response = await requestJson("POST", "/sync/push", {
       body: { events: [] },
     });
 
     assert.equal(response.status, 401);
-    assert.equal((response.data as { code?: string }).code, 'AUTH_REQUIRED');
+    assert.equal((response.data as { code?: string }).code, "AUTH_REQUIRED");
   });
 
-  it('rejects push when sync is disabled by license', async () => {
+  it("rejects push when sync is disabled by license", async () => {
     const fixture = await createFixture({ syncEnabled: false });
-    const response = await push(fixture, [buildEvent('sale-disabled', 'sale')]);
+    const response = await push(fixture, [buildEvent("sale-disabled", "sale")]);
 
     assert.equal(response.status, 403);
-    assert.equal((response.data as { code?: string }).code, 'SYNC_DISABLED');
+    assert.equal((response.data as { code?: string }).code, "SYNC_DISABLED");
   });
 
-  it('accepts valid sale and cashSession events', async () => {
+  it("accepts valid sale and cashSession events", async () => {
     const fixture = await createFixture();
     const response = await push(fixture, [
-      buildEvent('sale-accepted', 'sale', {
+      buildEvent("sale-accepted", "sale", {
         entityLocalId: `${runId}-sale-local`,
-        payload: { status: 'finalized', totalCents: 4500 },
+        payload: { status: "finalized", totalCents: 4500 },
       }),
-      buildEvent('cash-session-accepted', 'cashSession', {
-        feature: 'cash',
+      buildEvent("cash-session-accepted", "cashSession", {
+        feature: "cash",
         entityLocalId: `${runId}-cash-session`,
-        payload: { status: 'open', openedAt: new Date().toISOString() },
+        payload: { status: "open", openedAt: new Date().toISOString() },
       }),
     ]);
 
@@ -77,17 +92,17 @@ describe('operational local-first sync routes', () => {
     assert.equal(payload.summary.accepted, 2);
     assert.deepEqual(
       payload.accepted.map((item) => item.eventId),
-      ['sale-accepted', 'cash-session-accepted'],
+      ["sale-accepted", "cash-session-accepted"],
     );
     assert.ok(payload.accepted.every((item) => item.entityServerId != null));
 
     const persisted = await prisma.syncEvent.findMany({
-      where: { companyId: fixture.companyId, status: 'ACCEPTED' },
-      orderBy: { serverVersion: 'asc' },
+      where: { companyId: fixture.companyId, status: "ACCEPTED" },
+      orderBy: { serverVersion: "asc" },
     });
     assert.equal(persisted.length, 2);
-    assert.equal(persisted[0]?.serverVersion?.toString(), '1');
-    assert.equal(persisted[1]?.serverVersion?.toString(), '2');
+    assert.equal(persisted[0]?.serverVersion?.toString(), "1");
+    assert.equal(persisted[1]?.serverVersion?.toString(), "2");
 
     const [salesCount, cashSessionsCount] = await Promise.all([
       prisma.sale.count({ where: { companyId: fixture.companyId } }),
@@ -97,9 +112,9 @@ describe('operational local-first sync routes', () => {
     assert.equal(cashSessionsCount, 1);
   });
 
-  it('returns duplicates without processing the same event twice', async () => {
+  it("returns duplicates without processing the same event twice", async () => {
     const fixture = await createFixture();
-    const event = buildEvent('sale-duplicate', 'sale');
+    const event = buildEvent("sale-duplicate", "sale");
     const first = await push(fixture, [event]);
     assert.equal(first.status, 202);
 
@@ -111,27 +126,27 @@ describe('operational local-first sync routes', () => {
       summary: { duplicates: number };
     };
     assert.equal(payload.summary.duplicates, 1);
-    assert.equal(payload.duplicates[0]?.eventId, 'sale-duplicate');
+    assert.equal(payload.duplicates[0]?.eventId, "sale-duplicate");
 
     const count = await prisma.syncEvent.count({
       where: {
         companyId: fixture.companyId,
-        eventId: 'sale-duplicate',
+        eventId: "sale-duplicate",
       },
     });
     assert.equal(count, 1);
   });
 
-  it('rejects server-first entities sent to sync push', async () => {
+  it("rejects server-first entities sent to sync push", async () => {
     const fixture = await createFixture();
     const response = await push(fixture, [
-      buildEvent('product-rejected', 'product'),
-      buildEvent('customer-rejected', 'customer'),
-      buildEvent('supplier-rejected', 'supplier'),
-      buildEvent('purchase-rejected', 'purchase'),
-      buildEvent('cost-rejected', 'cost'),
-      buildEvent('report-rejected', 'report'),
-      buildEvent('fiado-rejected', 'fiado'),
+      buildEvent("product-rejected", "product"),
+      buildEvent("customer-rejected", "customer"),
+      buildEvent("supplier-rejected", "supplier"),
+      buildEvent("purchase-rejected", "purchase"),
+      buildEvent("cost-rejected", "cost"),
+      buildEvent("report-rejected", "report"),
+      buildEvent("fiado-rejected", "fiado"),
     ]);
 
     assert.equal(response.status, 202);
@@ -143,48 +158,50 @@ describe('operational local-first sync routes', () => {
     assert.deepEqual(
       payload.rejected.map((item) => [item.eventId, item.code]),
       [
-        ['product-rejected', 'ENTITY_NOT_LOCAL_FIRST'],
-        ['customer-rejected', 'ENTITY_NOT_LOCAL_FIRST'],
-        ['supplier-rejected', 'ENTITY_NOT_LOCAL_FIRST'],
-        ['purchase-rejected', 'ENTITY_NOT_LOCAL_FIRST'],
-        ['cost-rejected', 'ENTITY_NOT_LOCAL_FIRST'],
-        ['report-rejected', 'ENTITY_NOT_LOCAL_FIRST'],
-        ['fiado-rejected', 'ENTITY_NOT_LOCAL_FIRST'],
+        ["product-rejected", "ENTITY_NOT_LOCAL_FIRST"],
+        ["customer-rejected", "ENTITY_NOT_LOCAL_FIRST"],
+        ["supplier-rejected", "ENTITY_NOT_LOCAL_FIRST"],
+        ["purchase-rejected", "ENTITY_NOT_LOCAL_FIRST"],
+        ["cost-rejected", "ENTITY_NOT_LOCAL_FIRST"],
+        ["report-rejected", "ENTITY_NOT_LOCAL_FIRST"],
+        ["fiado-rejected", "ENTITY_NOT_LOCAL_FIRST"],
       ],
     );
   });
 
-  it('rejects invalid operations with INVALID_OPERATION', async () => {
+  it("rejects invalid operations with INVALID_OPERATION", async () => {
     const fixture = await createFixture();
     const response = await push(fixture, [
-      buildEvent('sale-invalid-operation', 'sale', {
-        operation: 'merge',
+      buildEvent("sale-invalid-operation", "sale", {
+        operation: "merge",
       }),
     ]);
 
     assert.equal(response.status, 202);
-    const rejected = (response.data as {
-      rejected: Array<{ code: string }>;
-    }).rejected;
-    assert.equal(rejected[0]?.code, 'INVALID_OPERATION');
+    const rejected = (
+      response.data as {
+        rejected: Array<{ code: string }>;
+      }
+    ).rejected;
+    assert.equal(rejected[0]?.code, "INVALID_OPERATION");
   });
 
-  it('creates a conflict when a finalized sale receives an update', async () => {
+  it("creates a conflict when a finalized sale receives an update", async () => {
     const fixture = await createFixture();
     const entityLocalId = `${runId}-finalized-sale`;
     const createSale = await push(fixture, [
-      buildEvent('sale-finalized-create', 'sale', {
+      buildEvent("sale-finalized-create", "sale", {
         entityLocalId,
-        payload: { status: 'finalized', totalCents: 9900 },
+        payload: { status: "finalized", totalCents: 9900 },
       }),
     ]);
     assert.equal(createSale.status, 202);
 
     const updateSale = await push(fixture, [
-      buildEvent('sale-finalized-update', 'sale', {
-        operation: 'update',
+      buildEvent("sale-finalized-update", "sale", {
+        operation: "update",
         entityLocalId,
-        payload: { status: 'finalized', totalCents: 8900 },
+        payload: { status: "finalized", totalCents: 8900 },
       }),
     ]);
 
@@ -192,65 +209,68 @@ describe('operational local-first sync routes', () => {
     const payload = updateSale.data as {
       conflicts: Array<{ code: string; eventId: string }>;
     };
-    assert.equal(payload.conflicts[0]?.eventId, 'sale-finalized-update');
-    assert.equal(payload.conflicts[0]?.code, 'SALE_IMMUTABLE');
+    assert.equal(payload.conflicts[0]?.eventId, "sale-finalized-update");
+    assert.equal(payload.conflicts[0]?.code, "SALE_IMMUTABLE");
 
     const conflict = await prisma.syncConflict.findFirst({
       where: { companyId: fixture.companyId },
     });
-    assert.equal(conflict?.status, 'OPEN');
+    assert.equal(conflict?.status, "OPEN");
   });
 
-  it('materializes cashSession/create without duplicating the domain record', async () => {
+  it("materializes cashSession/create without duplicating the domain record", async () => {
     const fixture = await createFixture();
     const entityLocalId = `${runId}-cash-session-domain`;
 
     const first = await push(fixture, [
-      buildEvent('cash-session-domain-create', 'cashSession', {
-        feature: 'cash',
+      buildEvent("cash-session-domain-create", "cashSession", {
+        feature: "cash",
         entityLocalId,
-        payload: { status: 'open', openingBalanceCents: 1200 },
+        payload: { status: "open", openingBalanceCents: 1200 },
       }),
     ]);
     const second = await push(fixture, [
-      buildEvent('cash-session-domain-duplicate', 'cashSession', {
-        feature: 'cash',
+      buildEvent("cash-session-domain-duplicate", "cashSession", {
+        feature: "cash",
         entityLocalId,
-        payload: { status: 'open', openingBalanceCents: 1200 },
+        payload: { status: "open", openingBalanceCents: 1200 },
       }),
     ]);
 
     assert.equal(first.status, 202);
     assert.equal(second.status, 202);
-    assert.equal((second.data as { summary: { duplicates: number } }).summary.duplicates, 1);
+    assert.equal(
+      (second.data as { summary: { duplicates: number } }).summary.duplicates,
+      1,
+    );
 
     const [cashSessionsCount, duplicateEventsCount] = await Promise.all([
       prisma.cashSession.count({ where: { companyId: fixture.companyId } }),
       prisma.syncEvent.count({
-        where: { companyId: fixture.companyId, status: 'DUPLICATE' },
+        where: { companyId: fixture.companyId, status: "DUPLICATE" },
       }),
     ]);
     assert.equal(cashSessionsCount, 1);
     assert.equal(duplicateEventsCount, 1);
   });
 
-  it('materializes cashSession/update closing cash and blocks reopening', async () => {
+  it("materializes cashSession/update closing cash and blocks reopening", async () => {
     const fixture = await createFixture();
     const entityLocalId = `${runId}-cash-session-close`;
     await push(fixture, [
-      buildEvent('cash-session-close-create', 'cashSession', {
-        feature: 'cash',
+      buildEvent("cash-session-close-create", "cashSession", {
+        feature: "cash",
         entityLocalId,
-        payload: { status: 'open', openingBalanceCents: 1000 },
+        payload: { status: "open", openingBalanceCents: 1000 },
       }),
     ]);
 
     const closeResponse = await push(fixture, [
-      buildEvent('cash-session-close-update', 'cashSession', {
-        feature: 'cash',
-        operation: 'update',
+      buildEvent("cash-session-close-update", "cashSession", {
+        feature: "cash",
+        operation: "update",
         entityLocalId,
-        payload: { status: 'closed', closingBalanceCents: 1500 },
+        payload: { status: "closed", closingBalanceCents: 1500 },
       }),
     ]);
     assert.equal(closeResponse.status, 202);
@@ -263,33 +283,33 @@ describe('operational local-first sync routes', () => {
         },
       },
     });
-    assert.equal(cashSession.status, 'closed');
+    assert.equal(cashSession.status, "closed");
     assert.equal(cashSession.lastLocalSequence, null);
 
     const reopenResponse = await push(fixture, [
-      buildEvent('cash-session-reopen-conflict', 'cashSession', {
-        feature: 'cash',
-        operation: 'update',
+      buildEvent("cash-session-reopen-conflict", "cashSession", {
+        feature: "cash",
+        operation: "update",
         entityLocalId,
-        payload: { status: 'open' },
+        payload: { status: "open" },
       }),
     ]);
 
     const payload = reopenResponse.data as {
       conflicts: Array<{ code: string }>;
     };
-    assert.equal(payload.conflicts[0]?.code, 'CASH_SESSION_CLOSED');
+    assert.equal(payload.conflicts[0]?.code, "CASH_SESSION_CLOSED");
   });
 
-  it('guards cashSession updates with lastLocalSequence', async () => {
+  it("guards cashSession updates with lastLocalSequence", async () => {
     const fixture = await createFixture();
     const entityLocalId = `${runId}-cash-session-sequence`;
     await push(fixture, [
-      buildEvent('cash-session-sequence-create', 'cashSession', {
-        feature: 'cash',
+      buildEvent("cash-session-sequence-create", "cashSession", {
+        feature: "cash",
         entityLocalId,
         payload: {
-          status: 'open',
+          status: "open",
           openingBalanceCents: 1000,
           _sync: { entityLocalId, localSequence: 1 },
         },
@@ -306,12 +326,12 @@ describe('operational local-first sync routes', () => {
     assert.equal(created.lastLocalSequence, 1);
 
     const update = await push(fixture, [
-      buildEvent('cash-session-sequence-update-newer', 'cashSession', {
-        feature: 'cash',
-        operation: 'update',
+      buildEvent("cash-session-sequence-update-newer", "cashSession", {
+        feature: "cash",
+        operation: "update",
         entityLocalId,
         payload: {
-          status: 'open',
+          status: "open",
           expectedBalanceCents: 1500,
           _sync: { entityLocalId, localSequence: 3 },
         },
@@ -334,12 +354,12 @@ describe('operational local-first sync routes', () => {
     assert.equal(afterUpdate.lastLocalSequence, 3);
 
     const stale = await push(fixture, [
-      buildEvent('cash-session-sequence-update-stale', 'cashSession', {
-        feature: 'cash',
-        operation: 'update',
+      buildEvent("cash-session-sequence-update-stale", "cashSession", {
+        feature: "cash",
+        operation: "update",
         entityLocalId,
         payload: {
-          status: 'open',
+          status: "open",
           expectedBalanceCents: 900,
           _sync: { entityLocalId, localSequence: 2 },
         },
@@ -347,9 +367,8 @@ describe('operational local-first sync routes', () => {
     ]);
 
     assert.equal(
-      (stale.data as { conflicts: Array<{ code: string }> }).conflicts[0]
-        ?.code,
-      'STALE_LOCAL_SEQUENCE',
+      (stale.data as { conflicts: Array<{ code: string }> }).conflicts[0]?.code,
+      "STALE_LOCAL_SEQUENCE",
     );
     const afterStale = await prisma.cashSession.findUniqueOrThrow({
       where: {
@@ -363,80 +382,84 @@ describe('operational local-first sync routes', () => {
     assert.equal(afterStale.lastLocalSequence, 3);
   });
 
-  it('materializes cashMovement/create and keeps it idempotent', async () => {
+  it("materializes cashMovement/create and keeps it idempotent", async () => {
     const fixture = await createFixture();
     const cashSessionLocalId = `${runId}-movement-cash-session`;
     const movementLocalId = `${runId}-cash-movement`;
     await push(fixture, [
-      buildEvent('movement-cash-session-create', 'cashSession', {
-        feature: 'cash',
+      buildEvent("movement-cash-session-create", "cashSession", {
+        feature: "cash",
         entityLocalId: cashSessionLocalId,
-        payload: { status: 'open' },
+        payload: { status: "open" },
       }),
     ]);
 
     await push(fixture, [
-      buildEvent('cash-movement-create', 'cashMovement', {
-        feature: 'cash',
+      buildEvent("cash-movement-create", "cashMovement", {
+        feature: "cash",
         entityLocalId: movementLocalId,
         payload: {
           cashSessionLocalId,
           amountCents: -500,
-          eventType: 'sangria',
+          eventType: "sangria",
         },
       }),
     ]);
     const duplicate = await push(fixture, [
-      buildEvent('cash-movement-domain-duplicate', 'cashMovement', {
-        feature: 'cash',
+      buildEvent("cash-movement-domain-duplicate", "cashMovement", {
+        feature: "cash",
         entityLocalId: movementLocalId,
         payload: {
           cashSessionLocalId,
           amountCents: -500,
-          eventType: 'sangria',
+          eventType: "sangria",
         },
       }),
     ]);
 
-    assert.equal((duplicate.data as { summary: { duplicates: number } }).summary.duplicates, 1);
+    assert.equal(
+      (duplicate.data as { summary: { duplicates: number } }).summary
+        .duplicates,
+      1,
+    );
     const cashEventsCount = await prisma.cashEvent.count({
       where: { companyId: fixture.companyId },
     });
     assert.equal(cashEventsCount, 1);
   });
 
-  it('deduplicates cashMovement/create by _sync idempotencyKey', async () => {
+  it("deduplicates cashMovement/create by _sync idempotencyKey", async () => {
     const fixture = await createFixture();
     const cashSessionLocalId = `${runId}-movement-sync-cash-session`;
     const idempotencyKey = `${runId}-cash-movement-sync-key`;
     await push(fixture, [
-      buildEvent('movement-sync-cash-session-create', 'cashSession', {
-        feature: 'cash',
+      buildEvent("movement-sync-cash-session-create", "cashSession", {
+        feature: "cash",
         entityLocalId: cashSessionLocalId,
-        payload: { status: 'open' },
+        payload: { status: "open" },
       }),
     ]);
 
     await push(fixture, [
-      buildEvent('cash-movement-sync-create-a', 'cashMovement', {
-        feature: 'cash',
+      buildEvent("cash-movement-sync-create-a", "cashMovement", {
+        feature: "cash",
         entityLocalId: `${runId}-cash-movement-sync-a`,
         payload: {
           cashSessionLocalId,
           amountCents: -500,
-          eventType: 'sangria',
+          eventType: "sangria",
           _sync: { idempotencyKey, localSequence: 1 },
         },
       }),
     ]);
     const duplicate = await push(fixture, [
-      buildEvent('cash-movement-sync-create-b', 'cashMovement', {
-        feature: 'cash',
+      buildEvent("cash-movement-sync-create-b", "cashMovement", {
+        feature: "cash",
         entityLocalId: `${runId}-cash-movement-sync-b`,
         payload: {
           cashSessionLocalId,
           amountCents: -500,
-          eventType: 'sangria',
+          eventType: "sangria",
           _sync: { idempotencyKey, localSequence: 2 },
         },
       }),
@@ -453,50 +476,53 @@ describe('operational local-first sync routes', () => {
     assert.equal(cashEventsCount, 1);
   });
 
-  it('materializes sale/create without duplicating the sale domain record', async () => {
+  it("materializes sale/create without duplicating the sale domain record", async () => {
     const fixture = await createFixture();
     const entityLocalId = `${runId}-sale-domain`;
 
     const first = await push(fixture, [
-      buildEvent('sale-domain-create', 'sale', {
+      buildEvent("sale-domain-create", "sale", {
         entityLocalId,
-        payload: { status: 'finalized', totalCents: 8800 },
+        payload: { status: "finalized", totalCents: 8800 },
       }),
     ]);
     const second = await push(fixture, [
-      buildEvent('sale-domain-duplicate', 'sale', {
+      buildEvent("sale-domain-duplicate", "sale", {
         entityLocalId,
-        payload: { status: 'finalized', totalCents: 8800 },
+        payload: { status: "finalized", totalCents: 8800 },
       }),
     ]);
 
     assert.equal(first.status, 202);
-    assert.equal((second.data as { summary: { duplicates: number } }).summary.duplicates, 1);
+    assert.equal(
+      (second.data as { summary: { duplicates: number } }).summary.duplicates,
+      1,
+    );
     const salesCount = await prisma.sale.count({
       where: { companyId: fixture.companyId, localUuid: entityLocalId },
     });
     assert.equal(salesCount, 1);
   });
 
-  it('deduplicates sale/create by _sync entityLocalId with different eventIds', async () => {
+  it("deduplicates sale/create by _sync entityLocalId with different eventIds", async () => {
     const fixture = await createFixture();
     const entityLocalId = `${runId}-sale-sync-domain`;
 
     const first = await push(fixture, [
-      buildEvent('sale-sync-domain-create-a', 'sale', {
+      buildEvent("sale-sync-domain-create-a", "sale", {
         entityLocalId: `${entityLocalId}-transport-a`,
         payload: {
-          status: 'finalized',
+          status: "finalized",
           totalCents: 8800,
           _sync: { entityLocalId, localSequence: 1 },
         },
       }),
     ]);
     const second = await push(fixture, [
-      buildEvent('sale-sync-domain-create-b', 'sale', {
+      buildEvent("sale-sync-domain-create-b", "sale", {
         entityLocalId: `${entityLocalId}-transport-b`,
         payload: {
-          status: 'finalized',
+          status: "finalized",
           totalCents: 8800,
           _sync: { entityLocalId, localSequence: 2 },
         },
@@ -514,21 +540,21 @@ describe('operational local-first sync routes', () => {
     const syncEvent = await prisma.syncEvent.findFirstOrThrow({
       where: {
         companyId: fixture.companyId,
-        eventId: 'sale-sync-domain-create-a',
+        eventId: "sale-sync-domain-create-a",
       },
     });
     assert.equal(salesCount, 1);
     assert.equal(syncEvent.entityLocalId, entityLocalId);
   });
 
-  it('creates SALE_NOT_FOUND conflicts for saleItem and payment without sale', async () => {
+  it("creates SALE_NOT_FOUND conflicts for saleItem and payment without sale", async () => {
     const fixture = await createFixture();
     const response = await push(fixture, [
-      buildEvent('sale-item-missing-sale', 'saleItem', {
+      buildEvent("sale-item-missing-sale", "saleItem", {
         entityLocalId: `${runId}-sale-item-missing`,
         payload: { saleLocalId: `${runId}-missing-sale`, quantityMil: 1000 },
       }),
-      buildEvent('payment-missing-sale', 'payment', {
+      buildEvent("payment-missing-sale", "payment", {
         entityLocalId: `${runId}-payment-missing`,
         payload: {
           saleLocalId: `${runId}-missing-sale`,
@@ -538,88 +564,98 @@ describe('operational local-first sync routes', () => {
     ]);
 
     assert.equal(response.status, 202);
-    const conflicts = (response.data as {
-      conflicts: Array<{ eventId: string; code: string }>;
-    }).conflicts;
+    const conflicts = (
+      response.data as {
+        conflicts: Array<{
+          eventId: string;
+          code: string;
+          details?: Record<string, unknown>;
+        }>;
+      }
+    ).conflicts;
     assert.deepEqual(
       conflicts.map((item) => [item.eventId, item.code]),
       [
-        ['sale-item-missing-sale', 'SALE_NOT_FOUND'],
-        ['payment-missing-sale', 'SALE_NOT_FOUND'],
+        ["sale-item-missing-sale", "SALE_NOT_FOUND"],
+        ["payment-missing-sale", "SALE_NOT_FOUND"],
       ],
     );
   });
 
-  it('materializes duplicate payment as idempotent duplicate', async () => {
+  it("materializes duplicate payment as idempotent duplicate", async () => {
     const fixture = await createFixture();
     const saleLocalId = `${runId}-payment-sale`;
     const paymentLocalId = `${runId}-payment-local`;
     await push(fixture, [
-      buildEvent('payment-sale-create', 'sale', {
+      buildEvent("payment-sale-create", "sale", {
         entityLocalId: saleLocalId,
-        payload: { status: 'finalized', totalCents: 2500 },
+        payload: { status: "finalized", totalCents: 2500 },
       }),
     ]);
     await push(fixture, [
-      buildEvent('payment-create', 'payment', {
+      buildEvent("payment-create", "payment", {
         entityLocalId: paymentLocalId,
         payload: {
           saleLocalId,
           amountCents: 2500,
-          paymentMethod: 'pix',
+          paymentMethod: "pix",
           idempotencyKey: paymentLocalId,
         },
       }),
     ]);
 
     const duplicate = await push(fixture, [
-      buildEvent('payment-domain-duplicate', 'payment', {
+      buildEvent("payment-domain-duplicate", "payment", {
         entityLocalId: `${paymentLocalId}-retry`,
         payload: {
           saleLocalId,
           amountCents: 2500,
-          paymentMethod: 'pix',
+          paymentMethod: "pix",
           idempotencyKey: paymentLocalId,
         },
       }),
     ]);
 
-    assert.equal((duplicate.data as { summary: { duplicates: number } }).summary.duplicates, 1);
+    assert.equal(
+      (duplicate.data as { summary: { duplicates: number } }).summary
+        .duplicates,
+      1,
+    );
     const paymentsCount = await prisma.financialEvent.count({
-      where: { companyId: fixture.companyId, eventType: 'sale_payment' },
+      where: { companyId: fixture.companyId, eventType: "sale_payment" },
     });
     assert.equal(paymentsCount, 1);
   });
 
-  it('deduplicates payment/create by _sync idempotencyKey', async () => {
+  it("deduplicates payment/create by _sync idempotencyKey", async () => {
     const fixture = await createFixture();
     const saleLocalId = `${runId}-payment-sync-sale`;
     const idempotencyKey = `${runId}-payment-sync-key`;
     await push(fixture, [
-      buildEvent('payment-sync-sale-create', 'sale', {
+      buildEvent("payment-sync-sale-create", "sale", {
         entityLocalId: saleLocalId,
-        payload: { status: 'finalized', totalCents: 2500 },
+        payload: { status: "finalized", totalCents: 2500 },
       }),
     ]);
     await push(fixture, [
-      buildEvent('payment-sync-create-a', 'payment', {
+      buildEvent("payment-sync-create-a", "payment", {
         entityLocalId: `${runId}-payment-sync-a`,
         payload: {
           saleLocalId,
           amountCents: 2500,
-          paymentMethod: 'pix',
+          paymentMethod: "pix",
           _sync: { idempotencyKey, localSequence: 1 },
         },
       }),
     ]);
 
     const duplicate = await push(fixture, [
-      buildEvent('payment-sync-create-b', 'payment', {
+      buildEvent("payment-sync-create-b", "payment", {
         entityLocalId: `${runId}-payment-sync-b`,
         payload: {
           saleLocalId,
           amountCents: 2500,
-          paymentMethod: 'pix',
+          paymentMethod: "pix",
           _sync: { idempotencyKey, localSequence: 2 },
         },
       }),
@@ -636,31 +672,35 @@ describe('operational local-first sync routes', () => {
     assert.equal(paymentsCount, 1);
   });
 
-  it('treats repeated receipt for the same sale as idempotent', async () => {
+  it("treats repeated receipt for the same sale as idempotent", async () => {
     const fixture = await createFixture();
     const saleLocalId = `${runId}-receipt-same-sale`;
     const receiptNumber = `${runId}-R-001`;
     await push(fixture, [
-      buildEvent('receipt-sale-create', 'sale', {
+      buildEvent("receipt-sale-create", "sale", {
         entityLocalId: saleLocalId,
-        payload: { status: 'finalized', totalCents: 1200 },
+        payload: { status: "finalized", totalCents: 1200 },
       }),
     ]);
     await push(fixture, [
-      buildEvent('receipt-create', 'receipt', {
+      buildEvent("receipt-create", "receipt", {
         entityLocalId: `${runId}-receipt-local`,
         payload: { saleLocalId, receiptNumber },
       }),
     ]);
 
     const duplicate = await push(fixture, [
-      buildEvent('receipt-same-sale-duplicate', 'receipt', {
+      buildEvent("receipt-same-sale-duplicate", "receipt", {
         entityLocalId: `${runId}-receipt-local-2`,
         payload: { saleLocalId, receiptNumber },
       }),
     ]);
 
-    assert.equal((duplicate.data as { summary: { duplicates: number } }).summary.duplicates, 1);
+    assert.equal(
+      (duplicate.data as { summary: { duplicates: number } }).summary
+        .duplicates,
+      1,
+    );
     const sale = await prisma.sale.findUniqueOrThrow({
       where: {
         companyId_localUuid: {
@@ -672,28 +712,28 @@ describe('operational local-first sync routes', () => {
     assert.equal(sale.receiptNumber, receiptNumber);
   });
 
-  it('creates DUPLICATE_RECEIPT when receipt number belongs to another sale', async () => {
+  it("creates DUPLICATE_RECEIPT when receipt number belongs to another sale", async () => {
     const fixture = await createFixture();
     const receiptNumber = `${runId}-R-002`;
     await push(fixture, [
-      buildEvent('receipt-sale-a-create', 'sale', {
+      buildEvent("receipt-sale-a-create", "sale", {
         entityLocalId: `${runId}-receipt-sale-a`,
-        payload: { status: 'finalized', totalCents: 1200 },
+        payload: { status: "finalized", totalCents: 1200 },
       }),
-      buildEvent('receipt-sale-b-create', 'sale', {
+      buildEvent("receipt-sale-b-create", "sale", {
         entityLocalId: `${runId}-receipt-sale-b`,
-        payload: { status: 'finalized', totalCents: 1400 },
+        payload: { status: "finalized", totalCents: 1400 },
       }),
     ]);
     await push(fixture, [
-      buildEvent('receipt-sale-a-receipt', 'receipt', {
+      buildEvent("receipt-sale-a-receipt", "receipt", {
         entityLocalId: `${runId}-receipt-a`,
         payload: { saleLocalId: `${runId}-receipt-sale-a`, receiptNumber },
       }),
     ]);
 
     const conflict = await push(fixture, [
-      buildEvent('receipt-sale-b-conflict', 'receipt', {
+      buildEvent("receipt-sale-b-conflict", "receipt", {
         entityLocalId: `${runId}-receipt-b`,
         payload: { saleLocalId: `${runId}-receipt-sale-b`, receiptNumber },
       }),
@@ -702,48 +742,89 @@ describe('operational local-first sync routes', () => {
     assert.equal(
       (conflict.data as { conflicts: Array<{ code: string }> }).conflicts[0]
         ?.code,
-      'DUPLICATE_RECEIPT',
+      "DUPLICATE_RECEIPT",
     );
   });
 
-  it('creates stock conflicts for unavailable stock and missing remote variant', async () => {
+  it("creates stock conflicts for unavailable stock and missing remote variant", async () => {
     const fixture = await createFixture();
     const product = await createProduct(fixture, { stockMil: 0 });
 
     const response = await push(fixture, [
-      buildEvent('stock-reservation-unavailable', 'stockReservation', {
+      buildEvent("stock-reservation-unavailable", "stockReservation", {
         entityLocalId: `${runId}-stock-reservation`,
         payload: { productId: product.id, quantityMil: 1000 },
       }),
-      buildEvent('stock-deduction-missing-variant', 'stockDeduction', {
+      buildEvent("stock-deduction-missing-variant", "stockDeduction", {
         entityLocalId: `${runId}-stock-deduction`,
         payload: {
-          productVariantId: '11111111-1111-4111-8111-111111111111',
+          productVariantId: "11111111-1111-4111-8111-111111111111",
           quantityMil: 1000,
         },
       }),
     ]);
 
-    const conflicts = (response.data as {
-      conflicts: Array<{ eventId: string; code: string }>;
-    }).conflicts;
+    const conflicts = (
+      response.data as {
+        conflicts: Array<{
+          eventId: string;
+          code: string;
+          details?: Record<string, unknown>;
+        }>;
+      }
+    ).conflicts;
     assert.deepEqual(
       conflicts.map((item) => [item.eventId, item.code]),
       [
-        ['stock-reservation-unavailable', 'STOCK_UNAVAILABLE'],
-        ['stock-deduction-missing-variant', 'STOCK_VARIANT_NOT_FOUND'],
+        ["stock-reservation-unavailable", "STOCK_UNAVAILABLE"],
+        ["stock-deduction-missing-variant", "STOCK_VARIANT_NOT_FOUND"],
       ],
+    );
+    assert.deepEqual(conflicts[1]?.details, {
+      entity: "stockDeduction",
+      operation: "create",
+      entityLocalId: `${runId}-stock-deduction`,
+      productId: null,
+      productVariantId: "11111111-1111-4111-8111-111111111111",
+      productLocalId: null,
+      productVariantLocalId: null,
+    });
+  });
+
+  it("rejects local numeric product ids in stock remote id fields", async () => {
+    const fixture = await createFixture();
+
+    const response = await push(fixture, [
+      buildEvent("stock-deduction-local-product-id", "stockDeduction", {
+        entityLocalId: `${runId}-stock-deduction-local-id`,
+        payload: {
+          productId: 1,
+          productLocalId: 1,
+          productVariantLocalId: 10,
+          quantityMil: 1000,
+        },
+      }),
+    ]);
+
+    const rejected = (
+      response.data as {
+        rejected: Array<{ eventId: string; code: string }>;
+      }
+    ).rejected;
+    assert.deepEqual(
+      rejected.map((item) => [item.eventId, item.code]),
+      [["stock-deduction-local-product-id", "INVALID_REMOTE_ID"]],
     );
   });
 
-  it('deduplicates stockReservation/create and stockDeduction/create by _sync idempotencyKey', async () => {
+  it("deduplicates stockReservation/create and stockDeduction/create by _sync idempotencyKey", async () => {
     const fixture = await createFixture();
     const product = await createProduct(fixture, { stockMil: 10_000 });
     const reservationKey = `${runId}-stock-reservation-sync-key`;
     const deductionKey = `${runId}-stock-deduction-sync-key`;
 
     await push(fixture, [
-      buildEvent('stock-reservation-sync-create-a', 'stockReservation', {
+      buildEvent("stock-reservation-sync-create-a", "stockReservation", {
         entityLocalId: `${runId}-stock-reservation-sync-a`,
         payload: {
           productId: product.id,
@@ -751,7 +832,7 @@ describe('operational local-first sync routes', () => {
           _sync: { idempotencyKey: reservationKey, localSequence: 1 },
         },
       }),
-      buildEvent('stock-deduction-sync-create-a', 'stockDeduction', {
+      buildEvent("stock-deduction-sync-create-a", "stockDeduction", {
         entityLocalId: `${runId}-stock-deduction-sync-a`,
         payload: {
           productId: product.id,
@@ -762,7 +843,7 @@ describe('operational local-first sync routes', () => {
     ]);
 
     const duplicate = await push(fixture, [
-      buildEvent('stock-reservation-sync-create-b', 'stockReservation', {
+      buildEvent("stock-reservation-sync-create-b", "stockReservation", {
         entityLocalId: `${runId}-stock-reservation-sync-b`,
         payload: {
           productId: product.id,
@@ -770,7 +851,7 @@ describe('operational local-first sync routes', () => {
           _sync: { idempotencyKey: reservationKey, localSequence: 2 },
         },
       }),
-      buildEvent('stock-deduction-sync-create-b', 'stockDeduction', {
+      buildEvent("stock-deduction-sync-create-b", "stockDeduction", {
         entityLocalId: `${runId}-stock-deduction-sync-b`,
         payload: {
           productId: product.id,
@@ -800,18 +881,18 @@ describe('operational local-first sync routes', () => {
     assert.equal(updatedProduct.stockMil, 9000);
   });
 
-  it('creates SyncIncident when materialization fails unexpectedly', async () => {
+  it("creates SyncIncident when materialization fails unexpectedly", async () => {
     const fixture = await createFixture();
     const saleLocalId = `${runId}-payment-overflow-sale`;
     await push(fixture, [
-      buildEvent('payment-overflow-sale-create', 'sale', {
+      buildEvent("payment-overflow-sale-create", "sale", {
         entityLocalId: saleLocalId,
-        payload: { status: 'finalized', totalCents: 1000 },
+        payload: { status: "finalized", totalCents: 1000 },
       }),
     ]);
 
     const response = await push(fixture, [
-      buildEvent('payment-overflow-failure', 'payment', {
+      buildEvent("payment-overflow-failure", "payment", {
         entityLocalId: `${runId}-payment-overflow`,
         payload: {
           saleLocalId,
@@ -820,23 +901,25 @@ describe('operational local-first sync routes', () => {
       }),
     ]);
 
-    const rejected = (response.data as {
-      rejected: Array<{ code: string }>;
-    }).rejected;
-    assert.equal(rejected[0]?.code, 'SYNC_MATERIALIZATION_FAILED');
+    const rejected = (
+      response.data as {
+        rejected: Array<{ code: string }>;
+      }
+    ).rejected;
+    assert.equal(rejected[0]?.code, "SYNC_MATERIALIZATION_FAILED");
 
     const [failedEvent, incident] = await Promise.all([
       prisma.syncEvent.findFirst({
         where: {
           companyId: fixture.companyId,
-          eventId: 'payment-overflow-failure',
-          status: 'FAILED',
+          eventId: "payment-overflow-failure",
+          status: "FAILED",
         },
       }),
       prisma.syncIncident.findFirst({
         where: {
           companyId: fixture.companyId,
-          code: 'SYNC_MATERIALIZATION_FAILED',
+          code: "SYNC_MATERIALIZATION_FAILED",
         },
       }),
     ]);
@@ -844,27 +927,29 @@ describe('operational local-first sync routes', () => {
     assert.notEqual(incident, null);
   });
 
-  it('materializes operationalOrder/create', async () => {
+  it("materializes operationalOrder/create", async () => {
     const fixture = await createFixture();
     const orderLocalId = `${runId}-operational-order`;
 
     const response = await push(fixture, [
-      buildEvent('operational-order-create', 'operationalOrder', {
+      buildEvent("operational-order-create", "operationalOrder", {
         entityLocalId: orderLocalId,
         payload: {
-          status: 'open',
+          status: "open",
           subtotalCents: 3200,
           discountCents: 200,
           totalCents: 3000,
-          notes: 'Mesa 4',
+          notes: "Mesa 4",
         },
       }),
     ]);
 
     assert.equal(response.status, 202);
-    const accepted = (response.data as {
-      accepted: Array<{ entityServerId: string | null }>;
-    }).accepted;
+    const accepted = (
+      response.data as {
+        accepted: Array<{ entityServerId: string | null }>;
+      }
+    ).accepted;
     assert.notEqual(accepted[0]?.entityServerId, null);
 
     const order = await prisma.operationalOrder.findUniqueOrThrow({
@@ -875,51 +960,55 @@ describe('operational local-first sync routes', () => {
         },
       },
     });
-    assert.equal(order.status, 'open');
+    assert.equal(order.status, "open");
     assert.equal(order.totalCents, 3000);
     assert.equal(order.deviceId, fixture.deviceId);
     assert.equal(order.sellerUserId, fixture.userId);
   });
 
-  it('keeps duplicate operationalOrder/create idempotent', async () => {
+  it("keeps duplicate operationalOrder/create idempotent", async () => {
     const fixture = await createFixture();
     const orderLocalId = `${runId}-operational-order-duplicate`;
 
     await push(fixture, [
-      buildEvent('operational-order-duplicate-a', 'operationalOrder', {
+      buildEvent("operational-order-duplicate-a", "operationalOrder", {
         entityLocalId: orderLocalId,
-        payload: { status: 'open', totalCents: 1800 },
+        payload: { status: "open", totalCents: 1800 },
       }),
     ]);
     const duplicate = await push(fixture, [
-      buildEvent('operational-order-duplicate-b', 'operationalOrder', {
+      buildEvent("operational-order-duplicate-b", "operationalOrder", {
         entityLocalId: orderLocalId,
-        payload: { status: 'open', totalCents: 1800 },
+        payload: { status: "open", totalCents: 1800 },
       }),
     ]);
 
-    assert.equal((duplicate.data as { summary: { duplicates: number } }).summary.duplicates, 1);
+    assert.equal(
+      (duplicate.data as { summary: { duplicates: number } }).summary
+        .duplicates,
+      1,
+    );
     const ordersCount = await prisma.operationalOrder.count({
       where: { companyId: fixture.companyId, localUuid: orderLocalId },
     });
     assert.equal(ordersCount, 1);
   });
 
-  it('materializes operationalOrder/update status changes', async () => {
+  it("materializes operationalOrder/update status changes", async () => {
     const fixture = await createFixture();
     const orderLocalId = `${runId}-operational-order-update`;
     await push(fixture, [
-      buildEvent('operational-order-update-create', 'operationalOrder', {
+      buildEvent("operational-order-update-create", "operationalOrder", {
         entityLocalId: orderLocalId,
-        payload: { status: 'open', totalCents: 1800 },
+        payload: { status: "open", totalCents: 1800 },
       }),
     ]);
 
     const response = await push(fixture, [
-      buildEvent('operational-order-update-close', 'operationalOrder', {
-        operation: 'update',
+      buildEvent("operational-order-update-close", "operationalOrder", {
+        operation: "update",
         entityLocalId: orderLocalId,
-        payload: { status: 'closed', totalCents: 2000, notes: 'Fechado' },
+        payload: { status: "closed", totalCents: 2000, notes: "Fechado" },
       }),
     ]);
 
@@ -932,20 +1021,20 @@ describe('operational local-first sync routes', () => {
         },
       },
     });
-    assert.equal(order.status, 'closed');
+    assert.equal(order.status, "closed");
     assert.equal(order.totalCents, 2000);
     assert.equal(order.lastLocalSequence, null);
     assert.notEqual(order.closedAt, null);
   });
 
-  it('accepts two operationalOrder updates with increasing localSequence', async () => {
+  it("accepts two operationalOrder updates with increasing localSequence", async () => {
     const fixture = await createFixture();
     const orderLocalId = `${runId}-operational-order-sequence`;
     await push(fixture, [
-      buildEvent('operational-order-sequence-create', 'operationalOrder', {
+      buildEvent("operational-order-sequence-create", "operationalOrder", {
         entityLocalId: orderLocalId,
         payload: {
-          status: 'open',
+          status: "open",
           totalCents: 1000,
           _sync: { entityLocalId: orderLocalId, localSequence: 1 },
         },
@@ -962,22 +1051,22 @@ describe('operational local-first sync routes', () => {
     assert.equal(created.lastLocalSequence, 1);
 
     const firstUpdate = await push(fixture, [
-      buildEvent('operational-order-sequence-update-a', 'operationalOrder', {
-        operation: 'update',
+      buildEvent("operational-order-sequence-update-a", "operationalOrder", {
+        operation: "update",
         entityLocalId: orderLocalId,
         payload: {
-          status: 'open',
+          status: "open",
           totalCents: 1200,
           _sync: { entityLocalId: orderLocalId, localSequence: 2 },
         },
       }),
     ]);
     const secondUpdate = await push(fixture, [
-      buildEvent('operational-order-sequence-update-b', 'operationalOrder', {
-        operation: 'update',
+      buildEvent("operational-order-sequence-update-b", "operationalOrder", {
+        operation: "update",
         entityLocalId: orderLocalId,
         payload: {
-          status: 'open',
+          status: "open",
           totalCents: 1500,
           _sync: { entityLocalId: orderLocalId, localSequence: 3 },
         },
@@ -1004,25 +1093,25 @@ describe('operational local-first sync routes', () => {
     assert.equal(order.lastLocalSequence, 3);
   });
 
-  it('does not let stale operationalOrder localSequence overwrite newer state', async () => {
+  it("does not let stale operationalOrder localSequence overwrite newer state", async () => {
     const fixture = await createFixture();
     const orderLocalId = `${runId}-operational-order-stale-sequence`;
     await push(fixture, [
-      buildEvent('operational-order-stale-create', 'operationalOrder', {
+      buildEvent("operational-order-stale-create", "operationalOrder", {
         entityLocalId: orderLocalId,
         payload: {
-          status: 'open',
+          status: "open",
           totalCents: 1000,
           _sync: { entityLocalId: orderLocalId, localSequence: 10 },
         },
       }),
     ]);
     await push(fixture, [
-      buildEvent('operational-order-stale-update-newer', 'operationalOrder', {
-        operation: 'update',
+      buildEvent("operational-order-stale-update-newer", "operationalOrder", {
+        operation: "update",
         entityLocalId: orderLocalId,
         payload: {
-          status: 'open',
+          status: "open",
           totalCents: 2000,
           _sync: { entityLocalId: orderLocalId, localSequence: 20 },
         },
@@ -1030,11 +1119,11 @@ describe('operational local-first sync routes', () => {
     ]);
 
     const stale = await push(fixture, [
-      buildEvent('operational-order-stale-update-older', 'operationalOrder', {
-        operation: 'update',
+      buildEvent("operational-order-stale-update-older", "operationalOrder", {
+        operation: "update",
         entityLocalId: orderLocalId,
         payload: {
-          status: 'open',
+          status: "open",
           totalCents: 1500,
           _sync: { entityLocalId: orderLocalId, localSequence: 15 },
         },
@@ -1042,9 +1131,8 @@ describe('operational local-first sync routes', () => {
     ]);
 
     assert.equal(
-      (stale.data as { conflicts: Array<{ code: string }> }).conflicts[0]
-        ?.code,
-      'STALE_LOCAL_SEQUENCE',
+      (stale.data as { conflicts: Array<{ code: string }> }).conflicts[0]?.code,
+      "STALE_LOCAL_SEQUENCE",
     );
     const order = await prisma.operationalOrder.findUniqueOrThrow({
       where: {
@@ -1058,23 +1146,23 @@ describe('operational local-first sync routes', () => {
     assert.equal(order.lastLocalSequence, 20);
   });
 
-  it('materializes operationalOrderItem/create', async () => {
+  it("materializes operationalOrderItem/create", async () => {
     const fixture = await createFixture();
     const orderLocalId = `${runId}-order-item-order`;
     const itemLocalId = `${runId}-order-item`;
     await push(fixture, [
-      buildEvent('order-item-order-create', 'operationalOrder', {
+      buildEvent("order-item-order-create", "operationalOrder", {
         entityLocalId: orderLocalId,
-        payload: { status: 'open', totalCents: 1500 },
+        payload: { status: "open", totalCents: 1500 },
       }),
     ]);
 
     const response = await push(fixture, [
-      buildEvent('order-item-create', 'operationalOrderItem', {
+      buildEvent("order-item-create", "operationalOrderItem", {
         entityLocalId: itemLocalId,
         payload: {
           operationalOrderLocalId: orderLocalId,
-          description: 'Item avulso',
+          description: "Item avulso",
           quantityMil: 1000,
           unitPriceCents: 1500,
           totalCents: 1500,
@@ -1091,20 +1179,20 @@ describe('operational local-first sync routes', () => {
         },
       },
     });
-    assert.equal(item.description, 'Item avulso');
+    assert.equal(item.description, "Item avulso");
     assert.equal(item.quantityMil, 1000);
     assert.equal(item.totalCents, 1500);
   });
 
-  it('creates OPERATIONAL_ORDER_NOT_FOUND for item without order', async () => {
+  it("creates OPERATIONAL_ORDER_NOT_FOUND for item without order", async () => {
     const fixture = await createFixture();
 
     const response = await push(fixture, [
-      buildEvent('order-item-without-order', 'operationalOrderItem', {
+      buildEvent("order-item-without-order", "operationalOrderItem", {
         entityLocalId: `${runId}-order-item-without-order`,
         payload: {
           operationalOrderLocalId: `${runId}-missing-order`,
-          description: 'Item perdido',
+          description: "Item perdido",
           quantityMil: 1000,
           totalCents: 1000,
         },
@@ -1114,26 +1202,26 @@ describe('operational local-first sync routes', () => {
     assert.equal(
       (response.data as { conflicts: Array<{ code: string }> }).conflicts[0]
         ?.code,
-      'OPERATIONAL_ORDER_NOT_FOUND',
+      "OPERATIONAL_ORDER_NOT_FOUND",
     );
   });
 
-  it('keeps duplicate operationalOrderItem/create idempotent', async () => {
+  it("keeps duplicate operationalOrderItem/create idempotent", async () => {
     const fixture = await createFixture();
     const orderLocalId = `${runId}-order-item-duplicate-order`;
     const itemLocalId = `${runId}-order-item-duplicate`;
     await push(fixture, [
-      buildEvent('order-item-duplicate-order-create', 'operationalOrder', {
+      buildEvent("order-item-duplicate-order-create", "operationalOrder", {
         entityLocalId: orderLocalId,
-        payload: { status: 'open', totalCents: 1000 },
+        payload: { status: "open", totalCents: 1000 },
       }),
     ]);
     await push(fixture, [
-      buildEvent('order-item-duplicate-a', 'operationalOrderItem', {
+      buildEvent("order-item-duplicate-a", "operationalOrderItem", {
         entityLocalId: itemLocalId,
         payload: {
           operationalOrderLocalId: orderLocalId,
-          description: 'Cafe',
+          description: "Cafe",
           quantityMil: 1000,
           totalCents: 1000,
         },
@@ -1141,40 +1229,44 @@ describe('operational local-first sync routes', () => {
     ]);
 
     const duplicate = await push(fixture, [
-      buildEvent('order-item-duplicate-b', 'operationalOrderItem', {
+      buildEvent("order-item-duplicate-b", "operationalOrderItem", {
         entityLocalId: itemLocalId,
         payload: {
           operationalOrderLocalId: orderLocalId,
-          description: 'Cafe',
+          description: "Cafe",
           quantityMil: 1000,
           totalCents: 1000,
         },
       }),
     ]);
 
-    assert.equal((duplicate.data as { summary: { duplicates: number } }).summary.duplicates, 1);
+    assert.equal(
+      (duplicate.data as { summary: { duplicates: number } }).summary
+        .duplicates,
+      1,
+    );
     const count = await prisma.operationalOrderItem.count({
       where: { companyId: fixture.companyId, localUuid: itemLocalId },
     });
     assert.equal(count, 1);
   });
 
-  it('deduplicates operationalOrderItem/create by _sync idempotencyKey', async () => {
+  it("deduplicates operationalOrderItem/create by _sync idempotencyKey", async () => {
     const fixture = await createFixture();
     const orderLocalId = `${runId}-order-item-sync-order`;
     const itemKey = `${runId}-order-item-sync-key`;
     await push(fixture, [
-      buildEvent('order-item-sync-order-create', 'operationalOrder', {
+      buildEvent("order-item-sync-order-create", "operationalOrder", {
         entityLocalId: orderLocalId,
-        payload: { status: 'open', totalCents: 1000 },
+        payload: { status: "open", totalCents: 1000 },
       }),
     ]);
     await push(fixture, [
-      buildEvent('order-item-sync-create-a', 'operationalOrderItem', {
+      buildEvent("order-item-sync-create-a", "operationalOrderItem", {
         entityLocalId: `${runId}-order-item-sync-a`,
         payload: {
           operationalOrderLocalId: orderLocalId,
-          description: 'Cafe',
+          description: "Cafe",
           quantityMil: 1000,
           totalCents: 1000,
           _sync: { idempotencyKey: itemKey, localSequence: 1 },
@@ -1183,11 +1275,11 @@ describe('operational local-first sync routes', () => {
     ]);
 
     const duplicate = await push(fixture, [
-      buildEvent('order-item-sync-create-b', 'operationalOrderItem', {
+      buildEvent("order-item-sync-create-b", "operationalOrderItem", {
         entityLocalId: `${runId}-order-item-sync-b`,
         payload: {
           operationalOrderLocalId: orderLocalId,
-          description: 'Cafe',
+          description: "Cafe",
           quantityMil: 1000,
           totalCents: 1000,
           _sync: { idempotencyKey: itemKey, localSequence: 2 },
@@ -1206,22 +1298,22 @@ describe('operational local-first sync routes', () => {
     assert.equal(count, 1);
   });
 
-  it('marks operationalOrder as converted when sale/create references it', async () => {
+  it("marks operationalOrder as converted when sale/create references it", async () => {
     const fixture = await createFixture();
     const orderLocalId = `${runId}-order-sale-conversion`;
     const saleLocalId = `${runId}-sale-from-order`;
     await push(fixture, [
-      buildEvent('order-sale-conversion-create', 'operationalOrder', {
+      buildEvent("order-sale-conversion-create", "operationalOrder", {
         entityLocalId: orderLocalId,
-        payload: { status: 'open', totalCents: 4500 },
+        payload: { status: "open", totalCents: 4500 },
       }),
     ]);
 
     const response = await push(fixture, [
-      buildEvent('sale-from-operational-order', 'sale', {
+      buildEvent("sale-from-operational-order", "sale", {
         entityLocalId: saleLocalId,
         payload: {
-          status: 'finalized',
+          status: "finalized",
           totalCents: 4500,
           operationalOrderLocalId: orderLocalId,
         },
@@ -1247,25 +1339,25 @@ describe('operational local-first sync routes', () => {
         },
       }),
     ]);
-    assert.equal(order.status, 'converted');
+    assert.equal(order.status, "converted");
     assert.equal(order.convertedSaleId, sale.id);
     assert.notEqual(order.closedAt, null);
   });
 
-  it('creates OPERATIONAL_ORDER_IMMUTABLE when updating a converted order', async () => {
+  it("creates OPERATIONAL_ORDER_IMMUTABLE when updating a converted order", async () => {
     const fixture = await createFixture();
     const orderLocalId = `${runId}-converted-order`;
     await push(fixture, [
-      buildEvent('converted-order-create', 'operationalOrder', {
+      buildEvent("converted-order-create", "operationalOrder", {
         entityLocalId: orderLocalId,
-        payload: { status: 'open', totalCents: 4500 },
+        payload: { status: "open", totalCents: 4500 },
       }),
     ]);
     await push(fixture, [
-      buildEvent('converted-order-sale', 'sale', {
+      buildEvent("converted-order-sale", "sale", {
         entityLocalId: `${runId}-converted-order-sale`,
         payload: {
-          status: 'finalized',
+          status: "finalized",
           totalCents: 4500,
           operationalOrderLocalId: orderLocalId,
         },
@@ -1273,40 +1365,40 @@ describe('operational local-first sync routes', () => {
     ]);
 
     const response = await push(fixture, [
-      buildEvent('converted-order-update-conflict', 'operationalOrder', {
-        operation: 'update',
+      buildEvent("converted-order-update-conflict", "operationalOrder", {
+        operation: "update",
         entityLocalId: orderLocalId,
-        payload: { status: 'open', totalCents: 4000 },
+        payload: { status: "open", totalCents: 4000 },
       }),
     ]);
 
     assert.equal(
       (response.data as { conflicts: Array<{ code: string }> }).conflicts[0]
         ?.code,
-      'OPERATIONAL_ORDER_IMMUTABLE',
+      "OPERATIONAL_ORDER_IMMUTABLE",
     );
   });
 
-  it('does not create product or customer records from operational sync events', async () => {
+  it("does not create product or customer records from operational sync events", async () => {
     const fixture = await createFixture();
     const orderLocalId = `${runId}-free-description-order`;
-    const missingCustomerId = '22222222-2222-4222-8222-222222222222';
-    const missingProductId = '33333333-3333-4333-8333-333333333333';
+    const missingCustomerId = "22222222-2222-4222-8222-222222222222";
+    const missingProductId = "33333333-3333-4333-8333-333333333333";
     await push(fixture, [
-      buildEvent('free-description-order-create', 'operationalOrder', {
+      buildEvent("free-description-order-create", "operationalOrder", {
         entityLocalId: orderLocalId,
         payload: {
-          status: 'open',
+          status: "open",
           totalCents: 1000,
           customerId: missingCustomerId,
         },
       }),
-      buildEvent('free-description-item-create', 'operationalOrderItem', {
+      buildEvent("free-description-item-create", "operationalOrderItem", {
         entityLocalId: `${runId}-free-description-item`,
         payload: {
           operationalOrderLocalId: orderLocalId,
           productId: missingProductId,
-          description: 'Produto digitado no PDV',
+          description: "Produto digitado no PDV",
           quantityMil: 1000,
           totalCents: 1000,
         },
@@ -1335,70 +1427,266 @@ describe('operational local-first sync routes', () => {
     assert.equal(order.customerId, null);
   });
 
-  it('pulls operationalOrder event only for the same company with entityServerId', async () => {
+  it("pulls operationalOrder event only for the same company with entityServerId", async () => {
     const fixture = await createFixture();
     const otherFixture = await createFixture();
     await push(fixture, [
-      buildEvent('pull-operational-order', 'operationalOrder', {
+      buildEvent("pull-operational-order", "operationalOrder", {
         entityLocalId: `${runId}-pull-operational-order`,
-        payload: { status: 'open', totalCents: 1000 },
+        payload: { status: "open", totalCents: 1000 },
       }),
     ]);
     await push(otherFixture, [
-      buildEvent('pull-other-operational-order', 'operationalOrder', {
+      buildEvent("pull-other-operational-order", "operationalOrder", {
         entityLocalId: `${runId}-pull-other-operational-order`,
-        payload: { status: 'open', totalCents: 1000 },
+        payload: { status: "open", totalCents: 1000 },
       }),
     ]);
 
-    const response = await requestJson('GET', '/sync/pull?sinceVersion=0', {
+    const response = await requestJson("GET", "/sync/pull?sinceVersion=0", {
       token: fixture.token,
     });
 
-    const events = (response.data as {
-      events: Array<{
-        eventId: string;
-        entity: string;
-        entityServerId: string | null;
-      }>;
-    }).events;
+    const events = (
+      response.data as {
+        events: Array<{
+          eventId: string;
+          entity: string;
+          entityServerId: string | null;
+        }>;
+      }
+    ).events;
     assert.deepEqual(
       events.map((event) => event.eventId),
-      ['pull-operational-order'],
+      ["pull-operational-order"],
     );
-    assert.equal(events[0]?.entity, 'operationalOrder');
+    assert.equal(events[0]?.entity, "operationalOrder");
     assert.notEqual(events[0]?.entityServerId, null);
   });
 
-  it('pulls only local-first PDV events from the same company', async () => {
+  it("device B pulls a sale created by device A with projection", async () => {
+    const deviceA = await createFixture();
+    const deviceB = await createAdditionalDevice(deviceA);
+    await push(deviceA, [
+      buildEvent("pull-sale-projection", "sale", {
+        entityLocalId: `${runId}-pull-sale-projection`,
+        payload: {
+          status: "finalized",
+          totalCents: 4500,
+          receiptNumber: `${runId}-receipt-sale-projection`,
+        },
+      }),
+    ]);
+
+    const response = await pull(deviceB, {
+      sinceVersion: 0,
+      includeOwnEvents: false,
+    });
+
+    assert.equal(response.status, 200);
+    const events = (response.data as PullResponse).events;
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.eventId, "pull-sale-projection");
+    assert.equal(events[0]?.entity, "sale");
+    assert.equal(events[0]?.projectionWarning, null);
+    assert.notEqual(events[0]?.entityServerId, null);
+    assert.equal(
+      events[0]?.projection?.entityServerId,
+      events[0]?.entityServerId,
+    );
+    assert.equal(events[0]?.projection?.total.totalAmountCents, 4500);
+    assert.equal(
+      events[0]?.projection?.receiptNumber,
+      `${runId}-receipt-sale-projection`,
+    );
+  });
+
+  it("device B pulls an operationalOrder created by device A with projection", async () => {
+    const deviceA = await createFixture();
+    const deviceB = await createAdditionalDevice(deviceA);
+    await push(deviceA, [
+      buildEvent("pull-order-projection", "operationalOrder", {
+        entityLocalId: `${runId}-pull-order-projection`,
+        payload: {
+          status: "open",
+          subtotalCents: 2000,
+          discountCents: 100,
+          totalCents: 1900,
+        },
+      }),
+    ]);
+
+    const response = await pull(deviceB, {
+      sinceVersion: 0,
+      includeOwnEvents: false,
+    });
+
+    const events = (response.data as PullResponse).events;
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.entity, "operationalOrder");
+    assert.equal(
+      events[0]?.projection?.entityServerId,
+      events[0]?.entityServerId,
+    );
+    assert.equal(events[0]?.projection?.status, "open");
+    assert.equal(events[0]?.projection?.totals.totalCents, 1900);
+    assert.equal(events[0]?.projection?.itemsCount, 0);
+  });
+
+  it("device B pulls cashSession and cashMovement projections", async () => {
+    const deviceA = await createFixture();
+    const deviceB = await createAdditionalDevice(deviceA);
+    const cashSessionLocalId = `${runId}-cash-session-pull`;
+    await push(deviceA, [
+      buildEvent("pull-cash-session-projection", "cashSession", {
+        feature: "cash",
+        entityLocalId: cashSessionLocalId,
+        payload: {
+          status: "open",
+          openingBalanceCents: 1000,
+          openedAt: new Date().toISOString(),
+        },
+      }),
+      buildEvent("pull-cash-movement-projection", "cashMovement", {
+        feature: "cash",
+        entityLocalId: `${runId}-cash-movement-pull`,
+        payload: {
+          cashSessionLocalId,
+          type: "cash_in",
+          amountCents: 2500,
+          reason: "reforco",
+        },
+      }),
+    ]);
+
+    const response = await pull(deviceB, {
+      sinceVersion: 0,
+      features: "cash",
+      includeOwnEvents: false,
+    });
+
+    const events = (response.data as PullResponse).events;
+    assert.deepEqual(
+      events.map((event) => event.entity),
+      ["cashSession", "cashMovement"],
+    );
+    assert.equal(events[0]?.projection?.totals.openingBalanceCents, 1000);
+    assert.equal(events[1]?.projection?.amountCents, 2500);
+    assert.equal(
+      events[1]?.projection?.cashSessionId,
+      events[0]?.entityServerId,
+    );
+  });
+
+  it("device B pulls stockDeduction projection from device A", async () => {
+    const deviceA = await createFixture();
+    const deviceB = await createAdditionalDevice(deviceA);
+    const product = await createProduct(deviceA, { stockMil: 5000 });
+    await push(deviceA, [
+      buildEvent("pull-stock-deduction-projection", "stockDeduction", {
+        entityLocalId: `${runId}-stock-deduction-pull`,
+        payload: {
+          productId: product.id,
+          productLocalId: 1,
+          quantityMil: 1000,
+        },
+      }),
+    ]);
+
+    const response = await pull(deviceB, {
+      sinceVersion: 0,
+      includeOwnEvents: false,
+    });
+
+    const events = (response.data as PullResponse).events;
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.entity, "stockDeduction");
+    assert.equal(events[0]?.projection?.productId, product.id);
+    assert.equal(events[0]?.projection?.productVariantId, null);
+    assert.equal(events[0]?.projection?.quantityMil, 1000);
+  });
+
+  it("pulls only local-first PDV events from the same company", async () => {
     const fixture = await createFixture();
     const otherFixture = await createFixture();
     await push(fixture, [
-      buildEvent('pull-sale', 'sale'),
-      buildEvent('pull-product-rejected', 'product'),
+      buildEvent("pull-sale", "sale"),
+      buildEvent("pull-product-rejected", "product"),
+      buildEvent("pull-customer-rejected", "customer"),
     ]);
-    await push(otherFixture, [buildEvent('other-company-sale', 'sale')]);
+    await push(otherFixture, [buildEvent("other-company-sale", "sale")]);
 
-    const response = await requestJson('GET', '/sync/pull?sinceVersion=0', {
+    const response = await requestJson("GET", "/sync/pull?sinceVersion=0", {
       token: fixture.token,
     });
 
     assert.equal(response.status, 200);
-    const events = (response.data as {
-      events: Array<{ eventId: string; entity: string }>;
-    }).events;
+    const events = (
+      response.data as {
+        events: Array<{ eventId: string; entity: string }>;
+      }
+    ).events;
     assert.deepEqual(
       events.map((event) => event.eventId),
-      ['pull-sale'],
+      ["pull-sale"],
     );
-    assert.ok(events.every((event) => event.entity !== 'product'));
+    assert.ok(events.every((event) => event.entity !== "product"));
+    assert.ok(events.every((event) => event.entity !== "customer"));
   });
 
-  it('returns checkpoints and current server version in status', async () => {
+  it("pull respects sinceVersion and limit", async () => {
     const fixture = await createFixture();
-    await push(fixture, [buildEvent('status-sale', 'sale')]);
+    const firstPush = await push(fixture, [
+      buildEvent("pull-version-first", "sale"),
+    ]);
+    await push(fixture, [buildEvent("pull-version-second", "sale")]);
 
-    const response = await requestJson('GET', '/sync/status', {
+    const firstVersion = (
+      firstPush.data as {
+        accepted: Array<{ serverVersion: string }>;
+      }
+    ).accepted[0]!.serverVersion;
+
+    const sinceResponse = await pull(fixture, {
+      sinceVersion: Number(firstVersion),
+    });
+    assert.deepEqual(
+      (sinceResponse.data as PullResponse).events.map((event) => event.eventId),
+      ["pull-version-second"],
+    );
+
+    const limitedResponse = await pull(fixture, { sinceVersion: 0, limit: 1 });
+    const limitedPayload = limitedResponse.data as PullResponse;
+    assert.equal(limitedPayload.events.length, 1);
+    assert.equal(limitedPayload.hasMore, true);
+    assert.equal(limitedPayload.nextSinceVersion, firstVersion);
+  });
+
+  it("returns projection null with warning for materialized events without projection", async () => {
+    const fixture = await createFixture();
+    await push(fixture, [
+      buildEvent("pull-offline-log-no-projection", "offlineOperationLog", {
+        payload: { message: "diagnostic only" },
+      }),
+    ]);
+
+    const response = await pull(fixture, { sinceVersion: 0 });
+    const events = (response.data as PullResponse).events;
+
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.entity, "offlineOperationLog");
+    assert.equal(events[0]?.projection, null);
+    assert.equal(
+      events[0]?.projectionWarning,
+      "PROJECTION_NOT_AVAILABLE_FOR_ENTITY",
+    );
+  });
+
+  it("returns checkpoints and current server version in status", async () => {
+    const fixture = await createFixture();
+    await push(fixture, [buildEvent("status-sale", "sale")]);
+
+    const response = await requestJson("GET", "/sync/status", {
       token: fixture.token,
     });
 
@@ -1413,9 +1701,9 @@ describe('operational local-first sync routes', () => {
       failedCount: number;
       lastMaterializedAt: string | null;
     };
-    assert.equal(payload.currentServerVersion, '1');
-    assert.equal(payload.checkpoints[0]?.feature, 'pdv');
-    assert.equal(payload.checkpoints[0]?.lastServerVersion, '1');
+    assert.equal(payload.currentServerVersion, "1");
+    assert.equal(payload.checkpoints[0]?.feature, "pdv");
+    assert.equal(payload.checkpoints[0]?.lastServerVersion, "1");
     assert.equal(payload.openConflictsCount, 0);
     assert.equal(payload.acceptedCount, 1);
     assert.equal(payload.conflictCount, 0);
@@ -1424,18 +1712,18 @@ describe('operational local-first sync routes', () => {
     assert.notEqual(payload.lastMaterializedAt, null);
   });
 
-  it('resolves open PDV conflicts', async () => {
+  it("resolves open PDV conflicts", async () => {
     const fixture = await createFixture();
     const entityLocalId = `${runId}-resolve-conflict-sale`;
     await push(fixture, [
-      buildEvent('resolve-sale-create', 'sale', {
+      buildEvent("resolve-sale-create", "sale", {
         entityLocalId,
-        payload: { status: 'finalized' },
+        payload: { status: "finalized" },
       }),
     ]);
     await push(fixture, [
-      buildEvent('resolve-sale-update', 'sale', {
-        operation: 'update',
+      buildEvent("resolve-sale-update", "sale", {
+        operation: "update",
         entityLocalId,
       }),
     ]);
@@ -1444,25 +1732,25 @@ describe('operational local-first sync routes', () => {
     });
 
     const response = await requestJson(
-      'POST',
+      "POST",
       `/sync/conflicts/${conflict.id}/resolve`,
       {
         token: fixture.token,
-        body: { resolution: { action: 'ignored_local_update' } },
+        body: { resolution: { action: "ignored_local_update" } },
       },
     );
 
     assert.equal(response.status, 200);
     assert.equal(
       (response.data as { conflict: { status: string } }).conflict.status,
-      'RESOLVED',
+      "RESOLVED",
     );
   });
 
-  it('enforces the initial 100 events per push limit', async () => {
+  it("enforces the initial 100 events per push limit", async () => {
     const fixture = await createFixture();
     const events = Array.from({ length: 101 }, (_value, index) =>
-      buildEvent(`too-many-${index}`, 'sale'),
+      buildEvent(`too-many-${index}`, "sale"),
     );
 
     const response = await push(fixture, events);
@@ -1470,41 +1758,39 @@ describe('operational local-first sync routes', () => {
     assert.equal(response.status, 413);
     assert.equal(
       (response.data as { code?: string }).code,
-      'SYNC_BATCH_TOO_LARGE',
+      "SYNC_BATCH_TOO_LARGE",
     );
   });
 });
 
-async function createFixture(options?: {
-  syncEnabled?: boolean;
-}) {
+async function createFixture(options?: { syncEnabled?: boolean }) {
   const company = await prisma.company.create({
     data: {
-      name: 'Sync Real Company',
-      legalName: 'Sync Real Company LTDA',
+      name: "Sync Real Company",
+      legalName: "Sync Real Company LTDA",
       slug: `${runId}-company-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     },
   });
   const user = await prisma.user.create({
     data: {
       email: `${runId}-${Date.now()}-${Math.random().toString(16).slice(2)}@tatuzin.test`,
-      name: 'Sync Real User',
-      passwordHash: 'not-used',
+      name: "Sync Real User",
+      passwordHash: "not-used",
     },
   });
   const membership = await prisma.membership.create({
     data: {
       userId: user.id,
       companyId: company.id,
-      role: 'OPERATOR',
+      role: "OPERATOR",
       isDefault: true,
     },
   });
   await prisma.license.create({
     data: {
       companyId: company.id,
-      plan: 'pro',
-      status: 'ACTIVE',
+      plan: "pro",
+      status: "ACTIVE",
       startsAt: new Date(),
       maxDevices: 5,
       syncEnabled: options?.syncEnabled ?? true,
@@ -1519,10 +1805,10 @@ async function createFixture(options?: {
       companyId: company.id,
       userId: user.id,
       clientInstanceId,
-      deviceLabel: 'Sync Real Test Device',
-      platform: 'node-test',
-      appVersion: 'sync-real-test',
-      status: 'ACTIVE',
+      deviceLabel: "Sync Real Test Device",
+      platform: "node-test",
+      appVersion: "sync-real-test",
+      status: "ACTIVE",
       approvedAt: new Date(),
       approvedByUserId: user.id,
       lastSeenAt: new Date(),
@@ -1532,6 +1818,8 @@ async function createFixture(options?: {
   return {
     companyId: company.id,
     userId: user.id,
+    membershipId: membership.id,
+    email: user.email,
     deviceId: device.id,
     clientInstanceId,
     token: signToken({
@@ -1539,6 +1827,47 @@ async function createFixture(options?: {
       companyId: company.id,
       membershipId: membership.id,
       email: user.email,
+      clientInstanceId,
+    }),
+  };
+}
+
+async function createAdditionalDevice(fixture: {
+  companyId: string;
+  userId: string;
+  membershipId: string;
+  email: string;
+}) {
+  const clientInstanceId = `${runId}-device-b-${Date.now()}-${Math.random()
+    .toString(16)
+    .slice(2)}`;
+  const device = await prisma.companyDevice.create({
+    data: {
+      companyId: fixture.companyId,
+      userId: fixture.userId,
+      clientInstanceId,
+      deviceLabel: "Sync Real Test Device B",
+      platform: "node-test",
+      appVersion: "sync-real-test",
+      status: "ACTIVE",
+      approvedAt: new Date(),
+      approvedByUserId: fixture.userId,
+      lastSeenAt: new Date(),
+    },
+  });
+
+  return {
+    companyId: fixture.companyId,
+    userId: fixture.userId,
+    membershipId: fixture.membershipId,
+    email: fixture.email,
+    deviceId: device.id,
+    clientInstanceId,
+    token: signToken({
+      userId: fixture.userId,
+      companyId: fixture.companyId,
+      membershipId: fixture.membershipId,
+      email: fixture.email,
       clientInstanceId,
     }),
   };
@@ -1554,7 +1883,7 @@ async function createProduct(
       localUuid: `${runId}-product-${Date.now()}-${Math.random()
         .toString(16)
         .slice(2)}`,
-      name: 'Produto Sync Materializer',
+      name: "Produto Sync Materializer",
       salePriceCents: 1000,
       stockMil: options?.stockMil ?? 0,
     },
@@ -1574,13 +1903,13 @@ function buildEvent(
 ) {
   return {
     eventId,
-    feature: overrides?.feature ?? 'pdv',
+    feature: overrides?.feature ?? "pdv",
     entity,
-    operation: overrides?.operation ?? 'create',
+    operation: overrides?.operation ?? "create",
     entityLocalId: overrides?.entityLocalId ?? `${eventId}-local`,
     entityServerId: overrides?.entityServerId,
     occurredAt: new Date().toISOString(),
-    payload: overrides?.payload ?? { status: 'finalized' },
+    payload: overrides?.payload ?? { status: "finalized" },
   };
 }
 
@@ -1588,9 +1917,35 @@ async function push(
   fixture: { token: string },
   events: Array<Record<string, unknown>>,
 ) {
-  return requestJson('POST', '/sync/push', {
+  return requestJson("POST", "/sync/push", {
     token: fixture.token,
     body: { events },
+  });
+}
+
+async function pull(
+  fixture: { token: string },
+  query: {
+    sinceVersion: number;
+    features?: string;
+    limit?: number;
+    includeOwnEvents?: boolean;
+  },
+) {
+  const params = new URLSearchParams({
+    sinceVersion: query.sinceVersion.toString(),
+  });
+  if (query.features != null) {
+    params.set("features", query.features);
+  }
+  if (query.limit != null) {
+    params.set("limit", query.limit.toString());
+  }
+  if (query.includeOwnEvents != null) {
+    params.set("includeOwnEvents", String(query.includeOwnEvents));
+  }
+  return requestJson("GET", `/sync/pull?${params.toString()}`, {
+    token: fixture.token,
   });
 }
 
@@ -1606,13 +1961,13 @@ function signToken(input: {
       sub: input.userId,
       companyId: input.companyId,
       membershipId: input.membershipId,
-      membershipRole: 'OPERATOR',
+      membershipRole: "OPERATOR",
       email: input.email,
       isPlatformAdmin: false,
       clientInstanceId: input.clientInstanceId,
     },
     env.JWT_SECRET,
-    { expiresIn: '15m' },
+    { expiresIn: "15m" },
   );
 }
 
@@ -1627,7 +1982,7 @@ async function requestJson(
       ...(options?.token == null
         ? {}
         : { Authorization: `Bearer ${options.token}` }),
-      ...(options?.body == null ? {} : { 'Content-Type': 'application/json' }),
+      ...(options?.body == null ? {} : { "Content-Type": "application/json" }),
     },
     body: options?.body == null ? undefined : JSON.stringify(options.body),
   });

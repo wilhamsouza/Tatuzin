@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { requireAppContext } from '../../shared/http/auth-middleware';
 import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { asyncHandler } from '../../shared/http/async-handler';
+import { blockMobilePdvLegacyWrite } from '../../shared/http/pdv-legacy-write-guard';
 import { validateBody, validateQuery } from '../../shared/http/validate';
 import {
   financialEventListQuerySchema,
@@ -47,6 +48,7 @@ financialEventsRouter.get(
 
 financialEventsRouter.post(
   '/',
+  blockMobilePdvLegacyWrite,
   validateBody(financialEventCreateSchema),
   asyncHandler(async (request, response) => {
     const event = await financialEventsService.create(

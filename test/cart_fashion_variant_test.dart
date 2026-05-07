@@ -72,6 +72,38 @@ void main() {
     },
   );
 
+  test('produto sem remoteId nao entra no carrinho', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final added = container
+        .read(cartProvider.notifier)
+        .addProduct(_buildProduct(remoteId: null));
+
+    expect(added, isFalse);
+    expect(container.read(cartProvider).items, isEmpty);
+  });
+
+  test('variante sem remoteId nao entra no carrinho', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final added = container
+        .read(cartProvider.notifier)
+        .addProduct(
+          _buildProduct(
+            sellableVariantId: 10,
+            sellableVariantRemoteId: null,
+            sellableVariantSku: 'CAM-PRE-G',
+            sellableVariantColorLabel: 'Preta',
+            sellableVariantSizeLabel: 'G',
+          ),
+        );
+
+    expect(added, isFalse);
+    expect(container.read(cartProvider).items, isEmpty);
+  });
+
   test('ao selecionar variantes, carrinho preserva SKU cor e tamanho', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
@@ -163,6 +195,8 @@ Product _buildProduct({
   String? sellableVariantSku,
   String? sellableVariantColorLabel,
   String? sellableVariantSizeLabel,
+  String? remoteId = '11111111-1111-4111-8111-111111111111',
+  String? sellableVariantRemoteId = '22222222-2222-4222-8222-222222222222',
 }) {
   final now = DateTime(2026);
   return Product(
@@ -192,7 +226,11 @@ Product _buildProduct({
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
+    remoteId: remoteId,
     sellableVariantId: sellableVariantId,
+    sellableVariantRemoteId: sellableVariantId == null
+        ? null
+        : sellableVariantRemoteId,
     sellableVariantSku: sellableVariantSku,
     sellableVariantColorLabel: sellableVariantColorLabel,
     sellableVariantSizeLabel: sellableVariantSizeLabel,

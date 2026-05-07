@@ -83,21 +83,28 @@ class OperationalSyncPullResponse {
     required this.nextSinceVersion,
     required this.hasMore,
     required this.events,
+    this.usesProjectionContract = false,
   });
 
   final String currentServerVersion;
   final String nextSinceVersion;
   final bool hasMore;
   final List<OperationalSyncPulledEvent> events;
+  final bool usesProjectionContract;
+
+  List<OperationalSyncPulledEvent> get changes => events;
 
   factory OperationalSyncPullResponse.fromJson(Map<String, dynamic> json) {
+    final rawChanges = json['changes'];
+    final usesProjectionContract = rawChanges is List;
     return OperationalSyncPullResponse(
       currentServerVersion: _stringValue(json['currentServerVersion']) ?? '0',
       nextSinceVersion: _stringValue(json['nextSinceVersion']) ?? '0',
       hasMore: json['hasMore'] == true,
       events: _readMapList(
-        json['events'],
+        usesProjectionContract ? rawChanges : json['events'],
       ).map(OperationalSyncPulledEvent.fromJson).toList(growable: false),
+      usesProjectionContract: usesProjectionContract,
     );
   }
 }
@@ -113,6 +120,9 @@ class OperationalSyncPulledEvent {
     this.entityLocalId,
     this.entityServerId,
     this.serverVersion,
+    this.materializedAt,
+    this.projection,
+    this.projectionWarning,
   });
 
   final String eventId;
@@ -124,9 +134,15 @@ class OperationalSyncPulledEvent {
   final DateTime occurredAt;
   final Map<String, dynamic> payload;
   final String? serverVersion;
+  final DateTime? materializedAt;
+  final Map<String, dynamic>? projection;
+  final String? projectionWarning;
+
+  bool get hasProjection => projection != null;
 
   factory OperationalSyncPulledEvent.fromJson(Map<String, dynamic> json) {
     final payload = json['payload'];
+    final projection = json['projection'];
     return OperationalSyncPulledEvent(
       eventId: _stringValue(json['eventId']) ?? 'unknown',
       feature: _stringValue(json['feature']) ?? 'pdv',
@@ -141,6 +157,11 @@ class OperationalSyncPulledEvent {
           ? payload
           : const <String, dynamic>{},
       serverVersion: _stringValue(json['serverVersion']),
+      materializedAt: DateTime.tryParse(
+        _stringValue(json['materializedAt']) ?? '',
+      ),
+      projection: projection is Map<String, dynamic> ? projection : null,
+      projectionWarning: _stringValue(json['projectionWarning']),
     );
   }
 }

@@ -1,12 +1,12 @@
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from "@prisma/client";
 
-import type { SyncPushEventInput } from '../sync.schemas';
+import type { SyncPushEventInput } from "../sync.schemas";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function asRecord(value: unknown): Record<string, unknown> {
-  if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
 
@@ -25,30 +25,30 @@ export function syncMetadataFor(
   event: SyncPushEventInput,
   payload: Record<string, unknown>,
 ): SyncPayloadMetadata {
-  const sync = asRecord(payload['_sync']);
+  const sync = asRecord(payload["_sync"]);
   return {
-    eventId: firstIdentity(sync, ['eventId']) ?? clean(event.eventId),
+    eventId: firstIdentity(sync, ["eventId"]) ?? clean(event.eventId),
     entityLocalId:
-      firstIdentity(sync, ['entityLocalId', 'localUuid', 'localId']) ??
+      firstIdentity(sync, ["entityLocalId", "localUuid", "localId"]) ??
       clean(event.entityLocalId) ??
       firstIdentity(payload, [
-        'uuid',
-        'localUuid',
-        'localId',
-        'id',
-        'localMovementUuid',
-        'receiptNumber',
-        'number',
+        "uuid",
+        "localUuid",
+        "localId",
+        "id",
+        "localMovementUuid",
+        "receiptNumber",
+        "number",
       ]),
     entityServerId:
-      firstIdentity(sync, ['entityServerId', 'serverId']) ??
+      firstIdentity(sync, ["entityServerId", "serverId"]) ??
       clean(event.entityServerId),
     localSequence:
-      firstInt(sync, ['localSequence', 'localRevision', 'sequence']) ??
-      firstInt(payload, ['localSequence', 'localRevision', 'sequence']),
+      firstInt(sync, ["localSequence", "localRevision", "sequence"]) ??
+      firstInt(payload, ["localSequence", "localRevision", "sequence"]),
     idempotencyKey:
-      firstIdentity(sync, ['idempotencyKey']) ??
-      firstIdentity(payload, ['idempotencyKey']),
+      firstIdentity(sync, ["idempotencyKey"]) ??
+      firstIdentity(payload, ["idempotencyKey"]),
   };
 }
 
@@ -85,7 +85,7 @@ export function firstString(
 ): string | null {
   for (const key of keys) {
     const value = payload[key];
-    if (typeof value === 'string' && value.trim().length > 0) {
+    if (typeof value === "string" && value.trim().length > 0) {
       return value.trim();
     }
   }
@@ -99,11 +99,11 @@ export function firstIdentity(
 ): string | null {
   for (const key of keys) {
     const value = payload[key];
-    if (typeof value === 'string' && value.trim().length > 0) {
+    if (typeof value === "string" && value.trim().length > 0) {
       return value.trim();
     }
     if (
-      typeof value === 'number' &&
+      typeof value === "number" &&
       Number.isFinite(value) &&
       Number.isInteger(value)
     ) {
@@ -122,13 +122,13 @@ export function localIdentityFor(
   return (
     metadata.entityLocalId ??
     firstIdentity(payload, [
-      'uuid',
-      'localUuid',
-      'localId',
-      'id',
-      'localMovementUuid',
-      'receiptNumber',
-      'number',
+      "uuid",
+      "localUuid",
+      "localId",
+      "id",
+      "localMovementUuid",
+      "receiptNumber",
+      "number",
     ]) ??
     explicitIdempotencyKeyFor(event, payload)
   );
@@ -146,16 +146,40 @@ export function isUuid(value: string | null | undefined) {
   return value != null && uuidPattern.test(value);
 }
 
+export function invalidRemoteIdentity(
+  payload: Record<string, unknown>,
+  keys: string[],
+): { field: string; value: string } | null {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      const cleaned = value.trim();
+      if (!uuidPattern.test(cleaned)) {
+        return { field: key, value: cleaned };
+      }
+    }
+    if (
+      typeof value === "number" &&
+      Number.isFinite(value) &&
+      Number.isInteger(value)
+    ) {
+      return { field: key, value: value.toString() };
+    }
+  }
+
+  return null;
+}
+
 export function firstInt(
   payload: Record<string, unknown>,
   keys: string[],
 ): number | null {
   for (const key of keys) {
     const value = payload[key];
-    if (typeof value === 'number' && Number.isFinite(value)) {
+    if (typeof value === "number" && Number.isFinite(value)) {
       return Math.trunc(value);
     }
-    if (typeof value === 'string' && value.trim().length > 0) {
+    if (typeof value === "string" && value.trim().length > 0) {
       const parsed = Number(value);
       if (Number.isFinite(parsed)) {
         return Math.trunc(parsed);
@@ -166,10 +190,7 @@ export function firstInt(
   return null;
 }
 
-export function positiveInt(
-  payload: Record<string, unknown>,
-  keys: string[],
-) {
+export function positiveInt(payload: Record<string, unknown>, keys: string[]) {
   const value = firstInt(payload, keys);
   return value != null && value > 0 ? value : null;
 }
@@ -210,23 +231,25 @@ export function firstDate(
 export function normalizeCashSessionStatus(raw: string | null) {
   const status = raw?.trim().toLowerCase();
   if (status == null || status.length === 0) {
-    return 'open';
+    return "open";
   }
-  if (['closed', 'finished', 'finalized', 'fechado', 'fechada'].includes(status)) {
-    return 'closed';
+  if (
+    ["closed", "finished", "finalized", "fechado", "fechada"].includes(status)
+  ) {
+    return "closed";
   }
-  if (['open', 'opened', 'active', 'aberto', 'aberta'].includes(status)) {
-    return 'open';
+  if (["open", "opened", "active", "aberto", "aberta"].includes(status)) {
+    return "open";
   }
   return status;
 }
 
 export function isClosedStatus(raw: string | null) {
-  return normalizeCashSessionStatus(raw) === 'closed';
+  return normalizeCashSessionStatus(raw) === "closed";
 }
 
 export function isOpenStatus(raw: string | null) {
-  return normalizeCashSessionStatus(raw) === 'open';
+  return normalizeCashSessionStatus(raw) === "open";
 }
 
 export function jsonPayload(

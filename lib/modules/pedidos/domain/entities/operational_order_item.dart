@@ -6,6 +6,8 @@ class OperationalOrderItem {
     required this.productId,
     required this.baseProductId,
     this.productVariantId,
+    this.productRemoteId,
+    this.productVariantRemoteId,
     this.variantSkuSnapshot,
     this.variantColorSnapshot,
     this.variantSizeSnapshot,
@@ -24,6 +26,8 @@ class OperationalOrderItem {
   final int productId;
   final int? baseProductId;
   final int? productVariantId;
+  final String? productRemoteId;
+  final String? productVariantRemoteId;
   final String? variantSkuSnapshot;
   final String? variantColorSnapshot;
   final String? variantSizeSnapshot;

@@ -3,6 +3,7 @@ import 'package:erp_pdv_app/app/core/database/table_names.dart';
 import 'package:erp_pdv_app/app/core/sync/app_snapshot_remote_datasource.dart';
 import 'package:erp_pdv_app/app/core/sync/operational_sync_event.dart';
 import 'package:erp_pdv_app/app/core/sync/operational_sync_policy.dart';
+import 'package:erp_pdv_app/app/core/sync/operational_sync_projection_applier.dart';
 import 'package:erp_pdv_app/app/core/sync/operational_sync_queue_item.dart';
 import 'package:erp_pdv_app/app/core/sync/operational_sync_queue_repository.dart';
 import 'package:erp_pdv_app/app/core/sync/operational_sync_queue_status.dart';
@@ -443,6 +444,490 @@ void main() {
       expect(queue.cacheRefreshSignals, 1);
     });
 
+    test(
+      'pull prefere changes com projection e avanca checkpoint apos aplicar',
+      () async {
+        final queue = _MemoryOperationalSyncQueueRepository();
+        final applier = _MemoryOperationalSyncProjectionApplier();
+        final runner = OperationalSyncRunner(
+          queueRepository: queue,
+          remoteDataSource: _FakeOperationalSyncRemoteDataSource(
+            pullResponse: OperationalSyncPullResponse(
+              currentServerVersion: '2',
+              nextSinceVersion: '2',
+              hasMore: false,
+              usesProjectionContract: true,
+              events: <OperationalSyncPulledEvent>[
+                _pulledChange(
+                  entity: 'sale',
+                  eventId: 'sale-from-device-a',
+                  serverVersion: '2',
+                  projection: <String, dynamic>{
+                    'entityServerId': 'sale-server-1',
+                    'id': 'sale-server-1',
+                    'localUuid': 'sale-local-a',
+                  },
+                ),
+              ],
+            ),
+          ),
+          projectionApplier: applier,
+          snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+            version: '0',
+          ),
+          shouldContinue: () => true,
+          onCacheSnapshotChanged: () {},
+        );
+
+        final result = await runner.run(retryOnly: false);
+
+        expect(result.pullFailed, isFalse);
+        expect(queue.checkpoint, '2');
+        expect(applier.applied.map((change) => change.eventId), [
+          'sale-from-device-a',
+        ]);
+      },
+    );
+
+    test(
+      'pull com duas paginas aplica ambas e avanca checkpoint final',
+      () async {
+        final queue = _MemoryOperationalSyncQueueRepository();
+        final applier = _MemoryOperationalSyncProjectionApplier();
+        final remote = _FakeOperationalSyncRemoteDataSource(
+          statusServerVersion: '2',
+          pullResponses: <OperationalSyncPullResponse>[
+            OperationalSyncPullResponse(
+              currentServerVersion: '2',
+              nextSinceVersion: '1',
+              hasMore: true,
+              usesProjectionContract: true,
+              events: <OperationalSyncPulledEvent>[
+                _pulledChange(
+                  entity: 'sale',
+                  eventId: 'sale-page-1',
+                  serverVersion: '1',
+                  projection: <String, dynamic>{
+                    'entityServerId': 'sale-server-1',
+                    'id': 'sale-server-1',
+                    'localUuid': 'sale-local-page-1',
+                  },
+                ),
+              ],
+            ),
+            OperationalSyncPullResponse(
+              currentServerVersion: '2',
+              nextSinceVersion: '2',
+              hasMore: false,
+              usesProjectionContract: true,
+              events: <OperationalSyncPulledEvent>[
+                _pulledChange(
+                  entity: 'cashSession',
+                  eventId: 'cash-page-2',
+                  serverVersion: '2',
+                  projection: <String, dynamic>{
+                    'entityServerId': 'cash-server-2',
+                    'id': 'cash-server-2',
+                    'localUuid': 'cash-local-page-2',
+                  },
+                ),
+              ],
+            ),
+          ],
+        );
+        final runner = OperationalSyncRunner(
+          queueRepository: queue,
+          remoteDataSource: remote,
+          projectionApplier: applier,
+          snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+            version: '0',
+          ),
+          shouldContinue: () => true,
+          onCacheSnapshotChanged: () {},
+        );
+
+        final result = await runner.run(retryOnly: false);
+
+        expect(result.pullFailed, isFalse);
+        expect(queue.checkpoint, '2');
+        expect(remote.pulledSinceVersions, ['0', '1']);
+        expect(applier.applied.map((change) => change.eventId), [
+          'sale-page-1',
+          'cash-page-2',
+        ]);
+      },
+    );
+
+    test('pull legado sem changes continua compativel', () async {
+      final queue = _MemoryOperationalSyncQueueRepository();
+      final applier = _MemoryOperationalSyncProjectionApplier();
+      final runner = OperationalSyncRunner(
+        queueRepository: queue,
+        remoteDataSource: _FakeOperationalSyncRemoteDataSource(
+          pullResponse: OperationalSyncPullResponse(
+            currentServerVersion: '4',
+            nextSinceVersion: '4',
+            hasMore: false,
+            events: <OperationalSyncPulledEvent>[
+              _pulledChange(
+                entity: 'sale',
+                eventId: 'legacy-sale-event',
+                serverVersion: '4',
+              ),
+            ],
+          ),
+        ),
+        projectionApplier: applier,
+        snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+          version: '0',
+        ),
+        shouldContinue: () => true,
+        onCacheSnapshotChanged: () {},
+      );
+
+      final result = await runner.run(retryOnly: false);
+
+      expect(result.pullFailed, isFalse);
+      expect(queue.checkpoint, '4');
+      expect(applier.applied, isEmpty);
+    });
+
+    test(
+      'projection null com warning nao avanca checkpoint inseguro',
+      () async {
+        final queue = _MemoryOperationalSyncQueueRepository();
+        final runner = OperationalSyncRunner(
+          queueRepository: queue,
+          remoteDataSource: _FakeOperationalSyncRemoteDataSource(
+            pullResponse: OperationalSyncPullResponse(
+              currentServerVersion: '5',
+              nextSinceVersion: '5',
+              hasMore: false,
+              usesProjectionContract: true,
+              events: <OperationalSyncPulledEvent>[
+                _pulledChange(
+                  entity: 'sale',
+                  eventId: 'sale-warning',
+                  serverVersion: '5',
+                  projectionWarning: 'PROJECTION_NOT_FOUND',
+                ),
+              ],
+            ),
+          ),
+          snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+            version: '0',
+          ),
+          shouldContinue: () => true,
+          onCacheSnapshotChanged: () {},
+        );
+
+        final result = await runner.run(retryOnly: false);
+
+        expect(result.pullFailed, isTrue);
+        expect(queue.checkpoint, '0');
+        expect(queue.lastPullError, contains('Dados parcialmente atualizados'));
+      },
+    );
+
+    test(
+      'product vindo por engano no pull e ignorado sem aplicar projection',
+      () async {
+        final queue = _MemoryOperationalSyncQueueRepository();
+        final applier = _MemoryOperationalSyncProjectionApplier();
+        final runner = OperationalSyncRunner(
+          queueRepository: queue,
+          remoteDataSource: _FakeOperationalSyncRemoteDataSource(
+            pullResponse: OperationalSyncPullResponse(
+              currentServerVersion: '6',
+              nextSinceVersion: '6',
+              hasMore: false,
+              usesProjectionContract: true,
+              events: <OperationalSyncPulledEvent>[
+                _pulledChange(
+                  entity: 'product',
+                  eventId: 'server-first-product',
+                  serverVersion: '6',
+                  projection: <String, dynamic>{'id': 'product-server-1'},
+                ),
+                _pulledChange(
+                  entity: 'customer',
+                  eventId: 'server-first-customer',
+                  serverVersion: '7',
+                  projection: <String, dynamic>{'id': 'customer-server-1'},
+                ),
+              ],
+            ),
+          ),
+          projectionApplier: applier,
+          snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+            version: '0',
+          ),
+          shouldContinue: () => true,
+          onCacheSnapshotChanged: () {},
+        );
+
+        final result = await runner.run(retryOnly: false);
+
+        expect(result.pullFailed, isFalse);
+        expect(queue.checkpoint, '7');
+        expect(applier.applied, isEmpty);
+      },
+    );
+
+    test(
+      'pull paginado nao salta checkpoint para status antes de aplicar tudo',
+      () async {
+        final queue = _MemoryOperationalSyncQueueRepository();
+        final applier = _MemoryOperationalSyncProjectionApplier();
+        final runner = OperationalSyncRunner(
+          queueRepository: queue,
+          remoteDataSource: _FakeOperationalSyncRemoteDataSource(
+            statusServerVersion: '10',
+            pullResponse: OperationalSyncPullResponse(
+              currentServerVersion: '10',
+              nextSinceVersion: '2',
+              hasMore: true,
+              usesProjectionContract: true,
+              events: <OperationalSyncPulledEvent>[
+                _pulledChange(
+                  entity: 'sale',
+                  eventId: 'sale-page-1',
+                  serverVersion: '2',
+                  projection: <String, dynamic>{
+                    'entityServerId': 'sale-server-2',
+                    'id': 'sale-server-2',
+                    'localUuid': 'sale-local-page-1',
+                  },
+                ),
+              ],
+            ),
+          ),
+          projectionApplier: applier,
+          snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+            version: '0',
+          ),
+          shouldContinue: () => true,
+          onCacheSnapshotChanged: () {},
+        );
+
+        final result = await runner.run(retryOnly: false);
+
+        expect(result.pullFailed, isFalse);
+        expect(queue.checkpoint, '2');
+        expect(applier.applied.single.eventId, 'sale-page-1');
+      },
+    );
+
+    test('falha na segunda pagina mantem checkpoint da primeira', () async {
+      final queue = _MemoryOperationalSyncQueueRepository();
+      final applier = _MemoryOperationalSyncProjectionApplier(
+        failOnEventIds: const <String>{'sale-second-page-fails'},
+      );
+      final runner = OperationalSyncRunner(
+        queueRepository: queue,
+        remoteDataSource: _FakeOperationalSyncRemoteDataSource(
+          pullResponses: <OperationalSyncPullResponse>[
+            OperationalSyncPullResponse(
+              currentServerVersion: '2',
+              nextSinceVersion: '1',
+              hasMore: true,
+              usesProjectionContract: true,
+              events: <OperationalSyncPulledEvent>[
+                _pulledChange(
+                  entity: 'sale',
+                  eventId: 'sale-first-page-before-failure',
+                  serverVersion: '1',
+                  projection: <String, dynamic>{
+                    'entityServerId': 'sale-server-1',
+                    'id': 'sale-server-1',
+                    'localUuid': 'sale-local-1',
+                  },
+                ),
+              ],
+            ),
+            OperationalSyncPullResponse(
+              currentServerVersion: '2',
+              nextSinceVersion: '2',
+              hasMore: false,
+              usesProjectionContract: true,
+              events: <OperationalSyncPulledEvent>[
+                _pulledChange(
+                  entity: 'sale',
+                  eventId: 'sale-second-page-fails',
+                  serverVersion: '2',
+                  projection: <String, dynamic>{
+                    'entityServerId': 'sale-server-2',
+                    'id': 'sale-server-2',
+                    'localUuid': 'sale-local-2',
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+        projectionApplier: applier,
+        snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+          version: '0',
+        ),
+        shouldContinue: () => true,
+        onCacheSnapshotChanged: () {},
+      );
+
+      final result = await runner.run(retryOnly: false);
+
+      expect(result.pullFailed, isTrue);
+      expect(queue.checkpoint, '1');
+      expect(queue.lastPullError, contains('projection failed'));
+      expect(applier.applied.single.eventId, 'sale-first-page-before-failure');
+    });
+
+    test('hasMore true sem changes nao gera loop infinito', () async {
+      final queue = _MemoryOperationalSyncQueueRepository();
+      final remote = _FakeOperationalSyncRemoteDataSource(
+        statusServerVersion: '10',
+        pullResponse: const OperationalSyncPullResponse(
+          currentServerVersion: '10',
+          nextSinceVersion: '0',
+          hasMore: true,
+          usesProjectionContract: true,
+          events: <OperationalSyncPulledEvent>[],
+        ),
+      );
+      final runner = OperationalSyncRunner(
+        queueRepository: queue,
+        remoteDataSource: remote,
+        snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+          version: '0',
+        ),
+        shouldContinue: () => true,
+        onCacheSnapshotChanged: () {},
+      );
+
+      final result = await runner.run(retryOnly: false);
+
+      expect(result.pullFailed, isFalse);
+      expect(remote.pullCallCount, 1);
+      expect(queue.checkpoint, '0');
+      expect(queue.lastPullError, isNull);
+    });
+
+    test('serverVersion sem avanco nao gera loop infinito', () async {
+      final queue = _MemoryOperationalSyncQueueRepository();
+      final applier = _MemoryOperationalSyncProjectionApplier();
+      final remote = _FakeOperationalSyncRemoteDataSource(
+        pullResponses: <OperationalSyncPullResponse>[
+          OperationalSyncPullResponse(
+            currentServerVersion: '1',
+            nextSinceVersion: '1',
+            hasMore: true,
+            usesProjectionContract: true,
+            events: <OperationalSyncPulledEvent>[
+              _pulledChange(
+                entity: 'sale',
+                eventId: 'sale-first-advancing-page',
+                serverVersion: '1',
+                projection: <String, dynamic>{
+                  'entityServerId': 'sale-server-1',
+                  'id': 'sale-server-1',
+                  'localUuid': 'sale-local-1',
+                },
+              ),
+            ],
+          ),
+          OperationalSyncPullResponse(
+            currentServerVersion: '1',
+            nextSinceVersion: '1',
+            hasMore: true,
+            usesProjectionContract: true,
+            events: <OperationalSyncPulledEvent>[
+              _pulledChange(
+                entity: 'sale',
+                eventId: 'sale-repeated-version',
+                serverVersion: '1',
+                projection: <String, dynamic>{
+                  'entityServerId': 'sale-server-repeated',
+                  'id': 'sale-server-repeated',
+                  'localUuid': 'sale-local-repeated',
+                },
+              ),
+            ],
+          ),
+        ],
+      );
+      final runner = OperationalSyncRunner(
+        queueRepository: queue,
+        remoteDataSource: remote,
+        projectionApplier: applier,
+        snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+          version: '0',
+        ),
+        shouldContinue: () => true,
+        onCacheSnapshotChanged: () {},
+      );
+
+      final result = await runner.run(retryOnly: false);
+
+      expect(result.pullFailed, isFalse);
+      expect(remote.pullCallCount, 2);
+      expect(queue.checkpoint, '1');
+      expect(applier.applied.map((change) => change.eventId), [
+        'sale-first-advancing-page',
+      ]);
+    });
+
+    test('limite de paginas para rodada nao vira erro fatal', () async {
+      final queue = _MemoryOperationalSyncQueueRepository();
+      final applier = _MemoryOperationalSyncProjectionApplier();
+      final remote = _FakeOperationalSyncRemoteDataSource(
+        pullResponses: <OperationalSyncPullResponse>[
+          for (
+            var version = 1;
+            version <= OperationalSyncRunner.maxPullPagesPerRun + 1;
+            version++
+          )
+            OperationalSyncPullResponse(
+              currentServerVersion: '20',
+              nextSinceVersion: '$version',
+              hasMore: true,
+              usesProjectionContract: true,
+              events: <OperationalSyncPulledEvent>[
+                _pulledChange(
+                  entity: 'sale',
+                  eventId: 'sale-page-limit-$version',
+                  serverVersion: '$version',
+                  projection: <String, dynamic>{
+                    'entityServerId': 'sale-server-$version',
+                    'id': 'sale-server-$version',
+                    'localUuid': 'sale-local-$version',
+                  },
+                ),
+              ],
+            ),
+        ],
+      );
+      final runner = OperationalSyncRunner(
+        queueRepository: queue,
+        remoteDataSource: remote,
+        projectionApplier: applier,
+        snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+          version: '0',
+        ),
+        shouldContinue: () => true,
+        onCacheSnapshotChanged: () {},
+      );
+
+      final result = await runner.run(retryOnly: false);
+
+      expect(result.pullFailed, isFalse);
+      expect(remote.pullCallCount, OperationalSyncRunner.maxPullPagesPerRun);
+      expect(queue.checkpoint, '${OperationalSyncRunner.maxPullPagesPerRun}');
+      expect(
+        applier.applied,
+        hasLength(OperationalSyncRunner.maxPullPagesPerRun),
+      );
+      expect(queue.lastPullError, isNull);
+    });
+
     test('push ok com pull falhando registra estado parcial', () async {
       final event = _event(entity: 'sale', id: 'sale-pull-failed');
       final queue = _MemoryOperationalSyncQueueRepository(
@@ -554,6 +1039,29 @@ OperationalSyncEvent _event({
     entityLocalId: id,
     occurredAt: DateTime(2026, 5, 5, 10),
     payload: <String, dynamic>{'id': id},
+  );
+}
+
+OperationalSyncPulledEvent _pulledChange({
+  required String entity,
+  required String eventId,
+  required String serverVersion,
+  Map<String, dynamic>? projection,
+  String? projectionWarning,
+}) {
+  return OperationalSyncPulledEvent(
+    eventId: eventId,
+    feature: 'pdv',
+    entity: entity,
+    operation: 'create',
+    entityLocalId: '$eventId-local',
+    entityServerId: projection?['entityServerId'] as String?,
+    occurredAt: DateTime(2026, 5, 5, 10),
+    payload: <String, dynamic>{'id': eventId},
+    serverVersion: serverVersion,
+    materializedAt: DateTime(2026, 5, 5, 10, 1),
+    projection: projection,
+    projectionWarning: projectionWarning,
   );
 }
 
@@ -720,10 +1228,31 @@ class _MemoryOperationalSyncQueueRepository
   }
 }
 
+class _MemoryOperationalSyncProjectionApplier
+    implements OperationalSyncProjectionApplier {
+  _MemoryOperationalSyncProjectionApplier({
+    this.failOnEventIds = const <String>{},
+  });
+
+  final Set<String> failOnEventIds;
+  final applied = <OperationalSyncPulledEvent>[];
+
+  @override
+  Future<void> apply(OperationalSyncPulledEvent change) async {
+    if (failOnEventIds.contains(change.eventId)) {
+      throw StateError('projection failed for ${change.eventId}');
+    }
+    applied.add(change);
+  }
+}
+
 class _FakeOperationalSyncRemoteDataSource
     implements OperationalSyncRemoteDataSource {
   _FakeOperationalSyncRemoteDataSource({
     OperationalSyncPushResponse? pushResponse,
+    OperationalSyncPullResponse? pullResponse,
+    List<OperationalSyncPullResponse>? pullResponses,
+    this.statusServerVersion = '0',
     this.conflicts = const <OperationalSyncConflict>[],
     this.failPull = false,
   }) : pushResponse =
@@ -734,12 +1263,29 @@ class _FakeOperationalSyncRemoteDataSource
              duplicates: <OperationalSyncPushItemResult>[],
              rejected: <OperationalSyncPushItemResult>[],
              conflicts: <OperationalSyncPushItemResult>[],
-           );
+           ),
+       pullResponses =
+           pullResponses ??
+           <OperationalSyncPullResponse>[
+             pullResponse ??
+                 const OperationalSyncPullResponse(
+                   currentServerVersion: '0',
+                   nextSinceVersion: '0',
+                   hasMore: false,
+                   events: <OperationalSyncPulledEvent>[],
+                 ),
+           ];
 
   final OperationalSyncPushResponse pushResponse;
+  final List<OperationalSyncPullResponse> pullResponses;
+  final String statusServerVersion;
   final List<OperationalSyncConflict> conflicts;
   final bool failPull;
   List<OperationalSyncEvent> lastPushedEvents = const <OperationalSyncEvent>[];
+  final pulledSinceVersions = <String>[];
+  int _pullCallCount = 0;
+
+  int get pullCallCount => _pullCallCount;
 
   @override
   Future<OperationalSyncPushResponse> pushEvents(
@@ -756,24 +1302,25 @@ class _FakeOperationalSyncRemoteDataSource
     Iterable<String> features = const <String>[],
     int limit = 100,
   }) async {
+    _pullCallCount++;
+    pulledSinceVersions.add(sinceVersion);
     if (failPull) {
       throw StateError('pull offline');
     }
-    return const OperationalSyncPullResponse(
-      currentServerVersion: '0',
-      nextSinceVersion: '0',
-      hasMore: false,
-      events: <OperationalSyncPulledEvent>[],
-    );
+    final index = _pullCallCount - 1;
+    if (index < pullResponses.length) {
+      return pullResponses[index];
+    }
+    return pullResponses.last;
   }
 
   @override
   Future<OperationalSyncStatusResponse> getStatus() async {
-    return const OperationalSyncStatusResponse(
+    return OperationalSyncStatusResponse(
       companyId: 'company-1',
       deviceId: 'device-1',
       syncEnabled: true,
-      currentServerVersion: '0',
+      currentServerVersion: statusServerVersion,
       openConflictsCount: 0,
       deviceStatus: 'ACTIVE',
     );

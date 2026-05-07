@@ -644,6 +644,21 @@ class SqliteSaleRepository implements SaleRepository {
     if (queue == null) {
       return;
     }
+    final remoteIdentityByLocalKey =
+        <String, _OperationalProductRemoteIdentity>{
+          for (final item in input.items)
+            _productIdentityKey(
+              item.productId,
+              item.productVariantId,
+            ): _OperationalProductRemoteIdentity(
+              productRemoteId: SaleValidationSupport.cleanNullable(
+                item.productRemoteId,
+              ),
+              productVariantRemoteId: SaleValidationSupport.cleanNullable(
+                item.productVariantRemoteId,
+              ),
+            ),
+        };
 
     await queue.enqueue(
       txn,
@@ -686,12 +701,20 @@ class SqliteSaleRepository implements SaleRepository {
       final itemUuid = row['uuid'] as String;
       final productId = row['produto_id'] as int;
       final productVariantId = row['produto_variante_id'] as int?;
-      final productIdentity = await _resolveOperationalProductRemoteIdentity(
-        txn,
-        productId: productId,
-        productVariantId: productVariantId,
-        context: 'saleItem/create:$itemUuid',
-      );
+      final productIdentity =
+          await _resolveOperationalProductRemoteIdentity(
+            txn,
+            productId: productId,
+            productVariantId: productVariantId,
+            context: 'saleItem/create:$itemUuid',
+          ).then(
+            (identity) => identity.withFallback(
+              remoteIdentityByLocalKey[_productIdentityKey(
+                productId,
+                productVariantId,
+              )],
+            ),
+          );
       await queue.enqueue(
         txn,
         event: OperationalSyncEvent(
@@ -783,12 +806,20 @@ class SqliteSaleRepository implements SaleRepository {
     for (final change in stockChanges) {
       final localIdentity =
           '$saleUuid:${change.productId}:${change.productVariantId ?? 0}';
-      final productIdentity = await _resolveOperationalProductRemoteIdentity(
-        txn,
-        productId: change.productId,
-        productVariantId: change.productVariantId,
-        context: 'stockDeduction/create:$localIdentity',
-      );
+      final productIdentity =
+          await _resolveOperationalProductRemoteIdentity(
+            txn,
+            productId: change.productId,
+            productVariantId: change.productVariantId,
+            context: 'stockDeduction/create:$localIdentity',
+          ).then(
+            (identity) => identity.withFallback(
+              remoteIdentityByLocalKey[_productIdentityKey(
+                change.productId,
+                change.productVariantId,
+              )],
+            ),
+          );
       await queue.enqueue(
         txn,
         event: OperationalSyncEvent(
@@ -1103,6 +1134,10 @@ class SqliteSaleRepository implements SaleRepository {
     );
   }
 
+  String _productIdentityKey(int productId, int? productVariantId) {
+    return '$productId:${productVariantId ?? 0}';
+  }
+
   Future<void> _registerOperationalCashMovementEvent(
     DatabaseExecutor txn, {
     required int movementId,
@@ -1313,4 +1348,17 @@ class _OperationalProductRemoteIdentity {
 
   final String? productRemoteId;
   final String? productVariantRemoteId;
+
+  _OperationalProductRemoteIdentity withFallback(
+    _OperationalProductRemoteIdentity? fallback,
+  ) {
+    if (fallback == null) {
+      return this;
+    }
+    return _OperationalProductRemoteIdentity(
+      productRemoteId: productRemoteId ?? fallback.productRemoteId,
+      productVariantRemoteId:
+          productVariantRemoteId ?? fallback.productVariantRemoteId,
+    );
+  }
 }

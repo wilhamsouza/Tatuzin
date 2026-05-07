@@ -1,9 +1,9 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 const numericQuery = (defaultValue: number, maxValue?: number) =>
   z
     .preprocess((value) => {
-      if (value == null || value === '') {
+      if (value == null || value === "") {
         return defaultValue;
       }
       if (Array.isArray(value)) {
@@ -11,10 +11,35 @@ const numericQuery = (defaultValue: number, maxValue?: number) =>
       }
       return value;
     }, z.coerce.number().int().min(0).default(defaultValue))
-    .transform((value) => (maxValue == null ? value : Math.min(value, maxValue)));
+    .transform((value) =>
+      maxValue == null ? value : Math.min(value, maxValue),
+    );
 
 const optionalTrimmedString = (maxLength: number) =>
   z.string().trim().min(1).max(maxLength).optional();
+
+const booleanQuery = (defaultValue: boolean) =>
+  z
+    .preprocess(
+      (value) => {
+        if (value == null || value === "") {
+          return defaultValue;
+        }
+        if (Array.isArray(value)) {
+          return value[0];
+        }
+        return value;
+      },
+      z.union([z.boolean(), z.string()]).default(defaultValue),
+    )
+    .transform((value) => {
+      if (typeof value === "boolean") {
+        return value;
+      }
+      return !["false", "0", "no", "nao", "não"].includes(
+        value.trim().toLowerCase(),
+      );
+    });
 
 export const syncPushBatchSchema = z.object({
   lastKnownServerVersion: z.union([z.string(), z.number()]).optional(),
@@ -37,7 +62,7 @@ export const syncPullQuerySchema = z.object({
   features: z
     .preprocess((value) => {
       if (Array.isArray(value)) {
-        return value.join(',');
+        return value.join(",");
       }
       return value;
     }, z.string().trim().optional())
@@ -45,15 +70,16 @@ export const syncPullQuerySchema = z.object({
       value == null || value.length === 0
         ? []
         : value
-            .split(',')
+            .split(",")
             .map((item) => item.trim())
             .filter((item) => item.length > 0),
     ),
   limit: numericQuery(100, 500),
+  includeOwnEvents: booleanQuery(true),
 });
 
 export const syncConflictQuerySchema = z.object({
-  status: z.enum(['OPEN', 'RESOLVED', 'IGNORED']).optional().default('OPEN'),
+  status: z.enum(["OPEN", "RESOLVED", "IGNORED"]).optional().default("OPEN"),
   limit: numericQuery(100, 500),
 });
 
@@ -65,7 +91,7 @@ export const appSnapshotQuerySchema = z.object({
   features: z
     .preprocess((value) => {
       if (Array.isArray(value)) {
-        return value.join(',');
+        return value.join(",");
       }
       return value;
     }, z.string().trim().optional())
@@ -73,7 +99,7 @@ export const appSnapshotQuerySchema = z.object({
       value == null || value.length === 0
         ? []
         : value
-            .split(',')
+            .split(",")
             .map((item) => item.trim())
             .filter((item) => item.length > 0),
     ),

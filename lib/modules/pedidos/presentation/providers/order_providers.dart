@@ -710,6 +710,8 @@ class OperationalOrderBillingController extends AsyncNotifier<void> {
               id: 'order_item_${item.id}',
               productId: item.productId,
               productVariantId: item.productVariantId,
+              productRemoteId: item.productRemoteId,
+              productVariantRemoteId: item.productVariantRemoteId,
               productName: item.productNameSnapshot,
               primaryPhotoPath: null,
               baseProductId: item.baseProductId,

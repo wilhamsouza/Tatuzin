@@ -4,16 +4,17 @@ import {
   firstIdentity,
   firstString,
   firstUuid,
+  invalidRemoteIdentity,
   isUuid,
   localSequenceFor,
   localIdentityFor,
   nonNegativeInt,
   positiveInt,
-} from './payload-utils';
+} from "./payload-utils";
 import type {
   SyncMaterializerInput,
   SyncMaterializerResult,
-} from './materializer.types';
+} from "./materializer.types";
 
 type OperationalOrderLike = {
   id: string;
@@ -49,16 +50,16 @@ export class OperationalOrderMaterializer {
   async materialize(
     input: SyncMaterializerInput,
   ): Promise<SyncMaterializerResult> {
-    if (input.event.entity === 'operationalOrder') {
+    if (input.event.entity === "operationalOrder") {
       return this.materializeOrder(input);
     }
 
-    if (input.event.entity === 'operationalOrderItem') {
+    if (input.event.entity === "operationalOrderItem") {
       return this.materializeItem(input);
     }
 
     return {
-      outcome: 'accepted',
+      outcome: "accepted",
       entityServerId: null,
       materializedAt: null,
     };
@@ -66,11 +67,13 @@ export class OperationalOrderMaterializer {
 
   async findOrder(input: SyncMaterializerInput) {
     const orderId =
-      (isUuid(input.event.entityServerId) ? input.event.entityServerId : null) ??
+      (isUuid(input.event.entityServerId)
+        ? input.event.entityServerId
+        : null) ??
       firstUuid(input.payload, [
-        'operationalOrderId',
-        'operationalOrderServerId',
-        'orderServerId',
+        "operationalOrderId",
+        "operationalOrderServerId",
+        "orderServerId",
       ]);
     if (orderId != null) {
       const order = await input.tx.operationalOrder.findFirst({
@@ -86,7 +89,7 @@ export class OperationalOrderMaterializer {
 
     const localUuid =
       this.orderLocalIdentity(input) ??
-      (input.event.entity === 'operationalOrder'
+      (input.event.entity === "operationalOrder"
         ? localIdentityFor(input.event, input.payload)
         : null);
     if (localUuid == null) {
@@ -113,13 +116,16 @@ export class OperationalOrderMaterializer {
     }
 
     if (this.isCanceled(order)) {
-      return this.immutable(order, 'Pedido operacional cancelado nao pode virar venda.');
+      return this.immutable(
+        order,
+        "Pedido operacional cancelado nao pode virar venda.",
+      );
     }
 
     if (order.convertedSaleId != null && order.convertedSaleId !== saleId) {
       return this.immutable(
         order,
-        'Pedido operacional ja foi convertido em outra venda.',
+        "Pedido operacional ja foi convertido em outra venda.",
       );
     }
 
@@ -130,7 +136,7 @@ export class OperationalOrderMaterializer {
     await input.tx.operationalOrder.update({
       where: { id: order.id },
       data: {
-        status: 'converted',
+        status: "converted",
         closedAt: order.closedAt ?? new Date(),
         convertedSaleId: saleId,
       },
@@ -142,29 +148,29 @@ export class OperationalOrderMaterializer {
   private async materializeOrder(
     input: SyncMaterializerInput,
   ): Promise<SyncMaterializerResult> {
-    if (!['create', 'update', 'upsert'].includes(input.event.operation)) {
+    if (!["create", "update", "upsert"].includes(input.event.operation)) {
       return {
-        outcome: 'rejected',
-        code: 'INVALID_OPERATION',
-        message: 'operationalOrder aceita create, update ou upsert.',
+        outcome: "rejected",
+        code: "INVALID_OPERATION",
+        message: "operationalOrder aceita create, update ou upsert.",
       };
     }
 
     const localUuid = domainIdentityFor(input.event, input.payload, [
-      'operationalOrderLocalId',
-      'operationalOrderLocalUuid',
-      'orderLocalId',
-      'orderUuid',
-      'uuid',
-      'localUuid',
-      'localId',
-      'id',
+      "operationalOrderLocalId",
+      "operationalOrderLocalUuid",
+      "orderLocalId",
+      "orderUuid",
+      "uuid",
+      "localUuid",
+      "localId",
+      "id",
     ]);
     if (localUuid == null) {
       return {
-        outcome: 'rejected',
-        code: 'LOCAL_ID_REQUIRED',
-        message: 'operationalOrder precisa de entityLocalId, uuid ou localId.',
+        outcome: "rejected",
+        code: "LOCAL_ID_REQUIRED",
+        message: "operationalOrder precisa de entityLocalId, uuid ou localId.",
       };
     }
 
@@ -178,18 +184,18 @@ export class OperationalOrderMaterializer {
     });
     const localSequence = localSequenceFor(input.event, input.payload);
 
-    if (input.event.operation === 'create' && existing != null) {
+    if (input.event.operation === "create" && existing != null) {
       return {
-        outcome: 'duplicate',
+        outcome: "duplicate",
         entityServerId: existing.id,
       };
     }
 
-    if (input.event.operation === 'update' && existing == null) {
+    if (input.event.operation === "update" && existing == null) {
       return {
-        outcome: 'conflict',
-        code: 'OPERATIONAL_ORDER_NOT_FOUND',
-        message: 'Pedido operacional nao encontrado para atualizacao.',
+        outcome: "conflict",
+        code: "OPERATIONAL_ORDER_NOT_FOUND",
+        message: "Pedido operacional nao encontrado para atualizacao.",
         payload: {
           entityLocalId: input.event.entityLocalId,
           localUuid,
@@ -199,16 +205,16 @@ export class OperationalOrderMaterializer {
 
     if (
       existing != null &&
-      ['update', 'upsert'].includes(input.event.operation) &&
+      ["update", "upsert"].includes(input.event.operation) &&
       localSequence != null &&
       existing.lastLocalSequence != null &&
       existing.lastLocalSequence > localSequence
     ) {
       return {
-        outcome: 'conflict',
-        code: 'STALE_LOCAL_SEQUENCE',
+        outcome: "conflict",
+        code: "STALE_LOCAL_SEQUENCE",
         message:
-          'Evento operacional possui localSequence anterior ao ultimo evento materializado para a entidade.',
+          "Evento operacional possui localSequence anterior ao ultimo evento materializado para a entidade.",
         payload: {
           entity: input.event.entity,
           entityLocalId: input.event.entityLocalId,
@@ -237,22 +243,22 @@ export class OperationalOrderMaterializer {
       deviceId: existing?.deviceId ?? input.context.device.id,
       status: requestedStatus,
       subtotalCents:
-        nonNegativeInt(input.payload, ['subtotalCents']) ??
+        nonNegativeInt(input.payload, ["subtotalCents"]) ??
         existing?.subtotalCents ??
         0,
       discountCents:
-        nonNegativeInt(input.payload, ['discountCents']) ??
+        nonNegativeInt(input.payload, ["discountCents"]) ??
         existing?.discountCents ??
         0,
       totalCents:
-        nonNegativeInt(input.payload, ['totalCents', 'finalCents']) ??
+        nonNegativeInt(input.payload, ["totalCents", "finalCents"]) ??
         existing?.totalCents ??
         0,
-      notes: firstString(input.payload, ['notes', 'description']) ?? existing?.notes,
+      notes:
+        firstString(input.payload, ["notes", "description"]) ?? existing?.notes,
       closedAt: this.closedAt(input, existing, requestedStatus, now),
       cancelledAt: this.cancelledAt(input, existing, requestedStatus, now),
-      lastLocalSequence:
-        localSequence ?? existing?.lastLocalSequence ?? null,
+      lastLocalSequence: localSequence ?? existing?.lastLocalSequence ?? null,
     };
 
     if (existing == null) {
@@ -261,12 +267,12 @@ export class OperationalOrderMaterializer {
           companyId: input.context.company.id,
           localUuid,
           ...baseData,
-          createdAt: firstDate(input.payload, ['createdAt', 'openedAt'], now),
+          createdAt: firstDate(input.payload, ["createdAt", "openedAt"], now),
         },
       });
 
       return {
-        outcome: 'accepted',
+        outcome: "accepted",
         entityServerId: created.id,
         materializedAt: created.updatedAt,
       };
@@ -278,7 +284,7 @@ export class OperationalOrderMaterializer {
     });
 
     return {
-      outcome: 'accepted',
+      outcome: "accepted",
       entityServerId: updated.id,
       materializedAt: updated.updatedAt,
     };
@@ -287,12 +293,14 @@ export class OperationalOrderMaterializer {
   private async materializeItem(
     input: SyncMaterializerInput,
   ): Promise<SyncMaterializerResult> {
-    if (!['create', 'append', 'update', 'upsert'].includes(input.event.operation)) {
+    if (
+      !["create", "append", "update", "upsert"].includes(input.event.operation)
+    ) {
       return {
-        outcome: 'rejected',
-        code: 'INVALID_OPERATION',
+        outcome: "rejected",
+        code: "INVALID_OPERATION",
         message:
-          'operationalOrderItem aceita create, append, update ou upsert.',
+          "operationalOrderItem aceita create, append, update ou upsert.",
       };
     }
 
@@ -300,27 +308,27 @@ export class OperationalOrderMaterializer {
       input.event,
       input.payload,
       [
-        'operationalOrderItemLocalId',
-        'operationalOrderItemLocalUuid',
-        'itemLocalId',
-        'itemUuid',
-        'uuid',
-        'localUuid',
-        'localId',
-        'id',
+        "operationalOrderItemLocalId",
+        "operationalOrderItemLocalUuid",
+        "itemLocalId",
+        "itemUuid",
+        "uuid",
+        "localUuid",
+        "localId",
+        "id",
       ],
       {
-        preferIdempotencyKey: ['create', 'append'].includes(
+        preferIdempotencyKey: ["create", "append"].includes(
           input.event.operation,
         ),
       },
     );
     if (localUuid == null) {
       return {
-        outcome: 'rejected',
-        code: 'LOCAL_ID_REQUIRED',
+        outcome: "rejected",
+        code: "LOCAL_ID_REQUIRED",
         message:
-          'operationalOrderItem precisa de entityLocalId, uuid ou localId.',
+          "operationalOrderItem precisa de entityLocalId, uuid ou localId.",
       };
     }
 
@@ -338,10 +346,10 @@ export class OperationalOrderMaterializer {
 
     if (
       existing != null &&
-      ['create', 'append'].includes(input.event.operation)
+      ["create", "append"].includes(input.event.operation)
     ) {
       return {
-        outcome: 'duplicate',
+        outcome: "duplicate",
         entityServerId: existing.id,
       };
     }
@@ -349,9 +357,9 @@ export class OperationalOrderMaterializer {
     const order = existing?.operationalOrder ?? (await this.findOrder(input));
     if (order == null) {
       return {
-        outcome: 'conflict',
-        code: 'OPERATIONAL_ORDER_NOT_FOUND',
-        message: 'Pedido operacional nao encontrado para materializar item.',
+        outcome: "conflict",
+        code: "OPERATIONAL_ORDER_NOT_FOUND",
+        message: "Pedido operacional nao encontrado para materializar item.",
         payload: this.orderLookupPayload(input),
       };
     }
@@ -359,15 +367,15 @@ export class OperationalOrderMaterializer {
     if (this.isImmutable(order)) {
       return this.immutable(
         order,
-        'Item nao pode alterar pedido operacional convertido ou cancelado.',
+        "Item nao pode alterar pedido operacional convertido ou cancelado.",
       );
     }
 
-    if (input.event.operation === 'update' && existing == null) {
+    if (input.event.operation === "update" && existing == null) {
       return {
-        outcome: 'conflict',
-        code: 'OPERATIONAL_ORDER_ITEM_NOT_FOUND',
-        message: 'Item de pedido operacional nao encontrado para atualizacao.',
+        outcome: "conflict",
+        code: "OPERATIONAL_ORDER_ITEM_NOT_FOUND",
+        message: "Item de pedido operacional nao encontrado para atualizacao.",
         payload: {
           entityLocalId: input.event.entityLocalId,
           localUuid,
@@ -376,38 +384,73 @@ export class OperationalOrderMaterializer {
     }
 
     const quantityMil =
-      positiveInt(input.payload, ['quantityMil', 'quantity']) ??
+      positiveInt(input.payload, ["quantityMil", "quantity"]) ??
       existing?.quantityMil;
     if (quantityMil == null || quantityMil <= 0) {
       return {
-        outcome: 'rejected',
-        code: 'INVALID_QUANTITY',
-        message: 'operationalOrderItem precisa de quantityMil positivo.',
+        outcome: "rejected",
+        code: "INVALID_QUANTITY",
+        message: "operationalOrderItem precisa de quantityMil positivo.",
       };
     }
 
     const totalCents =
-      nonNegativeInt(input.payload, ['totalCents', 'totalPriceCents']) ??
+      nonNegativeInt(input.payload, ["totalCents", "totalPriceCents"]) ??
       existing?.totalCents;
     if (totalCents == null || totalCents < 0) {
       return {
-        outcome: 'rejected',
-        code: 'INVALID_TOTAL',
-        message: 'operationalOrderItem precisa de totalCents maior ou igual a zero.',
+        outcome: "rejected",
+        code: "INVALID_TOTAL",
+        message:
+          "operationalOrderItem precisa de totalCents maior ou igual a zero.",
       };
     }
 
     const target = await this.resolveProductTarget(input);
-    if (target === 'missingVariant') {
+    const invalidRemote = invalidRemoteIdentity(input.payload, [
+      "productId",
+      "productServerId",
+      "productVariantId",
+      "productVariantServerId",
+      "variantId",
+    ]);
+    if (invalidRemote != null) {
       return {
-        outcome: 'conflict',
-        code: 'STOCK_VARIANT_NOT_FOUND',
-        message: 'Variante remota nao encontrada para item operacional.',
+        outcome: "rejected",
+        code: "INVALID_REMOTE_ID",
+        message:
+          `${invalidRemote.field} precisa ser um UUID remoto valido; ` +
+          "IDs locais devem ser enviados apenas em productLocalId/productVariantLocalId.",
+        details: {
+          entity: input.event.entity,
+          operation: input.event.operation,
+          entityLocalId: input.event.entityLocalId,
+          field: invalidRemote.field,
+          value: invalidRemote.value,
+          productLocalId: firstIdentity(input.payload, ["productLocalId"]),
+          productVariantLocalId: firstIdentity(input.payload, [
+            "productVariantLocalId",
+          ]),
+        },
+      };
+    }
+    if (target === "missingVariant") {
+      return {
+        outcome: "conflict",
+        code: "STOCK_VARIANT_NOT_FOUND",
+        message: "Variante remota nao encontrada para item operacional.",
         payload: {
+          entity: input.event.entity,
+          operation: input.event.operation,
+          entityLocalId: input.event.entityLocalId,
           productVariantId: firstString(input.payload, [
-            'productVariantId',
-            'productVariantServerId',
-            'variantId',
+            "productVariantId",
+            "productVariantServerId",
+            "variantId",
+          ]),
+          productLocalId: firstIdentity(input.payload, ["productLocalId"]),
+          productVariantLocalId: firstIdentity(input.payload, [
+            "productVariantLocalId",
           ]),
         },
       };
@@ -421,12 +464,12 @@ export class OperationalOrderMaterializer {
       productId: productTarget.productId,
       productVariantId: productTarget.productVariantId,
       description:
-        firstString(input.payload, ['description', 'productName', 'name']) ??
+        firstString(input.payload, ["description", "productName", "name"]) ??
         existing?.description ??
-        'Item operacional',
+        "Item operacional",
       quantityMil,
       unitPriceCents:
-        nonNegativeInt(input.payload, ['unitPriceCents', 'priceCents']) ??
+        nonNegativeInt(input.payload, ["unitPriceCents", "priceCents"]) ??
         existing?.unitPriceCents ??
         0,
       totalCents,
@@ -439,12 +482,16 @@ export class OperationalOrderMaterializer {
           operationalOrderId: order.id,
           localUuid,
           ...data,
-          createdAt: firstDate(input.payload, ['createdAt', 'occurredAt'], new Date()),
+          createdAt: firstDate(
+            input.payload,
+            ["createdAt", "occurredAt"],
+            new Date(),
+          ),
         },
       });
 
       return {
-        outcome: 'accepted',
+        outcome: "accepted",
         entityServerId: created.id,
         materializedAt: created.updatedAt,
       };
@@ -456,7 +503,7 @@ export class OperationalOrderMaterializer {
     });
 
     return {
-      outcome: 'accepted',
+      outcome: "accepted",
       entityServerId: updated.id,
       materializedAt: updated.updatedAt,
     };
@@ -467,12 +514,18 @@ export class OperationalOrderMaterializer {
     order: OperationalOrderLike,
   ): SyncMaterializerResult | null {
     if (order.convertedSaleId != null || this.isConvertedStatus(order.status)) {
-      return this.immutable(order, 'Pedido operacional convertido nao pode ser alterado.');
+      return this.immutable(
+        order,
+        "Pedido operacional convertido nao pode ser alterado.",
+      );
     }
 
     const requestedStatus = this.orderStatus(input, order);
     if (this.isCanceled(order) && this.isOpenStatus(requestedStatus)) {
-      return this.immutable(order, 'Pedido operacional cancelado nao pode ser reaberto.');
+      return this.immutable(
+        order,
+        "Pedido operacional cancelado nao pode ser reaberto.",
+      );
     }
 
     return null;
@@ -480,8 +533,8 @@ export class OperationalOrderMaterializer {
 
   private async findCashSession(input: SyncMaterializerInput) {
     const cashSessionId = firstUuid(input.payload, [
-      'cashSessionId',
-      'cashSessionServerId',
+      "cashSessionId",
+      "cashSessionServerId",
     ]);
     if (cashSessionId != null) {
       return input.tx.cashSession.findFirst({
@@ -493,8 +546,8 @@ export class OperationalOrderMaterializer {
     }
 
     const localUuid = firstIdentity(input.payload, [
-      'cashSessionUuid',
-      'cashSessionLocalId',
+      "cashSessionUuid",
+      "cashSessionLocalId",
     ]);
     if (localUuid == null) {
       return null;
@@ -512,8 +565,8 @@ export class OperationalOrderMaterializer {
 
   private async resolveCustomerId(input: SyncMaterializerInput) {
     const customerId = firstUuid(input.payload, [
-      'customerId',
-      'customerServerId',
+      "customerId",
+      "customerServerId",
     ]);
     if (customerId == null) {
       return null;
@@ -532,11 +585,11 @@ export class OperationalOrderMaterializer {
 
   private async resolveProductTarget(
     input: SyncMaterializerInput,
-  ): Promise<ProductTarget | 'missingVariant' | null> {
+  ): Promise<ProductTarget | "missingVariant" | null> {
     const variantId = firstUuid(input.payload, [
-      'productVariantId',
-      'productVariantServerId',
-      'variantId',
+      "productVariantId",
+      "productVariantServerId",
+      "variantId",
     ]);
     if (variantId != null) {
       const variant = await input.tx.productVariant.findFirst({
@@ -556,7 +609,7 @@ export class OperationalOrderMaterializer {
         },
       });
       if (variant == null) {
-        return 'missingVariant';
+        return "missingVariant";
       }
       return {
         productId: variant.product.id,
@@ -564,7 +617,10 @@ export class OperationalOrderMaterializer {
       };
     }
 
-    const productId = firstUuid(input.payload, ['productId', 'productServerId']);
+    const productId = firstUuid(input.payload, [
+      "productId",
+      "productServerId",
+    ]);
     if (productId == null) {
       return null;
     }
@@ -590,23 +646,29 @@ export class OperationalOrderMaterializer {
     input: SyncMaterializerInput,
     existing?: OperationalOrderLike | null,
   ) {
-    const status = firstString(input.payload, ['status', 'state']);
+    const status = firstString(input.payload, ["status", "state"]);
     if (status == null) {
-      return existing?.status ?? 'open';
+      return existing?.status ?? "open";
     }
 
     const normalized = status.trim().toLowerCase();
-    if (['cancelled', 'canceled', 'cancelado', 'cancelada'].includes(normalized)) {
-      return 'canceled';
+    if (
+      ["cancelled", "canceled", "cancelado", "cancelada"].includes(normalized)
+    ) {
+      return "canceled";
     }
-    if (['closed', 'finished', 'finalized', 'fechado', 'fechada'].includes(normalized)) {
-      return 'closed';
+    if (
+      ["closed", "finished", "finalized", "fechado", "fechada"].includes(
+        normalized,
+      )
+    ) {
+      return "closed";
     }
-    if (['converted', 'convertido', 'convertida'].includes(normalized)) {
-      return 'converted';
+    if (["converted", "convertido", "convertida"].includes(normalized)) {
+      return "converted";
     }
-    if (['open', 'opened', 'active', 'aberto', 'aberta'].includes(normalized)) {
-      return 'open';
+    if (["open", "opened", "active", "aberto", "aberta"].includes(normalized)) {
+      return "open";
     }
     return normalized;
   }
@@ -617,13 +679,13 @@ export class OperationalOrderMaterializer {
     status: string,
     fallback: Date,
   ) {
-    if (!['closed', 'converted'].includes(status)) {
+    if (!["closed", "converted"].includes(status)) {
       return existing?.closedAt ?? null;
     }
 
     return firstDate(
       input.payload,
-      ['closedAt', 'finalizedAt', 'updatedAt'],
+      ["closedAt", "finalizedAt", "updatedAt"],
       existing?.closedAt ?? fallback,
     );
   }
@@ -634,23 +696,23 @@ export class OperationalOrderMaterializer {
     status: string,
     fallback: Date,
   ) {
-    if (status !== 'canceled') {
+    if (status !== "canceled") {
       return existing?.cancelledAt ?? null;
     }
 
     return firstDate(
       input.payload,
-      ['cancelledAt', 'canceledAt', 'cancelAt', 'updatedAt'],
+      ["cancelledAt", "canceledAt", "cancelAt", "updatedAt"],
       existing?.cancelledAt ?? fallback,
     );
   }
 
   private orderLocalIdentity(input: SyncMaterializerInput) {
     return firstIdentity(input.payload, [
-      'operationalOrderLocalId',
-      'operationalOrderLocalUuid',
-      'orderLocalId',
-      'orderUuid',
+      "operationalOrderLocalId",
+      "operationalOrderLocalUuid",
+      "orderLocalId",
+      "orderUuid",
     ]);
   }
 
@@ -659,8 +721,8 @@ export class OperationalOrderMaterializer {
       entityLocalId: input.event.entityLocalId,
       entityServerId: input.event.entityServerId,
       operationalOrderId: firstString(input.payload, [
-        'operationalOrderId',
-        'operationalOrderServerId',
+        "operationalOrderId",
+        "operationalOrderServerId",
       ]),
       operationalOrderLocalId: this.orderLocalIdentity(input),
     };
@@ -668,8 +730,8 @@ export class OperationalOrderMaterializer {
 
   private immutable(order: OperationalOrderLike, message: string) {
     return {
-      outcome: 'conflict' as const,
-      code: 'OPERATIONAL_ORDER_IMMUTABLE',
+      outcome: "conflict" as const,
+      code: "OPERATIONAL_ORDER_IMMUTABLE",
       message,
       payload: {
         operationalOrderId: order.id,
@@ -689,14 +751,17 @@ export class OperationalOrderMaterializer {
   }
 
   private isCanceled(order: OperationalOrderLike) {
-    return order.cancelledAt != null || ['canceled', 'cancelled'].includes(order.status);
+    return (
+      order.cancelledAt != null ||
+      ["canceled", "cancelled"].includes(order.status)
+    );
   }
 
   private isConvertedStatus(status: string) {
-    return status === 'converted';
+    return status === "converted";
   }
 
   private isOpenStatus(status: string) {
-    return status === 'open';
+    return status === "open";
   }
 }

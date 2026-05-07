@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import { requireAppContext } from '../../shared/http/auth-middleware';
 import { asyncHandler } from '../../shared/http/async-handler';
+import { blockMobilePdvLegacyWrite } from '../../shared/http/pdv-legacy-write-guard';
 import { validateBody } from '../../shared/http/validate';
 import { fiadoPaymentCreateSchema } from './fiado-payments.schemas';
 import { FiadoPaymentsService } from './fiado-payments.service';
@@ -14,6 +15,7 @@ fiadoPaymentsRouter.use(requireAppContext);
 
 fiadoPaymentsRouter.post(
   '/payments',
+  blockMobilePdvLegacyWrite,
   validateBody(fiadoPaymentCreateSchema),
   asyncHandler(async (request, response) => {
     const payment = await fiadoPaymentsService.create(

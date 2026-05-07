@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { requireAppContext } from '../../shared/http/auth-middleware';
 import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { asyncHandler } from '../../shared/http/async-handler';
+import { blockMobilePdvLegacyWrite } from '../../shared/http/pdv-legacy-write-guard';
 import { validateBody, validateQuery } from '../../shared/http/validate';
 import {
   saleCancelSchema,
@@ -59,6 +60,7 @@ salesRouter.get(
 
 salesRouter.post(
   '/',
+  blockMobilePdvLegacyWrite,
   validateBody(saleCreateSchema),
   asyncHandler(async (request, response) => {
     const sale = await salesService.create(request.auth!.companyId, request.body);
@@ -68,6 +70,7 @@ salesRouter.post(
 
 salesRouter.put(
   '/:id/cancel',
+  blockMobilePdvLegacyWrite,
   validateBody(saleCancelSchema),
   asyncHandler(async (request, response) => {
     const saleId = Array.isArray(request.params.id)

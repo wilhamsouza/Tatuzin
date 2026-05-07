@@ -1,6 +1,9 @@
 import '../../../produtos/domain/entities/product.dart';
 import 'cart_enums.dart';
 
+const operationalProductMissingRemoteMessage =
+    'Este produto ainda não foi sincronizado com o servidor. Conecte-se à internet e atualize os produtos antes de vender.';
+
 class CartItemModifier {
   const CartItemModifier({
     this.modifierGroupId,
@@ -111,6 +114,13 @@ class CartItem {
   bool get hasCustomization =>
       modifiers.isNotEmpty || (notes?.isNotEmpty ?? false);
   bool get isSimpleLine => !hasCustomization;
+  bool get hasOperationalRemoteIdentity {
+    final hasProductRemote = productRemoteId?.trim().isNotEmpty ?? false;
+    final hasVariantRemote =
+        productVariantId == null ||
+        (productVariantRemoteId?.trim().isNotEmpty ?? false);
+    return hasProductRemote && hasVariantRemote;
+  }
 
   String get signature {
     final modifiersSignature = modifiers

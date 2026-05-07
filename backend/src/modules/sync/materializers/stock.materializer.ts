@@ -2,26 +2,28 @@ import {
   absPositiveInt,
   domainIdentityFor,
   firstDate,
+  firstIdentity,
   firstString,
   firstUuid,
+  invalidRemoteIdentity,
   jsonPayload,
   positiveInt,
-} from './payload-utils';
-import { SaleMaterializer } from './sale.materializer';
+} from "./payload-utils";
+import { SaleMaterializer } from "./sale.materializer";
 import type {
   SyncMaterializerInput,
   SyncMaterializerResult,
-} from './materializer.types';
+} from "./materializer.types";
 
 type StockTarget =
   | {
-      type: 'variant';
+      type: "variant";
       productId: string;
       productVariantId: string;
       stockMil: number;
     }
   | {
-      type: 'product';
+      type: "product";
       productId: string;
       productVariantId: null;
       stockMil: number;
@@ -37,21 +39,21 @@ export class StockMaterializer {
       input.event,
       input.payload,
       [
-        'reservationLocalId',
-        'reservationUuid',
-        'stockReservationLocalId',
-        'uuid',
-        'localUuid',
-        'localId',
-        'id',
+        "reservationLocalId",
+        "reservationUuid",
+        "stockReservationLocalId",
+        "uuid",
+        "localUuid",
+        "localId",
+        "id",
       ],
       { preferIdempotencyKey: true },
     );
     if (localUuid == null) {
       return {
-        outcome: 'rejected',
-        code: 'LOCAL_ID_REQUIRED',
-        message: 'stockReservation precisa de entityLocalId, uuid ou localId.',
+        outcome: "rejected",
+        code: "LOCAL_ID_REQUIRED",
+        message: "stockReservation precisa de entityLocalId, uuid ou localId.",
       };
     }
 
@@ -64,38 +66,47 @@ export class StockMaterializer {
       },
     });
     if (existing != null) {
-      if (input.event.operation === 'update' || input.event.operation === 'upsert') {
+      if (
+        input.event.operation === "update" ||
+        input.event.operation === "upsert"
+      ) {
         const updated = await input.tx.stockReservation.update({
           where: { id: existing.id },
           data: {
-            status: firstString(input.payload, ['status']) ?? existing.status,
+            status: firstString(input.payload, ["status"]) ?? existing.status,
             payload: jsonPayload(input.payload),
           },
         });
         return {
-          outcome: 'accepted',
+          outcome: "accepted",
           entityServerId: updated.id,
           materializedAt: updated.updatedAt,
         };
       }
-      return { outcome: 'duplicate', entityServerId: existing.id };
+      return { outcome: "duplicate", entityServerId: existing.id };
     }
 
-    if (!['create', 'append', 'upsert'].includes(input.event.operation)) {
+    if (!["create", "append", "upsert"].includes(input.event.operation)) {
       return {
-        outcome: 'rejected',
-        code: 'INVALID_OPERATION',
-        message: 'stockReservation aceita create, append ou upsert nesta etapa.',
+        outcome: "rejected",
+        code: "INVALID_OPERATION",
+        message:
+          "stockReservation aceita create, append ou upsert nesta etapa.",
       };
     }
 
-    const quantityMil = positiveInt(input.payload, ['quantityMil', 'quantity']);
+    const quantityMil = positiveInt(input.payload, ["quantityMil", "quantity"]);
     if (quantityMil == null) {
       return {
-        outcome: 'rejected',
-        code: 'INVALID_QUANTITY',
-        message: 'stockReservation precisa de quantityMil positivo.',
+        outcome: "rejected",
+        code: "INVALID_QUANTITY",
+        message: "stockReservation precisa de quantityMil positivo.",
       };
+    }
+
+    const invalidRemote = this.invalidStockRemoteIdentity(input);
+    if (invalidRemote != null) {
+      return invalidRemote;
     }
 
     const target = await this.resolveStockTarget(input);
@@ -116,14 +127,18 @@ export class StockMaterializer {
         productVariantId: target.productVariantId,
         localUuid,
         quantityMil,
-        status: firstString(input.payload, ['status']) ?? 'active',
+        status: firstString(input.payload, ["status"]) ?? "active",
         payload: jsonPayload(input.payload),
-        createdAt: firstDate(input.payload, ['createdAt', 'occurredAt'], new Date()),
+        createdAt: firstDate(
+          input.payload,
+          ["createdAt", "occurredAt"],
+          new Date(),
+        ),
       },
     });
 
     return {
-      outcome: 'accepted',
+      outcome: "accepted",
       entityServerId: created.id,
       materializedAt: created.updatedAt,
     };
@@ -132,11 +147,11 @@ export class StockMaterializer {
   async materializeDeduction(
     input: SyncMaterializerInput,
   ): Promise<SyncMaterializerResult> {
-    if (!['create', 'append', 'upsert'].includes(input.event.operation)) {
+    if (!["create", "append", "upsert"].includes(input.event.operation)) {
       return {
-        outcome: 'rejected',
-        code: 'INVALID_OPERATION',
-        message: 'stockDeduction aceita create, append ou upsert nesta etapa.',
+        outcome: "rejected",
+        code: "INVALID_OPERATION",
+        message: "stockDeduction aceita create, append ou upsert nesta etapa.",
       };
     }
 
@@ -144,21 +159,21 @@ export class StockMaterializer {
       input.event,
       input.payload,
       [
-        'deductionLocalId',
-        'deductionUuid',
-        'stockDeductionLocalId',
-        'uuid',
-        'localUuid',
-        'localId',
-        'id',
+        "deductionLocalId",
+        "deductionUuid",
+        "stockDeductionLocalId",
+        "uuid",
+        "localUuid",
+        "localId",
+        "id",
       ],
       { preferIdempotencyKey: true },
     );
     if (localUuid == null) {
       return {
-        outcome: 'rejected',
-        code: 'LOCAL_ID_REQUIRED',
-        message: 'stockDeduction precisa de entityLocalId, uuid ou localId.',
+        outcome: "rejected",
+        code: "LOCAL_ID_REQUIRED",
+        message: "stockDeduction precisa de entityLocalId, uuid ou localId.",
       };
     }
 
@@ -171,20 +186,25 @@ export class StockMaterializer {
       },
     });
     if (existing != null) {
-      return { outcome: 'duplicate', entityServerId: existing.id };
+      return { outcome: "duplicate", entityServerId: existing.id };
     }
 
     const quantityMil = absPositiveInt(input.payload, [
-      'quantityMil',
-      'quantityDeltaMil',
-      'quantity',
+      "quantityMil",
+      "quantityDeltaMil",
+      "quantity",
     ]);
     if (quantityMil == null) {
       return {
-        outcome: 'rejected',
-        code: 'INVALID_QUANTITY',
-        message: 'stockDeduction precisa de quantidade diferente de zero.',
+        outcome: "rejected",
+        code: "INVALID_QUANTITY",
+        message: "stockDeduction precisa de quantidade diferente de zero.",
       };
+    }
+
+    const invalidRemote = this.invalidStockRemoteIdentity(input);
+    if (invalidRemote != null) {
+      return invalidRemote;
     }
 
     const target = await this.resolveStockTarget(input);
@@ -206,11 +226,15 @@ export class StockMaterializer {
         localUuid,
         quantityMil,
         payload: jsonPayload(input.payload),
-        createdAt: firstDate(input.payload, ['createdAt', 'occurredAt'], new Date()),
+        createdAt: firstDate(
+          input.payload,
+          ["createdAt", "occurredAt"],
+          new Date(),
+        ),
       },
     });
 
-    if (target.type === 'variant') {
+    if (target.type === "variant") {
       await input.tx.productVariant.update({
         where: { id: target.productVariantId },
         data: { stockMil: { decrement: quantityMil } },
@@ -223,7 +247,7 @@ export class StockMaterializer {
     }
 
     return {
-      outcome: 'accepted',
+      outcome: "accepted",
       entityServerId: created.id,
       materializedAt: created.updatedAt,
     };
@@ -233,9 +257,9 @@ export class StockMaterializer {
     input: SyncMaterializerInput,
   ): Promise<StockTarget | null> {
     const variantId = firstUuid(input.payload, [
-      'productVariantId',
-      'productVariantServerId',
-      'variantId',
+      "productVariantId",
+      "productVariantServerId",
+      "variantId",
     ]);
     if (variantId != null) {
       const variant = await input.tx.productVariant.findFirst({
@@ -252,14 +276,17 @@ export class StockMaterializer {
         return null;
       }
       return {
-        type: 'variant',
+        type: "variant",
         productId: variant.product.id,
         productVariantId: variant.id,
         stockMil: variant.stockMil,
       };
     }
 
-    const productId = firstUuid(input.payload, ['productId', 'productServerId']);
+    const productId = firstUuid(input.payload, [
+      "productId",
+      "productServerId",
+    ]);
     if (productId == null) {
       return null;
     }
@@ -279,24 +306,68 @@ export class StockMaterializer {
       return null;
     }
     return {
-      type: 'product',
+      type: "product",
       productId: product.id,
       productVariantId: null,
       stockMil: product.stockMil,
     };
   }
 
-  private variantNotFound(input: SyncMaterializerInput): SyncMaterializerResult {
+  private variantNotFound(
+    input: SyncMaterializerInput,
+  ): SyncMaterializerResult {
     return {
-      outcome: 'conflict',
-      code: 'STOCK_VARIANT_NOT_FOUND',
-      message: 'Produto/variante remoto nao encontrado para estoque operacional.',
+      outcome: "conflict",
+      code: "STOCK_VARIANT_NOT_FOUND",
+      message:
+        "Produto/variante remoto nao encontrado para estoque operacional.",
       payload: {
-        productId: firstString(input.payload, ['productId', 'productServerId']),
+        entity: input.event.entity,
+        operation: input.event.operation,
+        entityLocalId: input.event.entityLocalId,
+        productId: firstString(input.payload, ["productId", "productServerId"]),
         productVariantId: firstString(input.payload, [
-          'productVariantId',
-          'productVariantServerId',
-          'variantId',
+          "productVariantId",
+          "productVariantServerId",
+          "variantId",
+        ]),
+        productLocalId: firstIdentity(input.payload, ["productLocalId"]),
+        productVariantLocalId: firstIdentity(input.payload, [
+          "productVariantLocalId",
+        ]),
+      },
+    };
+  }
+
+  private invalidStockRemoteIdentity(
+    input: SyncMaterializerInput,
+  ): SyncMaterializerResult | null {
+    const invalid = invalidRemoteIdentity(input.payload, [
+      "productId",
+      "productServerId",
+      "productVariantId",
+      "productVariantServerId",
+      "variantId",
+    ]);
+    if (invalid == null) {
+      return null;
+    }
+
+    return {
+      outcome: "rejected",
+      code: "INVALID_REMOTE_ID",
+      message:
+        `${invalid.field} precisa ser um UUID remoto valido; ` +
+        "IDs locais devem ser enviados apenas em productLocalId/productVariantLocalId.",
+      details: {
+        entity: input.event.entity,
+        operation: input.event.operation,
+        entityLocalId: input.event.entityLocalId,
+        field: invalid.field,
+        value: invalid.value,
+        productLocalId: firstIdentity(input.payload, ["productLocalId"]),
+        productVariantLocalId: firstIdentity(input.payload, [
+          "productVariantLocalId",
         ]),
       },
     };
@@ -307,9 +378,9 @@ export class StockMaterializer {
     availableStockMil: number,
   ): SyncMaterializerResult {
     return {
-      outcome: 'conflict',
-      code: 'STOCK_UNAVAILABLE',
-      message: 'Estoque insuficiente para operacao offline.',
+      outcome: "conflict",
+      code: "STOCK_UNAVAILABLE",
+      message: "Estoque insuficiente para operacao offline.",
       payload: {
         requestedQuantityMil,
         availableStockMil,

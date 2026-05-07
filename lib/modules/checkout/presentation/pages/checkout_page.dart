@@ -815,6 +815,29 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       return;
     }
 
+    CartItem? unsyncedItem;
+    for (final item in cartState.items) {
+      if (!item.hasOperationalRemoteIdentity) {
+        unsyncedItem = item;
+        break;
+      }
+    }
+    if (unsyncedItem != null) {
+      AppLogger.warn(
+        '[Checkout] blocked sale without remote identity | '
+        'productLocalId=${unsyncedItem.productId} '
+        'productVariantLocalId=${unsyncedItem.productVariantId}',
+      );
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '${unsyncedItem.productName}: $operationalProductMissingRemoteMessage',
+          ),
+        ),
+      );
+      return;
+    }
+
     final input = CheckoutInput(
       items: cartState.items,
       saleType: saleType,
