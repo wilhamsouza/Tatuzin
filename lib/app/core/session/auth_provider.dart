@@ -215,6 +215,21 @@ class AuthController extends AsyncNotifier<void> {
     }
   }
 
+  Future<AppSession> refreshAuthenticatedSession() async {
+    state = const AsyncLoading();
+    try {
+      final session = await ref
+          .read(remoteAuthGatewayProvider)
+          .refreshSession();
+      await _applySession(session);
+      state = const AsyncData(null);
+      return session;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+
   Future<String> forgotPasswordRemote({required String email}) async {
     final environment = ref.read(appEnvironmentProvider);
     if (!environment.authEnabled || !environment.endpointConfig.isConfigured) {

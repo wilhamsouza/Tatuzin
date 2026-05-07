@@ -1,5 +1,7 @@
 import 'package:go_router/go_router.dart';
 
+import '../../core/entitlements/feature_gate.dart';
+import '../../core/entitlements/plan_entitlements.dart';
 import '../../../modules/estoque/presentation/pages/inventory_adjustment_page.dart';
 import '../../../modules/estoque/presentation/pages/inventory_count_page.dart';
 import '../../../modules/estoque/presentation/pages/inventory_count_session_detail_page.dart';
@@ -18,26 +20,38 @@ List<RouteBase> buildInventoryRoutes() {
     GoRoute(
       path: AppRoutePaths.inventoryCounts,
       name: AppRouteNames.inventoryCounts,
-      builder: (context, state) => const InventoryCountPage(),
+      builder: (context, state) => const FeatureGate(
+        feature: FeatureKey.inventoryAdvanced,
+        child: InventoryCountPage(),
+      ),
     ),
     GoRoute(
       path: AppRoutePaths.inventoryCountSessionDetail,
       name: AppRouteNames.inventoryCountSessionDetail,
-      builder: (context, state) => buildIntParamRoute(
-        state,
-        'sessionId',
-        (sessionId) => InventoryCountSessionDetailPage(sessionId: sessionId),
+      builder: (context, state) => FeatureGate(
+        feature: FeatureKey.inventoryAdvanced,
+        child: buildIntParamRoute(
+          state,
+          'sessionId',
+          (sessionId) => InventoryCountSessionDetailPage(sessionId: sessionId),
+        ),
       ),
     ),
     GoRoute(
       path: AppRoutePaths.inventoryMovements,
       name: AppRouteNames.inventoryMovements,
-      builder: (context, state) => const InventoryMovementsPage(),
+      builder: (context, state) => const FeatureGate(
+        feature: FeatureKey.inventoryAdvanced,
+        child: InventoryMovementsPage(),
+      ),
     ),
     GoRoute(
       path: AppRoutePaths.inventoryAdjustment,
       name: AppRouteNames.inventoryAdjustment,
-      builder: (context, state) => const InventoryAdjustmentPage(),
+      builder: (context, state) => const FeatureGate(
+        feature: FeatureKey.inventoryAdvanced,
+        child: InventoryAdjustmentPage(),
+      ),
     ),
   ];
 }

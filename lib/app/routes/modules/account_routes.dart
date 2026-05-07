@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../modules/account/presentation/pages/account_cloud_page.dart';
 import '../../../modules/backup/presentation/pages/backup_restore_page.dart';
+import '../../../modules/billing/presentation/pages/subscription_page.dart';
 import '../route_names.dart';
 
 List<RouteBase> buildAccountRoutes() {
@@ -10,6 +11,11 @@ List<RouteBase> buildAccountRoutes() {
       path: AppRoutePaths.accountCloud,
       name: AppRouteNames.accountCloud,
       builder: (context, state) => const AccountCloudPage(),
+    ),
+    GoRoute(
+      path: AppRoutePaths.subscription,
+      name: AppRouteNames.subscription,
+      builder: (context, state) => const SubscriptionPage(),
     ),
     GoRoute(
       path: AppRoutePaths.backup,

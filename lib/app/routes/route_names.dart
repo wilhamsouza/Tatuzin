@@ -6,6 +6,7 @@ abstract final class AppRouteNames {
   static const dashboard = 'dashboard';
   static const more = 'more';
   static const accountCloud = 'account-cloud';
+  static const subscription = 'subscription';
   static const categories = 'categories';
   static const categoryForm = 'category-form';
   static const products = 'products';
@@ -53,6 +54,7 @@ abstract final class AppRouteNames {
   static const purchaseReports = 'purchase-reports';
   static const profitabilityReports = 'profitability-reports';
   static const backup = 'backup';
+  static const employees = 'employees';
   static const system = 'system';
   static const technicalSystem = 'technical-system';
   static const admin = 'admin';
@@ -66,6 +68,7 @@ abstract final class AppRoutePaths {
   static const dashboard = '/';
   static const more = '/mais';
   static const accountCloud = '/conta';
+  static const subscription = '/conta/assinatura';
   static const categories = '/categorias';
   static const categoryForm = '/categorias/form';
   static const products = '/produtos';
@@ -114,6 +117,7 @@ abstract final class AppRoutePaths {
   static const purchaseReports = '/relatorios/compras';
   static const profitabilityReports = '/relatorios/lucratividade';
   static const backup = '/backup';
+  static const employees = '/funcionarios';
   static const system = '/sistema';
   static const technicalSystem = '/interno/sistema';
   static const legacyAdmin = '/admin';

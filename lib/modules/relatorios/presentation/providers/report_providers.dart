@@ -1,9 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/database/app_database.dart';
+import '../../../../app/core/entitlements/plan_entitlements.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../categorias/domain/entities/category.dart';
 import '../../../categorias/presentation/providers/category_providers.dart';
 import '../../../clientes/domain/entities/client.dart';
@@ -136,6 +138,18 @@ final reportPeriodProvider = Provider<ReportPeriod>((ref) {
     ref.watch(reportFilterProvider).range,
   );
   return matchedPeriod ?? ReportPeriod.daily;
+});
+
+final allowedReportPeriodsProvider = Provider<Set<ReportPeriod>>((ref) {
+  final reportPeriods = ref.watch(
+    currentCompanyContextProvider.select(
+      (company) => company.limits.reportPeriods,
+    ),
+  );
+  return {
+    for (final period in ReportPeriod.values)
+      if (reportPeriods.contains(reportPeriodEntitlementKey(period))) period,
+  };
 });
 
 final reportPreviousFilterProvider = Provider<ReportFilter>((ref) {
@@ -587,6 +601,9 @@ class ReportFilterController extends Notifier<ReportFilter> {
   }
 
   void applyPeriod(ReportPeriod period, {DateTime? reference}) {
+    if (!_isPeriodAllowed(period)) {
+      return;
+    }
     final nextRange = period.resolveRange(reference ?? DateTime.now());
     state = state.copyWith(
       start: nextRange.start,
@@ -604,6 +621,19 @@ class ReportFilterController extends Notifier<ReportFilter> {
     required DateTime start,
     required DateTime endExclusive,
   }) {
+    final matchedPeriod = ReportDateRangeSupport.matchPeriod(
+      ReportDateRange(start: start, endExclusive: endExclusive),
+    );
+    if (matchedPeriod != null && !_isPeriodAllowed(matchedPeriod)) {
+      return;
+    }
+    if (matchedPeriod == null &&
+        !ref
+            .read(currentCompanyContextProvider)
+            .limits
+            .allowsReportPeriod(ReportPeriodKey.custom)) {
+      return;
+    }
     state = state.copyWith(start: start, endExclusive: endExclusive);
   }
 
@@ -671,6 +701,23 @@ class ReportFilterController extends Notifier<ReportFilter> {
   ReportPeriod reportPeriodFromCurrentState() {
     return ReportDateRangeSupport.matchPeriod(state.range) ??
         ReportPeriod.daily;
+  }
+
+  bool _isPeriodAllowed(ReportPeriod period) {
+    return ref.read(allowedReportPeriodsProvider).contains(period);
+  }
+}
+
+ReportPeriodKey reportPeriodEntitlementKey(ReportPeriod period) {
+  switch (period) {
+    case ReportPeriod.daily:
+      return ReportPeriodKey.daily;
+    case ReportPeriod.weekly:
+      return ReportPeriodKey.weekly;
+    case ReportPeriod.monthly:
+      return ReportPeriodKey.monthly;
+    case ReportPeriod.yearly:
+      return ReportPeriodKey.yearly;
   }
 }
 

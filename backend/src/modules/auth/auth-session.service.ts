@@ -32,7 +32,7 @@ type SessionIssueInput = {
   companyId: string;
   membershipId: string;
   membershipRole: string;
-  licenseMaxDevices: number | null;
+  licensePlan: string | null;
   clientInput?: SessionClientInput;
 };
 
@@ -145,7 +145,7 @@ export class AuthSessionService {
       companyId: input.companyId,
       userId: input.userId,
       membershipRole: input.membershipRole,
-      licenseMaxDevices: input.licenseMaxDevices,
+      licensePlan: input.licensePlan,
       clientInstanceId: client.clientInstanceId,
       deviceLabel: client.deviceLabel,
       platform: client.platform,
@@ -374,7 +374,7 @@ export class AuthSessionService {
       companyId: existingSession.companyId,
       userId: existingSession.userId,
       membershipRole: membership.role,
-      licenseMaxDevices: membership.company.license?.maxDevices ?? null,
+      licensePlan: membership.company.license?.plan ?? null,
       clientInstanceId: existingSession.clientInstanceId,
       deviceLabel: client.deviceLabel ?? existingSession.deviceLabel,
       platform: client.platform ?? existingSession.platform,

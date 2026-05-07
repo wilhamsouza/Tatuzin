@@ -7,6 +7,16 @@ import { asyncHandler } from '../../shared/http/async-handler';
 import { createRateLimit } from '../../shared/http/rate-limit';
 import { validateBody, validateQuery } from '../../shared/http/validate';
 import {
+  type AdminBillingCompaniesQueryInput,
+  type AdminBillingListQueryInput,
+  adminBillingCancelLocalSchema,
+  adminBillingCompaniesQuerySchema,
+  adminBillingForcePlanSchema,
+  adminBillingListQuerySchema,
+  adminBillingRefreshSchema,
+} from '../billing/billing-admin.schemas';
+import { BillingAdminService } from '../billing/billing-admin.service';
+import {
   type AdminAuditQueryInput,
   type AdminCompanySyncConflictsQueryInput,
   type AdminCompanySyncEventsQueryInput,
@@ -30,6 +40,7 @@ import { AdminService } from './admin.service';
 
 const adminService = new AdminService();
 const adminSyncHealthService = new AdminSyncHealthService();
+const billingAdminService = new BillingAdminService();
 
 export const adminRouter = Router();
 
@@ -45,6 +56,17 @@ adminRouter.use(
     keyGenerator(request) {
       return request.auth?.userId ?? request.ip ?? 'unknown-admin';
     },
+  }),
+);
+
+adminRouter.get(
+  '/billing/companies',
+  validateQuery(adminBillingCompaniesQuerySchema),
+  asyncHandler(async (request, response) => {
+    const payload = await billingAdminService.listCompanies(
+      request.query as unknown as AdminBillingCompaniesQueryInput,
+    );
+    response.json(payload);
   }),
 );
 
@@ -123,6 +145,89 @@ adminRouter.get(
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
     const payload = await adminSyncHealthService.listDevices(companyId);
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/companies/:companyId/billing/status',
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await billingAdminService.getStatus(companyId);
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/companies/:companyId/billing/events',
+  validateQuery(adminBillingListQuerySchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await billingAdminService.listEvents(
+      companyId,
+      request.query as unknown as AdminBillingListQueryInput,
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/companies/:companyId/billing/checkout-sessions',
+  validateQuery(adminBillingListQuerySchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await billingAdminService.listCheckoutSessions(
+      companyId,
+      request.query as unknown as AdminBillingListQueryInput,
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  '/companies/:companyId/billing/refresh',
+  validateBody(adminBillingRefreshSchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await billingAdminService.refreshCompany({
+      ...request.body,
+      companyId,
+      actorUserId: request.auth?.userId,
+      ipAddress: request.ip,
+      userAgent: request.get('user-agent') ?? null,
+    });
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  '/companies/:companyId/billing/force-plan',
+  validateBody(adminBillingForcePlanSchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await billingAdminService.forcePlan({
+      ...request.body,
+      companyId,
+      actorUserId: request.auth?.userId,
+      ipAddress: request.ip,
+      userAgent: request.get('user-agent') ?? null,
+    });
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  '/companies/:companyId/billing/cancel-local',
+  validateBody(adminBillingCancelLocalSchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await billingAdminService.cancelLocal({
+      ...request.body,
+      companyId,
+      actorUserId: request.auth?.userId,
+      ipAddress: request.ip,
+      userAgent: request.get('user-agent') ?? null,
+    });
     response.json(payload);
   }),
 );

@@ -4,6 +4,7 @@ import { CompanyDeviceStatus, LicenseStatus } from '@prisma/client';
 import { prisma } from '../../database/prisma';
 import { AppError } from '../../shared/http/app-error';
 import { logger } from '../../shared/observability/logger';
+import { getPlanEntitlements } from '../plans/plan-catalog.service';
 import type { AppContext } from './app-context.types';
 
 export class AppContextService {
@@ -80,6 +81,7 @@ export class AppContextService {
     }
 
     this.assertLicenseCanOperate(license);
+    const entitlements = getPlanEntitlements(license.plan);
 
     const device = await prisma.companyDevice.findUnique({
       where: {
@@ -156,6 +158,9 @@ export class AppContextService {
         appVersion: device.appVersion,
         lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
       },
+      plan: entitlements.plan,
+      features: entitlements.features,
+      limits: entitlements.limits,
       clientInstanceId,
       tenantReady: true,
     };
@@ -174,6 +179,7 @@ export class AppContextService {
       deviceId: context?.device.id,
       clientInstanceId: context?.clientInstanceId,
       dbName: 'remote_postgres',
+      plan: context?.plan,
       tenantReady: context?.tenantReady ?? false,
       syncEnabled: context?.license.syncEnabled ?? input.syncEnabled ?? false,
       offlineAllowed: false,

@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import { requireAppContext } from '../../shared/http/auth-middleware';
 import { asyncHandler } from '../../shared/http/async-handler';
+import { requireFeature } from '../../shared/http/feature-middleware';
 import { validateBody, validateQuery } from '../../shared/http/validate';
 import {
   costCancelSchema,
@@ -31,7 +32,7 @@ costsRouter.get('/health', (_request, response) => {
   });
 });
 
-costsRouter.use(requireAppContext);
+costsRouter.use(requireAppContext, requireFeature('costs'));
 
 costsRouter.get(
   '/summary',

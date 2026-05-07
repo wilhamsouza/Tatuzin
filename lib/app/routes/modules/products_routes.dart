@@ -1,5 +1,7 @@
 import 'package:go_router/go_router.dart';
 
+import '../../core/entitlements/feature_gate.dart';
+import '../../core/entitlements/plan_entitlements.dart';
 import '../../../modules/categorias/domain/entities/category.dart';
 import '../../../modules/categorias/presentation/pages/categories_page.dart';
 import '../../../modules/categorias/presentation/pages/category_form_page.dart';
@@ -42,29 +44,42 @@ List<RouteBase> buildProductsRoutes() {
     GoRoute(
       path: AppRoutePaths.productProfitability,
       name: AppRouteNames.productProfitability,
-      builder: (context, state) => const ProductProfitabilityPage(),
+      builder: (context, state) => const FeatureGate(
+        feature: FeatureKey.reportsAdvanced,
+        child: ProductProfitabilityPage(),
+      ),
     ),
     GoRoute(
       path: AppRoutePaths.supplies,
       name: AppRouteNames.supplies,
-      builder: (context, state) => const SuppliesPage(),
+      builder: (context, state) => const FeatureGate(
+        feature: FeatureKey.supplies,
+        child: SuppliesPage(),
+      ),
     ),
     GoRoute(
       path: AppRoutePaths.supplyForm,
       name: AppRouteNames.supplyForm,
-      builder: (context, state) =>
-          SupplyFormPage(initialSupply: routeExtraAs<Supply>(state)),
+      builder: (context, state) => FeatureGate(
+        feature: FeatureKey.supplies,
+        child: SupplyFormPage(initialSupply: routeExtraAs<Supply>(state)),
+      ),
     ),
     GoRoute(
       path: AppRoutePaths.supplyInventory,
       name: AppRouteNames.supplyInventory,
-      builder: (context, state) =>
-          SupplyInventoryPage(initialSupplyId: routeExtraAs<int>(state)),
+      builder: (context, state) => FeatureGate(
+        feature: FeatureKey.supplies,
+        child: SupplyInventoryPage(initialSupplyId: routeExtraAs<int>(state)),
+      ),
     ),
     GoRoute(
       path: AppRoutePaths.reorderSuggestions,
       name: AppRouteNames.reorderSuggestions,
-      builder: (context, state) => const ReorderSuggestionsPage(),
+      builder: (context, state) => const FeatureGate(
+        feature: FeatureKey.supplies,
+        child: ReorderSuggestionsPage(),
+      ),
     ),
   ];
 }

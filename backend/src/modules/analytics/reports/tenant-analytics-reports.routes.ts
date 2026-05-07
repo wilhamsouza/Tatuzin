@@ -1,8 +1,13 @@
+import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 
 import { requireAppContext } from '../../../shared/http/auth-middleware';
 import { asyncHandler } from '../../../shared/http/async-handler';
+import { AppError } from '../../../shared/http/app-error';
+import { requireFeature } from '../../../shared/http/feature-middleware';
 import { validateQuery } from '../../../shared/http/validate';
+import type { FeatureKey } from '../../plans/plan-catalog.service';
+import { requiredPlanForFeature } from '../../plans/plan-catalog.service';
 import { AnalyticsReportsService } from './analytics-reports.service';
 import {
   tenantAnalyticsReportQuerySchema,
@@ -18,6 +23,7 @@ tenantAnalyticsReportsRouter.use(requireAppContext);
 tenantAnalyticsReportsRouter.get(
   '/cash-consolidated',
   validateQuery(tenantAnalyticsReportQuerySchema),
+  requireTenantReportPeriodFeature,
   asyncHandler(async (request, response) => {
     const payload = await analyticsReportsService.getCashConsolidated(
       withTenantCompany(request.query as unknown as TenantAnalyticsReportQueryInput, request.auth!.companyId),
@@ -29,6 +35,7 @@ tenantAnalyticsReportsRouter.get(
 tenantAnalyticsReportsRouter.get(
   '/financial-summary',
   validateQuery(tenantAnalyticsReportQuerySchema),
+  requireTenantReportPeriodFeature,
   asyncHandler(async (request, response) => {
     const payload = await analyticsReportsService.getFinancialSummary(
       withTenantCompany(request.query as unknown as TenantAnalyticsReportQueryInput, request.auth!.companyId),
@@ -40,6 +47,7 @@ tenantAnalyticsReportsRouter.get(
 tenantAnalyticsReportsRouter.get(
   '/sales-by-day',
   validateQuery(tenantAnalyticsReportQuerySchema),
+  requireTenantReportPeriodFeature,
   asyncHandler(async (request, response) => {
     const query = request.query as unknown as TenantAnalyticsReportQueryInput;
     const payload = await analyticsReportsService.getSalesByDay(
@@ -57,6 +65,7 @@ tenantAnalyticsReportsRouter.get(
 tenantAnalyticsReportsRouter.get(
   '/sales-by-product',
   validateQuery(tenantAnalyticsReportQuerySchema),
+  requireTenantReportPeriodFeature,
   asyncHandler(async (request, response) => {
     const query = request.query as unknown as TenantAnalyticsReportQueryInput;
     const payload = await analyticsReportsService.getSalesByProductForTenant(
@@ -73,6 +82,7 @@ tenantAnalyticsReportsRouter.get(
 tenantAnalyticsReportsRouter.get(
   '/sales-by-customer',
   validateQuery(tenantAnalyticsReportQuerySchema),
+  requireTenantReportPeriodFeature,
   asyncHandler(async (request, response) => {
     const query = request.query as unknown as TenantAnalyticsReportQueryInput;
     const payload = await analyticsReportsService.getSalesByCustomerForTenant(
@@ -86,6 +96,7 @@ tenantAnalyticsReportsRouter.get(
 tenantAnalyticsReportsRouter.get(
   '/top-variants',
   validateQuery(tenantAnalyticsReportQuerySchema),
+  requireFeature('reportsAdvanced'),
   asyncHandler(async (_request, response) => {
     response.json({
       partial: true,
@@ -105,6 +116,7 @@ tenantAnalyticsReportsRouter.get(
 tenantAnalyticsReportsRouter.get(
   '/profitability',
   validateQuery(tenantAnalyticsReportQuerySchema),
+  requireFeature('reportsAdvanced'),
   asyncHandler(async (request, response) => {
     const query = request.query as unknown as TenantAnalyticsReportQueryInput;
     const payload = await analyticsReportsService.getProfitabilityForTenant(
@@ -121,6 +133,7 @@ tenantAnalyticsReportsRouter.get(
 tenantAnalyticsReportsRouter.get(
   '/purchases',
   validateQuery(tenantAnalyticsReportQuerySchema),
+  requireFeature('reportsAdvanced'),
   asyncHandler(async (request, response) => {
     const query = request.query as unknown as TenantAnalyticsReportQueryInput;
     const payload = await analyticsReportsService.getPurchasesForTenant(
@@ -134,6 +147,7 @@ tenantAnalyticsReportsRouter.get(
 tenantAnalyticsReportsRouter.get(
   '/inventory',
   validateQuery(tenantAnalyticsReportQuerySchema),
+  requireFeature('reportsAdvanced'),
   asyncHandler(async (request, response) => {
     const payload = await analyticsReportsService.getInventoryForTenant(
       request.auth!.companyId,
@@ -141,6 +155,61 @@ tenantAnalyticsReportsRouter.get(
     response.json(payload);
   }),
 );
+
+function requireTenantReportPeriodFeature(
+  request: Request,
+  _response: Response,
+  next: NextFunction,
+) {
+  const query = request.query as unknown as TenantAnalyticsReportQueryInput;
+  const feature = featureForReportPeriod(query);
+  if (request.appContext?.features[feature] === true) {
+    next();
+    return;
+  }
+
+  next(
+    new AppError(
+      'Este recurso não está disponível no seu plano atual.',
+      403,
+      'FEATURE_NOT_AVAILABLE',
+      {
+        feature,
+        requiredPlan: requiredPlanForFeature(feature),
+      },
+    ),
+  );
+}
+
+function featureForReportPeriod(
+  query: TenantAnalyticsReportQueryInput,
+): FeatureKey {
+  const startDate = query.startDate;
+  const endDate = query.endDate;
+  if (startDate == null || endDate == null) {
+    return 'reportsBasic';
+  }
+
+  const periodDays = inclusiveDaysBetween(startDate, endDate);
+  if (periodDays <= 1 && query.grouping === 'day') {
+    return 'reportsDaily';
+  }
+
+  if (periodDays <= 31) {
+    return 'reportsBasic';
+  }
+
+  return 'reportsAdvanced';
+}
+
+function inclusiveDaysBetween(startDate: string, endDate: string) {
+  const start = Date.parse(`${startDate}T00:00:00.000Z`);
+  const end = Date.parse(`${endDate}T00:00:00.000Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return Math.floor((end - start) / 86_400_000) + 1;
+}
 
 function withTenantCompany(
   query: TenantAnalyticsReportQueryInput,

@@ -2,6 +2,7 @@ import 'package:erp_pdv_app/app/app.dart';
 import 'package:erp_pdv_app/app/core/config/app_data_mode.dart';
 import 'package:erp_pdv_app/app/core/config/app_environment.dart';
 import 'package:erp_pdv_app/app/core/database/app_database.dart';
+import 'package:erp_pdv_app/app/core/entitlements/plan_entitlements.dart';
 import 'package:erp_pdv_app/app/core/network/contracts/auth_gateway.dart';
 import 'package:erp_pdv_app/app/core/session/app_session.dart';
 import 'package:erp_pdv_app/app/core/session/app_user.dart';
@@ -57,6 +58,14 @@ void main() {
       expect(
         router.namedLocation(AppRouteNames.reports),
         AppRoutePaths.reports,
+      );
+      expect(
+        router.namedLocation(AppRouteNames.employees),
+        AppRoutePaths.employees,
+      );
+      expect(
+        router.namedLocation(AppRouteNames.subscription),
+        AppRoutePaths.subscription,
       );
       expect(
         router.namedLocation(
@@ -128,6 +137,37 @@ void main() {
     router.go(AppRoutePaths.technicalSystem);
     await tester.pumpAndSettle();
     expect(find.byType(LoginPage), findsOneWidget);
+  });
+
+  testWidgets('deep link de funcionarios bloqueia FREE com página locked', (
+    tester,
+  ) async {
+    await _pumpApp(tester, authenticated: true);
+
+    final router = GoRouter.of(tester.element(find.byType(DashboardPage)));
+    router.go(AppRoutePaths.employees);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Funcionários'), findsWidgets);
+    expect(find.text('Atualizar plano'), findsOneWidget);
+    expect(find.textContaining('plano Pro'), findsOneWidget);
+  });
+
+  testWidgets('PRO abre placeholder de funcionarios', (tester) async {
+    await _pumpApp(tester, configureSession: _setProTenantSession);
+
+    final router = GoRouter.of(tester.element(find.byType(DashboardPage)));
+    router.go(AppRoutePaths.employees);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Funcionários'), findsWidgets);
+    expect(
+      find.text(
+        'Em breve: cadastre vendedores, caixas e gerentes com permissões.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Atualizar plano'), findsNothing);
   });
 }
 
@@ -230,6 +270,35 @@ void _setValidTenantSession(ProviderContainer container) {
           licensePlan: 'trial',
           licenseStatus: 'trial',
           syncEnabled: true,
+          entitlements: PlanEntitlements.free,
+        ),
+        clientInstanceId: 'device-1',
+      );
+}
+
+void _setProTenantSession(ProviderContainer container) {
+  container
+      .read(appSessionProvider.notifier)
+      .setAuthenticatedSession(
+        scope: SessionScope.authenticatedRemote,
+        user: const AppUser(
+          localId: null,
+          remoteId: 'user-1',
+          displayName: 'Operador',
+          email: 'operador@tatuzin.test',
+          roleLabel: 'Operador',
+          kind: AppUserKind.remoteAuthenticated,
+        ),
+        company: const CompanyContext(
+          localId: null,
+          remoteId: 'company-1',
+          displayName: 'Cafe Oliveira',
+          legalName: 'Cafe Oliveira LTDA',
+          documentNumber: null,
+          licensePlan: 'pro',
+          licenseStatus: 'active',
+          syncEnabled: true,
+          entitlements: PlanEntitlements.pro,
         ),
         clientInstanceId: 'device-1',
       );

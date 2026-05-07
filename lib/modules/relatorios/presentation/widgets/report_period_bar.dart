@@ -31,6 +31,7 @@ class ReportPeriodBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final filter = ref.watch(reportFilterProvider);
     final period = ref.watch(reportPeriodProvider);
+    final allowedPeriods = ref.watch(allowedReportPeriodsProvider);
     final controller = ref.read(reportFilterProvider.notifier);
     final lastIncludedDay = filter.endExclusive.subtract(
       const Duration(days: 1),
@@ -51,11 +52,12 @@ class ReportPeriodBar extends ConsumerWidget {
             runSpacing: 8,
             children: [
               for (final currentPeriod in ReportPeriod.values)
-                ChoiceChip(
-                  label: Text(currentPeriod.label),
-                  selected: period == currentPeriod,
-                  onSelected: (_) => controller.applyPeriod(currentPeriod),
-                ),
+                if (allowedPeriods.contains(currentPeriod))
+                  ChoiceChip(
+                    label: Text(currentPeriod.label),
+                    selected: period == currentPeriod,
+                    onSelected: (_) => controller.applyPeriod(currentPeriod),
+                  ),
             ],
           ),
           const SizedBox(height: 12),

@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { requireAppContext } from '../../shared/http/auth-middleware';
 import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { asyncHandler } from '../../shared/http/async-handler';
+import { requireFeature } from '../../shared/http/feature-middleware';
 import { validateBody, validateQuery } from '../../shared/http/validate';
 import {
   supplyListQuerySchema,
@@ -23,7 +24,7 @@ suppliesRouter.get('/health', (_request, response) => {
   });
 });
 
-suppliesRouter.use(requireAppContext);
+suppliesRouter.use(requireAppContext, requireFeature('supplies'));
 
 suppliesRouter.get(
   '/',

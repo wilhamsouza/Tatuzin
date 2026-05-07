@@ -1,5 +1,6 @@
 import 'app_user.dart';
 import 'company_context.dart';
+import '../entitlements/plan_entitlements.dart';
 
 enum SessionScope { localDefault, authenticatedMock, authenticatedRemote }
 
@@ -37,6 +38,14 @@ class AppSession {
   bool get isMockAuthenticated => scope == SessionScope.authenticatedMock;
 
   bool get isRemoteAuthenticated => scope == SessionScope.authenticatedRemote;
+
+  PlanKey get plan => company.plan;
+
+  Set<FeatureKey> get features => company.features;
+
+  PlanLimits get limits => company.limits;
+
+  bool hasFeature(FeatureKey feature) => company.hasFeature(feature);
 
   bool get hasClientInstanceId {
     final value = clientInstanceId?.trim();

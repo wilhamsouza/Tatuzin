@@ -9,12 +9,13 @@ import {
 import { prisma } from '../../database/prisma';
 import { AppError } from '../../shared/http/app-error';
 import { logger } from '../../shared/observability/logger';
+import { getPlanEntitlements } from '../plans/plan-catalog.service';
 
 type DeviceIdentityInput = {
   companyId: string;
   userId: string;
   membershipRole: string;
-  licenseMaxDevices: number | null;
+  licensePlan: string | null;
   clientInstanceId: string;
   deviceLabel?: string | null;
   platform?: string | null;
@@ -55,6 +56,7 @@ export class CompanyDeviceService {
       return this.toDto(device);
     }
 
+    const maxDevices = getPlanEntitlements(input.licensePlan).limits.maxDevices;
     const activeDevicesCount = await prisma.companyDevice.count({
       where: {
         companyId: input.companyId,
@@ -63,11 +65,7 @@ export class CompanyDeviceService {
     });
     const isFirstOwnerDevice =
       activeDevicesCount === 0 && input.membershipRole === MembershipRole.OWNER;
-    const canActivate =
-      isFirstOwnerDevice ||
-      input.licenseMaxDevices == null ||
-      input.licenseMaxDevices <= 0 ||
-      activeDevicesCount < input.licenseMaxDevices;
+    const canActivate = isFirstOwnerDevice || activeDevicesCount < maxDevices;
 
     const device = await prisma.companyDevice.create({
       data: {
@@ -93,14 +91,14 @@ export class CompanyDeviceService {
       deviceId: device.id,
       clientInstanceId,
       status: device.status,
-      maxDevices: input.licenseMaxDevices,
+      maxDevices,
       activeDevicesCount,
       autoApproved: canActivate,
     });
 
     this.throwIfDeviceCannotOperate(device, {
       activeDevices: activeDevicesCount,
-      maxDevices: input.licenseMaxDevices,
+      maxDevices,
     });
 
     return this.toDto(device);
@@ -160,7 +158,7 @@ export class CompanyDeviceService {
       userId: input.userId,
       companyId: input.companyId,
       membershipRole: input.membershipRole,
-      licenseMaxDevices: membership.company.license.maxDevices,
+      licensePlan: membership.company.license.plan,
       clientInstanceId: input.clientInstanceId,
       deviceLabel: input.deviceLabel,
       platform: input.platform,
@@ -170,7 +168,7 @@ export class CompanyDeviceService {
 
   throwIfDeviceCannotOperate(
     device: CompanyDevice | CompanyDeviceDto,
-    limitDetails?: { activeDevices: number; maxDevices: number | null },
+    limitDetails?: { activeDevices: number; maxDevices: number },
   ) {
     switch (device.status) {
       case CompanyDeviceStatus.ACTIVE:

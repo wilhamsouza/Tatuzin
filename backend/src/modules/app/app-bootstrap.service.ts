@@ -9,6 +9,9 @@ export class AppBootstrapService {
       company: context.company,
       membership: context.membership,
       license: context.license,
+      plan: context.plan,
+      features: context.features,
+      limits: context.limits,
       device: {
         id: context.device.id,
         clientInstanceId: context.device.clientInstanceId,

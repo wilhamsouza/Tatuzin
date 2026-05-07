@@ -9,6 +9,7 @@ import 'modules/admin_routes.dart';
 import 'modules/auth_routes.dart';
 import 'modules/cash_routes.dart';
 import 'modules/customers_routes.dart';
+import 'modules/employees_routes.dart';
 import 'modules/home_routes.dart';
 import 'modules/inventory_routes.dart';
 import 'modules/orders_routes.dart';
@@ -48,6 +49,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ...buildSalesRoutes(),
       ...buildCashRoutes(),
       ...buildReportsRoutes(),
+      ...buildEmployeesRoutes(),
       ...buildSystemRoutes(readAuthStatus: readAuthStatus),
       ...buildAdminRoutes(readAuthStatus: readAuthStatus),
     ],

@@ -1,0 +1,676 @@
+import assert from 'node:assert/strict';
+import { after, before, beforeEach, describe, it } from 'node:test';
+import type { AddressInfo } from 'node:net';
+
+import type { Server } from 'http';
+import jwt from 'jsonwebtoken';
+
+import { createApp } from '../../app';
+import { env } from '../../config/env';
+import { prisma } from '../../database/prisma';
+
+const runId = `admin-billing-${Date.now()}`;
+
+let server: Server;
+let apiBaseUrl = '';
+let originalFetch: typeof globalThis.fetch;
+const originalAccessToken = env.MERCADO_PAGO_ACCESS_TOKEN;
+
+describe('admin billing routes', () => {
+  before(async () => {
+    await prisma.$connect();
+    originalFetch = globalThis.fetch;
+    env.MERCADO_PAGO_ACCESS_TOKEN = 'test-mercado-token';
+    server = createApp().listen(0);
+    const address = server.address() as AddressInfo;
+    apiBaseUrl = `http://127.0.0.1:${address.port}/api`;
+  });
+
+  beforeEach(async () => {
+    await cleanupFixtures();
+    env.MERCADO_PAGO_ACCESS_TOKEN = 'test-mercado-token';
+    globalThis.fetch = originalFetch;
+  });
+
+  after(async () => {
+    await cleanupFixtures();
+    env.MERCADO_PAGO_ACCESS_TOKEN = originalAccessToken;
+    globalThis.fetch = originalFetch;
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error == null ? resolve() : reject(error)));
+    });
+    await prisma.$disconnect();
+  });
+
+  it('keeps admin billing routes protected by platform admin auth', async () => {
+    const fixture = await createFixture();
+
+    const forbidden = await requestJson(
+      'GET',
+      `/admin/billing/companies`,
+      { token: fixture.operatorToken },
+    );
+    assert.equal(forbidden.status, 403);
+    assert.equal(
+      (forbidden.data as { code?: string }).code,
+      'PLATFORM_ADMIN_REQUIRED',
+    );
+
+    const allowed = await requestJson('GET', '/admin/billing/companies', {
+      token: fixture.adminToken,
+    });
+    assert.equal(allowed.status, 200);
+  });
+
+  it('lists billing companies with filters and masked provider id', async () => {
+    const fixture = await createFixture();
+
+    const response = await requestJson(
+      'GET',
+      `/admin/billing/companies?search=${encodeURIComponent('Admin Billing')}&plan=PRO&provider=mercadopago&hasProviderSubscription=true&page=1&pageSize=10`,
+      { token: fixture.adminToken },
+    );
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      items: Array<{
+        companyId: string;
+        maskedProviderSubscriptionId: string | null;
+        providerSubscriptionId?: string;
+      }>;
+    };
+    assert.equal(payload.items.length, 1);
+    assert.equal(payload.items[0]?.companyId, fixture.companyId);
+    assert.equal(payload.items[0]?.maskedProviderSubscriptionId, 'prea...9999');
+    assert.equal(payload.items[0]?.providerSubscriptionId, undefined);
+    assert.equal(JSON.stringify(payload).includes('test-mercado-token'), false);
+  });
+
+  it('returns internal status with full provider id and sanitized summaries', async () => {
+    const fixture = await createFixture();
+    await createSensitiveBillingArtifacts(fixture);
+
+    const response = await requestJson(
+      'GET',
+      `/admin/companies/${fixture.companyId}/billing/status`,
+      { token: fixture.adminToken },
+    );
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      billing: { providerSubscriptionId: string | null };
+      events: Array<{ payload: Record<string, unknown> }>;
+      checkoutSessions: Array<{ checkoutUrl: string | null }>;
+    };
+    assert.equal(payload.billing.providerSubscriptionId, fixture.providerId);
+    const serialized = JSON.stringify(payload);
+    assert.equal(serialized.includes('Bearer secret'), false);
+    assert.equal(serialized.includes('access-secret'), false);
+    assert.equal(serialized.includes('signature-secret'), false);
+    assert.equal(serialized.includes('4111111111111111'), false);
+    assert.equal(serialized.includes('https://mercadopago.test/checkout/full-url'), false);
+    assert.match(payload.checkoutSessions[0]?.checkoutUrl ?? '', /^https:\/\/mercadopago\.test\/\.\.\.#/);
+  });
+
+  it('lists events ordered desc with recursively sanitized payloads', async () => {
+    const fixture = await createFixture();
+    await createSensitiveBillingArtifacts(fixture);
+
+    const response = await requestJson(
+      'GET',
+      `/admin/companies/${fixture.companyId}/billing/events?page=1&pageSize=10`,
+      { token: fixture.adminToken },
+    );
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      items: Array<{ eventType: string; payload: Record<string, unknown> }>;
+    };
+    assert.equal(payload.items[0]?.eventType, 'newer');
+    const serialized = JSON.stringify(payload);
+    assert.equal(serialized.includes('Bearer secret'), false);
+    assert.equal(serialized.includes('access-secret'), false);
+    assert.equal(serialized.includes('signature-secret'), false);
+    assert.equal(serialized.includes('4111111111111111'), false);
+    assert.equal(serialized.includes('https://mercadopago.test/checkout/full-url'), false);
+  });
+
+  it('lists checkout sessions without exposing full checkout URLs', async () => {
+    const fixture = await createFixture();
+    await createSensitiveBillingArtifacts(fixture);
+
+    const response = await requestJson(
+      'GET',
+      `/admin/companies/${fixture.companyId}/billing/checkout-sessions?page=1&pageSize=10`,
+      { token: fixture.adminToken },
+    );
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      items: Array<{ checkoutUrl: string | null; sandboxCheckoutUrl: string | null }>;
+    };
+    assert.match(payload.items[0]?.checkoutUrl ?? '', /^https:\/\/mercadopago\.test\/\.\.\.#/);
+    assert.match(payload.items[0]?.sandboxCheckoutUrl ?? '', /^https:\/\/sandbox\.mercadopago\.test\/\.\.\.#/);
+    assert.equal(JSON.stringify(payload).includes('full-url'), false);
+  });
+
+  it('requires reason for refresh and audits provider refresh failures without activating plan', async () => {
+    const fixture = await createFixture({ plan: 'free' });
+
+    const missingReason = await requestJson(
+      'POST',
+      `/admin/companies/${fixture.companyId}/billing/refresh`,
+      { token: fixture.adminToken, body: {} },
+    );
+    assert.equal(missingReason.status, 422);
+
+    globalThis.fetch = failFetch('provider unavailable');
+    const response = await requestJson(
+      'POST',
+      `/admin/companies/${fixture.companyId}/billing/refresh`,
+      {
+        token: fixture.adminToken,
+        body: { reason: 'Conferir falha de conciliacao' },
+      },
+    );
+
+    assert.equal(response.status, 502);
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'free');
+
+    const audit = await prisma.billingAdminAuditLog.findFirstOrThrow({
+      where: {
+        companyId: fixture.companyId,
+        action: 'billing.refresh.failed',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    assert.equal(audit.reason, 'Conferir falha de conciliacao');
+    assert.notEqual(audit.before, null);
+    assert.notEqual(audit.after, null);
+  });
+
+  it('force-plan changes license plan, audits before/after and handles provider clearing', async () => {
+    const fixture = await createFixture({ plan: 'free' });
+    const artifacts = await createSensitiveBillingArtifacts(fixture);
+
+    const missingReason = await requestJson(
+      'POST',
+      `/admin/companies/${fixture.companyId}/billing/force-plan`,
+      { token: fixture.adminToken, body: { plan: 'BASIC' } },
+    );
+    assert.equal(missingReason.status, 422);
+
+    const keepProvider = await requestJson(
+      'POST',
+      `/admin/companies/${fixture.companyId}/billing/force-plan`,
+      {
+        token: fixture.adminToken,
+        body: { plan: 'BASIC', reason: 'Suporte manual' },
+      },
+    );
+    assert.equal(keepProvider.status, 200);
+    let license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'BASIC');
+    assert.equal(license.providerSubscriptionId, fixture.providerId);
+
+    let audit = await prisma.billingAdminAuditLog.findFirstOrThrow({
+      where: { companyId: fixture.companyId, action: 'billing.force_plan' },
+      orderBy: { createdAt: 'desc' },
+    });
+    assert.notEqual(audit.before, null);
+    assert.notEqual(audit.after, null);
+    assert.equal(JSON.stringify(audit.metadata).includes('provider still linked'), true);
+
+    const clearProvider = await requestJson(
+      'POST',
+      `/admin/companies/${fixture.companyId}/billing/force-plan`,
+      {
+        token: fixture.adminToken,
+        body: {
+          plan: 'PRO',
+          status: 'ACTIVE',
+          reason: 'Corrigir plano sem provider',
+          clearProvider: true,
+        },
+      },
+    );
+    assert.equal(clearProvider.status, 200);
+    license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'PRO');
+    assert.equal(license.status, 'ACTIVE');
+    assert.equal(license.billingSubscriptionStatus, 'ACTIVE');
+    assert.equal(license.providerSubscriptionId, null);
+    assert.equal(await prisma.billingCheckoutSession.count({ where: { id: artifacts.checkoutId } }), 1);
+    assert.equal(await prisma.billingProviderEvent.count({ where: { id: artifacts.eventId } }), 1);
+    assert.equal(await prisma.billingInvoice.count({ where: { id: artifacts.invoiceId } }), 1);
+
+    const bootstrap = await requestJson('GET', '/app/bootstrap', {
+      token: fixture.ownerToken,
+    });
+    assert.equal(bootstrap.status, 200);
+    assert.equal((bootstrap.data as { plan?: string }).plan, 'PRO');
+
+    const cancelled = await requestJson(
+      'POST',
+      `/admin/companies/${fixture.companyId}/billing/force-plan`,
+      {
+        token: fixture.adminToken,
+        body: {
+          plan: 'BASIC',
+          status: 'CANCELLED',
+          reason: 'Registrar cancelamento administrativo',
+        },
+      },
+    );
+    assert.equal(cancelled.status, 200);
+    license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.status, 'EXPIRED');
+    assert.equal(license.billingSubscriptionStatus, 'CANCELLED');
+
+    const pastDue = await requestJson(
+      'POST',
+      `/admin/companies/${fixture.companyId}/billing/force-plan`,
+      {
+        token: fixture.adminToken,
+        body: {
+          plan: 'BASIC',
+          status: 'PAST_DUE',
+          reason: 'Registrar inadimplencia administrativa',
+        },
+      },
+    );
+    assert.equal(pastDue.status, 200);
+    license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.status, 'SUSPENDED');
+    assert.equal(license.billingSubscriptionStatus, 'PAST_DUE');
+  });
+
+  it('cancel-local schedules period-end cancellation, downgrades now, and preserves provider records', async () => {
+    const fixture = await createFixture({ plan: 'PRO' });
+    const artifacts = await createSensitiveBillingArtifacts(fixture);
+
+    const missingReason = await requestJson(
+      'POST',
+      `/admin/companies/${fixture.companyId}/billing/cancel-local`,
+      { token: fixture.adminToken, body: { effective: 'now' } },
+    );
+    assert.equal(missingReason.status, 422);
+
+    const scheduled = await requestJson(
+      'POST',
+      `/admin/companies/${fixture.companyId}/billing/cancel-local`,
+      {
+        token: fixture.adminToken,
+        body: { reason: 'Cliente pediu fim do periodo', effective: 'period_end' },
+      },
+    );
+    assert.equal(scheduled.status, 200);
+    assert.equal((scheduled.data as { providerCancelled?: boolean }).providerCancelled, false);
+    let license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'PRO');
+    assert.equal(license.cancelAtPeriodEnd, true);
+    assert.equal(license.providerSubscriptionId, fixture.providerId);
+
+    const immediate = await requestJson(
+      'POST',
+      `/admin/companies/${fixture.companyId}/billing/cancel-local`,
+      {
+        token: fixture.adminToken,
+        body: { reason: 'Correcao imediata local', effective: 'now' },
+      },
+    );
+    assert.equal(immediate.status, 200);
+    assert.equal(
+      (immediate.data as { message?: string }).message,
+      'Cancelamento local aplicado. A assinatura no Mercado Pago não foi cancelada por este endpoint.',
+    );
+    license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'FREE');
+    assert.equal(license.providerSubscriptionId, fixture.providerId);
+
+    assert.equal(await prisma.billingCheckoutSession.count({ where: { id: artifacts.checkoutId } }), 1);
+    assert.equal(await prisma.billingProviderEvent.count({ where: { id: artifacts.eventId } }), 1);
+    assert.equal(await prisma.billingInvoice.count({ where: { id: artifacts.invoiceId } }), 1);
+    assert.equal(await prisma.category.count({ where: { id: fixture.categoryId } }), 1);
+
+    const audit = await prisma.billingAdminAuditLog.findFirstOrThrow({
+      where: { companyId: fixture.companyId, action: 'billing.cancel_local' },
+      orderBy: { createdAt: 'desc' },
+    });
+    assert.notEqual(audit.before, null);
+    assert.notEqual(audit.after, null);
+  });
+
+  it('keeps app billing status from exposing full provider subscription id', async () => {
+    const fixture = await createFixture();
+
+    const response = await requestJson('GET', '/billing/status', {
+      token: fixture.ownerToken,
+    });
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      hasProviderSubscription: boolean;
+      maskedProviderSubscriptionId?: string;
+      providerSubscriptionId?: string;
+    };
+    assert.equal(payload.hasProviderSubscription, true);
+    assert.equal(payload.maskedProviderSubscriptionId, 'prea...9999');
+    assert.equal(payload.providerSubscriptionId, undefined);
+  });
+});
+
+async function createFixture(options?: { plan?: string }) {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const company = await prisma.company.create({
+    data: {
+      name: `Admin Billing ${suffix}`,
+      legalName: `Admin Billing ${suffix} LTDA`,
+      slug: `${runId}-${suffix}`,
+    },
+  });
+  const adminUser = await prisma.user.create({
+    data: {
+      email: `${runId}-admin-${suffix}@tatuzin.test`,
+      name: 'Billing Platform Admin',
+      passwordHash: 'not-used',
+      isPlatformAdmin: true,
+    },
+  });
+  const operatorUser = await prisma.user.create({
+    data: {
+      email: `${runId}-operator-${suffix}@tatuzin.test`,
+      name: 'Billing Operator',
+      passwordHash: 'not-used',
+      isPlatformAdmin: false,
+    },
+  });
+  const ownerUser = await prisma.user.create({
+    data: {
+      email: `${runId}-owner-${suffix}@tatuzin.test`,
+      name: 'Billing Owner',
+      passwordHash: 'not-used',
+      isPlatformAdmin: false,
+    },
+  });
+  const [adminMembership, operatorMembership, ownerMembership] =
+    await prisma.$transaction([
+      prisma.membership.create({
+        data: {
+          companyId: company.id,
+          userId: adminUser.id,
+          role: 'OWNER',
+          isDefault: true,
+        },
+      }),
+      prisma.membership.create({
+        data: {
+          companyId: company.id,
+          userId: operatorUser.id,
+          role: 'OPERATOR',
+          isDefault: true,
+        },
+      }),
+      prisma.membership.create({
+        data: {
+          companyId: company.id,
+          userId: ownerUser.id,
+          role: 'OWNER',
+          isDefault: true,
+        },
+      }),
+    ]);
+  const clientInstanceId = `${runId}-device-${suffix}`;
+  await prisma.companyDevice.create({
+    data: {
+      companyId: company.id,
+      userId: ownerUser.id,
+      clientInstanceId,
+      deviceLabel: 'Billing Owner Device',
+      platform: 'node-test',
+      appVersion: 'admin-billing-test',
+      status: 'ACTIVE',
+      approvedAt: new Date(),
+      approvedByUserId: ownerUser.id,
+      lastSeenAt: new Date(),
+    },
+  });
+  const providerId = 'preapproval-1234569999';
+  await prisma.license.create({
+    data: {
+      companyId: company.id,
+      plan: options?.plan ?? 'PRO',
+      status: 'ACTIVE',
+      startsAt: new Date('2026-05-01T00:00:00.000Z'),
+      expiresAt: null,
+      syncEnabled: true,
+      billingProvider: 'mercadopago',
+      providerSubscriptionId: providerId,
+      currentPeriodStart: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      nextPaymentDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    },
+  });
+  const category = await prisma.category.create({
+    data: {
+      companyId: company.id,
+      localUuid: `${runId}-category-${suffix}`,
+      name: 'Categoria preservada',
+    },
+  });
+
+  return {
+    companyId: company.id,
+    providerId,
+    categoryId: category.id,
+    adminToken: signToken({
+      userId: adminUser.id,
+      companyId: company.id,
+      membershipId: adminMembership.id,
+      email: adminUser.email,
+      membershipRole: 'OWNER',
+      isPlatformAdmin: true,
+    }),
+    operatorToken: signToken({
+      userId: operatorUser.id,
+      companyId: company.id,
+      membershipId: operatorMembership.id,
+      email: operatorUser.email,
+      membershipRole: 'OPERATOR',
+      isPlatformAdmin: false,
+    }),
+    ownerToken: signToken({
+      userId: ownerUser.id,
+      companyId: company.id,
+      membershipId: ownerMembership.id,
+      email: ownerUser.email,
+      membershipRole: 'OWNER',
+      isPlatformAdmin: false,
+      clientInstanceId,
+    }),
+  };
+}
+
+async function createSensitiveBillingArtifacts(fixture: {
+  companyId: string;
+  providerId: string;
+}) {
+  const checkout = await prisma.billingCheckoutSession.create({
+    data: {
+      companyId: fixture.companyId,
+      userId: (await prisma.membership.findFirstOrThrow({
+        where: { companyId: fixture.companyId, role: 'OWNER' },
+      })).userId,
+      plan: 'PRO',
+      billingCycle: 'monthly',
+      status: 'PENDING',
+      provider: 'mercadopago',
+      providerReference: fixture.providerId,
+      checkoutUrl: 'https://mercadopago.test/checkout/full-url?token=secret',
+      sandboxCheckoutUrl:
+        'https://sandbox.mercadopago.test/checkout/full-url?token=secret',
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+    },
+  });
+  const older = await prisma.billingProviderEvent.create({
+    data: {
+      companyId: fixture.companyId,
+      provider: 'mercadopago',
+      eventType: 'older',
+      providerEventId: `${runId}-older`,
+      dedupeKey: `${runId}-older-${fixture.companyId}`,
+      payload: { body: { ok: true } },
+      status: 'RECEIVED',
+      createdAt: new Date('2026-05-01T00:00:00.000Z'),
+    },
+  });
+  const newer = await prisma.billingProviderEvent.create({
+    data: {
+      companyId: fixture.companyId,
+      provider: 'mercadopago',
+      eventType: 'newer',
+      providerEventId: `${runId}-newer`,
+      dedupeKey: `${runId}-newer-${fixture.companyId}`,
+      payload: {
+        headers: {
+          authorization: 'Bearer secret',
+          'x-signature': 'signature-secret',
+        },
+        body: {
+          access_token: 'access-secret',
+          checkoutUrl:
+            'https://mercadopago.test/checkout/full-url?token=secret',
+          card: {
+            card_number: '4111111111111111',
+            security_code: '123',
+          },
+          nested: [{ token: 'nested-token' }],
+        },
+      },
+      status: 'RECEIVED',
+      createdAt: new Date('2026-05-02T00:00:00.000Z'),
+    },
+  });
+  const invoice = await prisma.billingInvoice.create({
+    data: {
+      companyId: fixture.companyId,
+      provider: 'mercadopago',
+      providerInvoiceId: `${runId}-invoice-${fixture.companyId}`,
+      providerSubscriptionId: fixture.providerId,
+      plan: 'PRO',
+      status: 'pending',
+      amountCents: 8500,
+      invoiceUrl: 'https://mercadopago.test/invoice/full-url?token=secret',
+      payload: { token: 'invoice-token' },
+    },
+  });
+  void older;
+  return {
+    checkoutId: checkout.id,
+    eventId: newer.id,
+    invoiceId: invoice.id,
+  };
+}
+
+function signToken(input: {
+  userId: string;
+  companyId: string;
+  membershipId: string;
+  email: string;
+  membershipRole: string;
+  isPlatformAdmin: boolean;
+  clientInstanceId?: string;
+}) {
+  return jwt.sign(
+    {
+      sub: input.userId,
+      companyId: input.companyId,
+      membershipId: input.membershipId,
+      membershipRole: input.membershipRole,
+      email: input.email,
+      isPlatformAdmin: input.isPlatformAdmin,
+      ...(input.clientInstanceId == null
+        ? {}
+        : { clientInstanceId: input.clientInstanceId }),
+    },
+    env.JWT_SECRET,
+    { expiresIn: '15m' },
+  );
+}
+
+async function requestJson(
+  method: string,
+  path: string,
+  options?: {
+    token?: string;
+    body?: Record<string, unknown>;
+  },
+) {
+  const response = await originalFetch(`${apiBaseUrl}${path}`, {
+    method,
+    headers: {
+      ...(options?.token == null
+        ? {}
+        : { Authorization: `Bearer ${options.token}` }),
+      ...(options?.body == null ? {} : { 'Content-Type': 'application/json' }),
+    },
+    body: options?.body == null ? undefined : JSON.stringify(options.body),
+  });
+  const rawBody = await response.text();
+  return {
+    status: response.status,
+    data: rawBody.trim().length === 0 ? null : JSON.parse(rawBody),
+  };
+}
+
+function failFetch(message: string) {
+  return (async () => {
+    throw new Error(message);
+  }) as typeof globalThis.fetch;
+}
+
+async function cleanupFixtures() {
+  await prisma.billingAdminAuditLog.deleteMany({
+    where: {
+      OR: [
+        { company: { slug: { startsWith: `${runId}-` } } },
+        { actorUser: { email: { startsWith: `${runId}-` } } },
+      ],
+    },
+  });
+  await prisma.billingProviderEvent.deleteMany({
+    where: {
+      OR: [
+        { company: { slug: { startsWith: `${runId}-` } } },
+        { providerEventId: { startsWith: `${runId}-` } },
+      ],
+    },
+  });
+  await prisma.billingInvoice.deleteMany({
+    where: { company: { slug: { startsWith: `${runId}-` } } },
+  });
+  await prisma.billingCheckoutSession.deleteMany({
+    where: { company: { slug: { startsWith: `${runId}-` } } },
+  });
+  await prisma.company.deleteMany({
+    where: { slug: { startsWith: `${runId}-` } },
+  });
+  await prisma.user.deleteMany({
+    where: { email: { startsWith: `${runId}-` } },
+  });
+}

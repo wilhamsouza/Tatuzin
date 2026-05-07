@@ -69,6 +69,20 @@ const envSchema = z.object({
   RESEND_API_KEY: optionalTrimmedString,
   MAIL_FROM_AUTH: optionalTrimmedString,
   MAIL_REPLY_TO_SUPPORT: optionalTrimmedString,
+  MERCADO_PAGO_ACCESS_TOKEN: optionalTrimmedString,
+  MERCADO_PAGO_WEBHOOK_SECRET: optionalTrimmedString,
+  API_PUBLIC_URL: optionalUrlString,
+  APP_PUBLIC_URL: optionalUrlString,
+  BILLING_BASIC_PRICE_CENTS: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .default(3500),
+  BILLING_PRO_PRICE_CENTS: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .default(8500),
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
   TRUST_PROXY: optionalTrimmedString,
   APP_ENV: z.string().trim().min(1).default('local-development'),

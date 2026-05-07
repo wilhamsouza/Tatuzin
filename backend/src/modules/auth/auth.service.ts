@@ -98,7 +98,7 @@ export class AuthService {
       companyId: result.company.id,
       membershipId: result.id,
       membershipRole: result.role,
-      licenseMaxDevices: result.company.license?.maxDevices ?? null,
+      licensePlan: result.company.license?.plan ?? null,
       clientInput: this.toSessionClientInput(input),
     });
 
@@ -132,7 +132,7 @@ export class AuthService {
       companyId: membership.company.id,
       membershipId: membership.id,
       membershipRole: membership.role,
-      licenseMaxDevices: membership.company.license?.maxDevices ?? null,
+      licensePlan: membership.company.license?.plan ?? null,
       clientInput: this.toSessionClientInput(input),
     });
 
@@ -427,7 +427,7 @@ export class AuthService {
       companyId: result.company.id,
       membershipId: result.id,
       membershipRole: result.role,
-      licenseMaxDevices: result.company.license?.maxDevices ?? null,
+      licensePlan: result.company.license?.plan ?? null,
       clientInput: this.toSessionClientInput(input),
     });
 

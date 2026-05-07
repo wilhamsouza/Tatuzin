@@ -8,6 +8,10 @@ import { tenantAnalyticsReportsRouter } from './modules/analytics/reports/tenant
 import { analyticsSnapshotsRouter } from './modules/analytics/snapshots/analytics-snapshots.routes';
 import { adminRouter } from './modules/admin/admin.routes';
 import { appRouter } from './modules/app/app.routes';
+import {
+  billingRouter,
+  mercadoPagoWebhookRouter,
+} from './modules/billing/billing.routes';
 import { companyRouter, authRouter } from './modules/auth/auth.routes';
 import { crmRouter } from './modules/crm/crm.routes';
 import { costsRouter } from './modules/costs/costs.routes';
@@ -15,6 +19,7 @@ import { hybridGovernanceRouter } from './modules/hybrid-governance/hybrid-gover
 import { cashEventsRouter } from './modules/cash/cash-events.routes';
 import { categoriesRouter } from './modules/categories/categories.routes';
 import { customersRouter } from './modules/customers/customers.routes';
+import { employeesRouter } from './modules/employees/employees.routes';
 import { fiadoPaymentsRouter } from './modules/fiado/fiado-payments.routes';
 import { financialEventsRouter } from './modules/financial-events/financial-events.routes';
 import { inventoryRouter } from './modules/inventory/inventory.routes';
@@ -116,6 +121,8 @@ export function createApp() {
 
   app.use('/api/auth', authRouter);
   app.use('/api/app', appRouter);
+  app.use('/api/billing', billingRouter);
+  app.use('/api/webhooks', mercadoPagoWebhookRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/admin/analytics/dashboard', analyticsDashboardRouter);
   app.use('/api/admin/analytics/reports', analyticsReportsRouter);
@@ -128,6 +135,7 @@ export function createApp() {
   app.use('/api/products', productsRouter);
   app.use('/api/product-recipes', productRecipesRouter);
   app.use('/api/customers', customersRouter);
+  app.use('/api/employees', employeesRouter);
   app.use('/api/supplies', suppliesRouter);
   app.use('/api/suppliers', suppliersRouter);
   app.use('/api/purchases', purchasesRouter);

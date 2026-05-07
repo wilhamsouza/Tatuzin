@@ -224,6 +224,18 @@ class AccountCloudPage extends ConsumerWidget {
           ),
           const SizedBox(height: 18),
           AppSectionCard(
+            title: 'Assinatura',
+            subtitle:
+                'Veja planos, status e atualize sua assinatura quando precisar liberar novos recursos.',
+            child: AppButton.secondary(
+              label: 'Ver assinatura',
+              icon: Icons.workspace_premium_outlined,
+              onPressed: () => context.goNamed(AppRouteNames.subscription),
+              expand: true,
+            ),
+          ),
+          const SizedBox(height: 18),
+          AppSectionCard(
             title: 'Nuvem',
             subtitle:
                 'Um status claro para voce saber se a conta esta conectada e se a nuvem esta acompanhando sua empresa.',

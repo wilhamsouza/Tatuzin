@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/entitlements/plan_entitlements.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/widgets/app_bottom_sheet_container.dart';
 import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../../categorias/domain/entities/category.dart';
@@ -70,6 +72,12 @@ class _ReportFilterSheetState extends ConsumerState<ReportFilterSheet> {
     final suppliers =
         ref.watch(reportSupplierOptionsProvider).valueOrNull ??
         const <Supplier>[];
+    final allowedPeriods = ref.watch(allowedReportPeriodsProvider);
+    final allowsCustomRange = ref.watch(
+      currentCompanyContextProvider.select(
+        (company) => company.limits.allowsReportPeriod(ReportPeriodKey.custom),
+      ),
+    );
     final matchingVariants = _draft.productId == null
         ? variants
         : variants
@@ -104,25 +112,28 @@ class _ReportFilterSheetState extends ConsumerState<ReportFilterSheet> {
                         runSpacing: 8,
                         children: [
                           for (final period in ReportPeriod.values)
-                            ChoiceChip(
-                              label: Text(period.label),
-                              selected:
-                                  ReportDateRangeSupport.matchPeriod(
-                                    _draft.range,
-                                  ) ==
-                                  period,
-                              onSelected: (_) => _applyPeriod(period),
-                            ),
+                            if (allowedPeriods.contains(period))
+                              ChoiceChip(
+                                label: Text(period.label),
+                                selected:
+                                    ReportDateRangeSupport.matchPeriod(
+                                      _draft.range,
+                                    ) ==
+                                    period,
+                                onSelected: (_) => _applyPeriod(period),
+                              ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: _pickCustomRange,
-                        icon: const Icon(Icons.date_range_outlined),
-                        label: Text(
-                          'Personalizar: ${AppFormatters.shortDate(_draft.start)} ate ${AppFormatters.shortDate(_draft.endExclusive.subtract(const Duration(days: 1)))}',
+                      if (allowsCustomRange) ...[
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: _pickCustomRange,
+                          icon: const Icon(Icons.date_range_outlined),
+                          label: Text(
+                            'Personalizar: ${AppFormatters.shortDate(_draft.start)} ate ${AppFormatters.shortDate(_draft.endExclusive.subtract(const Duration(days: 1)))}',
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),

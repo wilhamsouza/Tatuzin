@@ -69,6 +69,13 @@ describe('app context bootstrap and guards', () => {
       company: { id: string; setupCompleted: boolean };
       membership: { id: string; role: string; permissions: string[] };
       license: { id: string; syncEnabled: boolean; maxDevices: number | null };
+      plan: string;
+      features: Record<string, boolean>;
+      limits: {
+        maxDevices: number;
+        maxEmployees: number;
+        reportPeriods: string[];
+      };
       device: { id: string; clientInstanceId: string; status: string };
       sync: { enabled: boolean; serverVersion: string; pullRequired: boolean };
     };
@@ -77,6 +84,14 @@ describe('app context bootstrap and guards', () => {
     assert.equal(payload.company.setupCompleted, true);
     assert.equal(payload.membership.id, fixture.membershipId);
     assert.equal(payload.license.syncEnabled, true);
+    assert.equal(payload.plan, 'PRO');
+    assert.equal(payload.features.sales, true);
+    assert.equal(payload.features.employees, true);
+    assert.deepEqual(payload.limits, {
+      maxDevices: 100,
+      maxEmployees: 100,
+      reportPeriods: ['daily', 'weekly', 'monthly', 'yearly', 'custom'],
+    });
     assert.equal(payload.device.clientInstanceId, fixture.clientInstanceId);
     assert.equal(payload.device.status, 'ACTIVE');
     assert.equal(payload.sync.enabled, true);
@@ -141,7 +156,7 @@ describe('app context bootstrap and guards', () => {
   it('activates the first OWNER device and rejects devices above maxDevices', async () => {
     const fixture = await createFixture({
       role: 'OWNER',
-      maxDevices: 1,
+      plan: 'free',
       createDevice: false,
     });
     const ownerToken = signToken({
@@ -182,10 +197,93 @@ describe('app context bootstrap and guards', () => {
       'DEVICE_LIMIT_REACHED',
     );
   });
+
+  it('rejects a second BASIC device above plan limit', async () => {
+    const fixture = await createFixture({
+      role: 'OWNER',
+      plan: 'basic',
+      createDevice: false,
+    });
+    const ownerToken = signToken({
+      userId: fixture.userId,
+      companyId: fixture.companyId,
+      membershipId: fixture.membershipId,
+      email: fixture.email,
+      membershipRole: 'OWNER',
+    });
+
+    const firstDevice = await requestJson('POST', '/app/device', {
+      token: ownerToken,
+      body: {
+        clientInstanceId: `${runId}-basic-first`,
+        deviceLabel: 'Basic First',
+        platform: 'android',
+        appVersion: '1.0.0',
+      },
+    });
+    assert.equal(firstDevice.status, 200);
+
+    const secondDevice = await requestJson('POST', '/app/device', {
+      token: ownerToken,
+      body: {
+        clientInstanceId: `${runId}-basic-second`,
+        deviceLabel: 'Basic Second',
+        platform: 'android',
+        appVersion: '1.0.0',
+      },
+    });
+    assert.equal(secondDevice.status, 409);
+    assert.equal(
+      (secondDevice.data as { code?: string }).code,
+      'DEVICE_LIMIT_REACHED',
+    );
+  });
+
+  it('allows a second device for PRO companies', async () => {
+    const fixture = await createFixture({
+      role: 'OWNER',
+      plan: 'pro',
+      createDevice: false,
+    });
+    const ownerToken = signToken({
+      userId: fixture.userId,
+      companyId: fixture.companyId,
+      membershipId: fixture.membershipId,
+      email: fixture.email,
+      membershipRole: 'OWNER',
+    });
+
+    const firstDevice = await requestJson('POST', '/app/device', {
+      token: ownerToken,
+      body: {
+        clientInstanceId: `${runId}-pro-first`,
+        deviceLabel: 'Pro First',
+        platform: 'android',
+        appVersion: '1.0.0',
+      },
+    });
+    assert.equal(firstDevice.status, 200);
+
+    const secondDevice = await requestJson('POST', '/app/device', {
+      token: ownerToken,
+      body: {
+        clientInstanceId: `${runId}-pro-second`,
+        deviceLabel: 'Pro Second',
+        platform: 'android',
+        appVersion: '1.0.0',
+      },
+    });
+    assert.equal(secondDevice.status, 200);
+    assert.equal(
+      (secondDevice.data as { device: { status: string } }).device.status,
+      'ACTIVE',
+    );
+  });
 });
 
 async function createFixture(options?: {
   role?: 'OWNER' | 'ADMIN' | 'OPERATOR';
+  plan?: string;
   maxDevices?: number | null;
   syncEnabled?: boolean;
   deviceStatus?: 'PENDING' | 'ACTIVE' | 'BLOCKED' | 'REVOKED';
@@ -216,7 +314,7 @@ async function createFixture(options?: {
   await prisma.license.create({
     data: {
       companyId: company.id,
-      plan: 'pro',
+      plan: options?.plan ?? 'pro',
       status: 'ACTIVE',
       startsAt: new Date(),
       maxDevices: options?.maxDevices ?? 5,

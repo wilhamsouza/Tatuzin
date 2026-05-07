@@ -85,6 +85,8 @@ model User {
   createdAt               DateTime             @default(now())
   updatedAt               DateTime             @updatedAt
   memberships             Membership[]
+  billingCheckoutSessions BillingCheckoutSession[]
+  billingAdminAuditLogs   BillingAdminAuditLog[]
   adminAuditLogs          AdminAuditLog[]      @relation("AdminAuditActor")
   deviceSessions          DeviceSession[]
   companyDevices          CompanyDevice[]
@@ -115,6 +117,10 @@ model Company {
   updatedAt                       DateTime                         @updatedAt
   memberships                     Membership[]
   license                         License?
+  billingCheckoutSessions         BillingCheckoutSession[]
+  billingProviderEvents           BillingProviderEvent[]
+  billingInvoices                 BillingInvoice[]
+  billingAdminAuditLogs           BillingAdminAuditLog[]
   syncState                       CompanySyncState?
   adminAuditLogs                  AdminAuditLog[]                  @relation("AdminAuditCompany")
   deviceSessions                  DeviceSession[]
@@ -170,21 +176,127 @@ model Membership {
 }
 
 model License {
-  id          String        @id @default(uuid())
-  companyId   String        @unique
-  plan        String
-  status      LicenseStatus @default(TRIAL)
-  startsAt    DateTime
-  expiresAt   DateTime?
-  maxDevices  Int?
-  syncEnabled Boolean       @default(true)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id                     String        @id @default(uuid())
+  companyId              String        @unique
+  plan                   String
+  status                 LicenseStatus @default(TRIAL)
+  startsAt               DateTime
+  expiresAt              DateTime?
+  maxDevices             Int?
+  syncEnabled            Boolean       @default(true)
+  billingProvider        String?
+  providerSubscriptionId String?
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  nextPaymentDate        DateTime?
+  cancelAtPeriodEnd      Boolean       @default(false)
+  cancelRequestedAt      DateTime?
+  canceledAt             DateTime?
+  pendingPlan            String?
+  pendingPlanRequestedAt DateTime?
+  billingSubscriptionStatus String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  company                Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([syncEnabled])
   @@index([expiresAt])
+  @@index([billingProvider])
+  @@index([providerSubscriptionId])
+}
+
+model BillingCheckoutSession {
+  id                 String    @id @default(uuid())
+  companyId          String
+  userId             String
+  plan               String
+  billingCycle       String
+  status             String    @default("PENDING")
+  provider           String
+  providerReference  String?
+  checkoutUrl        String?
+  sandboxCheckoutUrl String?
+  expiresAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  company            Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user               User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([companyId])
+  @@index([userId])
+  @@index([status])
+  @@index([provider, providerReference])
+}
+
+model BillingProviderEvent {
+  id              String    @id @default(uuid())
+  companyId       String?
+  provider        String
+  eventType       String
+  providerEventId String?
+  dedupeKey       String
+  payload         Json
+  status          String
+  processedAt     DateTime?
+  errorMessage    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  company         Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, dedupeKey])
+  @@index([companyId])
+  @@index([providerEventId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model BillingInvoice {
+  id                     String   @id @default(uuid())
+  companyId              String
+  provider               String
+  providerInvoiceId      String?
+  providerSubscriptionId String?
+  plan                   String?
+  status                 String
+  amountCents            Int      @default(0)
+  currency               String   @default("BRL")
+  periodStart            DateTime?
+  periodEnd              DateTime?
+  dueAt                  DateTime?
+  paidAt                 DateTime?
+  failedAt               DateTime?
+  invoiceUrl             String?
+  payload                Json?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  company                Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@index([companyId])
+  @@index([status])
+  @@index([dueAt])
+  @@index([providerSubscriptionId])
+}
+
+model BillingAdminAuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String
+  companyId   String?
+  action      String
+  reason      String
+  before      Json?
+  after       Json?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  actorUser   User     @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([actorUserId])
+  @@index([action])
+  @@index([createdAt])
 }
 
 model CompanyDevice {

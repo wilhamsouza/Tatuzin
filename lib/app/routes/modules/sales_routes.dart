@@ -1,5 +1,7 @@
 import 'package:go_router/go_router.dart';
 
+import '../../core/entitlements/feature_gate.dart';
+import '../../core/entitlements/plan_entitlements.dart';
 import '../../../modules/comprovantes/presentation/pages/receipt_preview_page.dart';
 import '../../../modules/custos/presentation/pages/costs_page.dart';
 import '../../../modules/fiado/presentation/pages/fiado_detail_page.dart';
@@ -14,20 +16,27 @@ List<RouteBase> buildSalesRoutes() {
     GoRoute(
       path: AppRoutePaths.costs,
       name: AppRouteNames.costs,
-      builder: (context, state) => const CostsPage(),
+      builder: (context, state) =>
+          const FeatureGate(feature: FeatureKey.costs, child: CostsPage()),
     ),
     GoRoute(
       path: AppRoutePaths.fiado,
       name: AppRouteNames.fiado,
-      builder: (context, state) => const FiadoPage(),
+      builder: (context, state) => const FeatureGate(
+        feature: FeatureKey.fiadoManagement,
+        child: FiadoPage(),
+      ),
     ),
     GoRoute(
       path: AppRoutePaths.fiadoDetail,
       name: AppRouteNames.fiadoDetail,
-      builder: (context, state) => buildIntParamRoute(
-        state,
-        'fiadoId',
-        (fiadoId) => FiadoDetailPage(fiadoId: fiadoId),
+      builder: (context, state) => FeatureGate(
+        feature: FeatureKey.fiadoManagement,
+        child: buildIntParamRoute(
+          state,
+          'fiadoId',
+          (fiadoId) => FiadoDetailPage(fiadoId: fiadoId),
+        ),
       ),
     ),
     GoRoute(

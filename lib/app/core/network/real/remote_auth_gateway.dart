@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import '../../constants/app_constants.dart';
+import '../../entitlements/plan_entitlements.dart';
 import '../../errors/app_exceptions.dart';
 import '../../session/app_session.dart';
 import '../../session/app_user.dart';
@@ -52,7 +53,10 @@ class RemoteAuthGateway implements AuthGateway {
     }
 
     try {
-      final identity = await _fetchIdentity(token);
+      final identity = await _fetchIdentity(
+        token,
+        clientInstanceId: clientContext.clientInstanceId,
+      );
       final session = _buildSession(
         identity,
         clientInstanceId: clientContext.clientInstanceId,
@@ -114,7 +118,10 @@ class RemoteAuthGateway implements AuthGateway {
     }
 
     try {
-      final identity = await _fetchIdentity(token);
+      final identity = await _fetchIdentity(
+        token,
+        clientInstanceId: clientContext.clientInstanceId,
+      );
       final session = _buildSession(
         identity,
         clientInstanceId: clientContext.clientInstanceId,
@@ -295,7 +302,10 @@ class RemoteAuthGateway implements AuthGateway {
     await _tokenStorage.clear();
   }
 
-  Future<_AuthIdentityPayload> _fetchIdentity(String accessToken) async {
+  Future<_AuthIdentityPayload> _fetchIdentity(
+    String accessToken, {
+    required String clientInstanceId,
+  }) async {
     final userStopwatch = Stopwatch()..start();
     _logStepStarted('current_user_load_started');
     late ApiResponse<Map<String, dynamic>> meResponse;
@@ -330,22 +340,22 @@ class RemoteAuthGateway implements AuthGateway {
     final latestAccessToken =
         await _tokenStorage.readAccessToken() ?? accessToken;
     final companyStopwatch = Stopwatch()..start();
-    _logStepStarted(
-      'companies_current_load_started',
-      userRemoteId: userRemoteId,
-    );
-    late ApiResponse<Map<String, dynamic>> companyResponse;
+    _logStepStarted('app_bootstrap_load_started', userRemoteId: userRemoteId);
+    late ApiResponse<Map<String, dynamic>> bootstrapResponse;
     try {
-      companyResponse = await _apiClient.getJson(
-        '/companies/current',
+      bootstrapResponse = await _apiClient.getJson(
+        '/app/bootstrap',
         options: ApiRequestOptions(
-          headers: _authorized(latestAccessToken).headers,
+          headers: _authorized(
+            latestAccessToken,
+            clientInstanceId: clientInstanceId,
+          ).headers,
           timeout: _currentCompanyTimeout,
         ),
       );
     } catch (error, stackTrace) {
       _logStepFailure(
-        'companies_current_load_started',
+        'app_bootstrap_load_started',
         companyStopwatch,
         error,
         stackTrace: stackTrace,
@@ -353,26 +363,32 @@ class RemoteAuthGateway implements AuthGateway {
       rethrow;
     }
     final companyRemoteId = _readOptionalStringFromNestedMap(
-      companyResponse.data,
+      bootstrapResponse.data,
       'company',
       'id',
     );
     _logStepCompleted(
-      'companies_current_loaded',
+      'app_bootstrap_loaded',
       companyStopwatch,
       companyRemoteId: companyRemoteId,
       userRemoteId: userRemoteId,
     );
 
-    return _AuthIdentityPayload.fromApi(
-      meResponse.data,
-      companyOverride: companyResponse.data['company'] as Map<String, dynamic>?,
+    return _AuthIdentityPayload.fromBootstrap(
+      bootstrapResponse.data,
+      fallbackUser: meResponse.data['user'] is Map
+          ? Map<String, dynamic>.from(meResponse.data['user'] as Map)
+          : null,
     );
   }
 
-  ApiRequestOptions _authorized(String token) {
+  ApiRequestOptions _authorized(String token, {String? clientInstanceId}) {
     return ApiRequestOptions(
-      headers: <String, String>{'Authorization': 'Bearer $token'},
+      headers: <String, String>{
+        'Authorization': 'Bearer $token',
+        if (clientInstanceId != null && clientInstanceId.trim().isNotEmpty)
+          'X-Client-Instance-Id': clientInstanceId.trim(),
+      },
     );
   }
 
@@ -410,22 +426,22 @@ class RemoteAuthGateway implements AuthGateway {
     );
 
     final companyStopwatch = Stopwatch()..start();
-    _logStepStarted(
-      'companies_current_load_started',
-      userRemoteId: userRemoteId,
-    );
-    late ApiResponse<Map<String, dynamic>> companyResponse;
+    _logStepStarted('app_bootstrap_load_started', userRemoteId: userRemoteId);
+    late ApiResponse<Map<String, dynamic>> bootstrapResponse;
     try {
-      companyResponse = await _apiClient.getJson(
-        '/companies/current',
+      bootstrapResponse = await _apiClient.getJson(
+        '/app/bootstrap',
         options: ApiRequestOptions(
-          headers: _authorized(accessToken).headers,
+          headers: _authorized(
+            accessToken,
+            clientInstanceId: clientInstanceId,
+          ).headers,
           timeout: _currentCompanyTimeout,
         ),
       );
     } catch (error, stackTrace) {
       _logStepFailure(
-        'companies_current_load_started',
+        'app_bootstrap_load_started',
         companyStopwatch,
         error,
         stackTrace: stackTrace,
@@ -433,22 +449,23 @@ class RemoteAuthGateway implements AuthGateway {
       rethrow;
     }
     final companyRemoteId = _readOptionalStringFromNestedMap(
-      companyResponse.data,
+      bootstrapResponse.data,
       'company',
       'id',
     );
     _logStepCompleted(
-      'companies_current_loaded',
+      'app_bootstrap_loaded',
       companyStopwatch,
       companyRemoteId: companyRemoteId,
       userRemoteId: userRemoteId,
     );
 
     return _buildSession(
-      _AuthIdentityPayload.fromApi(
-        authPayload,
-        companyOverride:
-            companyResponse.data['company'] as Map<String, dynamic>?,
+      _AuthIdentityPayload.fromBootstrap(
+        bootstrapResponse.data,
+        fallbackUser: authPayload['user'] is Map
+            ? Map<String, dynamic>.from(authPayload['user'] as Map)
+            : null,
       ),
       clientInstanceId: clientInstanceId,
     );
@@ -481,6 +498,7 @@ class RemoteAuthGateway implements AuthGateway {
         licenseExpiresAt: payload.licenseExpiresAt,
         maxDevices: payload.maxDevices,
         syncEnabled: payload.syncEnabled,
+        entitlements: payload.entitlements,
       ),
       startedAt: DateTime.now(),
       isOfflineFallback: false,
@@ -643,6 +661,7 @@ class _AuthIdentityPayload {
     required this.licenseExpiresAt,
     required this.maxDevices,
     required this.syncEnabled,
+    required this.entitlements,
   });
 
   final String userId;
@@ -660,17 +679,24 @@ class _AuthIdentityPayload {
   final DateTime? licenseExpiresAt;
   final int? maxDevices;
   final bool syncEnabled;
+  final PlanEntitlements entitlements;
 
-  factory _AuthIdentityPayload.fromApi(
+  factory _AuthIdentityPayload.fromBootstrap(
     Map<String, dynamic> source, {
-    required Map<String, dynamic>? companyOverride,
+    required Map<String, dynamic>? fallbackUser,
   }) {
-    final user = source['user'];
-    final company = companyOverride ?? source['company'];
+    final sourceUser = source['user'] is Map
+        ? Map<String, dynamic>.from(source['user'] as Map)
+        : null;
+    final user = <String, dynamic>{
+      if (fallbackUser != null) ...fallbackUser,
+      if (sourceUser != null) ...sourceUser,
+    };
+    final company = source['company'];
     final membership = source['membership'];
-    final license = company is Map<String, dynamic> ? company['license'] : null;
+    final license = source['license'];
 
-    if (user is! Map<String, dynamic> ||
+    if (user.isEmpty ||
         company is! Map<String, dynamic> ||
         membership is! Map<String, dynamic>) {
       throw const AuthenticationException(
@@ -679,6 +705,11 @@ class _AuthIdentityPayload {
     }
 
     final legalName = (company['legalName'] as String?)?.trim();
+    final companyName = RemoteAuthGateway._readString(
+      company,
+      'name',
+      fallbackMessage: 'Nome da empresa remota ausente.',
+    );
 
     return _AuthIdentityPayload(
       userId: RemoteAuthGateway._readString(
@@ -702,18 +733,10 @@ class _AuthIdentityPayload {
         'id',
         fallbackMessage: 'Empresa remota invalida.',
       ),
-      companyName: RemoteAuthGateway._readString(
-        company,
-        'name',
-        fallbackMessage: 'Nome da empresa remota ausente.',
-      ),
+      companyName: companyName,
       companyLegalName: legalName != null && legalName.isNotEmpty
           ? legalName
-          : RemoteAuthGateway._readString(
-              company,
-              'name',
-              fallbackMessage: 'Nome legal da empresa remota ausente.',
-            ),
+          : companyName,
       companyDocumentNumber: (company['documentNumber'] as String?)?.trim(),
       membershipRole: RemoteAuthGateway._readString(
         membership,
@@ -738,6 +761,7 @@ class _AuthIdentityPayload {
       syncEnabled: license is Map<String, dynamic>
           ? license['syncEnabled'] == true
           : false,
+      entitlements: PlanEntitlements.fromBootstrapJson(source),
     );
   }
 

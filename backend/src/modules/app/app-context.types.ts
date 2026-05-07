@@ -1,3 +1,9 @@
+import type {
+  FeatureKey,
+  PlanKey,
+  PlanLimits,
+} from '../plans/plan-catalog.service';
+
 export type AppContextUser = {
   id: string;
   name: string;
@@ -41,6 +47,9 @@ export type AppContext = {
   membership: AppContextMembership;
   license: AppContextLicense;
   device: AppContextDevice;
+  plan: PlanKey;
+  features: Record<FeatureKey, boolean>;
+  limits: PlanLimits;
   clientInstanceId: string;
   tenantReady: true;
 };

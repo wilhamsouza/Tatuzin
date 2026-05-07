@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:erp_pdv_app/app/core/entitlements/plan_entitlements.dart';
 import 'package:erp_pdv_app/app/core/errors/app_exceptions.dart';
 import 'package:erp_pdv_app/app/core/network/contracts/api_client_contract.dart';
 import 'package:erp_pdv_app/app/core/network/real/remote_auth_gateway.dart';
@@ -9,7 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('RemoteAuthGateway', () {
     test(
-      'login usa /auth/login, salva tokens e carrega a empresa atual',
+      'login usa /auth/login, salva tokens e carrega bootstrap com entitlements',
       () async {
         final apiClient = _RecordingApiClient();
         final tokenStorage = _MemoryAuthTokenStorage(
@@ -31,12 +32,13 @@ void main() {
             headers: const <String, String>{},
           );
         });
-        apiClient.onGet('/companies/current', (options) {
+        apiClient.onGet('/app/bootstrap', (options) {
           expect(options.headers['Authorization'], 'Bearer access-token-1');
+          expect(options.headers['X-Client-Instance-Id'], 'device-123');
 
           return ApiResponse<Map<String, dynamic>>(
             statusCode: 200,
-            data: <String, dynamic>{'company': _companyPayload()},
+            data: _bootstrapPayload(),
             headers: const <String, String>{},
           );
         });
@@ -53,7 +55,7 @@ void main() {
 
         expect(apiClient.calls, [
           ('POST', '/auth/login'),
-          ('GET', '/companies/current'),
+          ('GET', '/app/bootstrap'),
         ]);
         expect(await tokenStorage.readAccessToken(), 'access-token-1');
         expect(await tokenStorage.readRefreshToken(), 'refresh-token-1');
@@ -62,6 +64,9 @@ void main() {
         expect(session.company.displayName, 'Tatuzin Foods');
         expect(session.company.licenseStatus, 'active');
         expect(session.company.syncEnabled, isTrue);
+        expect(session.company.plan, PlanKey.pro);
+        expect(session.company.hasFeature(FeatureKey.employees), isTrue);
+        expect(session.company.limits.maxDevices, 100);
         expect(session.clientInstanceId, 'device-123');
       },
     );
@@ -87,7 +92,7 @@ void main() {
     });
 
     test(
-      'login falha com timeout especifico quando /companies/current demora',
+      'login falha com timeout especifico quando /app/bootstrap demora',
       () async {
         final apiClient = _RecordingApiClient();
         final tokenStorage = _MemoryAuthTokenStorage(
@@ -104,11 +109,11 @@ void main() {
             headers: const <String, String>{},
           );
         });
-        apiClient.onGet('/companies/current', (options) async {
+        apiClient.onGet('/app/bootstrap', (options) async {
           await Future<void>.delayed(const Duration(milliseconds: 50));
           return ApiResponse<Map<String, dynamic>>(
             statusCode: 200,
-            data: <String, dynamic>{'company': _companyPayload()},
+            data: _bootstrapPayload(),
             headers: const <String, String>{},
           );
         });
@@ -156,10 +161,10 @@ void main() {
         );
       });
       apiClient.onGet(
-        '/companies/current',
+        '/app/bootstrap',
         (options) => ApiResponse<Map<String, dynamic>>(
           statusCode: 200,
-          data: <String, dynamic>{'company': _companyPayload()},
+          data: _bootstrapPayload(),
           headers: const <String, String>{},
         ),
       );
@@ -299,6 +304,41 @@ Map<String, dynamic> _companyPayload() {
       'expiresAt': '2026-05-20T00:00:00.000Z',
       'maxDevices': 5,
       'syncEnabled': true,
+    },
+  };
+}
+
+Map<String, dynamic> _bootstrapPayload() {
+  final company = _companyPayload();
+  return <String, dynamic>{
+    'user': <String, dynamic>{
+      'id': 'user-1',
+      'name': 'Owner',
+      'email': 'owner@tatuzin.com.br',
+    },
+    'company': <String, dynamic>{
+      'id': company['id'],
+      'name': company['name'],
+      'legalName': company['legalName'],
+      'documentNumber': company['documentNumber'],
+      'setupCompleted': true,
+    },
+    'membership': <String, dynamic>{'id': 'membership-1', 'role': 'OWNER'},
+    'license': company['license'],
+    'plan': 'PRO',
+    'features': <String, bool>{
+      for (final feature in FeatureKey.values) feature.key: true,
+    },
+    'limits': <String, dynamic>{
+      'maxDevices': 100,
+      'maxEmployees': 100,
+      'reportPeriods': <String>[
+        'daily',
+        'weekly',
+        'monthly',
+        'yearly',
+        'custom',
+      ],
     },
   };
 }

@@ -2,6 +2,7 @@ import 'package:erp_pdv_app/app/app.dart';
 import 'package:erp_pdv_app/app/core/config/app_data_mode.dart';
 import 'package:erp_pdv_app/app/core/config/app_environment.dart';
 import 'package:erp_pdv_app/app/core/database/app_database.dart';
+import 'package:erp_pdv_app/app/core/entitlements/plan_entitlements.dart';
 import 'package:erp_pdv_app/app/core/network/contracts/auth_gateway.dart';
 import 'package:erp_pdv_app/app/core/session/app_session.dart';
 import 'package:erp_pdv_app/app/core/session/app_user.dart';
@@ -268,9 +269,10 @@ Future<void> _pumpAuthenticatedApp(
           displayName: 'Cafe Oliveira',
           legalName: 'Cafe Oliveira LTDA',
           documentNumber: null,
-          licensePlan: 'trial',
-          licenseStatus: 'trial',
+          licensePlan: 'basic',
+          licenseStatus: 'active',
           syncEnabled: true,
+          entitlements: PlanEntitlements.basic,
         ),
         clientInstanceId: 'device-1',
       );

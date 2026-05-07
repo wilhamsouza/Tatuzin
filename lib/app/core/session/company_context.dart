@@ -1,4 +1,5 @@
 import '../constants/app_constants.dart';
+import '../entitlements/plan_entitlements.dart';
 
 class CompanyContext {
   const CompanyContext({
@@ -13,7 +14,8 @@ class CompanyContext {
     this.licenseExpiresAt,
     this.maxDevices,
     this.syncEnabled = false,
-  });
+    PlanEntitlements? entitlements,
+  }) : entitlements = entitlements ?? PlanEntitlements.free;
 
   const CompanyContext.localDefault()
     : localId = null,
@@ -26,7 +28,8 @@ class CompanyContext {
       licenseStartsAt = null,
       licenseExpiresAt = null,
       maxDevices = null,
-      syncEnabled = false;
+      syncEnabled = false,
+      entitlements = PlanEntitlements.free;
 
   final int? localId;
   final String? remoteId;
@@ -39,6 +42,15 @@ class CompanyContext {
   final DateTime? licenseExpiresAt;
   final int? maxDevices;
   final bool syncEnabled;
+  final PlanEntitlements entitlements;
+
+  PlanKey get plan => entitlements.plan;
+
+  Set<FeatureKey> get features => entitlements.features;
+
+  PlanLimits get limits => entitlements.limits;
+
+  bool hasFeature(FeatureKey feature) => entitlements.hasFeature(feature);
 
   bool get hasRemoteIdentity => remoteId != null && remoteId!.isNotEmpty;
 
@@ -72,8 +84,8 @@ class CompanyContext {
   }
 
   String get licensePlanLabel {
-    final plan = licensePlan?.trim();
-    if (plan == null || plan.isEmpty) {
+    final plan = licensePlan?.trim() ?? entitlements.plan.key;
+    if (plan.isEmpty) {
       return 'Local';
     }
     return plan[0].toUpperCase() + plan.substring(1);
