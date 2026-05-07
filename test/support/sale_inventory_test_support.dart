@@ -148,6 +148,7 @@ Future<void> insertVariantProduct(
   for (final variant in variants) {
     await db.insert(TableNames.produtoVariantes, {
       'id': variant.id,
+      'remote_id': variant.remoteId,
       'produto_id': productId,
       'sku': variant.sku,
       'cor': variant.color,
@@ -159,6 +160,27 @@ Future<void> insertVariantProduct(
       'preco_adicional_centavos': variant.additionalPriceCents,
     });
   }
+}
+
+Future<void> insertProductRemoteIdentity(
+  Database db, {
+  required int productId,
+  required String remoteId,
+}) {
+  return db.insert(TableNames.syncRegistros, {
+    'feature_key': 'products',
+    'local_id': productId,
+    'local_uuid': 'product-$productId',
+    'remote_id': remoteId,
+    'sync_status': 'synced',
+    'origin': 'remote',
+    'created_at': _fixedNowIso,
+    'updated_at': _fixedNowIso,
+    'last_synced_at': _fixedNowIso,
+    'last_error': null,
+    'last_error_type': null,
+    'last_error_at': null,
+  });
 }
 
 CartItem buildSimpleCartItem({
@@ -271,6 +293,7 @@ class VariantSeed {
     required this.color,
     required this.size,
     required this.stockMil,
+    this.remoteId,
     this.order = 0,
     this.additionalPriceCents = 0,
   });
@@ -280,6 +303,7 @@ class VariantSeed {
   final String color;
   final String size;
   final int stockMil;
+  final String? remoteId;
   final int order;
   final int additionalPriceCents;
 }
@@ -471,6 +495,7 @@ Future<void> _createSchema(
       id INTEGER PRIMARY KEY,
       produto_id INTEGER NOT NULL,
       sku TEXT,
+      remote_id TEXT,
       cor TEXT,
       tamanho TEXT,
       estoque_mil INTEGER NOT NULL DEFAULT 0,
@@ -478,6 +503,24 @@ Future<void> _createSchema(
       atualizado_em TEXT,
       ordem INTEGER NOT NULL DEFAULT 0,
       preco_adicional_centavos INTEGER NOT NULL DEFAULT 0
+    )
+  ''');
+
+  await db.execute('''
+    CREATE TABLE ${TableNames.syncRegistros} (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      feature_key TEXT NOT NULL,
+      local_id INTEGER,
+      local_uuid TEXT,
+      remote_id TEXT,
+      sync_status TEXT NOT NULL,
+      origin TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_synced_at TEXT,
+      last_error TEXT,
+      last_error_type TEXT,
+      last_error_at TEXT
     )
   ''');
 

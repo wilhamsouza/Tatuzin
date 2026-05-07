@@ -139,6 +139,7 @@ class SalesCatalogEntry {
     final variant = option.variant;
     return _copyProduct(
       sellableVariantId: variant.id,
+      sellableVariantRemoteId: variant.remoteId,
       sellableVariantSku: variant.sku,
       sellableVariantColorLabel: variant.colorLabel,
       sellableVariantSizeLabel: variant.sizeLabel,
@@ -150,6 +151,7 @@ class SalesCatalogEntry {
 
   Product _copyProduct({
     int? sellableVariantId,
+    String? sellableVariantRemoteId,
     String? sellableVariantSku,
     String? sellableVariantColorLabel,
     String? sellableVariantSizeLabel,
@@ -177,6 +179,7 @@ class SalesCatalogEntry {
       variants: product.variants,
       modifierGroups: product.modifierGroups,
       sellableVariantId: sellableVariantId,
+      sellableVariantRemoteId: sellableVariantRemoteId,
       sellableVariantSku: sellableVariantSku,
       sellableVariantColorLabel: sellableVariantColorLabel,
       sellableVariantSizeLabel: sellableVariantSizeLabel,
@@ -555,6 +558,7 @@ class SalesQuickAddController {
       variants: product.variants,
       modifierGroups: product.modifierGroups,
       sellableVariantId: product.sellableVariantId,
+      sellableVariantRemoteId: product.sellableVariantRemoteId,
       sellableVariantSku: product.sellableVariantSku,
       sellableVariantColorLabel: product.sellableVariantColorLabel,
       sellableVariantSizeLabel: product.sellableVariantSizeLabel,

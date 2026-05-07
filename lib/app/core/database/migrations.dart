@@ -50,6 +50,7 @@ abstract final class AppMigrations {
     const MigrationStep(version: 34, up: _createVersion34Schema),
     const MigrationStep(version: 35, up: _createVersion35Schema),
     const MigrationStep(version: 36, up: _createVersion36Schema),
+    const MigrationStep(version: 37, up: _createVersion37Schema),
   ];
 
   static Future<void> runCreate(DatabaseExecutor db, int version) async {
@@ -3741,6 +3742,20 @@ abstract final class AppMigrations {
         value TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
+    ''');
+  }
+
+  static Future<void> _createVersion37Schema(DatabaseExecutor db) async {
+    await _ensureColumnExists(
+      db,
+      tableName: TableNames.produtoVariantes,
+      columnName: 'remote_id',
+      columnDefinition: 'TEXT',
+    );
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_produto_variantes_remote_id
+      ON ${TableNames.produtoVariantes}(remote_id)
     ''');
   }
 }

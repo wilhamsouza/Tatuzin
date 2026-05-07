@@ -1,8 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite/sqflite.dart';
 
+import 'package:erp_pdv_app/app/core/app_context/app_operational_context.dart';
+import 'package:erp_pdv_app/app/core/config/app_environment.dart';
 import 'package:erp_pdv_app/app/core/database/table_names.dart';
+import 'package:erp_pdv_app/app/core/session/app_session.dart';
+import 'package:erp_pdv_app/app/core/sync/operational_sync_event.dart';
+import 'package:erp_pdv_app/app/core/sync/operational_sync_queue_item.dart';
+import 'package:erp_pdv_app/app/core/sync/operational_sync_queue_repository.dart';
 import 'package:erp_pdv_app/app/core/sync/sync_feature_keys.dart';
+import 'package:erp_pdv_app/modules/vendas/data/sqlite_sale_repository.dart';
 import 'package:erp_pdv_app/modules/vendas/domain/entities/checkout_input.dart';
 import 'package:erp_pdv_app/modules/vendas/domain/entities/sale_enums.dart';
 
@@ -352,5 +359,106 @@ void main() {
         );
       },
     );
+
+    test(
+      'eventos operacionais de venda usam ids remotos de produto e variante',
+      () async {
+        database = await openSaleInventoryTestDatabase();
+        final operationalQueue = _RecordingOperationalSyncQueueRepository();
+        final repository = SqliteSaleRepository.forDatabase(
+          databaseLoader: () async => database,
+          operationalContext: AppOperationalContext(
+            environment: const AppEnvironment.localDefault(),
+            session: AppSession.localDefault(),
+          ),
+          syncMetadataRepository: RecordingSyncMetadataRepository(),
+          syncQueueRepository: RecordingSyncQueueRepository(),
+          operationalSyncQueueRepository: operationalQueue,
+        );
+        const productRemoteId = '11111111-1111-4111-8111-111111111111';
+        const variantRemoteId = '22222222-2222-4222-8222-222222222222';
+        await insertVariantProduct(
+          database,
+          productId: 1,
+          name: 'Camiseta Basic',
+          parentStockMil: 4000,
+          variants: const [
+            VariantSeed(
+              id: 10,
+              remoteId: variantRemoteId,
+              sku: 'CAM-BASIC-PRETA-P',
+              color: 'Preta',
+              size: 'P',
+              stockMil: 4000,
+            ),
+          ],
+        );
+        await insertProductRemoteIdentity(
+          database,
+          productId: 1,
+          remoteId: productRemoteId,
+        );
+
+        await repository.completeCashSale(
+          input: CheckoutInput(
+            items: [
+              buildVariantCartItem(
+                productId: 1,
+                variantId: 10,
+                productName: 'Camiseta Basic',
+                sku: 'CAM-BASIC-PRETA-P',
+                color: 'Preta',
+                size: 'P',
+                quantityMil: 1000,
+                availableStockMil: 4000,
+              ),
+            ],
+            saleType: SaleType.cash,
+            paymentMethod: PaymentMethod.pix,
+          ),
+        );
+
+        final saleItem = operationalQueue.events.firstWhere(
+          (event) => event.entity == 'saleItem',
+        );
+        expect(saleItem.payload['productId'], productRemoteId);
+        expect(saleItem.payload['productLocalId'], 1);
+        expect(saleItem.payload['productVariantId'], variantRemoteId);
+        expect(saleItem.payload['productVariantLocalId'], 10);
+
+        final deduction = operationalQueue.events.firstWhere(
+          (event) => event.entity == 'stockDeduction',
+        );
+        expect(deduction.payload['productId'], productRemoteId);
+        expect(deduction.payload['productLocalId'], 1);
+        expect(deduction.payload['productVariantId'], variantRemoteId);
+        expect(deduction.payload['productVariantLocalId'], 10);
+      },
+    );
   });
+}
+
+class _RecordingOperationalSyncQueueRepository
+    implements OperationalSyncQueueRepository {
+  final events = <OperationalSyncEvent>[];
+
+  @override
+  Future<bool> enqueue(
+    DatabaseExecutor db, {
+    required OperationalSyncEvent event,
+  }) async {
+    events.add(event);
+    return true;
+  }
+
+  @override
+  Future<List<OperationalSyncQueueItem>> listPending({
+    required int limit,
+    required bool retryOnly,
+    bool ignoreRetryBackoff = false,
+    DateTime? now,
+  }) async => const <OperationalSyncQueueItem>[];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

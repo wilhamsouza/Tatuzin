@@ -34,6 +34,8 @@ class CartItem {
     required this.id,
     required this.productId,
     this.productVariantId,
+    this.productRemoteId,
+    this.productVariantRemoteId,
     required this.productName,
     this.primaryPhotoPath,
     required this.baseProductId,
@@ -53,6 +55,8 @@ class CartItem {
   final String id;
   final int productId;
   final int? productVariantId;
+  final String? productRemoteId;
+  final String? productVariantRemoteId;
   final String productName;
   final String? primaryPhotoPath;
   final int? baseProductId;
@@ -79,6 +83,8 @@ class CartItem {
       id: resolvedId,
       productId: product.id,
       productVariantId: product.sellableVariantId,
+      productRemoteId: product.remoteId,
+      productVariantRemoteId: product.sellableVariantRemoteId,
       productName: product.displayName,
       primaryPhotoPath: product.primaryPhotoPath,
       baseProductId: product.baseProductId,
@@ -123,6 +129,8 @@ class CartItem {
       id: id,
       productId: productId,
       productVariantId: productVariantId,
+      productRemoteId: productRemoteId,
+      productVariantRemoteId: productVariantRemoteId,
       productName: productName,
       primaryPhotoPath: primaryPhotoPath,
       baseProductId: baseProductId,

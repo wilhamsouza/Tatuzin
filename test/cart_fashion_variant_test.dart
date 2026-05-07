@@ -1,4 +1,8 @@
 import 'package:erp_pdv_app/modules/carrinho/presentation/providers/cart_provider.dart';
+import 'package:erp_pdv_app/modules/estoque/domain/entities/stock_availability.dart';
+import 'package:erp_pdv_app/modules/estoque/domain/entities/stock_reservation.dart';
+import 'package:erp_pdv_app/modules/estoque/domain/repositories/stock_availability_repository.dart';
+import 'package:erp_pdv_app/modules/estoque/presentation/providers/inventory_providers.dart';
 import 'package:erp_pdv_app/modules/produtos/domain/entities/product.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -111,6 +115,44 @@ void main() {
     expect(container.read(cartProvider.notifier).addProduct(product), isFalse);
     expect(container.read(cartProvider).items.single.quantityMil, 1000);
   });
+
+  test('incremento revalida disponibilidade atual do estoque', () async {
+    final repository = _MutableStockAvailabilityRepository();
+    final container = ProviderContainer(
+      overrides: [
+        stockAvailabilityRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final product = _buildProduct(stockMil: 1000);
+    repository.setAvailability(productId: product.id, availableMil: 1000);
+
+    expect(container.read(cartProvider.notifier).addProduct(product), isTrue);
+    expect(
+      await container
+          .read(cartProvider.notifier)
+          .increaseQuantityRevalidated(
+            container.read(cartProvider).items.single.id,
+          ),
+      isFalse,
+    );
+    expect(container.read(cartProvider).items.single.quantityMil, 1000);
+
+    repository.setAvailability(productId: product.id, availableMil: 2000);
+
+    expect(
+      await container
+          .read(cartProvider.notifier)
+          .increaseQuantityRevalidated(
+            container.read(cartProvider).items.single.id,
+          ),
+      isTrue,
+    );
+    final item = container.read(cartProvider).items.single;
+    expect(item.quantityMil, 2000);
+    expect(item.availableStockMil, 2000);
+  });
 }
 
 Product _buildProduct({
@@ -155,6 +197,57 @@ Product _buildProduct({
     sellableVariantColorLabel: sellableVariantColorLabel,
     sellableVariantSizeLabel: sellableVariantSizeLabel,
   );
+}
+
+class _MutableStockAvailabilityRepository
+    implements StockAvailabilityRepository {
+  final _availableByKey = <StockReservationProductKey, int>{};
+
+  void setAvailability({
+    required int productId,
+    int? productVariantId,
+    required int availableMil,
+  }) {
+    _availableByKey[StockReservationProductKey(
+          productId: productId,
+          productVariantId: productVariantId,
+        )] =
+        availableMil;
+  }
+
+  @override
+  Future<StockAvailability> getAvailability({
+    required int productId,
+    required int? productVariantId,
+  }) async {
+    final key = StockReservationProductKey(
+      productId: productId,
+      productVariantId: productVariantId,
+    );
+    final availableMil = _availableByKey[key] ?? 0;
+    return StockAvailability(
+      productId: productId,
+      productVariantId: productVariantId,
+      physicalQuantityMil: availableMil,
+      reservedQuantityMil: 0,
+    );
+  }
+
+  @override
+  Future<Map<StockReservationProductKey, StockAvailability>>
+  getAvailabilityByProductKeys(
+    Iterable<StockReservationProductKey> keys,
+  ) async {
+    return {
+      for (final key in keys)
+        key: StockAvailability(
+          productId: key.productId,
+          productVariantId: key.productVariantId,
+          physicalQuantityMil: _availableByKey[key] ?? 0,
+          reservedQuantityMil: 0,
+        ),
+    };
+  }
 }
 
 ProductVariant _buildVariant({

@@ -1,5 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../app/core/utils/app_logger.dart';
+import '../../../estoque/domain/entities/stock_availability.dart';
+import '../../../estoque/domain/entities/stock_reservation.dart';
+import '../../../estoque/presentation/providers/inventory_providers.dart';
 import '../../domain/entities/cart_enums.dart';
 import '../../domain/entities/cart_item.dart';
 import '../../../produtos/domain/entities/product.dart';
@@ -109,6 +113,96 @@ class CartController extends Notifier<CartState> {
     return true;
   }
 
+  Future<bool> increaseQuantityRevalidated(String itemId) async {
+    final currentIndex = state.items.indexWhere((item) => item.id == itemId);
+    if (currentIndex == -1) {
+      return false;
+    }
+    final current = state.items[currentIndex];
+
+    final StockAvailability availability;
+    try {
+      availability = await ref
+          .read(stockAvailabilityRepositoryProvider)
+          .getAvailability(
+            productId: current.productId,
+            productVariantId: current.productVariantId,
+          );
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[Carrinho] failed to revalidate item before increment',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return false;
+    }
+
+    final items = [...state.items];
+    final index = items.indexWhere((item) => item.id == itemId);
+    if (index == -1) {
+      return false;
+    }
+
+    final latest = items[index];
+    final availableStockMil = availability.availableQuantityMil;
+    if (latest.quantityMil + 1000 > availableStockMil) {
+      items[index] = latest.copyWith(availableStockMil: availableStockMil);
+      state = state.copyWith(items: items);
+      return false;
+    }
+
+    items[index] = latest.copyWith(
+      quantityMil: latest.quantityMil + 1000,
+      availableStockMil: availableStockMil,
+    );
+    state = state.copyWith(items: items);
+    return true;
+  }
+
+  Future<void> revalidateAvailability() async {
+    if (state.items.isEmpty) {
+      return;
+    }
+
+    final keys = state.items
+        .map(
+          (item) => StockReservationProductKey(
+            productId: item.productId,
+            productVariantId: item.productVariantId,
+          ),
+        )
+        .toSet();
+    final Map<StockReservationProductKey, StockAvailability> availabilityByKey;
+    try {
+      availabilityByKey = await ref
+          .read(stockAvailabilityRepositoryProvider)
+          .getAvailabilityByProductKeys(keys);
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[Carrinho] failed to revalidate item availability',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return;
+    }
+    final items = state.items
+        .map((item) {
+          final key = StockReservationProductKey(
+            productId: item.productId,
+            productVariantId: item.productVariantId,
+          );
+          final availability = availabilityByKey[key];
+          if (availability == null) {
+            return item;
+          }
+          return item.copyWith(
+            availableStockMil: availability.availableQuantityMil,
+          );
+        })
+        .toList(growable: false);
+    state = state.copyWith(items: items);
+  }
+
   void decreaseQuantity(String itemId) {
     final items = [...state.items];
     final index = items.indexWhere((item) => item.id == itemId);
@@ -144,6 +238,8 @@ class CartController extends Notifier<CartState> {
       id: current.id,
       productId: current.productId,
       productVariantId: current.productVariantId,
+      productRemoteId: current.productRemoteId,
+      productVariantRemoteId: current.productVariantRemoteId,
       productName: current.productName,
       primaryPhotoPath: current.primaryPhotoPath,
       baseProductId: current.baseProductId,

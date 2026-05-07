@@ -24,7 +24,6 @@ import '../widgets/report_comparison_card.dart';
 import '../widgets/report_donut_chart_card.dart';
 import '../widgets/report_filter_toolbar.dart';
 import '../widgets/report_kpi_grid.dart';
-import '../widgets/report_period_bar.dart';
 import '../widgets/report_shortcut_card.dart';
 
 class ReportsPage extends ConsumerWidget {
@@ -83,12 +82,6 @@ class ReportsPage extends ConsumerWidget {
               badgeIcon: Icons.insights_rounded,
               emphasized: true,
             ),
-            const ReportPeriodBar(
-              title: 'Periodo',
-              subtitle:
-                  'Hoje, semana, mes e ano usam os dados reais do periodo selecionado.',
-            ),
-            SizedBox(height: layout.sectionGap),
             const ReportFilterToolbar(page: ReportPageKey.overview),
             const ReportDataOriginBanner(page: ReportPageKey.overview),
             SizedBox(height: layout.sectionGap),

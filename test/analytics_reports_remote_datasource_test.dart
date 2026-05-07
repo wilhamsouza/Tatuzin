@@ -58,6 +58,35 @@ void main() {
     expect(result.notice!.message, contains('nuvem'));
   });
 
+  test(
+    'financial-summary calcula lucro quando API espelha venda liquida',
+    () async {
+      final apiClient = _RecordingApiClient(
+        financialSummary: const <String, dynamic>{
+          'salesAmountCents': 1000,
+          'salesCostCents': 400,
+          'salesProfitCents': 1000,
+          'purchasesAmountCents': 0,
+          'fiadoPaymentsAmountCents': 0,
+          'cashNetCents': 1000,
+          'financialAdjustmentsCents': 0,
+          'operatingMarginBasisPoints': 6000,
+        },
+      );
+      final datasource = RealAnalyticsReportsRemoteDatasource(
+        apiClient: apiClient,
+        tokenStorage: const _MemoryTokenStorage('access-token'),
+        operationalContext: _remoteContext(),
+      );
+
+      final summary = await datasource.fetchFinancialSummary(filter: _filter());
+
+      expect(summary.salesAmountCents, 1000);
+      expect(summary.salesCostCents, 400);
+      expect(summary.salesProfitCents, 600);
+    },
+  );
+
   test('403, 404 e 501 caem para fallback local com notice', () async {
     for (final statusCode in <int>[403, 404, 501]) {
       final repository = AnalyticsReportRepository(
@@ -121,8 +150,11 @@ AppOperationalContext _remoteContext() {
 }
 
 class _RecordingApiClient implements ApiClientContract {
+  _RecordingApiClient({this.financialSummary});
+
   final paths = <String>[];
   final queryParameters = <Map<String, Object?>>[];
+  final Map<String, dynamic>? financialSummary;
 
   @override
   Future<ApiResponse<Map<String, dynamic>>> getJson(
@@ -185,16 +217,18 @@ class _RecordingApiClient implements ApiClientContract {
       };
     }
     return {
-      'summary': {
-        'salesAmountCents': 1000,
-        'salesCostCents': 400,
-        'salesProfitCents': 600,
-        'purchasesAmountCents': 0,
-        'fiadoPaymentsAmountCents': 0,
-        'cashNetCents': 1000,
-        'financialAdjustmentsCents': 0,
-        'operatingMarginBasisPoints': 6000,
-      },
+      'summary':
+          financialSummary ??
+          {
+            'salesAmountCents': 1000,
+            'salesCostCents': 400,
+            'salesProfitCents': 600,
+            'purchasesAmountCents': 0,
+            'fiadoPaymentsAmountCents': 0,
+            'cashNetCents': 1000,
+            'financialAdjustmentsCents': 0,
+            'operatingMarginBasisPoints': 6000,
+          },
     };
   }
 

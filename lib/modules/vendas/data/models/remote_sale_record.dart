@@ -105,6 +105,7 @@ class RemoteSaleItemRecord {
   const RemoteSaleItemRecord({
     required this.remoteProductId,
     this.productVariantLocalId,
+    this.remoteProductVariantId,
     required this.productNameSnapshot,
     this.variantSkuSnapshot,
     this.variantColorSnapshot,
@@ -121,6 +122,7 @@ class RemoteSaleItemRecord {
   factory RemoteSaleItemRecord.fromJson(Map<String, dynamic> json) {
     return RemoteSaleItemRecord(
       remoteProductId: json['productId'] as String?,
+      remoteProductVariantId: json['productVariantId'] as String?,
       productVariantLocalId: json['productVariantLocalId'] as int?,
       productNameSnapshot: json['productNameSnapshot'] as String,
       variantSkuSnapshot: json['variantSkuSnapshot'] as String?,
@@ -139,6 +141,7 @@ class RemoteSaleItemRecord {
   factory RemoteSaleItemRecord.fromSyncItemPayload(SaleSyncItemPayload item) {
     return RemoteSaleItemRecord(
       remoteProductId: item.productRemoteId,
+      remoteProductVariantId: item.productVariantRemoteId,
       productVariantLocalId: item.productVariantLocalId,
       productNameSnapshot: item.productNameSnapshot,
       variantSkuSnapshot: item.variantSkuSnapshot,
@@ -156,6 +159,7 @@ class RemoteSaleItemRecord {
 
   final String? remoteProductId;
   final int? productVariantLocalId;
+  final String? remoteProductVariantId;
   final String productNameSnapshot;
   final String? variantSkuSnapshot;
   final String? variantColorSnapshot;
@@ -171,6 +175,7 @@ class RemoteSaleItemRecord {
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
       'productId': remoteProductId,
+      'productVariantId': remoteProductVariantId,
       'productVariantLocalId': productVariantLocalId,
       'productNameSnapshot': productNameSnapshot,
       'variantSkuSnapshot': variantSkuSnapshot,

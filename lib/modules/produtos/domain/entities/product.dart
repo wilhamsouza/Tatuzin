@@ -68,6 +68,7 @@ class Product {
     this.variants = const <ProductVariant>[],
     this.modifierGroups = const <ProductModifierGroup>[],
     this.sellableVariantId,
+    this.sellableVariantRemoteId,
     this.sellableVariantSku,
     this.sellableVariantColorLabel,
     this.sellableVariantSizeLabel,
@@ -110,6 +111,7 @@ class Product {
   final List<ProductVariant> variants;
   final List<ProductModifierGroup> modifierGroups;
   final int? sellableVariantId;
+  final String? sellableVariantRemoteId;
   final String? sellableVariantSku;
   final String? sellableVariantColorLabel;
   final String? sellableVariantSizeLabel;
@@ -296,6 +298,7 @@ class ProductVariant {
     required this.id,
     required this.uuid,
     required this.productId,
+    this.remoteId,
     required this.sku,
     required this.colorLabel,
     required this.sizeLabel,
@@ -310,6 +313,7 @@ class ProductVariant {
   final int id;
   final String uuid;
   final int productId;
+  final String? remoteId;
   final String sku;
   final String colorLabel;
   final String sizeLabel;
@@ -373,6 +377,7 @@ class ProductRecipeItemInput {
 
 class ProductVariantInput {
   const ProductVariantInput({
+    this.remoteId,
     required this.sku,
     required this.colorLabel,
     required this.sizeLabel,
@@ -382,6 +387,7 @@ class ProductVariantInput {
     this.isActive = true,
   });
 
+  final String? remoteId;
   final String sku;
   final String colorLabel;
   final String sizeLabel;

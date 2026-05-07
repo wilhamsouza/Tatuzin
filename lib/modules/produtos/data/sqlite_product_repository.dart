@@ -1454,6 +1454,7 @@ class SqliteProductRepository implements ProductRepository {
     final variantInputs = remote.variants
         .map(
           (variant) => ProductVariantInput(
+            remoteId: variant.remoteId,
             sku: variant.sku,
             colorLabel: variant.colorLabel,
             sizeLabel: variant.sizeLabel,
@@ -1853,6 +1854,7 @@ class SqliteProductRepository implements ProductRepository {
       id: row['id'] as int,
       uuid: row['uuid'] as String,
       productId: row['produto_id'] as int,
+      remoteId: row['remote_id'] as String?,
       sku: row['sku'] as String? ?? '',
       colorLabel: row['cor'] as String? ?? '',
       sizeLabel: row['tamanho'] as String? ?? '',
@@ -1947,6 +1949,7 @@ class SqliteProductRepository implements ProductRepository {
             variants: product.variants,
             modifierGroups: product.modifierGroups,
             sellableVariantId: variant.id,
+            sellableVariantRemoteId: variant.remoteId,
             sellableVariantSku: variant.sku,
             sellableVariantColorLabel: variant.colorLabel,
             sellableVariantSizeLabel: variant.sizeLabel,
@@ -2158,23 +2161,53 @@ class SqliteProductRepository implements ProductRepository {
     required int productId,
     required List<ProductVariantInput> variants,
   }) async {
-    await txn.delete(
+    final existingRows = await txn.query(
       TableNames.produtoVariantes,
       where: 'produto_id = ?',
       whereArgs: [productId],
     );
+    final existingByRemoteId = <String, Map<String, Object?>>{
+      for (final row in existingRows)
+        if (_cleanNullable(row['remote_id'] as String?) != null)
+          _cleanNullable(row['remote_id'] as String?)!: row,
+    };
+    final incomingRemoteIds = variants
+        .map((variant) => _cleanNullable(variant.remoteId))
+        .whereType<String>()
+        .toSet();
+    if (incomingRemoteIds.isEmpty) {
+      await txn.delete(
+        TableNames.produtoVariantes,
+        where: 'produto_id = ?',
+        whereArgs: [productId],
+      );
+    } else {
+      final placeholders = List.filled(
+        incomingRemoteIds.length,
+        '?',
+      ).join(', ');
+      await txn.delete(
+        TableNames.produtoVariantes,
+        where:
+            'produto_id = ? AND (remote_id IS NULL OR remote_id NOT IN ($placeholders))',
+        whereArgs: [productId, ...incomingRemoteIds],
+      );
+    }
 
     for (var index = 0; index < variants.length; index++) {
       final variant = variants[index];
       final sizeLabel = _cleanNullable(variant.sizeLabel);
       final colorLabel = _cleanNullable(variant.colorLabel);
       final sku = _cleanNullable(variant.sku);
+      final remoteId = _cleanNullable(variant.remoteId);
       if (sizeLabel == null || colorLabel == null || sku == null) {
         continue;
       }
       final now = DateTime.now().toIso8601String();
-      await txn.insert(TableNames.produtoVariantes, {
+      final existing = remoteId == null ? null : existingByRemoteId[remoteId];
+      final values = <String, Object?>{
         'uuid': IdGenerator.next(),
+        'remote_id': remoteId,
         'produto_id': productId,
         'sku': sku.toUpperCase(),
         'cor': colorLabel,
@@ -2185,7 +2218,21 @@ class SqliteProductRepository implements ProductRepository {
         'ativo': variant.isActive ? 1 : 0,
         'criado_em': now,
         'atualizado_em': now,
-      });
+      };
+      if (existing == null) {
+        await txn.insert(TableNames.produtoVariantes, values);
+      } else {
+        values
+          ..remove('uuid')
+          ..remove('produto_id')
+          ..remove('criado_em');
+        await txn.update(
+          TableNames.produtoVariantes,
+          values,
+          where: 'id = ?',
+          whereArgs: [existing['id']],
+        );
+      }
     }
   }
 

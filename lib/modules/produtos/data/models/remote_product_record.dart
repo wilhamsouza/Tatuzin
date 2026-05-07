@@ -239,6 +239,7 @@ class RemoteProductRecord {
 
 class RemoteProductVariantRecord {
   const RemoteProductVariantRecord({
+    this.remoteId,
     required this.sku,
     required this.colorLabel,
     required this.sizeLabel,
@@ -250,6 +251,9 @@ class RemoteProductVariantRecord {
 
   factory RemoteProductVariantRecord.fromJson(Map<String, dynamic> json) {
     return RemoteProductVariantRecord(
+      remoteId:
+          _readOptionalString(json['id']) ??
+          _readOptionalString(json['remoteId']),
       sku: json['sku'] as String? ?? '',
       colorLabel: json['colorLabel'] as String? ?? '',
       sizeLabel: json['sizeLabel'] as String? ?? '',
@@ -262,6 +266,7 @@ class RemoteProductVariantRecord {
 
   factory RemoteProductVariantRecord.fromLocalVariant(ProductVariant variant) {
     return RemoteProductVariantRecord(
+      remoteId: variant.remoteId,
       sku: variant.sku,
       colorLabel: variant.colorLabel,
       sizeLabel: variant.sizeLabel,
@@ -272,6 +277,7 @@ class RemoteProductVariantRecord {
     );
   }
 
+  final String? remoteId;
   final String sku;
   final String colorLabel;
   final String sizeLabel;
@@ -291,6 +297,14 @@ class RemoteProductVariantRecord {
       'isActive': isActive,
     };
   }
+}
+
+String? _readOptionalString(Object? value) {
+  if (value is! String) {
+    return null;
+  }
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
 }
 
 class RemoteProductModifierGroupRecord {

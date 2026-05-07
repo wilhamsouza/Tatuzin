@@ -899,6 +899,7 @@ class _ProductTile extends ConsumerWidget {
       variants: product.variants,
       modifierGroups: product.modifierGroups,
       sellableVariantId: product.sellableVariantId,
+      sellableVariantRemoteId: product.sellableVariantRemoteId,
       sellableVariantSku: product.sellableVariantSku,
       sellableVariantColorLabel: product.sellableVariantColorLabel,
       sellableVariantSizeLabel: product.sellableVariantSizeLabel,

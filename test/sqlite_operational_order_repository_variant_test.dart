@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:erp_pdv_app/app/core/database/app_database.dart';
 import 'package:erp_pdv_app/app/core/database/migrations.dart';
 import 'package:erp_pdv_app/app/core/database/table_names.dart';
@@ -98,6 +100,33 @@ void main() {
     },
   );
 
+  test('migration v37 adiciona remote_id nas variantes locais', () async {
+    final database = await databaseFactoryFfi.openDatabase(
+      inMemoryDatabasePath,
+      options: OpenDatabaseOptions(
+        version: 1,
+        onCreate: (db, _) => AppMigrations.runCreate(db, 36),
+      ),
+    );
+    addTearDown(database.close);
+
+    await AppMigrations.runUpgrade(database, 36, 37);
+
+    final columns = await database.rawQuery(
+      'PRAGMA table_info(${TableNames.produtoVariantes})',
+    );
+    final columnNames = columns.map((row) => row['name']).toSet();
+    expect(columnNames, contains('remote_id'));
+
+    final indexRows = await database.rawQuery(
+      'PRAGMA index_list(${TableNames.produtoVariantes})',
+    );
+    expect(
+      indexRows.map((row) => row['name']),
+      contains('idx_produto_variantes_remote_id'),
+    );
+  });
+
   test('repository preserva variante em item de pedido', () async {
     final fixture = await _openRepositoryFixture();
     addTearDown(fixture.dispose);
@@ -131,6 +160,60 @@ void main() {
     expect(items.single.variantColorSnapshot, 'Preta');
     expect(items.single.variantSizeSnapshot, 'P');
   });
+
+  test(
+    'sync operacional de item e reserva usa IDs remotos de produto e variante',
+    () async {
+      final fixture = await _openRepositoryFixture();
+      addTearDown(fixture.dispose);
+
+      const productRemoteId = '11111111-1111-4111-8111-111111111111';
+      const variantRemoteId = '22222222-2222-4222-8222-222222222222';
+      await _insertProduct(fixture.database);
+      await _insertProductRemoteIdentity(
+        fixture.database,
+        remoteId: productRemoteId,
+      );
+      await _insertProductVariant(fixture.database, remoteId: variantRemoteId);
+
+      final orderId = await fixture.repository.create(
+        const OperationalOrderInput(),
+      );
+      await fixture.repository.addItem(
+        orderId,
+        const OperationalOrderItemInput(
+          productId: 1,
+          productVariantId: 10,
+          variantSkuSnapshot: 'CAM-BASIC-PRETA-P',
+          variantColorSnapshot: 'Preta',
+          variantSizeSnapshot: 'P',
+          productNameSnapshot: 'Camiseta Basic - P / Preta',
+          quantityMil: 1000,
+          unitPriceCents: 9900,
+          subtotalCents: 9900,
+        ),
+      );
+
+      final itemEvent = await _loadLatestOperationalPayload(
+        fixture.database,
+        entity: 'operationalOrderItem',
+      );
+      expect(itemEvent['productId'], productRemoteId);
+      expect(itemEvent['productLocalId'], 1);
+      expect(itemEvent['productVariantId'], variantRemoteId);
+      expect(itemEvent['productVariantLocalId'], 10);
+
+      await fixture.repository.sendToKitchen(orderId);
+      final reservationEvent = await _loadLatestOperationalPayload(
+        fixture.database,
+        entity: 'stockReservation',
+      );
+      expect(reservationEvent['productId'], productRemoteId);
+      expect(reservationEvent['productLocalId'], 1);
+      expect(reservationEvent['productVariantId'], variantRemoteId);
+      expect(reservationEvent['productVariantLocalId'], 10);
+    },
+  );
 
   test('repository continua salvando item antigo sem variante', () async {
     final fixture = await _openRepositoryFixture();
@@ -550,6 +633,7 @@ Future<void> _insertProductVariant(
   DatabaseExecutor db, {
   int id = 10,
   String uuid = 'variant-10',
+  String? remoteId,
   String sku = 'CAM-BASIC-PRETA-P',
   String color = 'Preta',
   String size = 'P',
@@ -559,6 +643,7 @@ Future<void> _insertProductVariant(
   return db.insert(TableNames.produtoVariantes, {
     'id': id,
     'uuid': uuid,
+    'remote_id': remoteId,
     'produto_id': 1,
     'sku': sku,
     'cor': color,
@@ -570,6 +655,43 @@ Future<void> _insertProductVariant(
     'criado_em': _fixedNowIso,
     'atualizado_em': _fixedNowIso,
   });
+}
+
+Future<void> _insertProductRemoteIdentity(
+  DatabaseExecutor db, {
+  String remoteId = '11111111-1111-4111-8111-111111111111',
+}) {
+  return db.insert(TableNames.syncRegistros, {
+    'feature_key': 'products',
+    'local_id': 1,
+    'local_uuid': 'product-1',
+    'remote_id': remoteId,
+    'sync_status': 'synced',
+    'origin': 'remote',
+    'created_at': _fixedNowIso,
+    'updated_at': _fixedNowIso,
+    'last_synced_at': _fixedNowIso,
+    'last_error': null,
+    'last_error_type': null,
+    'last_error_at': null,
+  });
+}
+
+Future<Map<String, dynamic>> _loadLatestOperationalPayload(
+  DatabaseExecutor db, {
+  required String entity,
+}) async {
+  final rows = await db.query(
+    TableNames.operationalSyncEvents,
+    columns: const ['payload_json'],
+    where: 'entity = ?',
+    whereArgs: [entity],
+    orderBy: 'id DESC',
+    limit: 1,
+  );
+  expect(rows, isNotEmpty);
+  return jsonDecode(rows.single['payload_json'] as String)
+      as Map<String, dynamic>;
 }
 
 Future<int> _insertLegacyOrder(DatabaseExecutor db) {

@@ -47,6 +47,7 @@ class SaleSyncItemPayload {
     required this.productLocalId,
     required this.productRemoteId,
     this.productVariantLocalId,
+    this.productVariantRemoteId,
     required this.productNameSnapshot,
     this.variantSkuSnapshot,
     this.variantColorSnapshot,
@@ -64,6 +65,7 @@ class SaleSyncItemPayload {
   final int? productLocalId;
   final String? productRemoteId;
   final int? productVariantLocalId;
+  final String? productVariantRemoteId;
   final String productNameSnapshot;
   final String? variantSkuSnapshot;
   final String? variantColorSnapshot;

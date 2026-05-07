@@ -12,6 +12,7 @@ import '../../../app/core/sync/sqlite_sync_queue_repository.dart';
 import '../../../app/core/sync/sync_error_type.dart';
 import '../../../app/core/sync/sync_feature_keys.dart';
 import '../../../app/core/sync/sync_queue_operation.dart';
+import '../../../app/core/utils/app_logger.dart';
 import '../../../app/core/utils/id_generator.dart';
 import '../../clientes/data/customer_credit_database_support.dart';
 import '../../clientes/domain/entities/customer_credit_transaction.dart';
@@ -683,6 +684,14 @@ class SqliteSaleRepository implements SaleRepository {
     );
     for (final row in saleItemRows) {
       final itemUuid = row['uuid'] as String;
+      final productId = row['produto_id'] as int;
+      final productVariantId = row['produto_variante_id'] as int?;
+      final productIdentity = await _resolveOperationalProductRemoteIdentity(
+        txn,
+        productId: productId,
+        productVariantId: productVariantId,
+        context: 'saleItem/create:$itemUuid',
+      );
       await queue.enqueue(
         txn,
         event: OperationalSyncEvent(
@@ -701,8 +710,12 @@ class SqliteSaleRepository implements SaleRepository {
             'uuid': itemUuid,
             'saleLocalId': saleId,
             'saleUuid': saleUuid,
-            'productId': row['produto_id'],
-            'productVariantId': row['produto_variante_id'],
+            'productId': productIdentity.productRemoteId,
+            'productServerId': productIdentity.productRemoteId,
+            'productLocalId': productId,
+            'productVariantId': productIdentity.productVariantRemoteId,
+            'productVariantServerId': productIdentity.productVariantRemoteId,
+            'productVariantLocalId': productVariantId,
             'productNameSnapshot': row['nome_produto_snapshot'],
             'quantityMil': row['quantidade_mil'],
             'unitPriceCents': row['valor_unitario_centavos'],
@@ -770,6 +783,12 @@ class SqliteSaleRepository implements SaleRepository {
     for (final change in stockChanges) {
       final localIdentity =
           '$saleUuid:${change.productId}:${change.productVariantId ?? 0}';
+      final productIdentity = await _resolveOperationalProductRemoteIdentity(
+        txn,
+        productId: change.productId,
+        productVariantId: change.productVariantId,
+        context: 'stockDeduction/create:$localIdentity',
+      );
       await queue.enqueue(
         txn,
         event: OperationalSyncEvent(
@@ -786,8 +805,12 @@ class SqliteSaleRepository implements SaleRepository {
           payload: <String, dynamic>{
             'saleLocalId': saleId,
             'saleUuid': saleUuid,
-            'productId': change.productId,
-            'productVariantId': change.productVariantId,
+            'productId': productIdentity.productRemoteId,
+            'productServerId': productIdentity.productRemoteId,
+            'productLocalId': change.productId,
+            'productVariantId': productIdentity.productVariantRemoteId,
+            'productVariantServerId': productIdentity.productVariantRemoteId,
+            'productVariantLocalId': change.productVariantId,
             'quantityDeltaMil': change.quantityDeltaMil,
             'stockBeforeMil': change.stockBeforeMil,
             'stockAfterMil': change.stockAfterMil,
@@ -806,6 +829,14 @@ class SqliteSaleRepository implements SaleRepository {
       );
       for (final row in reservationRows) {
         final reservationUuid = row['uuid'] as String;
+        final productId = row['produto_id'] as int;
+        final productVariantId = row['produto_variante_id'] as int?;
+        final productIdentity = await _resolveOperationalProductRemoteIdentity(
+          txn,
+          productId: productId,
+          productVariantId: productVariantId,
+          context: 'stockReservation/update:$reservationUuid',
+        );
         await queue.enqueue(
           txn,
           event: OperationalSyncEvent(
@@ -824,8 +855,12 @@ class SqliteSaleRepository implements SaleRepository {
               'uuid': reservationUuid,
               'operationalOrderId': row['pedido_operacional_id'],
               'operationalOrderItemId': row['item_pedido_operacional_id'],
-              'productId': row['produto_id'],
-              'productVariantId': row['produto_variante_id'],
+              'productId': productIdentity.productRemoteId,
+              'productServerId': productIdentity.productRemoteId,
+              'productLocalId': productId,
+              'productVariantId': productIdentity.productVariantRemoteId,
+              'productVariantServerId': productIdentity.productVariantRemoteId,
+              'productVariantLocalId': productVariantId,
               'quantityMil': row['quantidade_mil'],
               'status': row['status'],
               'saleLocalId': saleId,
@@ -835,6 +870,54 @@ class SqliteSaleRepository implements SaleRepository {
         );
       }
     }
+  }
+
+  Future<_OperationalProductRemoteIdentity>
+  _resolveOperationalProductRemoteIdentity(
+    DatabaseExecutor database, {
+    required int productId,
+    required int? productVariantId,
+    required String context,
+  }) async {
+    final rows = await database.rawQuery(
+      '''
+      SELECT
+        product_sync.remote_id AS product_remote_id,
+        variant.remote_id AS variant_remote_id
+      FROM ${TableNames.produtos} product
+      LEFT JOIN ${TableNames.syncRegistros} product_sync
+        ON product_sync.feature_key = ?
+        AND product_sync.local_id = product.id
+      LEFT JOIN ${TableNames.produtoVariantes} variant
+        ON variant.id = ?
+        AND variant.produto_id = product.id
+      WHERE product.id = ?
+      LIMIT 1
+      ''',
+      <Object?>[SyncFeatureKeys.products, productVariantId, productId],
+    );
+    final row = rows.isEmpty ? const <String, Object?>{} : rows.first;
+    final identity = _OperationalProductRemoteIdentity(
+      productRemoteId: SaleValidationSupport.cleanNullable(
+        row['product_remote_id'] as String?,
+      ),
+      productVariantRemoteId: SaleValidationSupport.cleanNullable(
+        row['variant_remote_id'] as String?,
+      ),
+    );
+
+    if (identity.productRemoteId == null ||
+        (productVariantId != null && identity.productVariantRemoteId == null)) {
+      AppLogger.warn(
+        '[OperationalSync] missing remote product identity | '
+        'context=$context productLocalId=$productId '
+        'productVariantLocalId=$productVariantId '
+        'productRemoteId=${identity.productRemoteId} '
+        'productVariantRemoteId=${identity.productVariantRemoteId}',
+      );
+    }
+
+    return identity;
   }
 
   Future<void> _linkOperationalOrderToSale(
@@ -1220,4 +1303,14 @@ class SqliteSaleRepository implements SaleRepository {
       description: description,
     );
   }
+}
+
+class _OperationalProductRemoteIdentity {
+  const _OperationalProductRemoteIdentity({
+    required this.productRemoteId,
+    required this.productVariantRemoteId,
+  });
+
+  final String? productRemoteId;
+  final String? productVariantRemoteId;
 }

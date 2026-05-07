@@ -67,11 +67,15 @@ class SaleSyncPayloadLoader {
         iv.custo_total_centavos,
         iv.unidade_medida_snapshot,
         iv.tipo_produto_snapshot,
-        product_sync.remote_id AS produto_remote_id
+        product_sync.remote_id AS produto_remote_id,
+        variant.remote_id AS produto_variante_remote_id
       FROM ${TableNames.itensVenda} iv
       LEFT JOIN ${TableNames.syncRegistros} product_sync
         ON product_sync.feature_key = '${SyncFeatureKeys.products}'
         AND product_sync.local_id = iv.produto_id
+      LEFT JOIN ${TableNames.produtoVariantes} variant
+        ON variant.id = iv.produto_variante_id
+        AND variant.produto_id = iv.produto_id
       WHERE iv.venda_id = ?
       ORDER BY iv.id ASC
     ''',
@@ -85,6 +89,8 @@ class SaleSyncPayloadLoader {
             productLocalId: row['produto_id'] as int?,
             productRemoteId: row['produto_remote_id'] as String?,
             productVariantLocalId: row['produto_variante_id'] as int?,
+            productVariantRemoteId:
+                row['produto_variante_remote_id'] as String?,
             productNameSnapshot: row['nome_produto_snapshot'] as String,
             variantSkuSnapshot: row['sku_variante_snapshot'] as String?,
             variantColorSnapshot: row['cor_variante_snapshot'] as String?,

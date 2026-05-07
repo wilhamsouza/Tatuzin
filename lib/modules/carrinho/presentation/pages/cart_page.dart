@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../../pedidos/domain/entities/operational_order.dart';
 import '../../../pedidos/domain/entities/operational_order_item.dart';
@@ -47,6 +49,11 @@ class _CartPageState extends ConsumerState<CartPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(appDataRefreshProvider, (previous, next) {
+      if (previous != null && previous != next) {
+        unawaited(ref.read(cartProvider.notifier).revalidateAvailability());
+      }
+    });
     final cart = ref.watch(cartProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -148,11 +155,14 @@ class _CartPageState extends ConsumerState<CartPage> {
             onDecrease: () => ref
                 .read(cartProvider.notifier)
                 .decreaseQuantity(cart.items[index].id),
-            onIncrease: () {
-              final increased = ref
+            onIncrease: () async {
+              final increased = await ref
                   .read(cartProvider.notifier)
-                  .increaseQuantity(cart.items[index].id);
+                  .increaseQuantityRevalidated(cart.items[index].id);
               if (!increased) {
+                if (!context.mounted) {
+                  return;
+                }
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Estoque insuficiente para aumentar.'),
@@ -556,6 +566,8 @@ OperationalOrderItemInput operationalOrderItemInputFromCartItem(CartItem item) {
     productId: item.productId,
     baseProductId: item.baseProductId,
     productVariantId: item.productVariantId,
+    productRemoteId: item.productRemoteId,
+    productVariantRemoteId: item.productVariantRemoteId,
     variantSkuSnapshot: item.variantSku,
     variantColorSnapshot: item.variantColorLabel,
     variantSizeSnapshot: item.variantSizeLabel,

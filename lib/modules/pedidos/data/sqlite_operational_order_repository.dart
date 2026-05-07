@@ -4,6 +4,7 @@ import '../../../app/core/database/app_database.dart';
 import '../../../app/core/database/table_names.dart';
 import '../../../app/core/errors/app_exceptions.dart';
 import '../../../app/core/sync/operational_sync_event.dart';
+import '../../../app/core/sync/sync_feature_keys.dart';
 import '../../../app/core/sync/sqlite_operational_sync_queue_repository.dart';
 import '../../../app/core/utils/app_logger.dart';
 import '../../../app/core/utils/id_generator.dart';
@@ -830,6 +831,12 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
     final eventIdentity = operation == 'create'
         ? item.uuid
         : '${item.uuid}:${occurredAt.microsecondsSinceEpoch}';
+    final productIdentity = await _resolveOperationalProductRemoteIdentity(
+      database,
+      productId: item.productId,
+      productVariantId: item.productVariantId,
+      context: 'operationalOrderItem/$operation:${item.uuid}',
+    );
     await _operationalSyncQueueRepository.enqueue(
       database,
       event: OperationalSyncEvent(
@@ -847,9 +854,13 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
           'localId': item.id,
           'uuid': item.uuid,
           'operationalOrderId': item.orderId,
-          'productId': item.productId,
-          'baseProductId': item.baseProductId,
-          'productVariantId': item.productVariantId,
+          'productId': productIdentity.productRemoteId,
+          'productServerId': productIdentity.productRemoteId,
+          'productLocalId': item.productId,
+          'baseProductLocalId': item.baseProductId,
+          'productVariantId': productIdentity.productVariantRemoteId,
+          'productVariantServerId': productIdentity.productVariantRemoteId,
+          'productVariantLocalId': item.productVariantId,
           'variantSkuSnapshot': item.variantSkuSnapshot,
           'variantColorSnapshot': item.variantColorSnapshot,
           'variantSizeSnapshot': item.variantSizeSnapshot,
@@ -874,6 +885,12 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
     final eventIdentity = operation == 'create'
         ? reservation.uuid
         : '${reservation.uuid}:${occurredAt.microsecondsSinceEpoch}';
+    final productIdentity = await _resolveOperationalProductRemoteIdentity(
+      database,
+      productId: reservation.productId,
+      productVariantId: reservation.productVariantId,
+      context: 'stockReservation/$operation:${reservation.uuid}',
+    );
     await _operationalSyncQueueRepository.enqueue(
       database,
       event: OperationalSyncEvent(
@@ -892,8 +909,12 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
           'uuid': reservation.uuid,
           'operationalOrderId': reservation.operationalOrderId,
           'operationalOrderItemId': reservation.operationalOrderItemId,
-          'productId': reservation.productId,
-          'productVariantId': reservation.productVariantId,
+          'productId': productIdentity.productRemoteId,
+          'productServerId': productIdentity.productRemoteId,
+          'productLocalId': reservation.productId,
+          'productVariantId': productIdentity.productVariantRemoteId,
+          'productVariantServerId': productIdentity.productVariantRemoteId,
+          'productVariantLocalId': reservation.productVariantId,
           'quantityMil': reservation.quantityMil,
           'status': reservation.status.storageValue,
           'saleId': reservation.saleId,
@@ -904,6 +925,52 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
         },
       ),
     );
+  }
+
+  Future<_OperationalProductRemoteIdentity>
+  _resolveOperationalProductRemoteIdentity(
+    DatabaseExecutor database, {
+    required int productId,
+    required int? productVariantId,
+    required String context,
+  }) async {
+    final rows = await database.rawQuery(
+      '''
+      SELECT
+        product_sync.remote_id AS product_remote_id,
+        variant.remote_id AS variant_remote_id
+      FROM ${TableNames.produtos} product
+      LEFT JOIN ${TableNames.syncRegistros} product_sync
+        ON product_sync.feature_key = ?
+        AND product_sync.local_id = product.id
+      LEFT JOIN ${TableNames.produtoVariantes} variant
+        ON variant.id = ?
+        AND variant.produto_id = product.id
+      WHERE product.id = ?
+      LIMIT 1
+      ''',
+      <Object?>[SyncFeatureKeys.products, productVariantId, productId],
+    );
+    final row = rows.isEmpty ? const <String, Object?>{} : rows.first;
+    final identity = _OperationalProductRemoteIdentity(
+      productRemoteId: _cleanNullable(row['product_remote_id'] as String?),
+      productVariantRemoteId: _cleanNullable(
+        row['variant_remote_id'] as String?,
+      ),
+    );
+
+    if (identity.productRemoteId == null ||
+        (productVariantId != null && identity.productVariantRemoteId == null)) {
+      AppLogger.warn(
+        '[OperationalSync] missing remote product identity | '
+        'context=$context productLocalId=$productId '
+        'productVariantLocalId=$productVariantId '
+        'productRemoteId=${identity.productRemoteId} '
+        'productVariantRemoteId=${identity.productVariantRemoteId}',
+      );
+    }
+
+    return identity;
   }
 
   Future<OperationalOrder> _requireOrder(
@@ -1260,6 +1327,16 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       'atualizado_em': nowIso,
     });
   }
+}
+
+class _OperationalProductRemoteIdentity {
+  const _OperationalProductRemoteIdentity({
+    required this.productRemoteId,
+    required this.productVariantRemoteId,
+  });
+
+  final String? productRemoteId;
+  final String? productVariantRemoteId;
 }
 
 class _StockReservationKey {

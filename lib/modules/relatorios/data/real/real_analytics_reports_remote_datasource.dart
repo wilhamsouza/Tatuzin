@@ -49,10 +49,16 @@ class RealAnalyticsReportsRemoteDatasource
       options: await _authorizedOptions(filter: filter),
     );
     final summary = _readMap(response.data, 'summary');
+    final salesAmountCents = _readInt(summary, 'salesAmountCents');
+    final salesCostCents = _readInt(summary, 'salesCostCents');
     return RemoteFinancialSummaryReport(
-      salesAmountCents: _readInt(summary, 'salesAmountCents'),
-      salesCostCents: _readInt(summary, 'salesCostCents'),
-      salesProfitCents: _readInt(summary, 'salesProfitCents'),
+      salesAmountCents: salesAmountCents,
+      salesCostCents: salesCostCents,
+      salesProfitCents: _resolveSalesProfitCents(
+        summary,
+        salesAmountCents: salesAmountCents,
+        salesCostCents: salesCostCents,
+      ),
       purchasesAmountCents: _readInt(summary, 'purchasesAmountCents'),
       fiadoPaymentsAmountCents: _readInt(summary, 'fiadoPaymentsAmountCents'),
       cashNetCents: _readInt(summary, 'cashNetCents'),
@@ -185,5 +191,28 @@ class RealAnalyticsReportsRemoteDatasource
       return value.toInt();
     }
     return int.tryParse('$value') ?? 0;
+  }
+
+  int? _readNullableInt(Map<String, dynamic> json, String key) {
+    if (!json.containsKey(key) || json[key] == null) {
+      return null;
+    }
+    return _readInt(json, key);
+  }
+
+  int _resolveSalesProfitCents(
+    Map<String, dynamic> summary, {
+    required int salesAmountCents,
+    required int salesCostCents,
+  }) {
+    final explicitProfit =
+        _readNullableInt(summary, 'realizedProfitCents') ??
+        _readNullableInt(summary, 'grossProfitCents') ??
+        _readNullableInt(summary, 'salesProfitCents');
+    if (explicitProfit != null &&
+        !(explicitProfit == salesAmountCents && salesCostCents > 0)) {
+      return explicitProfit;
+    }
+    return salesAmountCents - salesCostCents;
   }
 }
