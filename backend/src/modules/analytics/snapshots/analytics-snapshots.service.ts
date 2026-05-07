@@ -20,6 +20,9 @@ type MaterializeInput = AnalyticsSnapshotsMaterializeInput | AnalyticsSnapshotsQ
 type CompanySnapshotRow = Prisma.AnalyticsCompanyDailySnapshotGetPayload<object>;
 type ProductSnapshotRow = Prisma.AnalyticsProductDailySnapshotGetPayload<object>;
 type CustomerSnapshotRow = Prisma.AnalyticsCustomerDailySnapshotGetPayload<object>;
+type CompanySnapshotWriteRow = Prisma.AnalyticsCompanyDailySnapshotCreateManyInput;
+type ProductSnapshotWriteRow = Prisma.AnalyticsProductDailySnapshotCreateManyInput;
+type CustomerSnapshotWriteRow = Prisma.AnalyticsCustomerDailySnapshotCreateManyInput;
 
 type SaleWithRelations = Prisma.SaleGetPayload<{
   select: {
@@ -688,33 +691,36 @@ export class AnalyticsSnapshotsService {
       }
     }
 
-    const companyRows = listUtcDaysInclusive(period.startDate, period.endDate).map(
-      (date) => {
-        const dayKey = formatUtcDateOnly(date);
-        const daily = dailyAccumulators.get(dayKey) ?? createDailyAccumulator();
-        return {
-          companyId,
-          snapshotDate: date,
-          salesCount: daily.salesCount,
-          customersServedCount: daily.customerIds.size,
-          salesAmountCents: daily.salesAmountCents,
-          salesCostCents: daily.salesCostCents,
-          salesProfitCents: daily.salesProfitCents,
-          fiadoSalesCount: daily.fiadoSalesCount,
-          fiadoPaymentsCount: daily.fiadoPaymentsCount,
-          fiadoPaymentsAmountCents: daily.fiadoPaymentsAmountCents,
-          purchasesCount: daily.purchasesCount,
-          purchasesAmountCents: daily.purchasesAmountCents,
-          cashInflowCents: daily.cashInflowCents,
-          cashOutflowCents: daily.cashOutflowCents,
-          cashNetCents: daily.cashInflowCents - daily.cashOutflowCents,
-          financialAdjustmentsCents: daily.financialAdjustmentsCents,
-          materializedAt,
-        };
-      },
-    );
+    const companyRows: CompanySnapshotWriteRow[] = listUtcDaysInclusive(
+      period.startDate,
+      period.endDate,
+    ).map((date) => {
+      const dayKey = formatUtcDateOnly(date);
+      const daily = dailyAccumulators.get(dayKey) ?? createDailyAccumulator();
+      return {
+        companyId,
+        snapshotDate: date,
+        salesCount: daily.salesCount,
+        customersServedCount: daily.customerIds.size,
+        salesAmountCents: daily.salesAmountCents,
+        salesCostCents: daily.salesCostCents,
+        salesProfitCents: daily.salesProfitCents,
+        fiadoSalesCount: daily.fiadoSalesCount,
+        fiadoPaymentsCount: daily.fiadoPaymentsCount,
+        fiadoPaymentsAmountCents: daily.fiadoPaymentsAmountCents,
+        purchasesCount: daily.purchasesCount,
+        purchasesAmountCents: daily.purchasesAmountCents,
+        cashInflowCents: daily.cashInflowCents,
+        cashOutflowCents: daily.cashOutflowCents,
+        cashNetCents: daily.cashInflowCents - daily.cashOutflowCents,
+        financialAdjustmentsCents: daily.financialAdjustmentsCents,
+        materializedAt,
+      };
+    });
 
-    const productRows = [...productAccumulators.values()].map((row) => ({
+    const productRows: ProductSnapshotWriteRow[] = [
+      ...productAccumulators.values(),
+    ].map((row) => ({
       companyId,
       snapshotDate: row.snapshotDate,
       productKey: row.productKey,
@@ -728,7 +734,9 @@ export class AnalyticsSnapshotsService {
       materializedAt,
     }));
 
-    const customerRows = [...customerAccumulators.values()].map((row) => ({
+    const customerRows: CustomerSnapshotWriteRow[] = [
+      ...customerAccumulators.values(),
+    ].map((row) => ({
       companyId,
       snapshotDate: row.snapshotDate,
       customerKey: row.customerKey,
@@ -761,22 +769,100 @@ export class AnalyticsSnapshotsService {
         where: rangeWhere,
       });
 
-      if (companyRows.length > 0) {
-        await tx.analyticsCompanyDailySnapshot.createMany({
-          data: companyRows,
-        });
-      }
-      if (productRows.length > 0) {
-        await tx.analyticsProductDailySnapshot.createMany({
-          data: productRows,
-        });
-      }
-      if (customerRows.length > 0) {
-        await tx.analyticsCustomerDailySnapshot.createMany({
-          data: customerRows,
-        });
-      }
+      await this.upsertCompanyRows(tx, companyRows);
+      await this.upsertProductRows(tx, productRows);
+      await this.upsertCustomerRows(tx, customerRows);
     });
+  }
+
+  private async upsertCompanyRows(
+    tx: Prisma.TransactionClient,
+    rows: CompanySnapshotWriteRow[],
+  ) {
+    for (const row of rows) {
+      await tx.analyticsCompanyDailySnapshot.upsert({
+        where: {
+          companyId_snapshotDate: {
+            companyId: row.companyId,
+            snapshotDate: row.snapshotDate,
+          },
+        },
+        create: row,
+        update: {
+          salesCount: row.salesCount ?? 0,
+          customersServedCount: row.customersServedCount ?? 0,
+          salesAmountCents: row.salesAmountCents ?? 0,
+          salesCostCents: row.salesCostCents ?? 0,
+          salesProfitCents: row.salesProfitCents ?? 0,
+          fiadoSalesCount: row.fiadoSalesCount ?? 0,
+          fiadoPaymentsCount: row.fiadoPaymentsCount ?? 0,
+          fiadoPaymentsAmountCents: row.fiadoPaymentsAmountCents ?? 0,
+          purchasesCount: row.purchasesCount ?? 0,
+          purchasesAmountCents: row.purchasesAmountCents ?? 0,
+          cashInflowCents: row.cashInflowCents ?? 0,
+          cashOutflowCents: row.cashOutflowCents ?? 0,
+          cashNetCents: row.cashNetCents ?? 0,
+          financialAdjustmentsCents: row.financialAdjustmentsCents ?? 0,
+          materializedAt: row.materializedAt,
+        },
+      });
+    }
+  }
+
+  private async upsertProductRows(
+    tx: Prisma.TransactionClient,
+    rows: ProductSnapshotWriteRow[],
+  ) {
+    for (const row of rows) {
+      await tx.analyticsProductDailySnapshot.upsert({
+        where: {
+          companyId_snapshotDate_productKey: {
+            companyId: row.companyId,
+            snapshotDate: row.snapshotDate,
+            productKey: row.productKey,
+          },
+        },
+        create: row,
+        update: {
+          productId: row.productId,
+          productNameSnapshot: row.productNameSnapshot,
+          quantityMil: row.quantityMil ?? 0,
+          salesCount: row.salesCount ?? 0,
+          revenueCents: row.revenueCents ?? 0,
+          costCents: row.costCents ?? 0,
+          profitCents: row.profitCents ?? 0,
+          materializedAt: row.materializedAt,
+        },
+      });
+    }
+  }
+
+  private async upsertCustomerRows(
+    tx: Prisma.TransactionClient,
+    rows: CustomerSnapshotWriteRow[],
+  ) {
+    for (const row of rows) {
+      await tx.analyticsCustomerDailySnapshot.upsert({
+        where: {
+          companyId_snapshotDate_customerKey: {
+            companyId: row.companyId,
+            snapshotDate: row.snapshotDate,
+            customerKey: row.customerKey,
+          },
+        },
+        create: row,
+        update: {
+          customerId: row.customerId,
+          customerNameSnapshot: row.customerNameSnapshot,
+          salesCount: row.salesCount ?? 0,
+          revenueCents: row.revenueCents ?? 0,
+          costCents: row.costCents ?? 0,
+          profitCents: row.profitCents ?? 0,
+          fiadoPaymentsCents: row.fiadoPaymentsCents ?? 0,
+          materializedAt: row.materializedAt,
+        },
+      });
+    }
   }
 
   private toPeriodMeta(period: AnalyticsDateRange): AnalyticsSnapshotPeriodMeta {

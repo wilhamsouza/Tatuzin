@@ -96,6 +96,88 @@ describe('analytics reports service', () => {
     assert.equal(financialSummary.summary.fiadoPaymentsAmountCents, 1500);
     assert.equal(financialSummary.summary.financialAdjustmentsCents, 500);
   });
+
+  it('rebuilds the same range twice and updates existing daily snapshots', async () => {
+    const fixture = await createFixture();
+
+    const firstMaterialization = await snapshotsService.materializeCompanyRange({
+      companyId: fixture.companyId,
+      startDate: fixture.startDate,
+      endDate: fixture.endDate,
+      force: true,
+    });
+    assert.equal(firstMaterialization.coverage.companyDailyRows, 2);
+
+    await prisma.sale.update({
+      where: {
+        id: fixture.vistaSaleId,
+      },
+      data: {
+        totalAmountCents: 9000,
+        totalCostCents: 3000,
+      },
+    });
+
+    const secondMaterialization = await snapshotsService.materializeCompanyRange({
+      companyId: fixture.companyId,
+      startDate: fixture.startDate,
+      endDate: fixture.endDate,
+      force: true,
+    });
+
+    assert.equal(secondMaterialization.coverage.companyDailyRows, 2);
+
+    const dailyRows = await prisma.analyticsCompanyDailySnapshot.findMany({
+      where: {
+        companyId: fixture.companyId,
+      },
+      orderBy: {
+        snapshotDate: 'asc',
+      },
+    });
+    assert.equal(dailyRows.length, 2);
+
+    const salesByDay = await reportsService.getSalesByDay({
+      companyId: fixture.companyId,
+      startDate: fixture.startDate,
+      endDate: fixture.endDate,
+      topN: 5,
+      force: false,
+    });
+    assert.equal(salesByDay.totals.salesCount, 2);
+    assert.equal(salesByDay.totals.salesAmountCents, 14000);
+  });
+
+  it('handles concurrent sales-by-day materialization for the same range', async () => {
+    const fixture = await createFixture();
+
+    const [firstReport, secondReport] = await Promise.all([
+      reportsService.getSalesByDay({
+        companyId: fixture.companyId,
+        startDate: fixture.startDate,
+        endDate: fixture.endDate,
+        topN: 5,
+        force: true,
+      }),
+      reportsService.getSalesByDay({
+        companyId: fixture.companyId,
+        startDate: fixture.startDate,
+        endDate: fixture.endDate,
+        topN: 5,
+        force: true,
+      }),
+    ]);
+
+    assert.equal(firstReport.totals.salesCount, 2);
+    assert.equal(secondReport.totals.salesCount, 2);
+
+    const companyRowsCount = await prisma.analyticsCompanyDailySnapshot.count({
+      where: {
+        companyId: fixture.companyId,
+      },
+    });
+    assert.equal(companyRowsCount, 2);
+  });
 });
 
 async function createFixture() {
@@ -192,7 +274,7 @@ async function createFixture() {
     },
   });
 
-  await prisma.sale.create({
+  const vistaSale = await prisma.sale.create({
     data: {
       companyId: company.id,
       localUuid: `${runId}-sale-vista`,
@@ -365,6 +447,8 @@ async function createFixture() {
 
   return {
     companyId: company.id,
+    fiadoSaleId: fiadoSale.id,
+    vistaSaleId: vistaSale.id,
     startDate: yesterdayUtc.toISOString().slice(0, 10),
     endDate: todayUtc.toISOString().slice(0, 10),
   };

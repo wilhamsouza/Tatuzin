@@ -106,6 +106,46 @@ describe('tenant analytics reports routes', () => {
     );
   });
 
+  it('serves repeated sales-by-day requests without duplicate snapshot errors', async () => {
+    const fixture = await createTenantFixture();
+    const query = `startDate=${fixture.startDate}&endDate=${fixture.endDate}&force=true&topN=5`;
+
+    const [firstResponse, secondResponse] = await Promise.all([
+      requestJson('GET', `/analytics/reports/sales-by-day?${query}`, {
+        token: fixture.operatorToken,
+      }),
+      requestJson('GET', `/analytics/reports/sales-by-day?${query}`, {
+        token: fixture.operatorToken,
+      }),
+    ]);
+
+    assert.equal(firstResponse.status, 200);
+    assert.equal(secondResponse.status, 200);
+    assert.equal(
+      (
+        firstResponse.data as {
+          totals: { salesCount: number; salesAmountCents: number };
+        }
+      ).totals.salesCount,
+      2,
+    );
+    assert.equal(
+      (
+        secondResponse.data as {
+          totals: { salesCount: number; salesAmountCents: number };
+        }
+      ).totals.salesAmountCents,
+      12000,
+    );
+
+    const snapshotsCount = await prisma.analyticsCompanyDailySnapshot.count({
+      where: {
+        companyId: fixture.companyId,
+      },
+    });
+    assert.equal(snapshotsCount, 2);
+  });
+
   it('rejects spoofed companyId query on tenant routes', async () => {
     const fixture = await createTenantFixture();
 
