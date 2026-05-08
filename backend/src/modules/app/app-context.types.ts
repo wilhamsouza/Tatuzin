@@ -22,6 +22,13 @@ export type AppContextMembership = {
   permissions: string[];
 };
 
+export type AppContextEmployee = {
+  id: string;
+  role: string;
+  status: string;
+  permissions: string[];
+};
+
 export type AppContextLicense = {
   id: string;
   plan: string;
@@ -45,6 +52,7 @@ export type AppContext = {
   user: AppContextUser;
   company: AppContextCompany;
   membership: AppContextMembership;
+  employee?: AppContextEmployee | null;
   license: AppContextLicense;
   device: AppContextDevice;
   plan: PlanKey;

@@ -503,6 +503,11 @@ class RemoteAuthGateway implements AuthGateway {
       startedAt: DateTime.now(),
       isOfflineFallback: false,
       clientInstanceId: clientInstanceId,
+      membership: AppMembershipContext(
+        role: payload.membershipRole,
+        permissions: payload.membershipPermissions,
+      ),
+      employee: payload.employee,
     );
   }
 
@@ -655,6 +660,8 @@ class _AuthIdentityPayload {
     required this.companyLegalName,
     required this.companyDocumentNumber,
     required this.membershipRole,
+    required this.membershipPermissions,
+    required this.employee,
     required this.licensePlan,
     required this.licenseStatus,
     required this.licenseStartsAt,
@@ -673,6 +680,8 @@ class _AuthIdentityPayload {
   final String companyLegalName;
   final String? companyDocumentNumber;
   final String membershipRole;
+  final Set<String> membershipPermissions;
+  final AppEmployeeContext? employee;
   final String? licensePlan;
   final String? licenseStatus;
   final DateTime? licenseStartsAt;
@@ -743,6 +752,8 @@ class _AuthIdentityPayload {
         'role',
         fallbackMessage: 'Perfil remoto ausente.',
       ),
+      membershipPermissions: _readPermissions(membership['permissions']),
+      employee: _readEmployeeContext(source['employee']),
       licensePlan: license is Map<String, dynamic>
           ? (license['plan'] as String?)?.trim()
           : null,
@@ -783,5 +794,40 @@ class _AuthIdentityPayload {
       return int.tryParse(rawValue.trim());
     }
     return null;
+  }
+
+  static Set<String> _readPermissions(Object? rawValue) {
+    if (rawValue is! Iterable) {
+      return const <String>{};
+    }
+    return rawValue
+        .whereType<String>()
+        .map((permission) => permission.trim())
+        .where((permission) => permission.isNotEmpty)
+        .toSet();
+  }
+
+  static AppEmployeeContext? _readEmployeeContext(Object? rawValue) {
+    if (rawValue is! Map) {
+      return null;
+    }
+    final source = Map<String, dynamic>.from(rawValue);
+    final id = (source['id'] as String?)?.trim();
+    final role = (source['role'] as String?)?.trim();
+    final status = (source['status'] as String?)?.trim();
+    if (id == null ||
+        id.isEmpty ||
+        role == null ||
+        role.isEmpty ||
+        status == null ||
+        status.isEmpty) {
+      return null;
+    }
+    return AppEmployeeContext(
+      id: id,
+      role: role,
+      status: status,
+      permissions: _readPermissions(source['permissions']),
+    );
   }
 }

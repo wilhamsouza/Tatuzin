@@ -12,6 +12,8 @@ class AppSession {
     required this.startedAt,
     required this.isOfflineFallback,
     this.clientInstanceId,
+    this.membership,
+    this.employee,
   });
 
   factory AppSession.localDefault() {
@@ -30,6 +32,8 @@ class AppSession {
   final DateTime startedAt;
   final bool isOfflineFallback;
   final String? clientInstanceId;
+  final AppMembershipContext? membership;
+  final AppEmployeeContext? employee;
 
   bool get isAuthenticated => scope != SessionScope.localDefault;
 
@@ -46,6 +50,21 @@ class AppSession {
   PlanLimits get limits => company.limits;
 
   bool hasFeature(FeatureKey feature) => company.hasFeature(feature);
+
+  Set<String> get effectivePermissions {
+    final employeeSnapshot = employee;
+    if (employeeSnapshot != null) {
+      if (employeeSnapshot.isDisabled) {
+        return const <String>{};
+      }
+      return employeeSnapshot.permissions;
+    }
+    return membership?.permissions ?? const <String>{};
+  }
+
+  bool hasEffectivePermission(String permission) {
+    return effectivePermissions.contains(permission);
+  }
 
   bool get hasClientInstanceId {
     final value = clientInstanceId?.trim();
@@ -72,7 +91,11 @@ class AppSession {
     DateTime? startedAt,
     bool? isOfflineFallback,
     String? clientInstanceId,
+    AppMembershipContext? membership,
+    AppEmployeeContext? employee,
     bool clearClientInstanceId = false,
+    bool clearMembership = false,
+    bool clearEmployee = false,
   }) {
     return AppSession(
       scope: scope ?? this.scope,
@@ -83,6 +106,40 @@ class AppSession {
       clientInstanceId: clearClientInstanceId
           ? null
           : clientInstanceId ?? this.clientInstanceId,
+      membership: clearMembership ? null : membership ?? this.membership,
+      employee: clearEmployee ? null : employee ?? this.employee,
     );
+  }
+}
+
+class AppMembershipContext {
+  const AppMembershipContext({required this.role, required this.permissions});
+
+  final String role;
+  final Set<String> permissions;
+
+  bool hasPermission(String permission) => permissions.contains(permission);
+}
+
+class AppEmployeeContext {
+  const AppEmployeeContext({
+    required this.id,
+    required this.role,
+    required this.status,
+    required this.permissions,
+  });
+
+  final String id;
+  final String role;
+  final String status;
+  final Set<String> permissions;
+
+  bool get isDisabled => status.trim().toUpperCase() == 'DISABLED';
+
+  bool hasPermission(String permission) {
+    if (isDisabled) {
+      return false;
+    }
+    return permissions.contains(permission);
   }
 }

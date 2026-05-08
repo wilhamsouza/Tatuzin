@@ -1,37 +1,772 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/theme/app_design_tokens.dart';
+import '../../../../app/core/widgets/app_card.dart';
+import '../../../../app/core/widgets/app_input.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
+import '../../../../app/core/widgets/app_page_header.dart';
+import '../../../../app/core/widgets/app_state_card.dart';
+import '../../../../app/core/widgets/app_status_badge.dart';
+import '../../domain/employee_models.dart';
+import '../providers/employees_providers.dart';
 
-class EmployeesPage extends StatelessWidget {
+class EmployeesPage extends ConsumerStatefulWidget {
   const EmployeesPage({super.key});
+
+  @override
+  ConsumerState<EmployeesPage> createState() => _EmployeesPageState();
+}
+
+class _EmployeesPageState extends ConsumerState<EmployeesPage> {
+  late final TextEditingController _searchController;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController(
+      text: ref.read(employeeSearchQueryProvider),
+    );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final layout = context.appLayout;
-    final theme = Theme.of(context);
+    final canManage = ref.watch(canManageEmployeesProvider);
+    final currentEmployeeDisabled = ref.watch(currentEmployeeDisabledProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Funcionários')),
       drawer: const AppMainDrawer(),
-      body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.all(layout.space8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Funcionários',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
+      floatingActionButton: canManage
+          ? FloatingActionButton.extended(
+              onPressed: ref.watch(employeeActionControllerProvider).isLoading
+                  ? null
+                  : () => _openEmployeeForm(context),
+              icon: const Icon(Icons.person_add_alt_1_rounded),
+              label: const Text('Novo funcionário'),
+            )
+          : null,
+      body: Column(
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              layout.pagePadding,
+              layout.space5,
+              layout.pagePadding,
+              layout.space4,
+            ),
+            child: const AppPageHeader(
+              title: 'Funcionários',
+              subtitle:
+                  'Gerencie acessos de caixas, vendedores e gerentes sem misturar com o dono da empresa.',
+              badgeLabel: 'Plano PRO',
+              badgeIcon: Icons.badge_outlined,
+            ),
+          ),
+          if (!canManage)
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.all(layout.pagePadding),
+                  child: AppStateCard(
+                    title: currentEmployeeDisabled
+                        ? 'Acesso desativado'
+                        : 'Sem permissão',
+                    message: currentEmployeeDisabled
+                        ? 'Seu perfil de funcionário está desativado. Fale com o dono da empresa.'
+                        : 'Você não tem permissão para gerenciar funcionários.',
+                    icon: Icons.lock_outline_rounded,
+                    tone: AppStateTone.warning,
+                    compact: true,
+                  ),
                 ),
               ),
-              SizedBox(height: layout.space4),
-              Text(
-                'Em breve: cadastre vendedores, caixas e gerentes com permissões.',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+            )
+          else
+            Expanded(
+              child: _EmployeesContent(searchController: _searchController),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openEmployeeForm(
+    BuildContext context, {
+    EmployeeProfile? employee,
+  }) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _EmployeeFormSheet(employee: employee),
+    );
+  }
+}
+
+class _EmployeesContent extends ConsumerWidget {
+  const _EmployeesContent({required this.searchController});
+
+  final TextEditingController searchController;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final layout = context.appLayout;
+    final employeesAsync = ref.watch(employeesListProvider);
+    final page = employeesAsync.valueOrNull;
+
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            layout.pagePadding,
+            0,
+            layout.pagePadding,
+            layout.space4,
+          ),
+          child: AppInput(
+            controller: searchController,
+            prefixIcon: const Icon(Icons.search_rounded),
+            hintText: 'Buscar por nome, e-mail ou telefone',
+            onChanged: (value) {
+              ref.read(employeeSearchQueryProvider.notifier).state = value;
+              ref.read(employeesPageNumberProvider.notifier).state = 1;
+            },
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            layout.pagePadding,
+            0,
+            layout.pagePadding,
+            layout.space4,
+          ),
+          child: _EmployeeFilters(),
+        ),
+        if (page != null)
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              layout.pagePadding,
+              0,
+              layout.pagePadding,
+              layout.space4,
+            ),
+            child: _EmployeeSummary(page: page),
+          ),
+        Expanded(
+          child: employeesAsync.when(
+            data: (page) {
+              if (page.items.isEmpty) {
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    layout.pagePadding,
+                    layout.space4,
+                    layout.pagePadding,
+                    92,
+                  ),
+                  child: AppStateCard(
+                    title: 'Nenhum funcionário encontrado',
+                    message:
+                        'Cadastre o primeiro funcionário para controlar acessos no plano PRO.',
+                    icon: Icons.badge_outlined,
+                    actionLabel: 'Novo funcionário',
+                    onAction: () => _openEmployeeForm(context),
+                  ),
+                );
+              }
+
+              return RefreshIndicator(
+                onRefresh: () async {
+                  ref.invalidate(employeesListProvider);
+                  await ref.read(employeesListProvider.future);
+                },
+                child: ListView.separated(
+                  padding: EdgeInsets.fromLTRB(
+                    layout.pagePadding,
+                    0,
+                    layout.pagePadding,
+                    96,
+                  ),
+                  itemCount: page.items.length,
+                  separatorBuilder: (_, __) => SizedBox(height: layout.space4),
+                  itemBuilder: (context, index) {
+                    return _EmployeeTile(employee: page.items[index]);
+                  },
                 ),
+              );
+            },
+            loading: () => const Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+            ),
+            error: (error, _) => Center(
+              child: Padding(
+                padding: EdgeInsets.all(layout.pagePadding),
+                child: AppStateCard(
+                  title: 'Não foi possível carregar funcionários',
+                  message: '$error',
+                  tone: AppStateTone.error,
+                  actionLabel: 'Tentar novamente',
+                  onAction: () => ref.invalidate(employeesListProvider),
+                  compact: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openEmployeeForm(
+    BuildContext context, {
+    EmployeeProfile? employee,
+  }) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _EmployeeFormSheet(employee: employee),
+    );
+  }
+}
+
+class _EmployeeFilters extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status = ref.watch(employeeStatusFilterProvider);
+    final role = ref.watch(employeeRoleFilterProvider);
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        ChoiceChip(
+          label: const Text('Todos'),
+          selected: status == null && role == null,
+          onSelected: (_) {
+            ref.read(employeeStatusFilterProvider.notifier).state = null;
+            ref.read(employeeRoleFilterProvider.notifier).state = null;
+            ref.read(employeesPageNumberProvider.notifier).state = 1;
+          },
+        ),
+        for (final item in EmployeeStatus.editableStatuses)
+          ChoiceChip(
+            label: Text(item.label),
+            selected: status == item,
+            onSelected: (_) {
+              ref.read(employeeStatusFilterProvider.notifier).state =
+                  status == item ? null : item;
+              ref.read(employeesPageNumberProvider.notifier).state = 1;
+            },
+          ),
+        for (final item in EmployeeRole.editableRoles.take(3))
+          ChoiceChip(
+            label: Text(item.label),
+            selected: role == item,
+            onSelected: (_) {
+              ref.read(employeeRoleFilterProvider.notifier).state = role == item
+                  ? null
+                  : item;
+              ref.read(employeesPageNumberProvider.notifier).state = 1;
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _EmployeeSummary extends StatelessWidget {
+  const _EmployeeSummary({required this.page});
+
+  final EmployeesPageResult page;
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = context.appLayout;
+    final active = page.items
+        .where((item) => item.status == EmployeeStatus.active)
+        .length;
+    final invited = page.items
+        .where((item) => item.status == EmployeeStatus.invited)
+        .length;
+    final disabled = page.items
+        .where((item) => item.status == EmployeeStatus.disabled)
+        .length;
+
+    return AppCard(
+      padding: EdgeInsets.all(layout.cardPadding),
+      child: Row(
+        children: [
+          Expanded(
+            child: _SummaryMetric(label: 'Total', value: '${page.total}'),
+          ),
+          Expanded(
+            child: _SummaryMetric(label: 'Ativos', value: '$active'),
+          ),
+          Expanded(
+            child: _SummaryMetric(label: 'Convites', value: '$invited'),
+          ),
+          Expanded(
+            child: _SummaryMetric(label: 'Desativados', value: '$disabled'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryMetric extends StatelessWidget {
+  const _SummaryMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EmployeeTile extends ConsumerWidget {
+  const _EmployeeTile({required this.employee});
+
+  final EmployeeProfile employee;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final layout = context.appLayout;
+    final theme = Theme.of(context);
+    final isBusy = ref.watch(employeeActionControllerProvider).isLoading;
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                child: Icon(
+                  employee.isOwner
+                      ? Icons.workspace_premium_outlined
+                      : Icons.person_outline_rounded,
+                ),
+              ),
+              SizedBox(width: layout.space4),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      employee.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      [
+                        employee.email,
+                        employee.phone,
+                      ].whereType<String>().join(' - '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (!employee.isOwner)
+                PopupMenuButton<String>(
+                  enabled: !isBusy,
+                  tooltip: 'Ações',
+                  onSelected: (value) => _handleAction(context, ref, value),
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(value: 'edit', child: Text('Editar')),
+                    if (employee.status == EmployeeStatus.invited)
+                      const PopupMenuItem(
+                        value: 'invite',
+                        child: Text('Gerar convite'),
+                      ),
+                    if (employee.status == EmployeeStatus.disabled)
+                      const PopupMenuItem(
+                        value: 'enable',
+                        child: Text('Habilitar'),
+                      )
+                    else
+                      const PopupMenuItem(
+                        value: 'disable',
+                        child: Text('Desativar'),
+                      ),
+                  ],
+                ),
+            ],
+          ),
+          SizedBox(height: layout.space4),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              AppStatusBadge(
+                label: employee.role.label,
+                icon: Icons.badge_outlined,
+              ),
+              AppStatusBadge(
+                label: employee.status.label,
+                tone: _statusTone(employee.status),
+                icon: _statusIcon(employee.status),
+              ),
+              if (employee.isOwner)
+                const AppStatusBadge(
+                  label: 'Protegido',
+                  tone: AppStatusTone.info,
+                  icon: Icons.lock_outline_rounded,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleAction(
+    BuildContext context,
+    WidgetRef ref,
+    String action,
+  ) async {
+    switch (action) {
+      case 'edit':
+        await showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          builder: (_) => _EmployeeFormSheet(employee: employee),
+        );
+        return;
+      case 'invite':
+        await _runAction(
+          context,
+          ref,
+          () async => ref
+              .read(employeeActionControllerProvider.notifier)
+              .invite(employee.id),
+          successMessage:
+              'Convite gerado. O envio automático de e-mail será implementado em etapa futura.',
+        );
+        return;
+      case 'enable':
+        await _runAction(
+          context,
+          ref,
+          () async => ref
+              .read(employeeActionControllerProvider.notifier)
+              .enable(employee.id),
+          successMessage: 'Funcionário habilitado.',
+        );
+        return;
+      case 'disable':
+        final confirmed = await _confirmDisable(context, employee.name);
+        if (confirmed != true) {
+          return;
+        }
+        if (!context.mounted) {
+          return;
+        }
+        await _runAction(
+          context,
+          ref,
+          () async => ref
+              .read(employeeActionControllerProvider.notifier)
+              .disable(employee.id),
+          successMessage: 'Acesso desativado sem apagar histórico.',
+        );
+        return;
+    }
+  }
+
+  Future<void> _runAction(
+    BuildContext context,
+    WidgetRef ref,
+    Future<Object?> Function() action, {
+    required String successMessage,
+  }) async {
+    try {
+      final result = await action();
+      if (!context.mounted) {
+        return;
+      }
+      final message = result is EmployeeActionResult
+          ? result.message ?? successMessage
+          : successMessage;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Não foi possível concluir a ação: ${_errorMessage(error)}',
+          ),
+        ),
+      );
+    }
+  }
+}
+
+class _EmployeeFormSheet extends ConsumerStatefulWidget {
+  const _EmployeeFormSheet({this.employee});
+
+  final EmployeeProfile? employee;
+
+  @override
+  ConsumerState<_EmployeeFormSheet> createState() => _EmployeeFormSheetState();
+}
+
+class _EmployeeFormSheetState extends ConsumerState<_EmployeeFormSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _phoneController;
+  late EmployeeRole _role;
+  late EmployeeStatus _status;
+  late Set<EmployeePermission> _permissions;
+
+  bool get _isEditing => widget.employee != null;
+
+  bool get _isOwner => widget.employee?.isOwner ?? false;
+
+  @override
+  void initState() {
+    super.initState();
+    final employee = widget.employee;
+    _nameController = TextEditingController(text: employee?.name ?? '');
+    _emailController = TextEditingController(text: employee?.email ?? '');
+    _phoneController = TextEditingController(text: employee?.phone ?? '');
+    _role = employee?.role ?? EmployeeRole.cashier;
+    _status = employee?.status == EmployeeStatus.unknown
+        ? EmployeeStatus.active
+        : employee?.status ?? EmployeeStatus.active;
+    _permissions = employee?.permissions.isNotEmpty == true
+        ? employee!.permissions
+        : defaultPermissionsForRole(_role);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = context.appLayout;
+    final isBusy = ref.watch(employeeActionControllerProvider).isLoading;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.all(layout.pagePadding),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _isOwner
+                    ? 'Dono da empresa'
+                    : _isEditing
+                    ? 'Editar funcionário'
+                    : 'Novo funcionário',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              SizedBox(height: layout.space2),
+              Text(
+                _isOwner
+                    ? 'O dono é protegido e não pode ser alterado por esta tela.'
+                    : 'Configure cargo, status e permissões efetivas.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              SizedBox(height: layout.space6),
+              TextFormField(
+                controller: _nameController,
+                enabled: !_isOwner && !isBusy,
+                decoration: const InputDecoration(labelText: 'Nome'),
+                textCapitalization: TextCapitalization.words,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Informe o nome do funcionário';
+                  }
+                  return null;
+                },
+              ),
+              SizedBox(height: layout.space4),
+              TextFormField(
+                controller: _emailController,
+                enabled: !_isOwner && !isBusy,
+                decoration: const InputDecoration(labelText: 'E-mail'),
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) {
+                  final email = value?.trim() ?? '';
+                  if (_status == EmployeeStatus.invited && email.isEmpty) {
+                    return 'Informe o e-mail para convidar';
+                  }
+                  if (email.isNotEmpty && !email.contains('@')) {
+                    return 'Informe um e-mail válido';
+                  }
+                  return null;
+                },
+              ),
+              SizedBox(height: layout.space4),
+              TextFormField(
+                controller: _phoneController,
+                enabled: !_isOwner && !isBusy,
+                decoration: const InputDecoration(labelText: 'Telefone'),
+                keyboardType: TextInputType.phone,
+              ),
+              SizedBox(height: layout.space4),
+              if (_isOwner) ...[
+                TextFormField(
+                  initialValue: _role.label,
+                  enabled: false,
+                  decoration: const InputDecoration(labelText: 'Cargo'),
+                ),
+                SizedBox(height: layout.space4),
+                TextFormField(
+                  initialValue: _status.label,
+                  enabled: false,
+                  decoration: const InputDecoration(labelText: 'Status'),
+                ),
+              ] else ...[
+                DropdownButtonFormField<EmployeeRole>(
+                  initialValue: _role,
+                  decoration: const InputDecoration(labelText: 'Cargo'),
+                  items: EmployeeRole.editableRoles
+                      .map(
+                        (role) => DropdownMenuItem<EmployeeRole>(
+                          value: role,
+                          child: Text(role.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: isBusy
+                      ? null
+                      : (value) {
+                          if (value == null) {
+                            return;
+                          }
+                          setState(() {
+                            _role = value;
+                            _permissions = defaultPermissionsForRole(value);
+                          });
+                        },
+                ),
+                SizedBox(height: layout.space4),
+                DropdownButtonFormField<EmployeeStatus>(
+                  initialValue: _status,
+                  decoration: const InputDecoration(labelText: 'Status'),
+                  items: EmployeeStatus.editableStatuses
+                      .map(
+                        (status) => DropdownMenuItem<EmployeeStatus>(
+                          value: status,
+                          child: Text(status.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: isBusy
+                      ? null
+                      : (value) => setState(() => _status = value ?? _status),
+                ),
+              ],
+              SizedBox(height: layout.space6),
+              Text(
+                'Permissões',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              SizedBox(height: layout.space2),
+              for (final group in _permissionGroups().entries)
+                _PermissionGroup(
+                  group: group,
+                  selected: _permissions,
+                  enabled: !_isOwner && !isBusy,
+                  onChanged: (permission, selected) {
+                    setState(() {
+                      if (selected) {
+                        _permissions = {..._permissions, permission};
+                      } else {
+                        _permissions = {..._permissions}..remove(permission);
+                      }
+                    });
+                  },
+                ),
+              SizedBox(height: layout.space6),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: isBusy
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      child: const Text('Cancelar'),
+                    ),
+                  ),
+                  SizedBox(width: layout.space4),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _isOwner || isBusy ? null : _save,
+                      child: Text(_isEditing ? 'Salvar' : 'Criar'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -39,4 +774,149 @@ class EmployeesPage extends StatelessWidget {
       ),
     );
   }
+
+  Map<String, List<EmployeePermission>> _permissionGroups() {
+    final groups = <String, List<EmployeePermission>>{};
+    for (final permission in EmployeePermission.values) {
+      groups
+          .putIfAbsent(permission.group, () => <EmployeePermission>[])
+          .add(permission);
+    }
+    return groups;
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    final input = EmployeeMutationInput(
+      name: _nameController.text,
+      email: _emailController.text,
+      phone: _phoneController.text,
+      role: _role,
+      status: _status,
+      permissions: _permissions,
+    );
+
+    try {
+      final controller = ref.read(employeeActionControllerProvider.notifier);
+      if (_isEditing) {
+        await controller.updateEmployee(widget.employee!.id, input);
+      } else {
+        await controller.create(input);
+      }
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isEditing ? 'Funcionário atualizado.' : 'Funcionário criado.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Não foi possível salvar funcionário: ${_errorMessage(error)}',
+          ),
+        ),
+      );
+    }
+  }
+}
+
+class _PermissionGroup extends StatelessWidget {
+  const _PermissionGroup({
+    required this.group,
+    required this.selected,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final MapEntry<String, List<EmployeePermission>> group;
+  final Set<EmployeePermission> selected;
+  final bool enabled;
+  final void Function(EmployeePermission permission, bool selected) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      title: Text(group.key),
+      initiallyExpanded: group.key == 'Vendas' || group.key == 'Caixa',
+      children: [
+        for (final permission in group.value)
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            value: selected.contains(permission),
+            onChanged: enabled
+                ? (value) => onChanged(permission, value ?? false)
+                : null,
+            title: Text(permission.label),
+            controlAffinity: ListTileControlAffinity.leading,
+          ),
+      ],
+    );
+  }
+}
+
+Future<bool?> _confirmDisable(BuildContext context, String name) {
+  return showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Desativar funcionário'),
+      content: Text(
+        'Remover o acesso de "$name" não apaga histórico nem dados relacionados.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Desativar'),
+        ),
+      ],
+    ),
+  );
+}
+
+AppStatusTone _statusTone(EmployeeStatus status) {
+  switch (status) {
+    case EmployeeStatus.active:
+      return AppStatusTone.success;
+    case EmployeeStatus.invited:
+      return AppStatusTone.warning;
+    case EmployeeStatus.disabled:
+      return AppStatusTone.danger;
+    case EmployeeStatus.unknown:
+      return AppStatusTone.neutral;
+  }
+}
+
+IconData _statusIcon(EmployeeStatus status) {
+  switch (status) {
+    case EmployeeStatus.active:
+      return Icons.check_circle_outline_rounded;
+    case EmployeeStatus.invited:
+      return Icons.mail_outline_rounded;
+    case EmployeeStatus.disabled:
+      return Icons.block_rounded;
+    case EmployeeStatus.unknown:
+      return Icons.info_outline_rounded;
+  }
+}
+
+String _errorMessage(Object error) {
+  if (error is AppException) {
+    return error.message;
+  }
+  return '$error';
 }

@@ -136,7 +136,14 @@ describe('plan entitlement route gates', () => {
     const employees = await requestJson('GET', '/employees', {
       token: fixture.token,
     });
-    assert.deepEqual(employees.data, { items: [], count: 0 });
+    assert.equal(employees.status, 200);
+    const employeesPayload = employees.data as {
+      items: Array<{ role: string; status: string }>;
+      total: number;
+    };
+    assert.equal(employeesPayload.total, 1);
+    assert.equal(employeesPayload.items[0]?.role, 'OWNER');
+    assert.equal(employeesPayload.items[0]?.status, 'ACTIVE');
   });
 });
 
