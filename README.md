@@ -1,312 +1,543 @@
-# Tatuzin Monorepo
+# Tatuzin ERP
 
-Monorepo do Tatuzin, um ERP/PDV com app operacional local-first, backend de plataforma e painel administrativo web.
+Tatuzin ERP e um app/SaaS para gestao de lojas de vestuario e moda. O produto cobre PDV, caixa, estoque, produtos, clientes, fiado, custos, compras, fornecedores, relatorios, assinatura e funcionarios PRO.
 
-Este README descreve a arquitetura real atual do projeto. Ele nao descreve um estado idealizado e nao assume capacidades que ainda nao existem no codigo.
+Este README descreve o estado real deste repositorio. Ele e do Tatuzin ERP, nao do TatuLog.
 
-## Branding e publicacao
+## Arquitetura
 
-Guias praticos da identidade do Tatuzin:
+A arquitetura oficial do Tatuzin separa a operacao em tres blocos:
 
-- [Brand guidelines](c:/Simples/docs/tatuzin-brand-guidelines.md)
-- [Brand verification checklist](c:/Simples/docs/tatuzin-brand-verification-checklist.md)
+- PDV: local-first via `OperationalSyncEvent`.
+- ERP: server-first/cache.
+- CRM: server-first/cache.
 
-## Tema e design system
+O PDV pode operar localmente e registrar eventos operacionais para sincronizacao. O ERP e o CRM nao devem ser documentados nem evoluidos como local-first puro.
 
-O app Tatuzin ja possui tema central e um design system base no proprio app Flutter.
+### Sync Operacional
 
-Pontos de referencia:
+O sync operacional passa por `/api/sync/*` e usa eventos `OperationalSyncEvent` no app. Essa camada e destinada a operacoes de PDV e caixa que precisam suportar uso local/offline.
 
-- tema principal em [lib/app/theme](c:/Simples/lib/app/theme)
-- tokens semanticos e escalas de layout em [app_design_tokens.dart](c:/Simples/lib/app/theme/app_design_tokens.dart)
-- configuracao do tema Material em [app_theme.dart](c:/Simples/lib/app/theme/app_theme.dart)
-- componentes compartilhados em [lib/app/core/widgets](c:/Simples/lib/app/core/widgets)
+Entidades local-first permitidas pela policy atual:
 
-Diretriz atual:
+- `cashSession`
+- `cashMovement`
+- `operationalOrder`
+- `operationalOrderItem`
+- `sale`
+- `saleItem`
+- `payment`
+- `receipt`
+- `stockReservation`
+- `stockDeduction`
+- `offlineOperationLog`
 
-- novas decisoes visuais devem nascer do tema, dos tokens e dos widgets compartilhados
-- evitar `Color`, `EdgeInsets`, `BorderRadius` e `TextStyle` repetidos localmente quando ja houver componente ou token equivalente
-- priorizar os componentes base nas telas operacionais mais criticas: vendas, produtos, caixa, pedidos e dashboard
+Entidades server-first/cache:
 
-## Mapa real do monorepo
+- `product`
+- `category`
+- `customer`
+- `supplier`
+- `purchase`
+- `supply`
+- `cost`
+- `report`
+- `fiado` gerencial
+
+Nao crie produto, cliente, fornecedor, compra, insumo, custo ou relatorio gerencial por `SyncEvent`. Essas areas sao server-first/cache. PDV escreve por `OperationalSyncEvent`; ERP/CRM consomem backend/cache.
+
+## Stack
+
+### Flutter App
+
+- Flutter `>=3.38.0`
+- Dart SDK `>=3.10.0 <4.0.0`
+- Riverpod
+- GoRouter
+- SQLite local tenant-bound para operacao de PDV
+- `http` como API client real
+- `shared_preferences` para sessao/configuracao
+- `url_launcher` para checkout externo
+- sync operacional em `lib/app/core/sync`
+
+### Backend
+
+- Node.js `>=24.0.0`
+- Express
+- TypeScript
+- Prisma
+- PostgreSQL
+- JWT, refresh token, sessao por dispositivo e app context
+- Docker/container
+- API publica configurada para `https://api.tatuzin.com.br/api`
+
+### Admin Web
+
+Existe um admin web em `admin_web`, feito em Flutter Web. Ele e o painel administrativo da plataforma Tatuzin, publicado para o contexto de `admin.tatuzin.com.br`.
+
+O admin web cobre login administrativo, empresas, licencas, billing administrativo, saude de sync, auditoria e visoes gerenciais. Ele nao e painel owner do cliente e nao substitui o app operacional. O painel owner nao deve ser tratado como pronto neste README.
+
+## Estrutura do Repositorio
 
 ```text
 .
-|-- lib/                 App Tatuzin em Flutter
-|-- backend/             API Node/Express + Prisma
-|-- admin_web/           Painel administrativo web em Flutter
-|-- android/             Shell Android do app Flutter principal
+|-- lib/                 App Flutter principal do Tatuzin ERP
 |-- test/                Testes do app Flutter principal
-|-- pubspec.yaml         Dependencias do app Tatuzin
-`-- README.md            Visao geral do monorepo
+|-- backend/             API Node/Express/TypeScript + Prisma
+|-- admin_web/           Painel web da plataforma Tatuzin
+|-- android/             Shell Android do app Flutter
+|-- assets/              Branding, fontes e assets do app
+|-- docs/                Documentacao complementar
+|-- pubspec.yaml         Dependencias do app principal
+`-- README.md            Este arquivo
 ```
 
-### App Tatuzin
+Arquivos de referencia:
 
-Codigo principal em [lib](c:/Simples/lib).
+- App Flutter: `pubspec.yaml`
+- Backend: `backend/package.json`
+- Prisma: `backend/prisma/schema.prisma`
+- Compose local PostgreSQL: `backend/docker-compose.yml`
+- Compose de producao com backend + Caddy: `backend/docker-compose.prod.yml`
+- Env local backend: `backend/.env.example`
+- Env producao backend: `backend/.env.production.example`
+- Rotas Flutter: `lib/app/routes`
+- Modulos Flutter: `lib/modules`
+- Modulos backend: `backend/src/modules`
 
-Areas relevantes:
+Observacao: no estado atual do repositorio nao ha `backend/docker-compose.vm.yml`; o compose equivalente de producao e `backend/docker-compose.prod.yml`.
 
-```text
-lib/
-|-- app/
-|   |-- core/
-|   |   |-- app_context/    Contexto operacional e modos de dados
-|   |   |-- config/         Ambiente, endpoint e AppDataMode
-|   |   |-- database/       SQLite, migrations e nomes de tabela
-|   |   `-- sync/           Fila, metadata, reconciliacao e repair
-|   `-- routes/             Roteamento do app
-`-- modules/
-    |-- dashboard
-    |-- vendas
-    |-- carrinho
-    |-- checkout
-    |-- clientes
-    |-- produtos
-    |-- categorias
-    |-- compras
-    |-- fornecedores
-    |-- caixa
-    |-- fiado
-    |-- financeiro
-    |-- relatorios
-    |-- comprovantes
-    |-- account
-    |-- admin
-    `-- system
-```
+## Modulos Principais
+
+### App Flutter
+
+Modulos reais em `lib/modules`:
+
+- `auth`
+- `account`
+- `billing`
+- `dashboard`
+- `vendas`
+- `carrinho`
+- `checkout`
+- `caixa`
+- `pedidos`
+- `historico_vendas`
+- `comprovantes`
+- `produtos`
+- `categorias`
+- `estoque`
+- `clientes`
+- `fiado`
+- `compras`
+- `fornecedores`
+- `insumos`
+- `custos`
+- `relatorios`
+- `funcionarios`
+- `backup`
+- `admin`
+- `system`
+
+Rotas principais ficam em `lib/app/routes`. A rota de funcionarios e `/funcionarios`; assinatura fica em `/conta/assinatura`.
 
 ### Backend
 
-Codigo principal em [backend](c:/Simples/backend).
+Modulos reais em `backend/src/modules`:
 
-Areas relevantes:
-
-```text
-backend/
-|-- prisma/              Schema e migrations do banco remoto
-`-- src/
-    |-- modules/
-    |   |-- auth
-    |   |-- admin
-    |   |-- companies
-    |   |-- users
-    |   |-- categories
-    |   |-- products
-    |   |-- customers
-    |   |-- suppliers
-    |   |-- purchases
-    |   |-- sales
-    |   |-- financial-events
-    |   |-- cash
-    |   `-- fiado
-    `-- shared/
-        |-- http
-        |-- observability
-        `-- platform
-```
-
-### Admin web
-
-Codigo principal em [admin_web](c:/Simples/admin_web).
-
-Areas relevantes:
-
-```text
-admin_web/lib/src/
-|-- app/                 Router e shell do painel
-|-- core/                Auth, network, models e widgets base
-`-- features/
-    |-- auth
-    |-- dashboard
-    |-- companies
-    |-- licenses
-    |-- sync_health
-    `-- audit
-```
-
-## Papel real de cada bloco
-
-### App Tatuzin
-
-O app Tatuzin e a superficie operacional principal do produto. Ele concentra:
-
-- operacao de PDV e ERP no dispositivo
-- persistencia local em SQLite
-- fluxo local-first/offline-first
-- fila de sync, metadata de sincronizacao, reconciliacao e repair
-- experiencia de uso do operador final
-
-Na pratica, o app continua sendo o bloco mais rico em regra operacional e o mais avancado em preparacao para sync.
-
-### Backend
-
-O backend e um monolito modular de plataforma. Hoje ele cobre principalmente:
-
-- autenticacao e sessao remota
-- licenciamento
-- companies e memberships
-- operacao administrativa de plataforma
-- espelho remoto de entidades operacionais
-- suporte a multi-tenant por company
-
-O backend ja atende o necessario para login remoto, licenciamento, sessao por dispositivo e persistencia remota das entidades suportadas. Ele ainda nao opera como uma camada completa de reconciliacao, conflito e telemetria profunda de sync.
-
-### Admin web
-
-O admin web e a superficie administrativa principal da plataforma. Hoje ele cobre:
-
-- login administrativo
-- dashboard resumido
-- listagem e detalhe de empresas
-- gestao de licencas
-- visao resumida de sync
-- auditoria administrativa
-
-Ele nao substitui o app operacional e nao executa vendas, caixa, compras ou operacao diaria do cliente.
-
-## Estrategia atual local-first / offline-first
-
-O projeto foi implementado com SQLite local como base operacional do app. O modo de dados do app fica em [app_data_mode.dart](c:/Simples/lib/app/core/config/app_data_mode.dart) e a politica de acesso em [data_access_policy.dart](c:/Simples/lib/app/core/app_context/data_access_policy.dart).
-
-Os modos atuais sao:
-
-- `localOnly`
-  - SQLite local e a unica fonte de dados.
-  - Sem leitura remota.
-  - Sem escrita remota.
-- `futureRemoteReady`
-  - SQLite local continua como fonte principal.
-  - Leitura remota e permitida quando houver sessao e sync habilitada para a empresa.
-  - Escrita remota ainda nao e permitida.
-- `futureHybridReady`
-  - SQLite local continua como base principal.
-  - Leitura remota e permitida.
-  - Escrita remota e permitida.
-  - Este modo e a base para o fluxo local-first com sincronizacao.
-
-Em todos os modos, o app foi desenhado para manter a base local como fonte operacional primaria. O backend nao substitui o banco local do app.
-
-## Status real do sync
-
-O app possui infraestrutura local de sync em [lib/app/core/sync](c:/Simples/lib/app/core/sync), incluindo:
-
-- fila de sync
-- metadata por registro
-- auditoria local de sync
-- readiness
-- reconciliacao local/remota
-- repair mode
-
-As chaves de feature atualmente previstas no app estao em [sync_feature_keys.dart](c:/Simples/lib/app/core/sync/sync_feature_keys.dart):
-
-- `suppliers`
+- `auth`
+- `app`
+- `admin`
+- `billing`
+- `companies`
+- `users`
+- `employees`
+- `plans`
+- `sync`
+- `cash`
+- `operational-orders`
+- `sales`
+- `inventory`
 - `categories`
 - `products`
+- `product-recipes`
 - `customers`
+- `crm`
+- `suppliers`
+- `supplies`
 - `purchases`
-- `sales`
-- `financial_events`
-- `sale_cancellations`
-- `fiado_payments`
-- `cash_events`
+- `costs`
+- `financial-events`
 - `fiado`
-- `cash_movements`
+- `analytics`
+- `hybrid-governance`
 
-### O que ja tem suporte de sincronizacao/espelho no projeto
+O backend e fonte de verdade para device, license, plan e entitlements. O app consome `/api/app/bootstrap` e app context para refletir plano, limites, dispositivos e permissoes efetivas.
 
-Com base no app e nas rotas/modulos existentes no backend, o projeto ja tem base de sync ou espelho remoto para:
+### Admin Web
 
-- categorias
-- produtos
-- clientes
-- fornecedores
-- compras
-- vendas
-- eventos financeiros
-- eventos de caixa
-- dados administrativos da plataforma, como licenca, sessao e company
+O admin web fica em `admin_web`. Features reais em `admin_web/lib/src/features`:
 
-### O que ainda e espelho parcial
+- `auth`
+- `dashboard`
+- `companies`
+- `licenses`
+- `sync_health`
+- `audit`
+- `management`
 
-Hoje o backend ainda se comporta mais como espelho remoto por entidade do que como uma plataforma completa de reconciliacao de dados. Na pratica, isso significa:
+## Billing e Assinaturas
 
-- o app carrega mais inteligencia de sync do que o servidor
-- a idempotencia e o mapeamento remoto existem, mas a resolucao de conflito do lado do backend ainda e limitada
-- a operacao administrativa de sync ainda e mais resumida do que a complexidade real que existe no app
+Billing e server-first com Mercado Pago Subscriptions/Preapproval.
 
-### O que ainda nao tem telemetria suficiente
+Regras importantes:
 
-O projeto ainda nao oferece telemetria operacional profunda de sync para suporte de plataforma. Hoje faltam, de forma clara:
+- `license.plan` e a fonte de verdade do plano.
+- O app Flutter nunca promove plano localmente.
+- `POST /api/billing/subscribe` cria checkout/preapproval, mas nao muda `license.plan`.
+- Plano pago so e ativado por webhook Mercado Pago, refresh backend seguro ou acao admin auditada.
+- `GET /api/billing/status` le o banco local do backend e nao consulta Mercado Pago automaticamente.
+- `POST /api/billing/refresh` e a reconciliacao explicita.
+- `/api/billing/status` nao expoe `providerSubscriptionId` completo; retorna apenas flags e ID mascarado.
+- Downgrade para FREE nunca apaga dados, faturas, eventos, sessoes ou funcionarios.
 
-- trilha detalhada de incidentes por tenant/feature
-- diagnostico forte de conflito no backend
-- visao consolidada de fila local do app no admin web
-- observabilidade mais profunda para reconciliacao e retry
+Endpoints publicos de billing no backend:
 
-O painel admin web mostra saude resumida e volume remoto, mas isso ainda nao equivale a diagnostico completo de sincronizacao.
+- `GET /api/billing/plans`
+- `GET /api/billing/status`
+- `POST /api/billing/subscribe`
+- `POST /api/billing/refresh`
+- `GET /api/billing/invoices`
+- `GET /api/billing/invoices/:id`
+- `GET /api/billing/payment-method`
+- `POST /api/billing/cancel`
+- `POST /api/billing/resume`
+- `POST /api/billing/change-plan`
+- `POST /api/webhooks/mercadopago`
 
-## Responsabilidades e limites atuais
+Billing administrativo protegido por platform admin:
 
-### App Tatuzin
+- `GET /api/admin/billing/companies`
+- `GET /api/admin/companies/:companyId/billing/status`
+- `GET /api/admin/companies/:companyId/billing/events`
+- `GET /api/admin/companies/:companyId/billing/checkout-sessions`
+- `POST /api/admin/companies/:companyId/billing/refresh`
+- `POST /api/admin/companies/:companyId/billing/force-plan`
+- `POST /api/admin/companies/:companyId/billing/cancel-local`
 
-- responsavel pela operacao de ERP/PDV
-- responsavel pela persistencia local
-- responsavel pela experiencia offline/local-first
-- contem uma area administrativa interna em [admin_page.dart](c:/Simples/lib/modules/admin/presentation/pages/admin_page.dart), mas essa area deve ser tratada como apoio temporario/interno
+`cancel-local` administrativo nao cancela Mercado Pago; ele aplica ajuste local auditado.
 
-### Backend
+Variaveis de billing suportadas pelo backend:
 
-- responsavel por auth, licenciamento, companies, memberships e sessao remota
-- responsavel por persistencia remota das entidades operacionais suportadas
-- nao e a fonte primaria de operacao do app
-- nao substitui a camada local de sync/reconciliacao existente no cliente
+- `MERCADO_PAGO_ACCESS_TOKEN`
+- `MERCADO_PAGO_WEBHOOK_SECRET`
+- `API_PUBLIC_URL`
+- `APP_PUBLIC_URL`
+- `BILLING_BASIC_PRICE_CENTS` com default `3500`
+- `BILLING_PRO_PRICE_CENTS` com default `8500`
 
-### Admin web
+Nao salve tokens reais no repositorio.
 
-- e a superficie administrativa principal do projeto neste momento
-- consome capacidades administrativas ja expostas pelo backend
-- serve para operacao de plataforma, nao para operacao de PDV
+## Funcionarios PRO
 
-## Decisao atual de produto e arquitetura
+Funcionarios e recurso PRO.
 
-Neste repositorio existem duas superficies administrativas:
+O backend possui `EmployeeProfile` e endpoints em `/api/employees`, todos protegidos por:
 
-- admin web em [admin_web](c:/Simples/admin_web)
-- admin interno no app em [lib/modules/admin](c:/Simples/lib/modules/admin)
+- `requireAppContext`
+- `requireFeature('employees')`
+- permissao efetiva `employees.manage`
+- isolamento por `companyId`
 
-Decisao atual:
+Endpoints:
 
-- o admin web e a superficie administrativa principal
-- o admin interno do app permanece apenas como apoio temporario/interno
-- novas capacidades administrativas devem priorizar o admin web, salvo necessidade explicita de suporte interno no app
+- `GET /api/employees`
+- `GET /api/employees/:id`
+- `POST /api/employees`
+- `PATCH /api/employees/:id`
+- `DELETE /api/employees/:id`
+- `POST /api/employees/:id/invite`
+- `POST /api/employees/:id/disable`
+- `POST /api/employees/:id/enable`
 
-## Limitacoes atuais importantes
+Cargos oficiais:
 
-As limitacoes abaixo fazem parte do estado atual do projeto e devem ser consideradas reais:
+- `OWNER`
+- `MANAGER`
+- `CASHIER`
+- `SELLER`
+- `STOCK_OPERATOR`
+- `READ_ONLY`
 
-- o README anterior do monorepo estava desatualizado e em conflito
-- o app ja possui infraestrutura de sync mais avancada do que o backend/admin conseguem operar
-- o backend ainda concentra mais capacidade em auth/licenciamento do que em observabilidade de sync
-- o admin web ainda cobre a operacao administrativa principal, mas nao oferece diagnostico profundo de sync
-- existem modulos do app que estao preparados para sync futura, mesmo quando a operacao remota correspondente ainda e parcial
-- a experiencia administrativa ainda esta dividida entre app interno e admin web, embora a direcao atual seja centralizar no admin web
+Status oficiais:
 
-## Como rodar cada bloco
+- `ACTIVE`
+- `INVITED`
+- `DISABLED`
 
-### App Tatuzin
+Protecoes:
 
-No diretorio raiz:
+- `OWNER` efetivo vem de `MembershipRole.OWNER`.
+- `OWNER` sempre recebe permissoes efetivas completas.
+- `OWNER` nao pode ser criado manualmente, promovido, removido, desabilitado, rebaixado ou perder `employees.manage`.
+- `DELETE /api/employees/:id` e soft delete via `DISABLED`.
+- Convite gera hash no backend, nao envia e-mail real nesta fase e nao retorna token/hash ao app.
+- FREE/BASIC bloqueiam funcionarios.
+- `pendingPlan=PRO` nao libera funcionarios.
+- PRO libera conforme entitlement real (`license.plan=PRO`) e permissao efetiva.
 
-```powershell
+No Flutter, `FeatureGate(FeatureKey.employees)` e a unica fonte para liberar a tela. `membership.permissions` e `employee.permissions` controlam apenas acoes internas depois que o entitlement ja liberou a feature.
+
+## Planos e Entitlements
+
+Catalogo real em `backend/src/modules/plans/plan-catalog.service.ts` e `lib/app/core/entitlements/plan_entitlements.dart`.
+
+| Plano | Features principais | maxDevices | maxEmployees | reportPeriods |
+| --- | --- | ---: | ---: | --- |
+| FREE | vendas, caixa, produtos, categorias, clientes basico, venda fiado, relatorio diario, estoque basico | 1 | 0 | daily |
+| BASIC | tudo do FREE, gestao de fiado, insumos, custos, fornecedores, compras, estoque avancado, relatorios basicos | 1 | 0 | daily, weekly, monthly |
+| PRO | todas as features catalogadas, incluindo funcionarios, permissoes, multi-dispositivo, dispositivos e relatorios avancados | 100 | 100 | daily, weekly, monthly, yearly, custom |
+
+Features catalogadas:
+
+- `sales`
+- `cash`
+- `products`
+- `categories`
+- `customersBasic`
+- `fiadoCreateSale`
+- `fiadoManagement`
+- `supplies`
+- `costs`
+- `suppliers`
+- `purchases`
+- `inventoryBasic`
+- `inventoryAdvanced`
+- `reportsDaily`
+- `reportsBasic`
+- `reportsAdvanced`
+- `employees`
+- `permissions`
+- `multiDevice`
+- `ownerWebPanel`
+- `commissions`
+- `devicesManagement`
+
+Mesmo que `ownerWebPanel` exista no catalogo de entitlements, o painel owner nao esta documentado aqui como produto pronto.
+
+## Requisitos
+
+Use as versoes definidas no repositorio:
+
+- Flutter SDK compativel com `pubspec.yaml`: Flutter `>=3.38.0`
+- Dart SDK `>=3.10.0 <4.0.0`
+- Node.js `>=24.0.0`
+- PostgreSQL
+- Docker/Docker Compose para banco local e runtime de producao do backend
+- Prisma `^6.5.0`
+
+## Configuracao Local
+
+### App Flutter principal
+
+Na raiz do repositorio:
+
+```bash
 flutter pub get
+flutter analyze
+flutter test
 flutter run
 ```
 
+O endpoint remoto oficial e configurado no app para uso remoto. Para desenvolvimento local, veja `lib/app/core/config` e `lib/app/core/network/endpoint_config.dart`.
+
 ### Backend
 
-Veja [backend/README.md](c:/Simples/backend/README.md) para setup de banco, Prisma, seed e execucao da API.
+```powershell
+cd backend
+npm install
+Copy-Item .env.example .env
+docker compose up -d
+npm run prisma:generate
+npm run prisma:migrate:dev
+npm run seed
+npm run dev
+```
 
-### Admin web
+API local:
 
-Veja [admin_web/README.md](c:/Simples/admin_web/README.md) para rodar o painel apontando para o backend local.
+```text
+http://localhost:4000/api
+```
+
+Comandos reais do `backend/package.json`:
+
+```bash
+npm run dev
+npm run build
+npm test
+npm start
+npm run start:prod
+npm run prisma:generate
+npm run prisma:migrate:dev
+npm run prisma:deploy
+npm run prisma:status
+npm run seed
+npm run reset:remote-business-data
+```
+
+Validacao backend comum:
+
+```bash
+cd backend
+npx prisma validate
+npx prisma generate
+npm run build
+npm test
+```
+
+### Backend em producao/container
+
+Arquivos reais:
+
+- `backend/Dockerfile`
+- `backend/docker-compose.prod.yml`
+- `backend/Caddyfile`
+- `backend/.env.production.example`
+
+Exemplo conservador:
+
+```powershell
+cd backend
+Copy-Item .env.production.example .env.production
+docker compose --env-file .env.production -f docker-compose.prod.yml build
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+```
+
+Topologia esperada pelo compose de producao:
+
+- `edge` com Caddy escutando `80/443`
+- TLS para `api.tatuzin.com.br`
+- proxy apenas de `/api/*` para `backend:4000`
+- backend Node em container, com healthcheck em `/api/readiness`
+
+### Admin Web
+
+```bash
+cd admin_web
+flutter pub get
+flutter run -d chrome --web-port 3000
+```
+
+Build web:
+
+```bash
+cd admin_web
+flutter build web
+```
+
+Para apontar o admin web para backend local:
+
+```bash
+flutter run -d chrome --web-port 3000 --dart-define=TATUZIN_ADMIN_API_URL=http://localhost:4000/api
+```
+
+Build de producao apontando para a API oficial:
+
+```bash
+flutter build web --release --dart-define=TATUZIN_ADMIN_API_URL=https://api.tatuzin.com.br/api
+```
+
+## Variaveis de Ambiente do Backend
+
+Exemplos reais:
+
+- `backend/.env.example`
+- `backend/.env.production.example`
+
+Principais variaveis:
+
+- `PORT`
+- `HOST`
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `ACCESS_TOKEN_TTL`
+- `REFRESH_TOKEN_TTL_DAYS`
+- `PASSWORD_RESET_TOKEN_TTL_MINUTES`
+- `PASSWORD_RESET_APP_BASE_URL`
+- `RESEND_API_KEY`
+- `MAIL_FROM_AUTH`
+- `MAIL_REPLY_TO_SUPPORT`
+- `CORS_ORIGINS`
+- `TRUST_PROXY`
+- `APP_ENV`
+- `ALLOW_INITIAL_BOOTSTRAP`
+- `MERCADO_PAGO_ACCESS_TOKEN`
+- `MERCADO_PAGO_WEBHOOK_SECRET`
+- `API_PUBLIC_URL`
+- `APP_PUBLIC_URL`
+- `BILLING_BASIC_PRICE_CENTS`
+- `BILLING_PRO_PRICE_CENTS`
+
+Use valores reais apenas no ambiente. Nao commite `.env`, tokens, segredos JWT, chaves Resend ou credenciais Mercado Pago.
+
+## Contratos Importantes
+
+### App Context e Bootstrap
+
+`/api/app/bootstrap` entrega contexto da empresa, usuario, device, licenca, entitlements e permissoes efetivas. O backend continua sendo fonte de verdade para:
+
+- device
+- license
+- `license.plan`
+- limites
+- features
+- billing status
+- permissoes efetivas de funcionario
+
+### Billing
+
+O app pode listar planos, iniciar checkout, consultar status, atualizar status e executar acoes de assinatura. Ele nao ativa plano pago localmente.
+
+### Sync
+
+Nao altere `/api/sync/*`, materializadores ou sync policies para implementar CRUD server-first de ERP/CRM. Essas areas tem responsabilidade propria e protegida.
+
+### Downgrade
+
+Downgrade para FREE/BASIC bloqueia recursos pelo entitlement, mas nao apaga dados de negocio, faturas, eventos, sessoes ou `EmployeeProfile`.
+
+## Testes e Validacao
+
+App Flutter:
+
+```bash
+flutter analyze
+flutter test
+```
+
+Backend:
+
+```bash
+cd backend
+npx prisma validate
+npx prisma generate
+npm run build
+npm test
+```
+
+Admin Web:
+
+```bash
+cd admin_web
+flutter analyze
+flutter test
+```
+
+## Notas de Escopo
+
+- Este repositorio e Tatuzin ERP/SaaS.
+- Nao documente arquitetura, paths, PM2, `api-go`, checkout web ou planos do TatuLog aqui.
+- O backend Tatuzin ERP roda em container/Docker, com API publica em `api.tatuzin.com.br`.
+- O admin web e painel da plataforma em `admin.tatuzin.com.br`.
+- Painel owner ainda nao deve ser apresentado como pronto.
