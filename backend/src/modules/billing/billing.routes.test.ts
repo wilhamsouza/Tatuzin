@@ -92,6 +92,46 @@ describe('billing routes', () => {
     assert.equal(payload.providerSubscriptionId, undefined);
   });
 
+  it('includes pending and cancel fields in billing status without exposing provider id', async () => {
+    const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const fixture = await createFixture({
+      plan: 'pro',
+      providerSubscriptionId: 'preapproval-status-1234567890',
+    });
+    await prisma.license.update({
+      where: { companyId: fixture.companyId },
+      data: {
+        currentPeriodEnd: future,
+        pendingPlan: 'BASIC',
+        pendingPlanRequestedAt: new Date(),
+        cancelAtPeriodEnd: true,
+        cancelRequestedAt: new Date(),
+        billingSubscriptionStatus: 'CUSTOMER_CANCEL_PERIOD_END',
+      },
+    });
+
+    const response = await requestJson('GET', '/billing/status', {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      plan: string;
+      pendingPlan?: string | null;
+      cancelAtPeriodEnd?: boolean;
+      billingSubscriptionStatus?: string | null;
+      providerSubscriptionId?: string;
+    };
+    assert.equal(payload.plan, 'PRO');
+    assert.equal(payload.pendingPlan, 'BASIC');
+    assert.equal(payload.cancelAtPeriodEnd, true);
+    assert.equal(
+      payload.billingSubscriptionStatus,
+      'CUSTOMER_CANCEL_PERIOD_END',
+    );
+    assert.equal(payload.providerSubscriptionId, undefined);
+  });
+
   it('creates BASIC checkout session without changing license.plan', async () => {
     const fixture = await createFixture({ plan: 'free' });
     let capturedBody = {} as Record<string, any>;
@@ -185,11 +225,41 @@ describe('billing routes', () => {
     assert.equal((response.data as { code?: string }).code, 'BILLING_OWNER_REQUIRED');
   });
 
+  it('blocks non-owner access to customer billing management endpoints', async () => {
+    const fixture = await createFixture({ role: 'OPERATOR' });
+
+    for (const request of [
+      () => requestJson('GET', '/billing/invoices', { token: fixture.token }),
+      () => requestJson('GET', '/billing/payment-method', { token: fixture.token }),
+      () =>
+        requestJson('POST', '/billing/cancel', {
+          token: fixture.token,
+          body: {},
+        }),
+      () => requestJson('POST', '/billing/resume', { token: fixture.token }),
+      () =>
+        requestJson('POST', '/billing/change-plan', {
+          token: fixture.token,
+          body: { plan: 'PRO' },
+        }),
+    ]) {
+      const response = await request();
+      assert.equal(response.status, 403);
+      assert.equal(
+        (response.data as { code?: string }).code,
+        'BILLING_OWNER_REQUIRED',
+      );
+    }
+  });
+
   it('activates BASIC through signed approved webhook and is idempotent', async () => {
     const fixture = await createFixture({ plan: 'free' });
     const checkout = await createCheckoutSession(fixture, 'BASIC', 'mp-basic-ok');
     let fetchCount = 0;
-    globalThis.fetch = jsonFetch(async () => {
+    globalThis.fetch = jsonFetch(async (url) => {
+      if (url.includes('/authorized_payments/search')) {
+        return { results: [] };
+      }
       fetchCount += 1;
       return {
         id: 'mp-basic-ok',
@@ -374,6 +444,532 @@ describe('billing routes', () => {
       token: fixture.token,
     });
     assert.equal(limited.status, 429);
+  });
+
+  it('lists and reads safe invoices only for the current company', async () => {
+    const fixture = await createFixture({
+      plan: 'basic',
+      providerSubscriptionId: 'mp-invoice-sub-1234567890',
+    });
+    const other = await createFixture({ plan: 'basic' });
+    const paidInvoice = await prisma.billingInvoice.create({
+      data: {
+        companyId: fixture.companyId,
+        provider: 'mercadopago',
+        providerInvoiceId: 'inv-paid',
+        providerSubscriptionId: 'mp-invoice-sub-1234567890',
+        plan: 'BASIC',
+        status: 'paid',
+        amountCents: 3500,
+        currency: 'BRL',
+        invoiceUrl: 'https://mercadopago.test/invoices/inv-paid?token=secret',
+        payload: {
+          authorization: 'Bearer secret',
+          card: { card_number: '4111111111111111' },
+        },
+      },
+    });
+    await prisma.billingInvoice.create({
+      data: {
+        companyId: fixture.companyId,
+        provider: 'mercadopago',
+        providerInvoiceId: 'inv-pending',
+        providerSubscriptionId: 'mp-invoice-sub-1234567890',
+        status: 'pending',
+      },
+    });
+    const otherInvoice = await prisma.billingInvoice.create({
+      data: {
+        companyId: other.companyId,
+        provider: 'mercadopago',
+        providerInvoiceId: 'inv-other',
+        status: 'paid',
+      },
+    });
+
+    const list = await requestJson(
+      'GET',
+      '/billing/invoices?status=paid&page=1&pageSize=1',
+      { token: fixture.token },
+    );
+    assert.equal(list.status, 200);
+    const listPayload = list.data as {
+      total: number;
+      items: Array<Record<string, unknown>>;
+    };
+    assert.equal(listPayload.total, 1);
+    assert.equal(listPayload.items.length, 1);
+    assert.equal(listPayload.items[0].providerSubscriptionId, undefined);
+    assert.equal(listPayload.items[0].payload, undefined);
+    assert.equal(
+      listPayload.items[0].maskedProviderSubscriptionId,
+      'mp-i...7890',
+    );
+    assert.notEqual(
+      listPayload.items[0].invoiceUrl,
+      'https://mercadopago.test/invoices/inv-paid?token=secret',
+    );
+
+    const detail = await requestJson(
+      'GET',
+      `/billing/invoices/${paidInvoice.id}`,
+      { token: fixture.token },
+    );
+    assert.equal(detail.status, 200);
+    assert.equal((detail.data as Record<string, unknown>).payload, undefined);
+    assert.equal(
+      (detail.data as Record<string, unknown>).providerSubscriptionId,
+      undefined,
+    );
+
+    const crossCompany = await requestJson(
+      'GET',
+      `/billing/invoices/${otherInvoice.id}`,
+      { token: fixture.token },
+    );
+    assert.equal(crossCompany.status, 404);
+  });
+
+  it('reconciles authorized payments into invoices without duplicate or plan changes', async () => {
+    const fixture = await createFixture({
+      plan: 'basic',
+      providerSubscriptionId: 'mp-invoices-reconcile',
+    });
+    globalThis.fetch = jsonFetch(async (url) => {
+      if (url.includes('/authorized_payments/search')) {
+        return {
+          results: [
+            {
+              id: 'auth-paid',
+              preapproval_id: 'mp-invoices-reconcile',
+              status: 'approved',
+              transaction_amount: 35,
+              currency_id: 'BRL',
+              external_resource_url:
+                'https://mercadopago.test/invoices/auth-paid?token=secret',
+              payment_date: '2026-05-07T10:00:00.000Z',
+              card: { card_number: '4111111111111111', cvv: '123' },
+              access_token: 'secret',
+            },
+            {
+              id: 'auth-pending',
+              preapproval_id: 'mp-invoices-reconcile',
+              status: 'pending',
+              transaction_amount: 35,
+              currency_id: 'BRL',
+            },
+            {
+              id: 'auth-rejected',
+              preapproval_id: 'mp-invoices-reconcile',
+              status: 'rejected',
+              transaction_amount: 35,
+              currency_id: 'BRL',
+            },
+            {
+              preapproval_id: 'mp-invoices-reconcile',
+              status: 'approved',
+              transaction_amount: 35,
+            },
+          ],
+        };
+      }
+      return {
+        id: 'mp-invoices-reconcile',
+        status: 'authorized',
+        auto_recurring: { transaction_amount: 35 },
+      };
+    });
+
+    const response = await requestJson('POST', '/billing/refresh', {
+      token: fixture.token,
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual((response.data as { warnings?: string[] }).warnings, [
+      'BILLING_INVOICE_SKIPPED_MISSING_STABLE_ID',
+    ]);
+
+    const invoices = await prisma.billingInvoice.findMany({
+      where: { companyId: fixture.companyId },
+      orderBy: { providerInvoiceId: 'asc' },
+    });
+    assert.equal(invoices.length, 3);
+    assert.deepEqual(
+      invoices.map((invoice) => [invoice.providerInvoiceId, invoice.status]),
+      [
+        ['auth-paid', 'paid'],
+        ['auth-pending', 'pending'],
+        ['auth-rejected', 'failed'],
+      ],
+    );
+    assert.equal(
+      JSON.stringify(invoices[0].payload).includes('4111111111111111'),
+      false,
+    );
+    assert.equal(invoices[0].invoiceUrl, null);
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'BASIC');
+
+    await requestJson('POST', '/billing/refresh', { token: fixture.token });
+    const count = await prisma.billingInvoice.count({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(count, 3);
+  });
+
+  it('does not move an existing invoice across companies on provider id conflict', async () => {
+    const fixture = await createFixture({
+      plan: 'basic',
+      providerSubscriptionId: 'mp-invoice-conflict',
+    });
+    const other = await createFixture({ plan: 'basic' });
+    const existing = await prisma.billingInvoice.create({
+      data: {
+        companyId: other.companyId,
+        provider: 'mercadopago',
+        providerInvoiceId: 'auth-conflict',
+        providerSubscriptionId: 'mp-other',
+        status: 'paid',
+      },
+    });
+    globalThis.fetch = jsonFetch(async (url) => {
+      if (url.includes('/authorized_payments/search')) {
+        return {
+          results: [
+            {
+              id: 'auth-conflict',
+              preapproval_id: 'mp-invoice-conflict',
+              status: 'approved',
+              transaction_amount: 35,
+            },
+          ],
+        };
+      }
+      return {
+        id: 'mp-invoice-conflict',
+        status: 'authorized',
+        auto_recurring: { transaction_amount: 35 },
+      };
+    });
+
+    const response = await requestJson('POST', '/billing/refresh', {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual((response.data as { warnings?: string[] }).warnings, [
+      'BILLING_INVOICE_PROVIDER_ID_CONFLICT',
+    ]);
+    const reloaded = await prisma.billingInvoice.findUniqueOrThrow({
+      where: { id: existing.id },
+    });
+    assert.equal(reloaded.companyId, other.companyId);
+    assert.equal(
+      await prisma.billingInvoice.count({
+        where: { companyId: fixture.companyId },
+      }),
+      0,
+    );
+  });
+
+  it('keeps refresh successful when invoice reconciliation fails', async () => {
+    const fixture = await createFixture({
+      plan: 'free',
+      providerSubscriptionId: 'mp-refresh-warning',
+    });
+    await createCheckoutSession(fixture, 'BASIC', 'mp-refresh-warning');
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const rawUrl = String(url);
+      if (rawUrl.includes('/authorized_payments/search')) {
+        throw new Error('authorized payments unavailable');
+      }
+      return new Response(
+        JSON.stringify({
+          id: 'mp-refresh-warning',
+          status: 'authorized',
+          auto_recurring: { transaction_amount: 35 },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }) as typeof globalThis.fetch;
+
+    const response = await requestJson('POST', '/billing/refresh', {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal((response.data as { plan?: string }).plan, 'BASIC');
+    assert.deepEqual((response.data as { warnings?: string[] }).warnings, [
+      'INVOICE_RECONCILIATION_FAILED',
+    ]);
+  });
+
+  it('returns a safe payment method summary and tolerates provider failure', async () => {
+    const fixture = await createFixture({
+      plan: 'basic',
+      providerSubscriptionId: 'mp-payment-method-1234567890',
+    });
+    globalThis.fetch = jsonFetch(async () => ({
+      id: 'mp-payment-method-1234567890',
+      status: 'authorized',
+      next_payment_date: '2026-06-07T00:00:00.000Z',
+      payment_method_id: 'visa-secret-id-123456',
+      payment_method: { type: 'credit_card' },
+      card: { card_number: '4111111111111111', last_four_digits: '1111' },
+    }));
+
+    const response = await requestJson('GET', '/billing/payment-method', {
+      token: fixture.token,
+    });
+    assert.equal(response.status, 200);
+    const payload = response.data as Record<string, unknown>;
+    assert.equal(payload.hasPaymentMethod, true);
+    assert.equal(payload.paymentMethodType, 'credit_card');
+    assert.equal(payload.lastFour, '1111');
+    assert.equal(payload.maskedProviderSubscriptionId, 'mp-p...7890');
+    assert.equal(JSON.stringify(payload).includes('4111111111111111'), false);
+    assert.equal(JSON.stringify(payload).includes('mp-payment-method-1234567890'), false);
+
+    globalThis.fetch = failFetch('provider unavailable');
+    const unavailable = await requestJson('GET', '/billing/payment-method', {
+      token: fixture.token,
+    });
+    assert.equal(unavailable.status, 200);
+    assert.equal((unavailable.data as { unavailable?: boolean }).unavailable, true);
+  });
+
+  it('cancels customer subscription at period end without downgrading immediately', async () => {
+    const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const fixture = await createFixture({
+      plan: 'pro',
+      providerSubscriptionId: 'mp-cancel-period',
+    });
+    await prisma.license.update({
+      where: { companyId: fixture.companyId },
+      data: { currentPeriodEnd: future },
+    });
+    let providerMethod = '';
+    globalThis.fetch = jsonFetch(async (_url, init) => {
+      providerMethod = init.method ?? '';
+      return {
+        id: 'mp-cancel-period',
+        status: 'cancelled',
+        end_date: future.toISOString(),
+      };
+    });
+
+    const response = await requestJson('POST', '/billing/cancel', {
+      token: fixture.token,
+      body: { effective: 'period_end', reason: 'cliente pediu' },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(providerMethod, 'PUT');
+    assert.equal(
+      (response.data as { providerCancelled?: boolean }).providerCancelled,
+      true,
+    );
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'pro');
+    assert.equal(license.cancelAtPeriodEnd, true);
+    assert.equal(license.providerSubscriptionId, 'mp-cancel-period');
+  });
+
+  it('keeps paid access on cancel now while current period is still valid', async () => {
+    const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const fixture = await createFixture({
+      plan: 'basic',
+      providerSubscriptionId: 'mp-cancel-now-future',
+    });
+    await prisma.license.update({
+      where: { companyId: fixture.companyId },
+      data: { currentPeriodEnd: future },
+    });
+    globalThis.fetch = jsonFetch(async () => ({
+      id: 'mp-cancel-now-future',
+      status: 'cancelled',
+      end_date: future.toISOString(),
+    }));
+
+    const response = await requestJson('POST', '/billing/cancel', {
+      token: fixture.token,
+      body: { effective: 'now' },
+    });
+
+    assert.equal(response.status, 200);
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'basic');
+    assert.equal(license.cancelAtPeriodEnd, true);
+  });
+
+  it('downgrades to FREE on cancel now when there is no active paid period', async () => {
+    const fixture = await createFixture({
+      plan: 'basic',
+      providerSubscriptionId: 'mp-cancel-now',
+    });
+    globalThis.fetch = jsonFetch(async () => ({
+      id: 'mp-cancel-now',
+      status: 'cancelled',
+    }));
+
+    const response = await requestJson('POST', '/billing/cancel', {
+      token: fixture.token,
+      body: { effective: 'now' },
+    });
+
+    assert.equal(response.status, 200);
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'FREE');
+    assert.equal(license.providerSubscriptionId, null);
+  });
+
+  it('returns safe errors on provider cancel failure without downgrading', async () => {
+    const fixture = await createFixture({
+      plan: 'basic',
+      providerSubscriptionId: 'mp-cancel-fail',
+    });
+    globalThis.fetch = failFetch('provider unavailable');
+
+    const response = await requestJson('POST', '/billing/cancel', {
+      token: fixture.token,
+      body: { effective: 'now' },
+    });
+
+    assert.equal(response.status, 502);
+    assert.equal(JSON.stringify(response.data).includes('provider unavailable'), false);
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'basic');
+  });
+
+  it('resume does not promote locally and falls back to new checkout when needed', async () => {
+    const fixture = await createFixture({ plan: 'free' });
+
+    const response = await requestJson('POST', '/billing/resume', {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(
+      (response.data as { requiresNewCheckout?: boolean }).requiresNewCheckout,
+      true,
+    );
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'free');
+  });
+
+  it('changes plans with pendingPlan without unlocking features early', async () => {
+    const basic = await createFixture({
+      plan: 'basic',
+      providerSubscriptionId: 'mp-change-basic-pro',
+    });
+    globalThis.fetch = jsonFetch(async () => ({
+      id: 'mp-change-basic-pro',
+      status: 'authorized',
+      auto_recurring: { transaction_amount: 85 },
+    }));
+
+    const upgrade = await requestJson('POST', '/billing/change-plan', {
+      token: basic.token,
+      body: { plan: 'PRO' },
+    });
+    assert.equal(upgrade.status, 200);
+    const upgradePayload = upgrade.data as {
+      status: { plan: string; pendingPlan?: string; features: Record<string, boolean> };
+    };
+    assert.equal(upgradePayload.status.plan, 'BASIC');
+    assert.equal(upgradePayload.status.pendingPlan, 'PRO');
+    assert.equal(upgradePayload.status.features.employees, false);
+    let license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: basic.companyId },
+    });
+    assert.equal(license.plan, 'basic');
+    assert.equal(license.pendingPlan, 'PRO');
+
+    const pro = await createFixture({
+      plan: 'pro',
+      providerSubscriptionId: 'mp-change-pro-basic',
+    });
+    await prisma.license.update({
+      where: { companyId: pro.companyId },
+      data: {
+        currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+    globalThis.fetch = jsonFetch(async () => ({
+      id: 'mp-change-pro-basic',
+      status: 'authorized',
+      auto_recurring: { transaction_amount: 35 },
+    }));
+
+    const downgrade = await requestJson('POST', '/billing/change-plan', {
+      token: pro.token,
+      body: { plan: 'BASIC' },
+    });
+    assert.equal(downgrade.status, 200);
+    const downgradePayload = downgrade.data as {
+      status: { plan: string; pendingPlan?: string; features: Record<string, boolean> };
+    };
+    assert.equal(downgradePayload.status.plan, 'PRO');
+    assert.equal(downgradePayload.status.pendingPlan, 'BASIC');
+    assert.equal(downgradePayload.status.features.employees, true);
+    license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: pro.companyId },
+    });
+    assert.equal(license.plan, 'pro');
+    assert.equal(license.pendingPlan, 'BASIC');
+  });
+
+  it('preserves pendingPlan on refresh until provider confirmation is safe', async () => {
+    const fixture = await createFixture({
+      plan: 'basic',
+      providerSubscriptionId: 'mp-pending-upgrade',
+    });
+    await prisma.license.update({
+      where: { companyId: fixture.companyId },
+      data: {
+        pendingPlan: 'PRO',
+        pendingPlanRequestedAt: new Date(),
+      },
+    });
+    globalThis.fetch = jsonFetch(async (url) => {
+      if (url.includes('/authorized_payments/search')) {
+        return { results: [] };
+      }
+      return {
+        id: 'mp-pending-upgrade',
+        status: 'authorized',
+      };
+    });
+
+    const response = await requestJson('POST', '/billing/refresh', {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      plan: string;
+      pendingPlan?: string | null;
+      features: Record<string, boolean>;
+    };
+    assert.equal(payload.plan, 'BASIC');
+    assert.equal(payload.pendingPlan, 'PRO');
+    assert.equal(payload.features.employees, false);
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'BASIC');
+    assert.equal(license.pendingPlan, 'PRO');
   });
 });
 
@@ -590,6 +1186,9 @@ async function cleanupFixtures() {
   });
   await prisma.rateLimitBucket.deleteMany({
     where: { scope: 'billing_refresh' },
+  });
+  await prisma.billingInvoice.deleteMany({
+    where: { company: { slug: { startsWith: `${runId}-` } } },
   });
   await prisma.billingCheckoutSession.deleteMany({
     where: { company: { slug: { startsWith: `${runId}-` } } },

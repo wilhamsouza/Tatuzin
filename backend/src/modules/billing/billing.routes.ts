@@ -2,9 +2,15 @@ import { Router } from 'express';
 
 import { requireAppContext } from '../../shared/http/auth-middleware';
 import { asyncHandler } from '../../shared/http/async-handler';
+import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { createRateLimit } from '../../shared/http/rate-limit';
-import { validateBody } from '../../shared/http/validate';
-import { billingSubscribeSchema } from './billing.schemas';
+import { validateBody, validateQuery } from '../../shared/http/validate';
+import {
+  billingCancelSchema,
+  billingChangePlanSchema,
+  billingInvoicesQuerySchema,
+  billingSubscribeSchema,
+} from './billing.schemas';
 import { BillingService } from './billing.service';
 import { BillingWebhookService } from './billing-webhook.service';
 
@@ -66,6 +72,77 @@ billingRouter.post(
   }),
 );
 
+billingRouter.get(
+  '/invoices',
+  requireAppContext,
+  validateQuery(billingInvoicesQuerySchema),
+  asyncHandler(async (request, response) => {
+    const result = await billingService.listInvoices(
+      request.appContext!,
+      request.query as unknown as Parameters<typeof billingService.listInvoices>[1],
+    );
+    response.json(buildPaginatedResponse(result));
+  }),
+);
+
+billingRouter.get(
+  '/invoices/:id',
+  requireAppContext,
+  asyncHandler(async (request, response) => {
+    const invoice = await billingService.getInvoice(
+      request.appContext!,
+      readParam(request.params.id),
+    );
+    response.json(invoice);
+  }),
+);
+
+billingRouter.get(
+  '/payment-method',
+  requireAppContext,
+  asyncHandler(async (request, response) => {
+    const paymentMethod = await billingService.getPaymentMethod(
+      request.appContext!,
+    );
+    response.json(paymentMethod);
+  }),
+);
+
+billingRouter.post(
+  '/cancel',
+  requireAppContext,
+  validateBody(billingCancelSchema),
+  asyncHandler(async (request, response) => {
+    const result = await billingService.cancelSubscription(
+      request.appContext!,
+      request.body,
+    );
+    response.json(result);
+  }),
+);
+
+billingRouter.post(
+  '/resume',
+  requireAppContext,
+  asyncHandler(async (request, response) => {
+    const result = await billingService.resumeSubscription(request.appContext!);
+    response.json(result);
+  }),
+);
+
+billingRouter.post(
+  '/change-plan',
+  requireAppContext,
+  validateBody(billingChangePlanSchema),
+  asyncHandler(async (request, response) => {
+    const result = await billingService.changePlan(
+      request.appContext!,
+      request.body,
+    );
+    response.json(result);
+  }),
+);
+
 mercadoPagoWebhookRouter.post(
   '/mercadopago',
   asyncHandler(async (request, response) => {
@@ -83,6 +160,10 @@ function normalizeRecord(value: unknown): Record<string, unknown> {
     return {};
   }
   return value as Record<string, unknown>;
+}
+
+function readParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value ?? '';
 }
 
 function normalizeHeaders(

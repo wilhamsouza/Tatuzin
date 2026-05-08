@@ -1,8 +1,11 @@
 import { env } from '../../config/env';
 import { AppError } from '../../shared/http/app-error';
+import { sanitizeForAdmin } from './billing-sanitizer';
 import type {
+  MercadoPagoAuthorizedPaymentDetails,
   MercadoPagoPreapprovalCreateInput,
   MercadoPagoPreapprovalResult,
+  MercadoPagoPreapprovalUpdateInput,
   MercadoPagoSubscriptionDetails,
 } from './billing.types';
 
@@ -62,24 +65,92 @@ export class MercadoPagoService {
   async getSubscription(
     providerReference: string,
   ): Promise<MercadoPagoSubscriptionDetails> {
+    const safeProviderReference = assertNonEmptyProviderId(
+      providerReference,
+      'preapprovalId',
+    );
     const payload = await this.requestJson(
-      `/preapproval/${encodeURIComponent(providerReference)}`,
+      `/preapproval/${encodeURIComponent(safeProviderReference)}`,
       { method: 'GET' },
     );
 
-    return this.toSubscriptionDetails(providerReference, payload);
+    return this.toSubscriptionDetails(safeProviderReference, payload);
+  }
+
+  async getPreapproval(
+    preapprovalId: string,
+  ): Promise<MercadoPagoSubscriptionDetails> {
+    return this.getSubscription(preapprovalId);
+  }
+
+  async updatePreapproval(
+    preapprovalId: string,
+    body: MercadoPagoPreapprovalUpdateInput,
+  ): Promise<MercadoPagoSubscriptionDetails> {
+    const safePreapprovalId = assertNonEmptyProviderId(
+      preapprovalId,
+      'preapprovalId',
+    );
+    const payload = await this.requestJson(
+      `/preapproval/${encodeURIComponent(safePreapprovalId)}`,
+      { method: 'PUT', body },
+    );
+
+    return this.toSubscriptionDetails(safePreapprovalId, payload);
+  }
+
+  async searchAuthorizedPaymentsByPreapproval(
+    preapprovalId: string,
+    options?: { limit?: number; offset?: number },
+  ): Promise<MercadoPagoAuthorizedPaymentDetails[]> {
+    const safePreapprovalId = assertNonEmptyProviderId(
+      preapprovalId,
+      'preapprovalId',
+    );
+    const limit = clampInteger(options?.limit, 50, 1, 100);
+    const offset = clampInteger(options?.offset, 0, 0, 10_000);
+    const params = new URLSearchParams({
+      preapproval_id: safePreapprovalId,
+      limit: String(limit),
+      offset: String(offset),
+    });
+    const payload = await this.requestJson(
+      `/authorized_payments/search?${params.toString()}`,
+      { method: 'GET' },
+    );
+    const results = readArray(payload, 'results') ?? readArray(payload, 'items') ?? [];
+
+    return results
+      .filter(
+        (item): item is Record<string, unknown> =>
+          item != null && typeof item === 'object' && !Array.isArray(item),
+      )
+      .map((item) => this.toAuthorizedPaymentDetails(item));
+  }
+
+  async getAuthorizedPayment(
+    paymentId: string,
+  ): Promise<MercadoPagoAuthorizedPaymentDetails> {
+    const safePaymentId = assertNonEmptyProviderId(paymentId, 'paymentId');
+    const payload = await this.requestJson(
+      `/authorized_payments/${encodeURIComponent(safePaymentId)}`,
+      { method: 'GET' },
+    );
+
+    return this.toAuthorizedPaymentDetails(payload);
   }
 
   async getPayment(paymentId: string): Promise<MercadoPagoSubscriptionDetails> {
+    const safePaymentId = assertNonEmptyProviderId(paymentId, 'paymentId');
     const payload = await this.requestJson(
-      `/v1/payments/${encodeURIComponent(paymentId)}`,
+      `/v1/payments/${encodeURIComponent(safePaymentId)}`,
       { method: 'GET' },
     );
 
     const preapprovalId =
       readString(payload, 'preapproval_id') ??
       readNestedString(payload, 'metadata', 'preapproval_id') ??
-      paymentId;
+      safePaymentId;
 
     return {
       providerReference: preapprovalId,
@@ -110,12 +181,70 @@ export class MercadoPagoService {
         readString(payload, 'end_date') ?? readString(payload, 'next_payment_date'),
       ),
       nextPaymentDate: parseDate(readString(payload, 'next_payment_date')),
+      amountCents: readAmountCents(payload),
+      paymentMethodId:
+        readString(payload, 'payment_method_id') ??
+        readNestedString(payload, 'payment_method', 'id'),
+      paymentMethodType:
+        readNestedString(payload, 'payment_method', 'type') ??
+        readString(payload, 'payment_method_type'),
+      lastFour:
+        readNestedString(payload, 'card', 'last_four_digits') ??
+        readNestedString(payload, 'payment_method', 'last_four_digits'),
+      rawPayload: payload,
+    };
+  }
+
+  private toAuthorizedPaymentDetails(
+    payload: Record<string, unknown>,
+  ): MercadoPagoAuthorizedPaymentDetails {
+    const providerInvoiceId =
+      readString(payload, 'providerInvoiceId') ??
+      readString(payload, 'provider_invoice_id') ??
+      readString(payload, 'id');
+    const providerSubscriptionId =
+      readString(payload, 'preapproval_id') ??
+      readString(payload, 'subscription_id') ??
+      readNestedString(payload, 'preapproval', 'id');
+    const status = readString(payload, 'status');
+    const paidAt =
+      parseDate(readString(payload, 'payment_date')) ??
+      parseDate(readString(payload, 'date_approved')) ??
+      (isPaidAuthorizedPaymentStatus(status)
+        ? parseDate(readString(payload, 'last_modified'))
+        : null);
+    const failedAt =
+      isFailedAuthorizedPaymentStatus(status)
+        ? parseDate(readString(payload, 'last_modified')) ??
+          parseDate(readString(payload, 'date_created'))
+        : null;
+
+    return {
+      providerInvoiceId,
+      providerSubscriptionId,
+      status,
+      amountCents: readAmountCents(payload) ?? 0,
+      currency: readString(payload, 'currency_id') ?? 'BRL',
+      periodStart:
+        parseDate(readString(payload, 'period_start')) ??
+        parseDate(readString(payload, 'date_created')),
+      periodEnd: parseDate(readString(payload, 'period_end')),
+      dueAt:
+        parseDate(readString(payload, 'due_date')) ??
+        parseDate(readString(payload, 'scheduled_date')),
+      paidAt,
+      failedAt,
+      invoiceUrl:
+        readString(payload, 'invoice_url') ??
+        readString(payload, 'payment_url') ??
+        readString(payload, 'external_resource_url'),
+      rawPayload: payload,
     };
   }
 
   private async requestJson(
     path: string,
-    input: { method: 'GET' | 'POST'; body?: Record<string, unknown> },
+    input: { method: 'GET' | 'POST' | 'PUT'; body?: Record<string, unknown> },
   ) {
     const accessToken = this.accessToken ?? env.MERCADO_PAGO_ACCESS_TOKEN;
     if (accessToken == null || accessToken.trim().length === 0) {
@@ -137,7 +266,16 @@ export class MercadoPagoService {
       ...(input.body == null ? {} : { body: JSON.stringify(input.body) }),
     });
     const text = await response.text();
-    const payload = text.trim().length === 0 ? {} : JSON.parse(text);
+    let payload: unknown;
+    try {
+      payload = text.trim().length === 0 ? {} : JSON.parse(text);
+    } catch {
+      throw new AppError(
+        'Mercado Pago respondeu em formato inesperado.',
+        502,
+        'MERCADO_PAGO_INVALID_RESPONSE',
+      );
+    }
 
     if (!response.ok) {
       throw new AppError(
@@ -163,6 +301,11 @@ export class MercadoPagoService {
   }
 }
 
+function readArray(source: Record<string, unknown>, key: string) {
+  const value = source[key];
+  return Array.isArray(value) ? value : null;
+}
+
 function readString(source: Record<string, unknown>, key: string) {
   const value = source[key];
   if (typeof value !== 'string') {
@@ -170,6 +313,42 @@ function readString(source: Record<string, unknown>, key: string) {
   }
   const trimmed = value.trim();
   return trimmed.length === 0 ? null : trimmed;
+}
+
+function readNumber(source: Record<string, unknown>, key: string) {
+  const value = source[key];
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function readAmountCents(source: Record<string, unknown>) {
+  const cents = readNumber(source, 'amount_cents');
+  if (cents != null) {
+    return Math.round(cents);
+  }
+  const transactionAmount =
+    readNumber(source, 'transaction_amount') ??
+    readNumber(source, 'amount') ??
+    readNestedNumber(source, 'auto_recurring', 'transaction_amount');
+  return transactionAmount == null ? null : Math.round(transactionAmount * 100);
+}
+
+function readNestedNumber(
+  source: Record<string, unknown>,
+  parentKey: string,
+  childKey: string,
+) {
+  const parent = source[parentKey];
+  if (parent == null || typeof parent !== 'object' || Array.isArray(parent)) {
+    return null;
+  }
+  return readNumber(parent as Record<string, unknown>, childKey);
 }
 
 function readNestedString(
@@ -193,11 +372,45 @@ function parseDate(value: string | null) {
 }
 
 function sanitizeProviderPayload(payload: unknown) {
-  if (payload == null || typeof payload !== 'object') {
-    return payload;
+  return sanitizeForAdmin(payload);
+}
+
+function isPaidAuthorizedPaymentStatus(status: string | null) {
+  const normalized = status?.trim().toLowerCase();
+  return (
+    normalized === 'approved' ||
+    normalized === 'accredited' ||
+    normalized === 'active' ||
+    normalized === 'authorized'
+  );
+}
+
+function isFailedAuthorizedPaymentStatus(status: string | null) {
+  const normalized = status?.trim().toLowerCase();
+  return normalized === 'rejected' || normalized === 'failed';
+}
+
+function assertNonEmptyProviderId(value: string, fieldName: string) {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new AppError(
+      'Identificador Mercado Pago invalido.',
+      400,
+      'MERCADO_PAGO_PROVIDER_ID_INVALID',
+      { field: fieldName },
+    );
   }
-  const record = { ...(payload as Record<string, unknown>) };
-  delete record.access_token;
-  delete record.token;
-  return record;
+  return trimmed;
+}
+
+function clampInteger(
+  value: number | undefined,
+  defaultValue: number,
+  min: number,
+  max: number,
+) {
+  if (value == null || !Number.isFinite(value)) {
+    return defaultValue;
+  }
+  return Math.min(max, Math.max(min, Math.trunc(value)));
 }

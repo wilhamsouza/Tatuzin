@@ -32,6 +32,19 @@ final billingStatusProvider = FutureProvider<BillingStatus>((ref) async {
   return ref.watch(billingRemoteDataSourceProvider).fetchStatus();
 });
 
+final billingInvoicesProvider = FutureProvider.autoDispose<BillingInvoicesPage>(
+  (ref) async {
+    ref.watch(appDataRefreshProvider);
+    return ref.watch(billingRemoteDataSourceProvider).fetchInvoices();
+  },
+);
+
+final billingPaymentMethodProvider =
+    FutureProvider.autoDispose<BillingPaymentMethod>((ref) async {
+      ref.watch(appDataRefreshProvider);
+      return ref.watch(billingRemoteDataSourceProvider).fetchPaymentMethod();
+    });
+
 final billingControllerProvider =
     AsyncNotifierProvider<BillingController, void>(BillingController.new);
 
@@ -53,14 +66,63 @@ class BillingController extends AsyncNotifier<void> {
     }
   }
 
+  Future<BillingActionResult> cancelSubscription({
+    String effective = 'period_end',
+  }) async {
+    state = const AsyncLoading();
+    try {
+      final result = await ref
+          .read(billingRemoteDataSourceProvider)
+          .cancelSubscription(effective: effective);
+      state = const AsyncData(null);
+      return result;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+
+  Future<BillingActionResult> resumeSubscription() async {
+    state = const AsyncLoading();
+    try {
+      final result = await ref
+          .read(billingRemoteDataSourceProvider)
+          .resumeSubscription();
+      state = const AsyncData(null);
+      return result;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+
+  Future<BillingActionResult> changePlan(PlanKey plan) async {
+    state = const AsyncLoading();
+    try {
+      final result = await ref
+          .read(billingRemoteDataSourceProvider)
+          .changePlan(plan);
+      state = const AsyncData(null);
+      return result;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+
   Future<BillingStatus> refreshStatus() async {
     state = const AsyncLoading();
     try {
-      final status = await ref.read(billingRemoteDataSourceProvider).refresh();
+      final dataSource = ref.read(billingRemoteDataSourceProvider);
+      await dataSource.refresh();
+      final status = await dataSource.fetchStatus();
       await ref
           .read(authControllerProvider.notifier)
           .refreshAuthenticatedSession();
+      ref.read(appDataRefreshProvider.notifier).state++;
       ref.invalidate(billingStatusProvider);
+      ref.invalidate(billingInvoicesProvider);
+      ref.invalidate(billingPaymentMethodProvider);
       state = const AsyncData(null);
       return status;
     } catch (error, stackTrace) {

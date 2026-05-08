@@ -67,11 +67,37 @@ export class BillingWebhookService {
     }
 
     try {
-      const details = isPaymentEvent(eventType)
-        ? await this.mercadoPagoService.getPayment(dataId)
-        : await this.mercadoPagoService.getSubscription(dataId);
+      const authorizedPayment = isAuthorizedPaymentEvent(eventType)
+        ? await this.mercadoPagoService.getAuthorizedPayment(dataId)
+        : null;
+      const details =
+        authorizedPayment?.providerSubscriptionId == null
+          ? isPaymentEvent(eventType)
+            ? await this.mercadoPagoService.getPayment(dataId)
+            : await this.mercadoPagoService.getSubscription(dataId)
+          : await this.mercadoPagoService.getSubscription(
+              authorizedPayment.providerSubscriptionId,
+            );
 
       const result = await this.billingService.applyMercadoPagoDetails(details);
+      let invoiceWarning: string | null = null;
+      if (result.companyId != null) {
+        try {
+          if (authorizedPayment != null) {
+            await this.billingService.upsertBillingInvoiceFromAuthorizedPayment(
+              result.companyId,
+              authorizedPayment,
+            );
+          } else {
+            await this.billingService.reconcileInvoicesForSubscription(
+              result.companyId,
+              details.providerReference,
+            );
+          }
+        } catch {
+          invoiceWarning = 'invoice_reconciliation_failed';
+        }
+      }
       const nextStatus =
         result.action === 'ignored_unknown'
           ? 'IGNORED_UNKNOWN'
@@ -79,7 +105,9 @@ export class BillingWebhookService {
             ? 'IGNORED'
             : 'PROCESSED';
       const errorMessage =
-        nextStatus === 'PROCESSED'
+        invoiceWarning != null
+          ? invoiceWarning
+          : nextStatus === 'PROCESSED'
           ? null
           : `${result.action}:${result.providerStatus}`;
 
@@ -241,7 +269,20 @@ function buildStoredPayload(context: MercadoPagoWebhookContext) {
 
 function isPaymentEvent(eventType: string) {
   const normalized = eventType.trim().toLowerCase();
-  return normalized === 'payment' || normalized.startsWith('payment.');
+  return (
+    normalized === 'payment' ||
+    normalized.startsWith('payment.') ||
+    isAuthorizedPaymentEvent(eventType)
+  );
+}
+
+function isAuthorizedPaymentEvent(eventType: string) {
+  const normalized = eventType.trim().toLowerCase();
+  return (
+    normalized === 'authorized_payment' ||
+    normalized === 'authorized_payments' ||
+    normalized.includes('authorized_payment')
+  );
 }
 
 function parseMercadoPagoSignature(signature: string | undefined) {

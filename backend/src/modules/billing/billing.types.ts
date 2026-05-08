@@ -21,6 +21,12 @@ export type BillingStatusDto = {
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
   expiresAt: string | null;
+  cancelAtPeriodEnd: boolean;
+  cancelRequestedAt: string | null;
+  canceledAt: string | null;
+  pendingPlan: PlanKey | null;
+  pendingPlanRequestedAt: string | null;
+  billingSubscriptionStatus: string | null;
   provider: BillingProvider | null;
   hasProviderSubscription: boolean;
   maskedProviderSubscriptionId?: string | null;
@@ -28,6 +34,7 @@ export type BillingStatusDto = {
   nextPaymentDate: string | null;
   limits: PlanLimits;
   features: Record<FeatureKey, boolean>;
+  warnings?: string[];
 };
 
 export type AdminBillingStatusDto = BillingStatusDto & {
@@ -43,6 +50,49 @@ export type SubscribeResultDto = {
   status?: BillingStatusDto;
 };
 
+export type BillingInvoiceDto = {
+  id: string;
+  provider: BillingProvider;
+  providerInvoiceId: string | null;
+  maskedProviderSubscriptionId: string | null;
+  plan: PlanKey | null;
+  status: string;
+  amountCents: number;
+  currency: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  dueAt: string | null;
+  paidAt: string | null;
+  failedAt: string | null;
+  invoiceUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BillingPaymentMethodDto = {
+  provider: BillingProvider | null;
+  hasPaymentMethod: boolean;
+  unavailable?: boolean;
+  message?: string;
+  paymentMethodId?: string | null;
+  paymentMethodType?: string | null;
+  lastFour?: string | null;
+  status?: string | null;
+  nextPaymentDate?: string | null;
+  maskedProviderSubscriptionId?: string | null;
+};
+
+export type BillingActionResultDto = {
+  status: BillingStatusDto;
+  providerCancelled?: boolean;
+  effective?: 'period_end' | 'now';
+  requiresNewCheckout?: boolean;
+  message: string;
+  checkoutUrl?: string | null;
+  checkoutSessionId?: string | null;
+  pendingPlan?: PlanKey | null;
+};
+
 export type MercadoPagoPreapprovalCreateInput = {
   plan: PaidPlanKey;
   priceCents: number;
@@ -50,6 +100,17 @@ export type MercadoPagoPreapprovalCreateInput = {
   payerEmail: string;
   backUrl: string;
   notificationUrl: string | null;
+};
+
+export type MercadoPagoPreapprovalUpdateInput = {
+  reason?: string;
+  status?: string;
+  auto_recurring?: {
+    frequency: 1;
+    frequency_type: 'months';
+    transaction_amount: number;
+    currency_id: 'BRL';
+  };
 };
 
 export type MercadoPagoPreapprovalResult = {
@@ -66,6 +127,26 @@ export type MercadoPagoSubscriptionDetails = {
   currentPeriodStart: Date | null;
   currentPeriodEnd: Date | null;
   nextPaymentDate: Date | null;
+  amountCents?: number | null;
+  paymentMethodId?: string | null;
+  paymentMethodType?: string | null;
+  lastFour?: string | null;
+  rawPayload?: Record<string, unknown> | null;
+};
+
+export type MercadoPagoAuthorizedPaymentDetails = {
+  providerInvoiceId: string | null;
+  providerSubscriptionId: string | null;
+  status: string | null;
+  amountCents: number;
+  currency: string | null;
+  periodStart: Date | null;
+  periodEnd: Date | null;
+  dueAt: Date | null;
+  paidAt: Date | null;
+  failedAt: Date | null;
+  invoiceUrl: string | null;
+  rawPayload: Record<string, unknown>;
 };
 
 export type MercadoPagoWebhookContext = {
