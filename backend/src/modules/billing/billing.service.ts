@@ -1,4 +1,4 @@
-import { LicenseStatus } from '@prisma/client';
+import { LicenseStatus, Prisma } from '@prisma/client';
 
 import { env } from '../../config/env';
 import { prisma } from '../../database/prisma';
@@ -13,6 +13,7 @@ import type { BillingSubscribeInput } from './billing.schemas';
 import type {
   AdminBillingStatusDto,
   BillingStatusDto,
+  MercadoPagoAuthorizedPaymentDetails,
   MercadoPagoSubscriptionDetails,
   PaidPlanKey,
   PublicBillingPlan,
@@ -30,7 +31,8 @@ type ApplyProviderResult = {
     | 'downgraded'
     | 'unchanged'
     | 'ignored_unknown'
-    | 'ignored_missing_session';
+    | 'ignored_missing_session'
+    | 'invoice_reconciled';
   providerStatus: string;
   companyId: string | null;
   plan: PlanKey | null;
@@ -338,6 +340,20 @@ export class BillingService {
       return { action: 'downgraded', providerStatus, companyId, plan: 'FREE' };
     }
 
+    if (isPausedStatus(providerStatus)) {
+      await this.applyPausedSubscriptionStatus(companyId, details);
+      if (session != null) {
+        await prisma.billingCheckoutSession.update({
+          where: { id: session.id },
+          data: {
+            status: 'PENDING',
+            providerReference: details.providerReference,
+          },
+        });
+      }
+      return { action: 'unchanged', providerStatus, companyId, plan };
+    }
+
     if (isNeutralStatus(providerStatus)) {
       if (session != null) {
         await prisma.billingCheckoutSession.update({
@@ -352,6 +368,56 @@ export class BillingService {
     }
 
     return { action: 'ignored_unknown', providerStatus, companyId, plan };
+  }
+
+  async applyMercadoPagoAuthorizedPayment(
+    details: MercadoPagoAuthorizedPaymentDetails,
+  ): Promise<ApplyProviderResult> {
+    const providerStatus = normalizeProviderStatus(details.status);
+    if (details.providerSubscriptionId == null) {
+      return {
+        action: 'ignored_missing_session',
+        providerStatus,
+        companyId: null,
+        plan: null,
+      };
+    }
+
+    const target = await this.findCompanyForProviderSubscription(
+      details.providerSubscriptionId,
+    );
+    if (target == null) {
+      return {
+        action: 'ignored_missing_session',
+        providerStatus,
+        companyId: null,
+        plan: null,
+      };
+    }
+
+    await this.reconcileAuthorizedPaymentInvoice(details, target);
+
+    const subscriptionDetails = await this.mercadoPagoService.getSubscription(
+      details.providerSubscriptionId,
+    );
+    const subscriptionResult = await this.applyMercadoPagoDetails(
+      subscriptionDetails,
+      { fallbackCompanyId: target.companyId },
+    );
+
+    if (
+      subscriptionResult.action === 'ignored_missing_session' ||
+      subscriptionResult.action === 'ignored_unknown'
+    ) {
+      return {
+        action: 'invoice_reconciled',
+        providerStatus,
+        companyId: target.companyId,
+        plan: target.plan,
+      };
+    }
+
+    return subscriptionResult;
   }
 
   private async getStatusForCompany(input: {
@@ -429,6 +495,127 @@ export class BillingService {
     return session?.providerReference ?? null;
   }
 
+  private async findCompanyForProviderSubscription(providerSubscriptionId: string) {
+    const session = await prisma.billingCheckoutSession.findFirst({
+      where: {
+        provider: BILLING_PROVIDER,
+        providerReference: providerSubscriptionId,
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { companyId: true, plan: true },
+    });
+    if (session != null) {
+      return {
+        companyId: session.companyId,
+        plan: normalizePlan(session.plan),
+      };
+    }
+
+    const license = await prisma.license.findFirst({
+      where: {
+        billingProvider: BILLING_PROVIDER,
+        providerSubscriptionId,
+      },
+      select: { companyId: true, plan: true },
+    });
+    if (license == null) {
+      return null;
+    }
+    return {
+      companyId: license.companyId,
+      plan: normalizePlan(license.plan),
+    };
+  }
+
+  private async reconcileAuthorizedPaymentInvoice(
+    details: MercadoPagoAuthorizedPaymentDetails,
+    target: { companyId: string; plan: PlanKey },
+  ) {
+    const data = {
+      provider: BILLING_PROVIDER,
+      providerInvoiceId: details.authorizedPaymentId,
+      providerSubscriptionId: details.providerSubscriptionId,
+      plan: target.plan === 'FREE' ? null : target.plan,
+      status: normalizeProviderStatus(details.status),
+      amountCents: details.amountCents,
+      currency: details.currency,
+      periodStart: details.periodStart,
+      periodEnd: details.periodEnd,
+      dueAt: details.dueAt,
+      paidAt: details.paidAt,
+      failedAt: details.failedAt,
+      invoiceUrl: sanitizeInvoiceUrl(details.invoiceUrl),
+      payload: toJsonObject(details.payload),
+    };
+
+    const existing = await prisma.billingInvoice.findFirst({
+      where: {
+        companyId: target.companyId,
+        provider: BILLING_PROVIDER,
+        providerInvoiceId: details.authorizedPaymentId,
+      },
+      select: { id: true },
+    });
+
+    if (existing == null) {
+      await prisma.billingInvoice.create({
+        data: {
+          companyId: target.companyId,
+          ...data,
+        },
+      });
+      return;
+    }
+
+    await prisma.billingInvoice.update({
+      where: { id: existing.id },
+      data,
+    });
+  }
+
+  private async applyPausedSubscriptionStatus(
+    companyId: string,
+    details: MercadoPagoSubscriptionDetails,
+  ) {
+    const license = await prisma.license.findUnique({
+      where: { companyId },
+      select: { currentPeriodEnd: true },
+    });
+    const currentPeriodEnd = details.currentPeriodEnd ?? license?.currentPeriodEnd ?? null;
+    const hasFuturePeriod =
+      currentPeriodEnd != null && currentPeriodEnd.getTime() > Date.now();
+
+    await prisma.license.upsert({
+      where: { companyId },
+      create: {
+        companyId,
+        plan: 'FREE',
+        status: LicenseStatus.ACTIVE,
+        startsAt: new Date(),
+        expiresAt: null,
+        syncEnabled: true,
+        billingProvider: BILLING_PROVIDER,
+        providerSubscriptionId: details.providerReference,
+        currentPeriodStart: details.currentPeriodStart,
+        currentPeriodEnd: hasFuturePeriod ? currentPeriodEnd : null,
+        nextPaymentDate: details.nextPaymentDate,
+        billingSubscriptionStatus: 'paused',
+      },
+      update: {
+        billingProvider: BILLING_PROVIDER,
+        providerSubscriptionId: details.providerReference,
+        ...(details.currentPeriodStart == null
+          ? {}
+          : { currentPeriodStart: details.currentPeriodStart }),
+        ...(hasFuturePeriod ? { currentPeriodEnd } : {}),
+        ...(details.nextPaymentDate == null
+          ? {}
+          : { nextPaymentDate: details.nextPaymentDate }),
+        billingSubscriptionStatus: 'paused',
+      },
+    });
+  }
+
   private async findCheckoutSession(details: MercadoPagoSubscriptionDetails) {
     if (details.externalReference != null) {
       const session = await prisma.billingCheckoutSession.findUnique({
@@ -476,6 +663,10 @@ function isNeutralStatus(status: string) {
   );
 }
 
+function isPausedStatus(status: string) {
+  return status === 'paused';
+}
+
 function isDowngradeStatus(status: string) {
   return status === 'cancelled' || status === 'canceled' || status === 'expired';
 }
@@ -501,4 +692,22 @@ function maskProviderSubscriptionId(value: string | null) {
     return '****';
   }
   return `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}`;
+}
+
+function sanitizeInvoiceUrl(value: string | null) {
+  if (value == null) {
+    return null;
+  }
+  try {
+    const url = new URL(value);
+    url.search = '';
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function toJsonObject(value: Record<string, unknown>) {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonObject;
 }

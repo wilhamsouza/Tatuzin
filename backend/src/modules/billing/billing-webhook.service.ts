@@ -67,11 +67,16 @@ export class BillingWebhookService {
     }
 
     try {
-      const details = isPaymentEvent(eventType)
-        ? await this.mercadoPagoService.getPayment(dataId)
-        : await this.mercadoPagoService.getSubscription(dataId);
+      const result = isSubscriptionAuthorizedPaymentEvent(eventType)
+        ? await this.billingService.applyMercadoPagoAuthorizedPayment(
+            await this.mercadoPagoService.getAuthorizedPayment(dataId),
+          )
+        : await this.billingService.applyMercadoPagoDetails(
+            isPaymentEvent(eventType)
+              ? await this.mercadoPagoService.getPayment(dataId)
+              : await this.mercadoPagoService.getSubscription(dataId),
+          );
 
-      const result = await this.billingService.applyMercadoPagoDetails(details);
       const nextStatus =
         result.action === 'ignored_unknown'
           ? 'IGNORED_UNKNOWN'
@@ -140,6 +145,8 @@ export class BillingWebhookService {
       );
     }
 
+    // Mercado Pago signs id:{data.id};request-id:{x-request-id};ts:{ts};.
+    // Keep data.id as received; only lowercase it if official docs confirm that rule.
     const manifest = `id:${dataId};request-id:${requestId.trim()};ts:${parsedSignature.ts};`;
     const expected = createHmac('sha256', secret.trim())
       .update(manifest)
@@ -242,6 +249,14 @@ function buildStoredPayload(context: MercadoPagoWebhookContext) {
 function isPaymentEvent(eventType: string) {
   const normalized = eventType.trim().toLowerCase();
   return normalized === 'payment' || normalized.startsWith('payment.');
+}
+
+function isSubscriptionAuthorizedPaymentEvent(eventType: string) {
+  const normalized = eventType.trim().toLowerCase();
+  return (
+    normalized === 'subscription_authorized_payment' ||
+    normalized.startsWith('subscription_authorized_payment.')
+  );
 }
 
 function parseMercadoPagoSignature(signature: string | undefined) {

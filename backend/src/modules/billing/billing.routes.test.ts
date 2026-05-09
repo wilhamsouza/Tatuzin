@@ -19,6 +19,7 @@ let originalFetch: typeof globalThis.fetch;
 const originalEnv = {
   accessToken: env.MERCADO_PAGO_ACCESS_TOKEN,
   webhookSecret: env.MERCADO_PAGO_WEBHOOK_SECRET,
+  apiPublicUrl: env.API_PUBLIC_URL,
   isProduction: env.isProduction,
 };
 
@@ -38,6 +39,7 @@ describe('billing routes', () => {
     globalThis.fetch = originalFetch;
     env.MERCADO_PAGO_ACCESS_TOKEN = 'test-mercado-token';
     env.MERCADO_PAGO_WEBHOOK_SECRET = webhookSecret;
+    env.API_PUBLIC_URL = originalEnv.apiPublicUrl;
     env.isProduction = false;
   });
 
@@ -45,6 +47,7 @@ describe('billing routes', () => {
     await cleanupFixtures();
     env.MERCADO_PAGO_ACCESS_TOKEN = originalEnv.accessToken;
     env.MERCADO_PAGO_WEBHOOK_SECRET = originalEnv.webhookSecret;
+    env.API_PUBLIC_URL = originalEnv.apiPublicUrl;
     env.isProduction = originalEnv.isProduction;
     globalThis.fetch = originalFetch;
     await new Promise<void>((resolve, reject) => {
@@ -94,6 +97,7 @@ describe('billing routes', () => {
 
   it('creates BASIC checkout session without changing license.plan', async () => {
     const fixture = await createFixture({ plan: 'free' });
+    env.API_PUBLIC_URL = 'https://api.tatuzin.com.br';
     let capturedBody = {} as Record<string, any>;
     globalThis.fetch = jsonFetch(async (_url, init) => {
       capturedBody = JSON.parse(init.body ?? '{}') as Record<string, unknown>;
@@ -136,7 +140,12 @@ describe('billing routes', () => {
       (subscribeBody.auto_recurring as { currency_id?: string }).currency_id,
       'BRL',
     );
+    assert.equal(subscribeBody.status, 'pending');
     assert.equal(subscribeBody.external_reference, payload.checkoutSessionId);
+    assert.equal(
+      subscribeBody.notification_url,
+      'https://api.tatuzin.com.br/api/webhooks/mercadopago',
+    );
 
     const session = await prisma.billingCheckoutSession.findUniqueOrThrow({
       where: { id: payload.checkoutSessionId },
@@ -247,7 +256,6 @@ describe('billing routes', () => {
       ['pending', 'mp-pending'],
       ['in_process', 'mp-in-process'],
       ['rejected', 'mp-rejected'],
-      ['paused', 'mp-unknown'],
     ]) {
       const fixture = await createFixture({ plan: 'basic' });
       const checkout = await createCheckoutSession(
@@ -269,6 +277,242 @@ describe('billing routes', () => {
       });
       assert.equal(license.plan, 'basic', status);
     }
+  });
+
+  it('reconciles subscription authorized payment as invoice without activating plan alone', async () => {
+    const fixture = await createFixture({ plan: 'free' });
+    const checkout = await createCheckoutSession(
+      fixture,
+      'BASIC',
+      'mp-auth-payment-preapproval',
+    );
+    let authorizedPaymentCalled = false;
+    let subscriptionCalledWithPreapproval = false;
+    let subscriptionCalledWithAuthorizedPaymentId = false;
+    globalThis.fetch = jsonFetch(async (url) => {
+      if (url.includes('/authorized_payments/auth-pay-1')) {
+        authorizedPaymentCalled = true;
+        return {
+          id: 'auth-pay-1',
+          status: 'processed',
+          preapproval_id: 'mp-auth-payment-preapproval',
+          transaction_amount: 35,
+          currency_id: 'BRL',
+          debit_date: '2026-06-07T00:00:00.000Z',
+          date_created: '2026-05-07T00:00:00.000Z',
+        };
+      }
+      if (url.includes('/preapproval/auth-pay-1')) {
+        subscriptionCalledWithAuthorizedPaymentId = true;
+      }
+      if (url.includes('/preapproval/mp-auth-payment-preapproval')) {
+        subscriptionCalledWithPreapproval = true;
+        return {
+          id: 'mp-auth-payment-preapproval',
+          status: 'pending',
+          external_reference: checkout.id,
+        };
+      }
+      throw new Error(`unexpected Mercado Pago URL: ${url}`);
+    });
+
+    const webhook = await sendWebhook(
+      'auth-pay-1',
+      'subscription_authorized_payment',
+    );
+
+    assert.equal(webhook.status, 200);
+    assert.equal(authorizedPaymentCalled, true);
+    assert.equal(subscriptionCalledWithPreapproval, true);
+    assert.equal(subscriptionCalledWithAuthorizedPaymentId, false);
+    const invoice = await prisma.billingInvoice.findFirstOrThrow({
+      where: {
+        companyId: fixture.companyId,
+        provider: 'mercadopago',
+        providerInvoiceId: 'auth-pay-1',
+      },
+    });
+    assert.equal(invoice.providerSubscriptionId, 'mp-auth-payment-preapproval');
+    assert.equal(invoice.amountCents, 3500);
+    assert.equal(invoice.currency, 'BRL');
+    assert.equal(invoice.status, 'processed');
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'free');
+  });
+
+  it('locates authorized payment company by license provider subscription id', async () => {
+    const fixture = await createFixture({
+      plan: 'basic',
+      providerSubscriptionId: 'mp-license-preapproval',
+    });
+    let subscriptionCalled = false;
+    globalThis.fetch = jsonFetch(async (url) => {
+      if (url.includes('/authorized_payments/auth-pay-license')) {
+        return {
+          id: 'auth-pay-license',
+          status: 'processed',
+          preapproval_id: 'mp-license-preapproval',
+          transaction_amount: 35,
+          currency_id: 'BRL',
+        };
+      }
+      if (url.includes('/preapproval/mp-license-preapproval')) {
+        subscriptionCalled = true;
+        return {
+          id: 'mp-license-preapproval',
+          status: 'pending',
+        };
+      }
+      throw new Error(`unexpected Mercado Pago URL: ${url}`);
+    });
+
+    const webhook = await sendWebhook(
+      'auth-pay-license',
+      'subscription_authorized_payment',
+    );
+
+    assert.equal(webhook.status, 200);
+    assert.equal(subscriptionCalled, true);
+    const invoice = await prisma.billingInvoice.findFirstOrThrow({
+      where: {
+        companyId: fixture.companyId,
+        provider: 'mercadopago',
+        providerInvoiceId: 'auth-pay-license',
+      },
+    });
+    assert.equal(invoice.providerSubscriptionId, 'mp-license-preapproval');
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'basic');
+  });
+
+  it('keeps plan unchanged and retries when related preapproval lookup fails', async () => {
+    const fixture = await createFixture({ plan: 'free' });
+    await createCheckoutSession(fixture, 'BASIC', 'mp-related-fails');
+    globalThis.fetch = jsonFetch(async (url) => {
+      if (url.includes('/authorized_payments/auth-pay-related-fails')) {
+        return {
+          id: 'auth-pay-related-fails',
+          status: 'processed',
+          preapproval_id: 'mp-related-fails',
+          transaction_amount: 35,
+          currency_id: 'BRL',
+        };
+      }
+      if (url.includes('/preapproval/mp-related-fails')) {
+        throw new Error('related preapproval unavailable');
+      }
+      throw new Error(`unexpected Mercado Pago URL: ${url}`);
+    });
+
+    const webhook = await sendWebhook(
+      'auth-pay-related-fails',
+      'subscription_authorized_payment',
+    );
+
+    assert.equal(webhook.status, 200);
+    const event = await prisma.billingProviderEvent.findFirstOrThrow({
+      where: { provider: 'mercadopago' },
+      orderBy: { createdAt: 'desc' },
+    });
+    assert.equal(event.status, 'FAILED_RETRYABLE');
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'free');
+  });
+
+  it('does not create orphan invoice when authorized payment has no preapproval id', async () => {
+    const fixture = await createFixture({ plan: 'free' });
+    let subscriptionCalled = false;
+    globalThis.fetch = jsonFetch(async (url) => {
+      if (url.includes('/authorized_payments/auth-pay-without-preapproval')) {
+        return {
+          id: 'auth-pay-without-preapproval',
+          status: 'processed',
+          transaction_amount: 35,
+          currency_id: 'BRL',
+        };
+      }
+      if (url.includes('/preapproval/')) {
+        subscriptionCalled = true;
+      }
+      throw new Error(`unexpected Mercado Pago URL: ${url}`);
+    });
+
+    const webhook = await sendWebhook(
+      'auth-pay-without-preapproval',
+      'subscription_authorized_payment',
+    );
+
+    assert.equal(webhook.status, 200);
+    assert.equal(subscriptionCalled, false);
+    const invoiceCount = await prisma.billingInvoice.count({
+      where: {
+        companyId: fixture.companyId,
+        providerInvoiceId: 'auth-pay-without-preapproval',
+      },
+    });
+    assert.equal(invoiceCount, 0);
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'free');
+  });
+
+  it('marks authorized payment webhook as retryable when lookup fails', async () => {
+    const fixture = await createFixture({ plan: 'free' });
+    globalThis.fetch = jsonFetch(async () => {
+      throw new Error('authorized payment unavailable');
+    });
+
+    const webhook = await sendWebhook(
+      'auth-pay-fail',
+      'subscription_authorized_payment',
+    );
+
+    assert.equal(webhook.status, 200);
+    const event = await prisma.billingProviderEvent.findFirstOrThrow({
+      where: { provider: 'mercadopago' },
+      orderBy: { createdAt: 'desc' },
+    });
+    assert.equal(event.status, 'FAILED_RETRYABLE');
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'free');
+  });
+
+  it('treats paused preapproval as neutral and preserves active period', async () => {
+    const futurePeriodEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const fixture = await createFixture({
+      plan: 'pro',
+      providerSubscriptionId: 'mp-paused',
+      currentPeriodEnd: futurePeriodEnd,
+    });
+    const checkout = await createCheckoutSession(fixture, 'PRO', 'mp-paused');
+    globalThis.fetch = jsonFetch(async () => ({
+      id: 'mp-paused',
+      status: 'paused',
+      external_reference: checkout.id,
+      next_payment_date: futurePeriodEnd.toISOString(),
+    }));
+
+    const webhook = await sendWebhook('mp-paused', 'subscription_preapproval');
+
+    assert.equal(webhook.status, 200);
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.plan, 'pro');
+    assert.equal(license.billingSubscriptionStatus, 'paused');
+    assert.equal(
+      license.currentPeriodEnd?.toISOString(),
+      futurePeriodEnd.toISOString(),
+    );
   });
 
   it('downgrades to FREE on cancelled or expired without deleting data', async () => {
@@ -381,6 +625,7 @@ async function createFixture(options?: {
   role?: 'OWNER' | 'ADMIN' | 'OPERATOR';
   plan?: string;
   providerSubscriptionId?: string;
+  currentPeriodEnd?: Date;
 }) {
   const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const company = await prisma.company.create({
@@ -415,6 +660,7 @@ async function createFixture(options?: {
       billingProvider:
         options?.providerSubscriptionId == null ? null : 'mercadopago',
       providerSubscriptionId: options?.providerSubscriptionId ?? null,
+      currentPeriodEnd: options?.currentPeriodEnd ?? null,
     },
   });
   const clientInstanceId = `${runId}-device-${unique}`;
@@ -590,6 +836,9 @@ async function cleanupFixtures() {
   });
   await prisma.rateLimitBucket.deleteMany({
     where: { scope: 'billing_refresh' },
+  });
+  await prisma.billingInvoice.deleteMany({
+    where: { company: { slug: { startsWith: `${runId}-` } } },
   });
   await prisma.billingCheckoutSession.deleteMany({
     where: { company: { slug: { startsWith: `${runId}-` } } },

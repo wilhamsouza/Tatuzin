@@ -68,6 +68,21 @@ export type MercadoPagoSubscriptionDetails = {
   nextPaymentDate: Date | null;
 };
 
+export type MercadoPagoAuthorizedPaymentDetails = {
+  authorizedPaymentId: string;
+  providerSubscriptionId: string | null;
+  status: string | null;
+  amountCents: number;
+  currency: string;
+  dueAt: Date | null;
+  paidAt: Date | null;
+  failedAt: Date | null;
+  periodStart: Date | null;
+  periodEnd: Date | null;
+  invoiceUrl: string | null;
+  payload: Record<string, unknown>;
+};
+
 export type MercadoPagoWebhookContext = {
   body: Record<string, unknown>;
   query: Record<string, unknown>;
