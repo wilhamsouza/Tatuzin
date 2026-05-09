@@ -6,6 +6,7 @@ import '../../../../core/auth/admin_providers.dart';
 import '../../../../core/models/admin_crm_models.dart';
 import '../../../../core/models/admin_models.dart';
 import '../../../../core/utils/admin_formatters.dart';
+import '../../../../core/widgets/admin_confirmation_dialog.dart';
 import '../../../../core/widgets/admin_surface.dart';
 
 class CrmCustomerDetailPage extends ConsumerStatefulWidget {
@@ -73,7 +74,7 @@ class _CrmCustomerDetailPageState extends ConsumerState<CrmCustomerDetailPage> {
           return const AdminSurface(
             title: 'Sem empresas para CRM',
             subtitle:
-                'Nao ha empresas disponiveis para abrir o detalhe do cliente CRM.',
+                'Não há empresas disponíveis para abrir o detalhe do cliente CRM.',
             child: SizedBox.shrink(),
           );
         }
@@ -111,7 +112,7 @@ class _CrmCustomerDetailPageState extends ConsumerState<CrmCustomerDetailPage> {
               const SizedBox(height: 24),
               if (detailAsync.hasError)
                 AdminSurface(
-                  title: 'Nao foi possivel carregar o cliente CRM',
+                  title: 'Não foi possível carregar o cliente CRM',
                   subtitle: detailAsync.error.toString(),
                   child: FilledButton.tonal(
                     onPressed: _refreshCrm,
@@ -120,7 +121,7 @@ class _CrmCustomerDetailPageState extends ConsumerState<CrmCustomerDetailPage> {
                 )
               else if (timelineAsync.hasError)
                 AdminSurface(
-                  title: 'Nao foi possivel carregar a timeline CRM',
+                  title: 'Não foi possível carregar a timeline CRM',
                   subtitle: timelineAsync.error.toString(),
                   child: FilledButton.tonal(
                     onPressed: _refreshCrm,
@@ -158,7 +159,7 @@ class _CrmCustomerDetailPageState extends ConsumerState<CrmCustomerDetailPage> {
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => AdminSurface(
-        title: 'Nao foi possivel carregar as empresas',
+        title: 'Não foi possível carregar as empresas',
         subtitle: error.toString(),
         child: const SizedBox.shrink(),
       ),
@@ -188,7 +189,27 @@ class _CrmCustomerDetailPageState extends ConsumerState<CrmCustomerDetailPage> {
             .toList(growable: false);
 
     if (labels == null && effectiveLabels.isEmpty) {
-      _showMessage('Informe ao menos uma tag separada por virgula.');
+      _showMessage('Informe ao menos uma tag separada por vírgula.');
+      return;
+    }
+
+    final confirmed = await showAdminConfirmationDialog(
+      context: context,
+      title: effectiveLabels.isEmpty
+          ? 'Limpar tags CRM'
+          : 'Substituir tags CRM',
+      message: effectiveLabels.isEmpty
+          ? 'Todas as tags CRM deste cliente serão removidas.'
+          : 'As tags CRM atuais serão substituídas pela nova lista.',
+      confirmLabel: effectiveLabels.isEmpty ? 'Limpar tags' : 'Salvar tags',
+      isDestructive: effectiveLabels.isEmpty,
+      details: [
+        'Cliente: ${key.customerId}',
+        'Empresa: ${key.companyId}',
+        'Tags alvo: ${effectiveLabels.isEmpty ? 'nenhuma' : effectiveLabels.join(', ')}',
+      ],
+    );
+    if (!confirmed || !mounted) {
       return;
     }
 
@@ -497,8 +518,8 @@ class _CustomerSummarySurface extends StatelessWidget {
           ),
           _MutedPill(
             label: customer.operationalNotes == null
-                ? 'Sem observacao operacional'
-                : 'Observacao operacional disponivel',
+                ? 'Sem observação operacional'
+                : 'Observação operacional disponível',
           ),
           _MutedPill(
             label: customer.tags.isEmpty
@@ -631,7 +652,7 @@ class _TagsSurface extends StatelessWidget {
     return AdminSurface(
       title: 'Tags CRM',
       subtitle:
-          'Aplique tags simples no customer master remoto. A observacao operacional continua separada.',
+          'Aplique tags simples no customer master remoto. A observação operacional continua separada.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -693,7 +714,7 @@ class _NoteComposerSurface extends StatelessWidget {
     return AdminSurface(
       title: 'Nova nota CRM',
       subtitle:
-          'Registre contexto comercial sem sobrescrever a observacao operacional simples usada no app.',
+          'Registre contexto comercial sem sobrescrever a observação operacional simples usada no app.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -737,7 +758,7 @@ class _TaskComposerSurface extends StatelessWidget {
     return AdminSurface(
       title: 'Nova tarefa CRM',
       subtitle:
-          'Acompanhe follow-up comercial no cloud sem levar peso de CRM para a operacao do caixa.',
+          'Acompanhe follow-up comercial no cloud sem levar peso de CRM para a operação do caixa.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

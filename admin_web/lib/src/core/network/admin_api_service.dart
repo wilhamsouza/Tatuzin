@@ -1,6 +1,7 @@
 import '../auth/admin_auth_storage.dart';
 import '../auth/admin_debug_log.dart';
 import '../models/admin_analytics_models.dart';
+import '../models/admin_billing_models.dart';
 import '../models/admin_crm_models.dart';
 import '../models/admin_hybrid_governance_models.dart';
 import '../models/admin_models.dart';
@@ -68,7 +69,9 @@ class AdminApiService {
   }
 
   Future<AdminSession> restoreSession(String accessToken) async {
-    adminDebugLog('auth.service.restore.request', {'accessToken': accessToken});
+    adminDebugLog('auth.service.restore.request', {
+      'hasAccessToken': accessToken.trim().isNotEmpty,
+    });
     final response = await _apiClient.getJson(
       '/auth/me',
       accessToken: accessToken,
@@ -316,6 +319,162 @@ class AdminApiService {
       );
     }
     return AdminLicenseSnapshot.fromMap(license);
+  }
+
+  Future<AdminPaginatedResult<AdminBillingCompanySummary>>
+  fetchBillingCompanies({AdminBillingCompaniesQuery? query}) async {
+    final response = await _apiClient.getJson(
+      '/admin/billing/companies',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query?.toQueryParameters(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return AdminPaginatedResult<AdminBillingCompanySummary>(
+      items: readAdminItems(
+        payload,
+      ).map(AdminBillingCompanySummary.fromMap).toList(growable: false),
+      pagination: AdminPaginationMeta.fromPayload(payload),
+      filters: readAdminFilters(payload),
+      sort: AdminSortMeta.fromPayload(payload),
+    );
+  }
+
+  Future<AdminBillingCompanyStatus> fetchBillingCompanyStatus(
+    String companyId,
+  ) async {
+    final response = await _apiClient.getJson(
+      '/admin/companies/$companyId/billing/status',
+      accessToken: await _readRequiredToken(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API não retornou o status de billing no formato esperado.',
+      );
+    }
+
+    return AdminBillingCompanyStatus.fromMap(response);
+  }
+
+  Future<AdminPaginatedResult<AdminBillingEvent>> fetchBillingEvents({
+    required AdminBillingListQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/companies/${query.companyId}/billing/events',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return AdminPaginatedResult<AdminBillingEvent>(
+      items: readAdminItems(
+        payload,
+      ).map(AdminBillingEvent.fromMap).toList(growable: false),
+      pagination: AdminPaginationMeta.fromPayload(payload),
+      filters: readAdminFilters(payload),
+      sort: AdminSortMeta.fromPayload(payload),
+    );
+  }
+
+  Future<AdminPaginatedResult<AdminBillingCheckoutSession>>
+  fetchBillingCheckoutSessions({required AdminBillingListQuery query}) async {
+    final response = await _apiClient.getJson(
+      '/admin/companies/${query.companyId}/billing/checkout-sessions',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return AdminPaginatedResult<AdminBillingCheckoutSession>(
+      items: readAdminItems(
+        payload,
+      ).map(AdminBillingCheckoutSession.fromMap).toList(growable: false),
+      pagination: AdminPaginationMeta.fromPayload(payload),
+      filters: readAdminFilters(payload),
+      sort: AdminSortMeta.fromPayload(payload),
+    );
+  }
+
+  Future<AdminBillingActionResult> refreshBillingCompany({
+    required String companyId,
+    required String reason,
+  }) async {
+    final trimmedReason = reason.trim();
+    if (trimmedReason.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da ação administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    final response = await _apiClient.postJson(
+      '/admin/companies/$companyId/billing/refresh',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{'reason': trimmedReason},
+    );
+    return AdminBillingActionResult.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
+  Future<AdminBillingActionResult> forceBillingPlan({
+    required String companyId,
+    required String plan,
+    required String reason,
+    String? status,
+    DateTime? currentPeriodEnd,
+    bool clearProvider = false,
+  }) async {
+    final trimmedReason = reason.trim();
+    if (trimmedReason.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da ação administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    final response = await _apiClient.postJson(
+      '/admin/companies/$companyId/billing/force-plan',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        'plan': plan.trim(),
+        'reason': trimmedReason,
+        if (status != null && status.trim().isNotEmpty) 'status': status.trim(),
+        if (currentPeriodEnd != null)
+          'currentPeriodEnd': currentPeriodEnd.toIso8601String(),
+        'clearProvider': clearProvider,
+      },
+    );
+    return AdminBillingActionResult.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
+  Future<AdminBillingActionResult> cancelBillingLocal({
+    required String companyId,
+    required String reason,
+    required String effective,
+  }) async {
+    final trimmedReason = reason.trim();
+    if (trimmedReason.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da ação administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    final response = await _apiClient.postJson(
+      '/admin/companies/$companyId/billing/cancel-local',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        'reason': trimmedReason,
+        'effective': effective.trim(),
+      },
+    );
+    return AdminBillingActionResult.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
   }
 
   Future<AdminAuditSummary> fetchAuditSummary({AdminAuditQuery? query}) async {

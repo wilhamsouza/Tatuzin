@@ -10,6 +10,7 @@ class LicenseEditorResult {
     required this.expiresAt,
     required this.syncEnabled,
     required this.maxDevices,
+    required this.reason,
   });
 
   final String plan;
@@ -18,6 +19,7 @@ class LicenseEditorResult {
   final DateTime? expiresAt;
   final bool syncEnabled;
   final int? maxDevices;
+  final String reason;
 }
 
 Future<LicenseEditorResult?> showLicenseEditorDialog({
@@ -44,6 +46,8 @@ class _LicenseEditorDialogState extends State<_LicenseEditorDialog> {
   late final TextEditingController _maxDevicesController;
   late final TextEditingController _startsAtController;
   late final TextEditingController _expiresAtController;
+  late final TextEditingController _reasonController;
+  String? _reasonError;
 
   late String _status;
   late bool _syncEnabled;
@@ -63,6 +67,7 @@ class _LicenseEditorDialogState extends State<_LicenseEditorDialog> {
     );
     _startsAtController = TextEditingController(text: _formatDate(_startsAt));
     _expiresAtController = TextEditingController(text: _formatDate(_expiresAt));
+    _reasonController = TextEditingController();
   }
 
   @override
@@ -71,13 +76,14 @@ class _LicenseEditorDialogState extends State<_LicenseEditorDialog> {
     _maxDevicesController.dispose();
     _startsAtController.dispose();
     _expiresAtController.dispose();
+    _reasonController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Editar licenca'),
+      title: const Text('Editar licença legada'),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 540),
         child: SingleChildScrollView(
@@ -116,7 +122,7 @@ class _LicenseEditorDialogState extends State<_LicenseEditorDialog> {
                 children: [
                   Expanded(
                     child: _DateField(
-                      label: 'Inicio',
+                      label: 'Início',
                       controller: _startsAtController,
                       onPick: () async {
                         final picked = await _pickDate(context, _startsAt);
@@ -157,11 +163,30 @@ class _LicenseEditorDialogState extends State<_LicenseEditorDialog> {
                 ],
               ),
               const SizedBox(height: 16),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    'Esta edição usa o fluxo legado de licença. Para '
+                    'assinaturas Mercado Pago, use Billing Admin. O motivo '
+                    'abaixo é fricção visual local e não auditoria backend.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onErrorContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               TextField(
                 controller: _maxDevicesController,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
-                  labelText: 'Maximo de dispositivos',
+                  labelText: 'Máximo de dispositivos',
                   hintText: 'Opcional',
                 ),
               ),
@@ -179,6 +204,16 @@ class _LicenseEditorDialogState extends State<_LicenseEditorDialog> {
                   });
                 },
               ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _reasonController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: 'Motivo local obrigatório',
+                  hintText: 'Explique por que a licença legada será alterada',
+                  errorText: _reasonError,
+                ),
+              ),
             ],
           ),
         ),
@@ -191,7 +226,14 @@ class _LicenseEditorDialogState extends State<_LicenseEditorDialog> {
         FilledButton(
           onPressed: () {
             final plan = _planController.text.trim();
+            final reason = _reasonController.text.trim();
             if (plan.isEmpty) {
+              return;
+            }
+            if (reason.isEmpty) {
+              setState(() {
+                _reasonError = 'Informe o motivo local da alteração.';
+              });
               return;
             }
 
@@ -203,6 +245,7 @@ class _LicenseEditorDialogState extends State<_LicenseEditorDialog> {
                 expiresAt: _expiresAt,
                 syncEnabled: _syncEnabled,
                 maxDevices: int.tryParse(_maxDevicesController.text.trim()),
+                reason: reason,
               ),
             );
           },

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/admin_analytics_models.dart';
+import '../models/admin_billing_models.dart';
 import '../models/admin_crm_models.dart';
 import '../models/admin_hybrid_governance_models.dart';
 import '../../config/admin_env.dart';
@@ -123,6 +124,50 @@ final adminLicensesProvider =
     >((ref, query) async {
       ref.watch(adminRefreshTickProvider);
       return ref.watch(adminApiServiceProvider).fetchLicenses(query: query);
+    });
+
+final adminBillingCompaniesProvider =
+    FutureProvider.family<
+      AdminPaginatedResult<AdminBillingCompanySummary>,
+      AdminBillingCompaniesQuery
+    >((ref, query) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchBillingCompanies(query: query);
+    });
+
+final adminBillingCompanyStatusProvider =
+    FutureProvider.family<AdminBillingCompanyStatus, String>((
+      ref,
+      companyId,
+    ) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchBillingCompanyStatus(companyId);
+    });
+
+final adminBillingEventsProvider =
+    FutureProvider.family<
+      AdminPaginatedResult<AdminBillingEvent>,
+      AdminBillingListQuery
+    >((ref, query) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchBillingEvents(query: query);
+    });
+
+final adminBillingCheckoutSessionsProvider =
+    FutureProvider.family<
+      AdminPaginatedResult<AdminBillingCheckoutSession>,
+      AdminBillingListQuery
+    >((ref, query) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchBillingCheckoutSessions(query: query);
     });
 
 final adminAuditSummaryProvider =

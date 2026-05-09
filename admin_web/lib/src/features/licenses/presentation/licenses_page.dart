@@ -5,6 +5,7 @@ import '../../../core/auth/admin_providers.dart';
 import '../../../core/models/admin_models.dart';
 import '../../../core/network/admin_api_client.dart';
 import '../../../core/utils/admin_formatters.dart';
+import '../../../core/widgets/admin_confirmation_dialog.dart';
 import '../../../core/widgets/admin_surface.dart';
 import '../../../core/widgets/license_editor_dialog.dart';
 
@@ -52,11 +53,14 @@ class _LicensesPageState extends ConsumerState<LicensesPage> {
     return licensesAsync.when(
       data: (result) {
         return AdminSurface(
-          title: 'Licencas',
-          subtitle: 'Controle comercial e cloud das empresas da plataforma.',
+          title: 'Licenças',
+          subtitle:
+              'Fluxo legado de suporte. Para assinaturas Mercado Pago, use Billing Admin.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const _LegacyLicenseBanner(),
+              const SizedBox(height: 20),
               _LicensesFilters(
                 searchController: _searchController,
                 status: _status,
@@ -70,7 +74,7 @@ class _LicensesPageState extends ConsumerState<LicensesPage> {
               const SizedBox(height: 20),
               if (result.items.isEmpty)
                 const _EmptyState(
-                  message: 'Nenhuma licenca encontrada para os filtros.',
+                  message: 'Nenhuma licença encontrada para os filtros.',
                 )
               else
                 SingleChildScrollView(
@@ -80,11 +84,11 @@ class _LicensesPageState extends ConsumerState<LicensesPage> {
                       DataColumn(label: Text('Empresa')),
                       DataColumn(label: Text('Plano')),
                       DataColumn(label: Text('Status')),
-                      DataColumn(label: Text('Inicio')),
+                      DataColumn(label: Text('Início')),
                       DataColumn(label: Text('Expira em')),
                       DataColumn(label: Text('Sync')),
                       DataColumn(label: Text('Max devices')),
-                      DataColumn(label: Text('Acao')),
+                      DataColumn(label: Text('Ação')),
                     ],
                     rows: result.items.map((license) {
                       return DataRow(
@@ -138,7 +142,7 @@ class _LicensesPageState extends ConsumerState<LicensesPage> {
               const SizedBox(height: 20),
               _PaginationBar(
                 pagination: result.pagination,
-                itemLabel: 'licencas',
+                itemLabel: 'licenças',
                 onPrevious: result.pagination.hasPrevious
                     ? () => setState(() => _page--)
                     : null,
@@ -152,7 +156,7 @@ class _LicensesPageState extends ConsumerState<LicensesPage> {
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => AdminSurface(
-        title: 'Nao foi possivel carregar as licencas',
+        title: 'Não foi possível carregar as licenças',
         subtitle: error.toString(),
         child: Align(
           alignment: Alignment.centerLeft,
@@ -177,6 +181,26 @@ class _LicensesPageState extends ConsumerState<LicensesPage> {
       return;
     }
 
+    final confirmed = await showAdminConfirmationDialog(
+      context: context,
+      title: 'Confirmar edição legada',
+      message:
+          'Esta alteração usa o endpoint legado de licença. Para assinaturas Mercado Pago, prefira Billing Admin.',
+      confirmLabel: 'Salvar licença',
+      isDestructive: true,
+      details: [
+        'Empresa: ${license.companyName}',
+        'Plano alvo: ${edit.plan}',
+        'Status alvo: ${edit.status}',
+        'Max devices: ${edit.maxDevices?.toString() ?? 'livre'}',
+        'Motivo local: ${edit.reason}',
+        'O motivo não será auditado pelo backend legado.',
+      ],
+    );
+    if (!confirmed || !context.mounted) {
+      return;
+    }
+
     try {
       await ref
           .read(adminApiServiceProvider)
@@ -194,7 +218,7 @@ class _LicensesPageState extends ConsumerState<LicensesPage> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Licenca atualizada com sucesso.')),
+        const SnackBar(content: Text('Licença atualizada com sucesso.')),
       );
     } on AdminApiException catch (error) {
       if (!context.mounted) {
@@ -355,7 +379,7 @@ class _LicensesFiltersState extends State<_LicensesFilters> {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             SizedBox(
-              width: 170,
+              width: 210,
               child: DropdownButtonFormField<bool?>(
                 initialValue: _syncEnabled,
                 decoration: const InputDecoration(labelText: 'Sync'),
@@ -374,18 +398,18 @@ class _LicensesFiltersState extends State<_LicensesFilters> {
               ),
             ),
             SizedBox(
-              width: 180,
+              width: 220,
               child: DropdownButtonFormField<String>(
                 initialValue: _sortBy,
                 decoration: const InputDecoration(labelText: 'Ordenar por'),
                 items: const [
                   DropdownMenuItem(
                     value: 'updatedAt',
-                    child: Text('Atualizacao'),
+                    child: Text('Atualização'),
                   ),
                   DropdownMenuItem(
                     value: 'expiresAt',
-                    child: Text('Expiracao'),
+                    child: Text('Expiração'),
                   ),
                   DropdownMenuItem(
                     value: 'companyName',
@@ -401,10 +425,10 @@ class _LicensesFiltersState extends State<_LicensesFilters> {
               ),
             ),
             SizedBox(
-              width: 160,
+              width: 230,
               child: DropdownButtonFormField<String>(
                 initialValue: _sortDirection,
-                decoration: const InputDecoration(labelText: 'Direcao'),
+                decoration: const InputDecoration(labelText: 'Direção'),
                 items: const [
                   DropdownMenuItem(value: 'asc', child: Text('Crescente')),
                   DropdownMenuItem(value: 'desc', child: Text('Decrescente')),
@@ -420,7 +444,7 @@ class _LicensesFiltersState extends State<_LicensesFilters> {
               width: 140,
               child: DropdownButtonFormField<int>(
                 initialValue: _pageSize,
-                decoration: const InputDecoration(labelText: 'Por pagina'),
+                decoration: const InputDecoration(labelText: 'Por página'),
                 items: const [
                   DropdownMenuItem(value: 10, child: Text('10')),
                   DropdownMenuItem(value: 20, child: Text('20')),
@@ -461,6 +485,30 @@ class _LicensesFiltersState extends State<_LicensesFilters> {
     _sortBy = widget.sortBy;
     _sortDirection = widget.sortDirection;
     _pageSize = widget.pageSize;
+  }
+}
+
+class _LegacyLicenseBanner extends StatelessWidget {
+  const _LegacyLicenseBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        'Esta tela usa fluxo legado de licença. Para assinaturas Mercado Pago, use Billing Admin.',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: colorScheme.onErrorContainer,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
   }
 }
 
@@ -506,7 +554,7 @@ class _PaginationBar extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Text(
-          'Pagina ${pagination.page} • ${pagination.count} de ${pagination.total} $itemLabel',
+          'Página ${pagination.page} • ${pagination.count} de ${pagination.total} $itemLabel',
         ),
         OutlinedButton.icon(
           onPressed: onPrevious,
@@ -516,7 +564,7 @@ class _PaginationBar extends StatelessWidget {
         OutlinedButton.icon(
           onPressed: onNext,
           icon: const Icon(Icons.chevron_right_rounded),
-          label: const Text('Proxima'),
+          label: const Text('Próxima'),
         ),
       ],
     );

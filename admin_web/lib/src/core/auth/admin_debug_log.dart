@@ -17,11 +17,13 @@ void adminDebugLog(String event, [Map<String, Object?> context = const {}]) {
 Map<String, Object?> _sanitizeContext(Map<String, Object?> context) {
   return context.map((key, value) {
     final lowerKey = key.toLowerCase();
+    final isPresenceFlag = lowerKey.startsWith('has') && value is bool;
     final shouldMask =
-        lowerKey.contains('token') || lowerKey.contains('authorization');
+        !isPresenceFlag &&
+        (lowerKey.contains('token') || lowerKey.contains('authorization'));
     return MapEntry(
       key,
-      shouldMask ? summarizeToken(value?.toString()) : _sanitizeValue(value),
+      shouldMask ? _redactPresence(value?.toString()) : _sanitizeValue(value),
     );
   });
 }
@@ -30,7 +32,7 @@ Object? _sanitizeValue(Object? value) {
   if (value is String) {
     final lower = value.toLowerCase();
     if (lower.contains('token') || lower.contains('bearer')) {
-      return summarizeToken(value);
+      return _redactPresence(value);
     }
     return value;
   }
@@ -52,8 +54,10 @@ String summarizeToken(String? token) {
     return 'empty';
   }
 
-  final preview = normalized.length <= 12
-      ? normalized
-      : '${normalized.substring(0, 6)}...${normalized.substring(normalized.length - 4)}';
-  return '$preview(len=${normalized.length})';
+  return 'present';
+}
+
+String _redactPresence(String? value) {
+  final normalized = value?.trim();
+  return normalized == null || normalized.isEmpty ? 'empty' : 'present';
 }

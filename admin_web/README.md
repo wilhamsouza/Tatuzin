@@ -1,97 +1,121 @@
 # Tatuzin Admin Web
 
-Painel administrativo web da plataforma Tatuzin.
+Painel web interno da plataforma Tatuzin, usado por suporte e operação. Este
+projeto é **platform admin** e não é painel owner do cliente.
 
-Este projeto e a superficie administrativa principal do repositorio neste momento. Ele nao substitui o app operacional do cliente e nao deve ser descrito como console completo de diagnostico de sync.
+O admin web consome rotas `/api/admin/*` do backend Tatuzin ERP. Ele não deve
+ser usado para atender fluxos owner, não deve criar rota `/owner` e não deve
+consumir `/api/owner/*`.
 
-## Papel real do admin web hoje
+## Stack
 
-O painel cobre:
+- Flutter Web
+- Riverpod
+- GoRouter
+- `http`
+- `shared_preferences`
 
-- login administrativo
-- dashboard resumido
-- listagem e detalhe de empresas
-- gestao de licencas
-- saude resumida de sync
-- auditoria administrativa
+## Rotas atuais
 
-Rotas atuais em [admin_web_router.dart](c:/Simples/admin_web/lib/src/app/admin_web_router.dart):
+Rotas registradas em
+[`admin_web_router.dart`](c:/Simples/admin_web/lib/src/app/admin_web_router.dart):
 
 - `/login`
 - `/dashboard`
+- `/management/dashboard`
+- `/management/reports`
+- `/management/governance`
+- `/management/crm/customers`
+- `/management/crm/customers/:customerId`
 - `/companies`
 - `/companies/:companyId`
 - `/licenses`
+- `/billing`
+- `/billing/:companyId`
 - `/sync-health`
 - `/audit`
 
-## O que este projeto nao faz
+## Áreas do painel
 
-- nao executa operacao de vendas, caixa, compras ou relatorios do cliente
-- nao substitui o app Tatuzin
-- nao substitui o banco local SQLite
-- nao oferece hoje diagnostico profundo de fila local, conflito e reconciliacao
+- Login administrativo e restauração de sessão.
+- Dashboard resumido de plataforma.
+- Empresas e detalhes administrativos.
+- Licenças legadas, mantidas para suporte e depreciadas para billing Mercado
+  Pago.
+- Billing Admin Seguro para investigação e correção administrativa auditada de
+  assinaturas.
+- Sync Health resumido.
+- Auditoria administrativa.
+- Dashboard, relatórios, governança híbrida e CRM gerencial de plataforma.
 
-## Relacao com o admin interno do app
+## Billing Admin
 
-Existe uma superficie administrativa interna no app principal, em [lib/modules/admin](c:/Simples/lib/modules/admin).
+A área `/billing` é interna de plataforma/suporte. Ela consome:
 
-Estado atual documentado:
+- `GET /api/admin/billing/companies`
+- `GET /api/admin/companies/:companyId/billing/status`
+- `GET /api/admin/companies/:companyId/billing/events`
+- `GET /api/admin/companies/:companyId/billing/checkout-sessions`
+- `POST /api/admin/companies/:companyId/billing/refresh`
+- `POST /api/admin/companies/:companyId/billing/force-plan`
+- `POST /api/admin/companies/:companyId/billing/cancel-local`
 
-- o admin web e a superficie administrativa principal
-- o admin interno do app permanece apenas como apoio temporario/interno
+Regras de segurança no painel:
 
-## Dependencia do backend
+- Listagens nunca exibem `providerSubscriptionId` completo.
+- Payloads/eventos são sanitizados defensivamente antes de renderizar.
+- URLs completas de checkout não são renderizadas nem copiáveis.
+- `cancel-local` deixa claro que não cancela Mercado Pago.
+- Tokens, Authorization, webhook secrets e payloads sensíveis não devem aparecer
+  em UI ou logs.
 
-Este painel depende do backend em [backend](c:/Simples/backend) para:
+## Licenças legadas
 
-- autenticacao
-- consulta de empresas
-- gestao de licencas
-- resumo de sync
-- auditoria
+A rota `/licenses` continua disponível, mas está depreciada para assinaturas
+Mercado Pago. Edições diretas exigem motivo visual local e confirmação final.
+Esse motivo não é auditoria backend, porque o endpoint legado de licença não
+aceita `reason`.
 
-Se o backend nao estiver disponivel, o painel nao opera.
+Para assinaturas Mercado Pago, use Billing Admin.
+
+## Configuração da API
+
+A URL base é definida por `TATUZIN_ADMIN_API_URL` via `--dart-define`. O código
+também possui default de produção em `AdminEnv`, portanto um build release não
+falha apenas pela ausência da variável.
+
+A URL deve incluir o prefixo `/api`, por exemplo:
+
+```powershell
+--dart-define=TATUZIN_ADMIN_API_URL=https://api.tatuzin.com.br/api
+```
 
 ## Como rodar localmente
 
-1. por padrao o painel usa `https://api.tatuzin.com.br/api`
-2. no diretorio `admin_web`, execute:
-
 ```powershell
+cd admin_web
 flutter pub get
-flutter run -d chrome --web-port 3000
-```
-
-## Como gerar build web
-
-Build local apontando para a API oficial:
-
-```powershell
-flutter build web
-```
-
-Para desenvolvimento contra backend local, informe explicitamente:
-
-```powershell
 flutter run -d chrome --web-port 3000 --dart-define=TATUZIN_ADMIN_API_URL=http://localhost:4000/api
 ```
 
-Build de producao para publicar o admin em `https://admin.tatuzin.com.br` consumindo a API em `https://api.tatuzin.com.br`:
+## Build web
+
+Build de produção para publicar o admin em `https://admin.tatuzin.com.br`:
 
 ```powershell
+cd admin_web
 flutter build web --release --dart-define=TATUZIN_ADMIN_API_URL=https://api.tatuzin.com.br/api
 ```
 
-Observacoes importantes para producao:
+Como o projeto usa `usePathUrlStrategy()`, o servidor web precisa servir
+`index.html` nas rotas profundas.
 
-- a base URL precisa incluir o prefixo `/api`
-- o build release nao deve mais cair silenciosamente para `localhost`; se `TATUZIN_ADMIN_API_URL` faltar, o painel falha cedo
-- como o projeto usa `usePathUrlStrategy()`, o servidor web precisa servir `index.html` nas rotas profundas
-- para publicar em subdominio raiz como `admin.tatuzin.com.br`, o `<base href="/">` atual ja esta correto
+## O que este projeto não faz
 
-## Limitacoes atuais importantes
+- Não é painel owner.
+- Não executa operação de vendas, caixa, compras ou relatórios do cliente.
+- Não substitui o app Tatuzin.
+- Não substitui SQLite/local-first do PDV.
+- Não transforma ERP/CRM em local-first.
+- Não consome `/api/owner/*`.
 
-- o dashboard e resumido, nao substitui troubleshooting tecnico profundo
-- a tela de sync mostra saude resumida e volume remoto, nao a telemetria completa do app local
-- a cobertura administrativa depende diretamente das capacidades ja expostas pelo backend

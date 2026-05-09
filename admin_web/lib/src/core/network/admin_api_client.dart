@@ -94,7 +94,6 @@ class AdminApiClient {
       'path': path,
       'queryParameters': queryParameters,
       'hasAuthorization': headers.containsKey('Authorization'),
-      'authorization': headers['Authorization'],
     });
 
     late http.Response response;
@@ -237,8 +236,8 @@ class AdminApiClient {
           refreshToken: nextRefreshToken,
         );
         adminDebugLog('http.refresh.succeeded', {
-          'accessToken': nextAccessToken,
-          'refreshToken': nextRefreshToken,
+          'hasAccessToken': nextAccessToken.trim().isNotEmpty,
+          'hasRefreshToken': nextRefreshToken.trim().isNotEmpty,
         });
         return nextAccessToken;
       }

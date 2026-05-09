@@ -5,6 +5,7 @@ import '../../../core/auth/admin_providers.dart';
 import '../../../core/models/admin_models.dart';
 import '../../../core/network/admin_api_client.dart';
 import '../../../core/utils/admin_formatters.dart';
+import '../../../core/widgets/admin_confirmation_dialog.dart';
 import '../../../core/widgets/admin_surface.dart';
 import '../../../core/widgets/license_editor_dialog.dart';
 import 'company_sync_health_tab.dart';
@@ -21,7 +22,7 @@ class CompanyDetailPage extends ConsumerWidget {
       data: (payload) => _CompanyDetailContent(payload: payload),
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => AdminSurface(
-        title: 'Nao foi possivel carregar o detalhe da empresa',
+        title: 'Não foi possível carregar o detalhe da empresa',
         subtitle: error.toString(),
         child: const SizedBox.shrink(),
       ),
@@ -48,7 +49,7 @@ class _CompanyDetailContent extends ConsumerWidget {
           _DetailRow(label: 'Tenant', value: company.slug),
           _DetailRow(
             label: 'Documento',
-            value: company.documentNumber ?? 'Nao informado',
+            value: company.documentNumber ?? 'Não informado',
           ),
           _DetailRow(
             label: 'Criada em',
@@ -74,7 +75,7 @@ class _CompanyDetailContent extends ConsumerWidget {
             ),
       child: license == null
           ? Text(
-              'Esta empresa ainda nao possui licenca cadastrada.',
+              'Esta empresa ainda não possui licença cadastrada.',
               style: Theme.of(context).textTheme.bodyMedium,
             )
           : Column(
@@ -89,7 +90,7 @@ class _CompanyDetailContent extends ConsumerWidget {
                   value: AdminFormatters.formatLicenseStatus(license.status),
                 ),
                 _DetailRow(
-                  label: 'Inicio',
+                  label: 'Início',
                   value: AdminFormatters.formatDate(license.startsAt),
                 ),
                 _DetailRow(
@@ -105,8 +106,8 @@ class _CompanyDetailContent extends ConsumerWidget {
                   ),
                 ),
                 _DetailRow(
-                  label: 'Maximo de dispositivos',
-                  value: license.maxDevices?.toString() ?? 'Nao definido',
+                  label: 'Máximo de dispositivos',
+                  value: license.maxDevices?.toString() ?? 'Não definido',
                 ),
               ],
             ),
@@ -142,7 +143,7 @@ class _CompanyDetailContent extends ConsumerWidget {
           'Inventario minimo das sessoes cloud ativas e historicas da empresa.',
       child: payload.sessions.isEmpty
           ? Text(
-              'Nenhuma sessao registrada para esta empresa ate agora.',
+              'Nenhuma sessão registrada para esta empresa até agora.',
               style: Theme.of(context).textTheme.bodyMedium,
             )
           : Column(
@@ -333,6 +334,26 @@ class _CompanyDetailContent extends ConsumerWidget {
       return;
     }
 
+    final confirmed = await showAdminConfirmationDialog(
+      context: context,
+      title: 'Confirmar edição legada',
+      message:
+          'Esta alteração usa o endpoint legado de licença. Para assinaturas Mercado Pago, prefira Billing Admin.',
+      confirmLabel: 'Salvar licença',
+      isDestructive: true,
+      details: [
+        'Empresa: ${license.companyName}',
+        'Plano alvo: ${edit.plan}',
+        'Status alvo: ${edit.status}',
+        'Max devices: ${edit.maxDevices?.toString() ?? 'livre'}',
+        'Motivo local: ${edit.reason}',
+        'O motivo não será auditado pelo backend legado.',
+      ],
+    );
+    if (!confirmed || !context.mounted) {
+      return;
+    }
+
     try {
       await ref
           .read(adminApiServiceProvider)
@@ -350,7 +371,7 @@ class _CompanyDetailContent extends ConsumerWidget {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Licenca atualizada com sucesso.')),
+        const SnackBar(content: Text('Licença atualizada com sucesso.')),
       );
     } on AdminApiException catch (error) {
       if (!context.mounted) {
@@ -367,6 +388,23 @@ class _CompanyDetailContent extends ConsumerWidget {
     WidgetRef ref,
     AdminDeviceSession session,
   ) async {
+    final confirmed = await showAdminConfirmationDialog(
+      context: context,
+      title: 'Revogar sessão',
+      message:
+          'A sessão será encerrada e o dispositivo precisará autenticar novamente.',
+      confirmLabel: 'Revogar sessão',
+      isDestructive: true,
+      details: [
+        'Usuário: ${session.userName}',
+        'Dispositivo: ${session.deviceLabel ?? session.clientInstanceId}',
+        'Client: ${session.clientType}',
+      ],
+    );
+    if (!confirmed || !context.mounted) {
+      return;
+    }
+
     try {
       await ref.read(adminApiServiceProvider).revokeSession(session.id);
       ref.read(adminRefreshTickProvider.notifier).state++;
@@ -374,7 +412,7 @@ class _CompanyDetailContent extends ConsumerWidget {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sessao revogada com sucesso.')),
+        const SnackBar(content: Text('Sessão revogada com sucesso.')),
       );
     } on AdminApiException catch (error) {
       if (!context.mounted) {

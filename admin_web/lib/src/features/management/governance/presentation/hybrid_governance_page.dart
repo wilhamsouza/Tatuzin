@@ -5,6 +5,7 @@ import '../../../../core/auth/admin_providers.dart';
 import '../../../../core/models/admin_hybrid_governance_models.dart';
 import '../../../../core/models/admin_models.dart';
 import '../../../../core/utils/admin_formatters.dart';
+import '../../../../core/widgets/admin_confirmation_dialog.dart';
 import '../../../../core/widgets/admin_surface.dart';
 
 class HybridGovernancePage extends ConsumerStatefulWidget {
@@ -68,9 +69,9 @@ class _HybridGovernancePageState extends ConsumerState<HybridGovernancePage> {
       data: (companies) {
         if (companies.isEmpty) {
           return const AdminSurface(
-            title: 'Sem empresas para governanca hibrida',
+            title: 'Sem empresas para governança híbrida',
             subtitle:
-                'A governanca hibrida cloud-first aparece aqui quando houver empresa consolidada no backend.',
+                'A governança híbrida cloud-first aparece aqui quando houver empresa consolidada no backend.',
             child: SizedBox.shrink(),
           );
         }
@@ -110,7 +111,7 @@ class _HybridGovernancePageState extends ConsumerState<HybridGovernancePage> {
                       final catalog = _DomainSummarySurface(
                         title: 'Catalogo hibrido',
                         subtitle:
-                            'Produto, categoria, variantes, imagem e readiness de governanca remota.',
+                            'Produto, categoria, variantes, imagem e readiness de governança remota.',
                         metrics: [
                           _MetricItem(
                             label: 'Produtos ativos',
@@ -122,7 +123,7 @@ class _HybridGovernancePageState extends ConsumerState<HybridGovernancePage> {
                             label: 'Sem categoria',
                             value:
                                 '${overview.catalog.productsWithoutCategory}',
-                            helper: 'Drift de classificacao remota',
+                            helper: 'Drift de classificação remota',
                           ),
                           _MetricItem(
                             label: 'Variantes sem SKU',
@@ -147,7 +148,7 @@ class _HybridGovernancePageState extends ConsumerState<HybridGovernancePage> {
                       final pricing = _DomainSummarySurface(
                         title: 'Preco hibrido',
                         subtitle:
-                            'Politica remota de margem e desconto sem travar override local quando permitido.',
+                            'Política remota de margem e desconto sem travar override local quando permitido.',
                         metrics: [
                           _MetricItem(
                             label: 'Modo',
@@ -169,7 +170,7 @@ class _HybridGovernancePageState extends ConsumerState<HybridGovernancePage> {
                             label: 'Menor margem',
                             value:
                                 overview.pricing.lowestMarginBasisPoints == null
-                                ? 'Nao definido'
+                                ? 'Não definido'
                                 : AdminFormatters.formatBasisPointsPercent(
                                     overview.pricing.lowestMarginBasisPoints!,
                                   ),
@@ -204,7 +205,7 @@ class _HybridGovernancePageState extends ConsumerState<HybridGovernancePage> {
                                 'Threshold ${overview.stock.divergenceAlertThresholdMil}',
                           ),
                           _MetricItem(
-                            label: 'Reconciliacao',
+                            label: 'Reconciliação',
                             value: AdminFormatters.formatHybridMode(
                               overview.stock.reconciliationReadiness,
                             ),
@@ -233,7 +234,7 @@ class _HybridGovernancePageState extends ConsumerState<HybridGovernancePage> {
                             label: 'Sem telefone',
                             value:
                                 '${overview.customers.customersWithoutPhone}',
-                            helper: 'Contato incompleto para governanca',
+                            helper: 'Contato incompleto para governança',
                           ),
                           _MetricItem(
                             label: 'Conflito de telefone',
@@ -378,7 +379,7 @@ class _HybridGovernancePageState extends ConsumerState<HybridGovernancePage> {
           },
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) => AdminSurface(
-            title: 'Nao foi possivel carregar a governanca hibrida',
+            title: 'Não foi possível carregar a governança híbrida',
             subtitle: error.toString(),
             child: Align(
               alignment: Alignment.centerLeft,
@@ -393,7 +394,7 @@ class _HybridGovernancePageState extends ConsumerState<HybridGovernancePage> {
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => AdminSurface(
-        title: 'Nao foi possivel carregar as empresas',
+        title: 'Não foi possível carregar as empresas',
         subtitle: error.toString(),
         child: const SizedBox.shrink(),
       ),
@@ -491,6 +492,23 @@ class _HybridGovernancePageState extends ConsumerState<HybridGovernancePage> {
       alertOnCustomerConflict: _alertOnCustomerConflict,
     );
 
+    final confirmed = await showAdminConfirmationDialog(
+      context: context,
+      title: 'Salvar governança híbrida',
+      message:
+          'Esta política influencia validações e alertas operacionais da empresa.',
+      confirmLabel: 'Salvar política',
+      details: [
+        'Empresa: $companyId',
+        'Catálogo governado: ${nextProfile.requireCategoryForGovernedCatalog ? 'exige categoria' : 'sem exigência de categoria'}',
+        'Preço offline: ${nextProfile.allowOfflinePriceOverride ? 'permite override' : 'bloqueia override'}',
+        'Modo de customer master: ${nextProfile.customerMasterMode}',
+      ],
+    );
+    if (!confirmed || !mounted) {
+      return;
+    }
+
     setState(() => _isSaving = true);
     try {
       await ref
@@ -506,7 +524,7 @@ class _HybridGovernancePageState extends ConsumerState<HybridGovernancePage> {
       }
       messenger.showSnackBar(
         const SnackBar(
-          content: Text('Perfil de governanca hibrida atualizado.'),
+          content: Text('Perfil de governança híbrida atualizado.'),
         ),
       );
     } catch (error) {
@@ -543,9 +561,9 @@ class _ScopePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AdminSurface(
-      title: 'Escopo da governanca hibrida',
+      title: 'Escopo da governança híbrida',
       subtitle:
-          'A governanca cloud-first e lida por empresa e nunca substitui a verdade operacional local do app.',
+          'A governança cloud-first é lida por empresa e nunca substitui a verdade operacional local do app.',
       child: Wrap(
         spacing: 12,
         runSpacing: 12,
@@ -816,7 +834,7 @@ class _PolicyEditorSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AdminSurface(
-      title: 'Politica de governanca por empresa',
+      title: 'Política de governança por empresa',
       subtitle:
           'Essas regras orientam catalogo, preco, estoque, clientes e alertas administrativos sem virar trava de venda local.',
       trailing: FilledButton.icon(
@@ -862,7 +880,7 @@ class _PolicyEditorSurface extends StatelessWidget {
                     contentPadding: EdgeInsets.zero,
                     value: allowLocalCatalogDeactivation,
                     onChanged: onAllowLocalCatalogDeactivationChanged,
-                    title: const Text('Permitir desativacao local de catalogo'),
+                    title: const Text('Permitir desativação local de catálogo'),
                   ),
                   DropdownButtonFormField<String>(
                     initialValue: pricePolicyMode,
@@ -917,7 +935,7 @@ class _PolicyEditorSurface extends StatelessWidget {
                     contentPadding: EdgeInsets.zero,
                     value: requireStockReconciliationReview,
                     onChanged: onRequireStockReviewChanged,
-                    title: const Text('Exigir revisao de reconciliacao'),
+                    title: const Text('Exigir revisão de reconciliação'),
                   ),
                   TextField(
                     controller: stockThresholdController,
@@ -965,7 +983,7 @@ class _PolicyEditorSurface extends StatelessWidget {
                     contentPadding: EdgeInsets.zero,
                     value: requireCustomerConflictReview,
                     onChanged: onRequireCustomerConflictReviewChanged,
-                    title: const Text('Exigir revisao de conflito de cliente'),
+                    title: const Text('Exigir revisão de conflito de cliente'),
                   ),
                 ],
               );
@@ -1069,7 +1087,7 @@ class _AlertsSurface extends StatelessWidget {
     return AdminSurface(
       title: 'Alertas administrativos',
       subtitle:
-          'Os alertas sobem para governanca e suporte sem impedir operacao local do app.',
+          'Os alertas sobem para governança e suporte sem impedir operação local do app.',
       child: Column(
         children: alerts
             .map(

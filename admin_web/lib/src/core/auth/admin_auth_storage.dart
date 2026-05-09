@@ -186,8 +186,8 @@ class AdminAuthStorage extends ChangeNotifier {
     await preferences.setString(_accessTokenKey, accessToken.trim());
     await preferences.setString(_refreshTokenKey, refreshToken.trim());
     adminDebugLog('auth.storage.tokens_saved', {
-      'accessToken': accessToken,
-      'refreshToken': refreshToken,
+      'hasAccessToken': accessToken.trim().isNotEmpty,
+      'hasRefreshToken': refreshToken.trim().isNotEmpty,
     });
     notifyListeners();
   }

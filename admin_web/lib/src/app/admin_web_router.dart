@@ -6,6 +6,8 @@ import '../core/auth/admin_providers.dart';
 import '../core/widgets/admin_shell_scaffold.dart';
 import '../features/audit/presentation/audit_page.dart';
 import '../features/auth/presentation/login_page.dart';
+import '../features/billing/presentation/billing_admin_page.dart';
+import '../features/billing/presentation/billing_company_detail_page.dart';
 import '../features/companies/presentation/companies_page.dart';
 import '../features/companies/presentation/company_detail_page.dart';
 import '../features/dashboard/presentation/dashboard_page.dart';
@@ -135,6 +137,17 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const LicensesPage(),
           ),
           GoRoute(
+            path: '/billing',
+            builder: (context, state) => const BillingAdminPage(),
+          ),
+          GoRoute(
+            path: '/billing/:companyId',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              return BillingCompanyDetailPage(companyId: companyId);
+            },
+          ),
+          GoRoute(
             path: '/sync-health',
             builder: (context, state) => const SyncHealthPage(),
           ),
@@ -156,10 +169,10 @@ String _titleForLocation(String location) {
     return 'Dashboard Gerencial';
   }
   if (location.startsWith('/management/reports')) {
-    return 'Relatorios Gerenciais';
+    return 'Relatórios Gerenciais';
   }
   if (location.startsWith('/management/governance')) {
-    return 'Governanca Hibrida';
+    return 'Governança Híbrida';
   }
   if (location.startsWith('/management/crm/customers/')) {
     return 'Cliente CRM';
@@ -171,10 +184,16 @@ String _titleForLocation(String location) {
     return 'Empresas';
   }
   if (location.startsWith('/licenses')) {
-    return 'Licencas';
+    return 'Licenças';
+  }
+  if (location.startsWith('/billing/')) {
+    return 'Billing Admin';
+  }
+  if (location.startsWith('/billing')) {
+    return 'Billing Admin';
   }
   if (location.startsWith('/sync-health')) {
-    return 'Saude da sync';
+    return 'Saúde da sync';
   }
   if (location.startsWith('/audit')) {
     return 'Auditoria';

@@ -49,7 +49,7 @@ class AdminAuthController extends ChangeNotifier {
         _session = null;
         _errorMessage = null;
         adminDebugLog('auth.controller.restore.skipped', {
-          'reason': 'access_token_missing',
+          'hasAccessToken': false,
         });
         return;
       }
@@ -192,7 +192,7 @@ class AdminAuthController extends ChangeNotifier {
     _session = null;
     _errorMessage = 'Sua sessao administrativa terminou. Faca login novamente.';
     adminDebugLog('auth.controller.storage_sync.session_cleared', {
-      'reason': 'access_token_removed',
+      'hasAccessToken': false,
     });
     notifyListeners();
   }

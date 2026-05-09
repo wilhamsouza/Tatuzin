@@ -31,12 +31,12 @@ class AdminShellScaffold extends ConsumerWidget {
     _AdminNavItem(
       route: '/management/reports',
       icon: Icons.assessment_rounded,
-      label: 'Relatorios Gerenciais',
+      label: 'Relatórios Gerenciais',
     ),
     _AdminNavItem(
       route: '/management/governance',
       icon: Icons.account_tree_rounded,
-      label: 'Governanca Hibrida',
+      label: 'Governança Híbrida',
     ),
     _AdminNavItem(
       route: '/management/crm/customers',
@@ -51,12 +51,17 @@ class AdminShellScaffold extends ConsumerWidget {
     _AdminNavItem(
       route: '/licenses',
       icon: Icons.workspace_premium_rounded,
-      label: 'Licencas',
+      label: 'Licenças',
+    ),
+    _AdminNavItem(
+      route: '/billing',
+      icon: Icons.payments_rounded,
+      label: 'Billing Admin',
     ),
     _AdminNavItem(
       route: '/sync-health',
       icon: Icons.cloud_done_rounded,
-      label: 'Saude da Sync',
+      label: 'Saúde da Sync',
     ),
     _AdminNavItem(
       route: '/audit',
@@ -89,7 +94,7 @@ class AdminShellScaffold extends ConsumerWidget {
           child: _Sidebar(
             currentLocation: currentLocation,
             sessionName: auth.session?.user.name ?? 'Administrador',
-            sessionEmail: auth.session?.user.email ?? 'sem sessao',
+            sessionEmail: auth.session?.user.email ?? 'sem sessão',
             companyName: auth.session?.company.name ?? 'Tatuzin Cloud',
             licenseStatus: auth.session?.company.license?.status,
           ),
@@ -104,7 +109,7 @@ class AdminShellScaffold extends ConsumerWidget {
           _Sidebar(
             currentLocation: currentLocation,
             sessionName: auth.session?.user.name ?? 'Administrador',
-            sessionEmail: auth.session?.user.email ?? 'sem sessao',
+            sessionEmail: auth.session?.user.email ?? 'sem sessão',
             companyName: auth.session?.company.name ?? 'Tatuzin Cloud',
             licenseStatus: auth.session?.company.license?.status,
           ),
@@ -134,7 +139,7 @@ class AdminShellScaffold extends ConsumerWidget {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Plataforma, leitura gerencial e CRM cloud-first do Tatuzin.',
+                              'Painel interno da plataforma Tatuzin para suporte e operação.',
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     color: Theme.of(
@@ -167,7 +172,7 @@ class AdminShellScaffold extends ConsumerWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              auth.session?.user.email ?? 'sem sessao',
+                              auth.session?.user.email ?? 'sem sessão',
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ],
@@ -239,7 +244,7 @@ class _Sidebar extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                'Painel da plataforma, analytics e CRM',
+                'Painel interno da plataforma',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
