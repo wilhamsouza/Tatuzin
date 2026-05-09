@@ -24,6 +24,7 @@ import { fiadoPaymentsRouter } from './modules/fiado/fiado-payments.routes';
 import { financialEventsRouter } from './modules/financial-events/financial-events.routes';
 import { inventoryRouter } from './modules/inventory/inventory.routes';
 import { operationalOrdersRouter } from './modules/operational-orders/operational-orders.routes';
+import { ownerRouter } from './modules/owner/owner.routes';
 import { productRecipesRouter } from './modules/product-recipes/product-recipes.routes';
 import { productsRouter } from './modules/products/products.routes';
 import { purchasesRouter } from './modules/purchases/purchases.routes';
@@ -122,6 +123,7 @@ export function createApp() {
   app.use('/api/auth', authRouter);
   app.use('/api/app', appRouter);
   app.use('/api/billing', billingRouter);
+  app.use('/api/owner', ownerRouter);
   app.use('/api/webhooks', mercadoPagoWebhookRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/admin/analytics/dashboard', analyticsDashboardRouter);
