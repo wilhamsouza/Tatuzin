@@ -67,16 +67,31 @@ export class BillingWebhookService {
     }
 
     try {
-      const result = isSubscriptionAuthorizedPaymentEvent(eventType)
-        ? await this.billingService.applyMercadoPagoAuthorizedPayment(
-            await this.mercadoPagoService.getAuthorizedPayment(dataId),
-          )
-        : await this.billingService.applyMercadoPagoDetails(
-            isPaymentEvent(eventType)
-              ? await this.mercadoPagoService.getPayment(dataId)
-              : await this.mercadoPagoService.getSubscription(dataId),
-          );
+      let invoiceWarning: string | null = null;
+      let result: Awaited<
+        ReturnType<BillingService['applyMercadoPagoDetails']>
+      >;
+      if (isSubscriptionAuthorizedPaymentEvent(eventType)) {
+        result = await this.billingService.applyMercadoPagoAuthorizedPayment(
+          await this.mercadoPagoService.getAuthorizedPayment(dataId),
+        );
+      } else {
+        const details = isPaymentEvent(eventType)
+          ? await this.mercadoPagoService.getPayment(dataId)
+          : await this.mercadoPagoService.getSubscription(dataId);
 
+        result = await this.billingService.applyMercadoPagoDetails(details);
+        try {
+          if (result.companyId != null) {
+            await this.billingService.reconcileInvoicesForSubscription(
+              result.companyId,
+              details.providerReference,
+            );
+          }
+        } catch {
+          invoiceWarning = 'invoice_reconciliation_failed';
+        }
+      }
       const nextStatus =
         result.action === 'ignored_unknown'
           ? 'IGNORED_UNKNOWN'
@@ -84,7 +99,9 @@ export class BillingWebhookService {
             ? 'IGNORED'
             : 'PROCESSED';
       const errorMessage =
-        nextStatus === 'PROCESSED'
+        invoiceWarning != null
+          ? invoiceWarning
+          : nextStatus === 'PROCESSED'
           ? null
           : `${result.action}:${result.providerStatus}`;
 

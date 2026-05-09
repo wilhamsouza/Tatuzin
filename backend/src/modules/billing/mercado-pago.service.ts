@@ -1,9 +1,11 @@
 import { env } from '../../config/env';
 import { AppError } from '../../shared/http/app-error';
+import { sanitizeForAdmin } from './billing-sanitizer';
 import type {
   MercadoPagoAuthorizedPaymentDetails,
   MercadoPagoPreapprovalCreateInput,
   MercadoPagoPreapprovalResult,
+  MercadoPagoPreapprovalUpdateInput,
   MercadoPagoSubscriptionDetails,
 } from './billing.types';
 
@@ -65,24 +67,93 @@ export class MercadoPagoService {
   async getSubscription(
     providerReference: string,
   ): Promise<MercadoPagoSubscriptionDetails> {
+    const safeProviderReference = assertNonEmptyProviderId(
+      providerReference,
+      'preapprovalId',
+    );
     const payload = await this.requestJson(
-      `/preapproval/${encodeURIComponent(providerReference)}`,
+      `/preapproval/${encodeURIComponent(safeProviderReference)}`,
       { method: 'GET' },
     );
 
-    return this.toSubscriptionDetails(providerReference, payload);
+    return this.toSubscriptionDetails(safeProviderReference, payload);
+  }
+
+  async getPreapproval(
+    preapprovalId: string,
+  ): Promise<MercadoPagoSubscriptionDetails> {
+    return this.getSubscription(preapprovalId);
+  }
+
+  async updatePreapproval(
+    preapprovalId: string,
+    body: MercadoPagoPreapprovalUpdateInput,
+  ): Promise<MercadoPagoSubscriptionDetails> {
+    const safePreapprovalId = assertNonEmptyProviderId(
+      preapprovalId,
+      'preapprovalId',
+    );
+    const payload = await this.requestJson(
+      `/preapproval/${encodeURIComponent(safePreapprovalId)}`,
+      { method: 'PUT', body },
+    );
+
+    return this.toSubscriptionDetails(safePreapprovalId, payload);
+  }
+
+  async getAuthorizedPayment(
+    paymentId: unknown,
+  ): Promise<MercadoPagoAuthorizedPaymentDetails> {
+    const safePaymentId = assertNonEmptyProviderId(paymentId, 'paymentId');
+    const payload = await this.requestJson(
+      `/authorized_payments/${encodeURIComponent(safePaymentId)}`,
+      { method: 'GET' },
+    );
+
+    return this.toAuthorizedPaymentDetails(payload, safePaymentId);
+  }
+
+  async searchAuthorizedPaymentsByPreapproval(
+    preapprovalId: unknown,
+    options: { limit?: number; offset?: number } = {},
+  ): Promise<MercadoPagoAuthorizedPaymentDetails[]> {
+    const safePreapprovalId = assertNonEmptyProviderId(
+      preapprovalId,
+      'preapprovalId',
+    );
+    const params = new URLSearchParams({
+      preapproval_id: safePreapprovalId,
+      limit: String(clampInteger(options.limit, 50, 1, 100)),
+      offset: String(clampInteger(options.offset, 0, 0, 10_000)),
+    });
+    const payload = await this.requestJson(
+      `/authorized_payments/search?${params.toString()}`,
+      { method: 'GET' },
+    );
+    const results =
+      readArray(payload, 'results') ?? readArray(payload, 'items') ?? [];
+
+    return results.flatMap((item) => {
+      if (item == null || typeof item !== 'object' || Array.isArray(item)) {
+        return [];
+      }
+      return [
+        this.toAuthorizedPaymentDetails(item as Record<string, unknown>, null),
+      ];
+    });
   }
 
   async getPayment(paymentId: string): Promise<MercadoPagoSubscriptionDetails> {
+    const safePaymentId = assertNonEmptyProviderId(paymentId, 'paymentId');
     const payload = await this.requestJson(
-      `/v1/payments/${encodeURIComponent(paymentId)}`,
+      `/v1/payments/${encodeURIComponent(safePaymentId)}`,
       { method: 'GET' },
     );
 
     const preapprovalId =
       readString(payload, 'preapproval_id') ??
       readNestedString(payload, 'metadata', 'preapproval_id') ??
-      paymentId;
+      safePaymentId;
 
     return {
       providerReference: preapprovalId,
@@ -95,56 +166,6 @@ export class MercadoPagoService {
       currentPeriodEnd: null,
       nextPaymentDate: null,
     };
-  }
-
-  async getAuthorizedPayment(
-    id: string,
-  ): Promise<MercadoPagoAuthorizedPaymentDetails> {
-    const authorizedPaymentId = normalizeRequiredId(
-      id,
-      'MERCADO_PAGO_AUTHORIZED_PAYMENT_ID_REQUIRED',
-    );
-    const payload = await this.requestJson(
-      `/authorized_payments/${encodeURIComponent(authorizedPaymentId)}`,
-      { method: 'GET' },
-    );
-
-    return this.toAuthorizedPaymentDetails(authorizedPaymentId, payload);
-  }
-
-  async searchAuthorizedPaymentsByPreapproval(
-    preapprovalId: string,
-    options: { limit?: number; offset?: number } = {},
-  ): Promise<MercadoPagoAuthorizedPaymentDetails[]> {
-    const normalizedPreapprovalId = normalizeRequiredId(
-      preapprovalId,
-      'MERCADO_PAGO_PREAPPROVAL_ID_REQUIRED',
-    );
-    const params = new URLSearchParams({
-      preapproval_id: normalizedPreapprovalId,
-      limit: String(clampInteger(options.limit, 1, 100, 20)),
-      offset: String(clampInteger(options.offset, 0, 10000, 0)),
-    });
-    const payload = await this.requestJson(
-      `/authorized_payments/search?${params.toString()}`,
-      { method: 'GET' },
-    );
-    const results = payload.results;
-    if (!Array.isArray(results)) {
-      return [];
-    }
-    return results.flatMap((item) => {
-      if (item == null || typeof item !== 'object' || Array.isArray(item)) {
-        return [];
-      }
-      const record = item as Record<string, unknown>;
-      const authorizedPaymentId =
-        readString(record, 'id') ?? readString(record, 'authorized_payment_id');
-      if (authorizedPaymentId == null) {
-        return [];
-      }
-      return [this.toAuthorizedPaymentDetails(authorizedPaymentId, record)];
-    });
   }
 
   private toSubscriptionDetails(
@@ -160,67 +181,89 @@ export class MercadoPagoService {
           readString(payload, 'summarized_start_date'),
       ),
       currentPeriodEnd: parseDate(
-        readString(payload, 'end_date') ?? readString(payload, 'next_payment_date'),
+        readString(payload, 'end_date') ??
+          readString(payload, 'next_payment_date'),
       ),
       nextPaymentDate: parseDate(readString(payload, 'next_payment_date')),
+      amountCents: readAmountCents(payload),
+      paymentMethodId:
+        readString(payload, 'payment_method_id') ??
+        readNestedString(payload, 'payment_method', 'id'),
+      paymentMethodType:
+        readNestedString(payload, 'payment_method', 'type') ??
+        readString(payload, 'payment_method_type'),
+      lastFour:
+        readNestedString(payload, 'card', 'last_four_digits') ??
+        readNestedString(payload, 'payment_method', 'last_four_digits'),
+      rawPayload: sanitizeProviderPayload(payload) as Record<string, unknown>,
     };
   }
 
   private toAuthorizedPaymentDetails(
-    fallbackAuthorizedPaymentId: string,
     payload: Record<string, unknown>,
+    fallbackAuthorizedPaymentId: string | null,
   ): MercadoPagoAuthorizedPaymentDetails {
+    const authorizedPaymentId =
+      readString(payload, 'id') ??
+      readString(payload, 'authorized_payment_id') ??
+      fallbackAuthorizedPaymentId;
     const status = readString(payload, 'status');
+    const lastProviderUpdate =
+      readString(payload, 'date_last_updated') ??
+      readString(payload, 'last_modified') ??
+      readString(payload, 'date_created');
+
     return {
-      authorizedPaymentId:
-        readString(payload, 'id') ??
-        readString(payload, 'authorized_payment_id') ??
-        fallbackAuthorizedPaymentId,
+      authorizedPaymentId,
+      providerInvoiceId:
+        readString(payload, 'providerInvoiceId') ??
+        readString(payload, 'provider_invoice_id') ??
+        authorizedPaymentId,
       providerSubscriptionId:
         readString(payload, 'preapproval_id') ??
+        readString(payload, 'subscription_id') ??
         readNestedString(payload, 'preapproval', 'id') ??
         readNestedString(payload, 'subscription', 'id'),
       status,
-      amountCents: readAmountCents(payload),
+      amountCents: readAmountCents(payload) ?? 0,
       currency:
         readString(payload, 'currency_id') ??
         readString(payload, 'currency') ??
         'BRL',
+      periodStart:
+        parseDate(readString(payload, 'period_start')) ??
+        parseDate(readNestedString(payload, 'period', 'start')) ??
+        parseDate(readString(payload, 'date_created')),
+      periodEnd:
+        parseDate(readString(payload, 'period_end')) ??
+        parseDate(readNestedString(payload, 'period', 'end')),
       dueAt: parseDate(
         readString(payload, 'debit_date') ??
-          readString(payload, 'scheduled_date') ??
-          readString(payload, 'due_date'),
+          readString(payload, 'due_date') ??
+          readString(payload, 'scheduled_date'),
       ),
       paidAt: isPaidAuthorizedPaymentStatus(status)
         ? parseDate(
-            readString(payload, 'date_last_updated') ??
-              readString(payload, 'date_created'),
+            readString(payload, 'payment_date') ??
+              readString(payload, 'date_approved') ??
+              lastProviderUpdate,
           )
         : null,
       failedAt: isFailedAuthorizedPaymentStatus(status)
-        ? parseDate(
-            readString(payload, 'date_last_updated') ??
-              readString(payload, 'date_created'),
-          )
+        ? parseDate(lastProviderUpdate)
         : null,
-      periodStart: parseDate(
-        readString(payload, 'period_start') ??
-          readNestedString(payload, 'period', 'start'),
-      ),
-      periodEnd: parseDate(
-        readString(payload, 'period_end') ??
-          readNestedString(payload, 'period', 'end'),
-      ),
       invoiceUrl:
         readString(payload, 'invoice_url') ??
+        readString(payload, 'payment_url') ??
+        readString(payload, 'external_resource_url') ??
         readNestedString(payload, 'transaction_details', 'external_resource_url'),
-      payload: sanitizeProviderPayload(payload) as Record<string, unknown>,
+      rawPayload: sanitizeProviderPayload(payload) as Record<string, unknown>,
     };
   }
 
   private async requestJson(
     path: string,
-    input: { method: 'GET' | 'POST'; body?: Record<string, unknown> },
+    input: { method: 'GET' | 'POST' | 'PUT'; body?: Record<string, unknown> },
   ) {
     const accessToken = this.accessToken ?? env.MERCADO_PAGO_ACCESS_TOKEN;
     if (accessToken == null || accessToken.trim().length === 0) {
@@ -242,7 +285,16 @@ export class MercadoPagoService {
       ...(input.body == null ? {} : { body: JSON.stringify(input.body) }),
     });
     const text = await response.text();
-    const payload = text.trim().length === 0 ? {} : JSON.parse(text);
+    let payload: unknown;
+    try {
+      payload = text.trim().length === 0 ? {} : JSON.parse(text);
+    } catch {
+      throw new AppError(
+        'Mercado Pago respondeu em formato inesperado.',
+        502,
+        'MERCADO_PAGO_INVALID_RESPONSE',
+      );
+    }
 
     if (!response.ok) {
       throw new AppError(
@@ -268,24 +320,34 @@ export class MercadoPagoService {
   }
 }
 
-function normalizeRequiredId(value: unknown, code: string) {
-  const normalized = typeof value === 'string' ? value.trim() : '';
-  if (normalized.length === 0) {
-    throw new AppError('Identificador Mercado Pago obrigatorio.', 400, code);
+function assertNonEmptyProviderId(value: unknown, fieldName: string) {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (trimmed.length === 0) {
+    throw new AppError(
+      'Identificador Mercado Pago invalido.',
+      400,
+      'MERCADO_PAGO_PROVIDER_ID_INVALID',
+      { field: fieldName },
+    );
   }
-  return normalized;
+  return trimmed;
 }
 
 function clampInteger(
   value: number | undefined,
+  defaultValue: number,
   min: number,
   max: number,
-  fallback: number,
 ) {
   if (value == null || !Number.isFinite(value)) {
-    return fallback;
+    return defaultValue;
   }
   return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
+function readArray(source: Record<string, unknown>, key: string) {
+  const value = source[key];
+  return Array.isArray(value) ? value : null;
 }
 
 function readString(source: Record<string, unknown>, key: string) {
@@ -295,18 +357,6 @@ function readString(source: Record<string, unknown>, key: string) {
   }
   const trimmed = value.trim();
   return trimmed.length === 0 ? null : trimmed;
-}
-
-function readNestedString(
-  source: Record<string, unknown>,
-  parentKey: string,
-  childKey: string,
-) {
-  const parent = source[parentKey];
-  if (parent == null || typeof parent !== 'object' || Array.isArray(parent)) {
-    return null;
-  }
-  return readString(parent as Record<string, unknown>, childKey);
 }
 
 function readNumber(source: Record<string, unknown>, key: string) {
@@ -333,16 +383,30 @@ function readNestedNumber(
   return readNumber(parent as Record<string, unknown>, childKey);
 }
 
-function readAmountCents(payload: Record<string, unknown>) {
-  const amount =
-    readNumber(payload, 'transaction_amount') ??
-    readNumber(payload, 'amount') ??
-    readNestedNumber(payload, 'payment', 'transaction_amount') ??
-    readNestedNumber(payload, 'payment', 'amount');
-  if (amount == null || amount <= 0) {
-    return 0;
+function readAmountCents(source: Record<string, unknown>) {
+  const cents = readNumber(source, 'amount_cents');
+  if (cents != null) {
+    return Math.round(cents);
   }
-  return Math.round(amount * 100);
+  const transactionAmount =
+    readNumber(source, 'transaction_amount') ??
+    readNumber(source, 'amount') ??
+    readNestedNumber(source, 'auto_recurring', 'transaction_amount') ??
+    readNestedNumber(source, 'payment', 'transaction_amount') ??
+    readNestedNumber(source, 'payment', 'amount');
+  return transactionAmount == null ? null : Math.round(transactionAmount * 100);
+}
+
+function readNestedString(
+  source: Record<string, unknown>,
+  parentKey: string,
+  childKey: string,
+) {
+  const parent = source[parentKey];
+  if (parent == null || typeof parent !== 'object' || Array.isArray(parent)) {
+    return null;
+  }
+  return readString(parent as Record<string, unknown>, childKey);
 }
 
 function parseDate(value: string | null) {
@@ -353,6 +417,10 @@ function parseDate(value: string | null) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function sanitizeProviderPayload(payload: unknown) {
+  return sanitizeForAdmin(payload);
+}
+
 function isPaidAuthorizedPaymentStatus(status: string | null) {
   const normalized = status?.trim().toLowerCase();
   return (
@@ -360,6 +428,7 @@ function isPaidAuthorizedPaymentStatus(status: string | null) {
     normalized === 'approved' ||
     normalized === 'authorized' ||
     normalized === 'accredited' ||
+    normalized === 'active' ||
     normalized === 'paid'
   );
 }
@@ -371,41 +440,5 @@ function isFailedAuthorizedPaymentStatus(status: string | null) {
     normalized === 'cancelled' ||
     normalized === 'canceled' ||
     normalized === 'failed'
-  );
-}
-
-function sanitizeProviderPayload(payload: unknown): unknown {
-  if (payload == null || typeof payload !== 'object') {
-    return payload;
-  }
-  if (Array.isArray(payload)) {
-    return payload.map((item): unknown => sanitizeProviderPayload(item));
-  }
-  const record: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
-    if (isSensitiveProviderKey(key)) {
-      record[key] = '[redacted]';
-      continue;
-    }
-    record[key] = sanitizeProviderPayload(value);
-  }
-  return record;
-}
-
-function isSensitiveProviderKey(key: string) {
-  const normalized = key.trim().toLowerCase().replace(/[-\s]/g, '_');
-  return (
-    normalized === 'access_token' ||
-    normalized === 'refresh_token' ||
-    normalized === 'authorization' ||
-    normalized === 'token' ||
-    normalized === 'webhook_secret' ||
-    normalized === 'secret' ||
-    normalized === 'card' ||
-    normalized === 'card_number' ||
-    normalized === 'cvv' ||
-    normalized === 'security_code' ||
-    normalized === 'init_point' ||
-    normalized === 'sandbox_init_point'
   );
 }
