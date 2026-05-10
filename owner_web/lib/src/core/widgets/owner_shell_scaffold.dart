@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../auth/owner_providers.dart';
+import 'owner_management_widgets.dart';
 
 class OwnerShellScaffold extends ConsumerWidget {
   const OwnerShellScaffold({
@@ -23,14 +24,24 @@ class OwnerShellScaffold extends ConsumerWidget {
       label: 'Dashboard',
     ),
     _OwnerNavItem(
-      route: '/company',
-      icon: Icons.storefront_rounded,
-      label: 'Empresa',
+      route: '/sales',
+      icon: Icons.point_of_sale_rounded,
+      label: 'Vendas',
     ),
     _OwnerNavItem(
-      route: '/billing',
-      icon: Icons.receipt_long_rounded,
-      label: 'Assinatura',
+      route: '/clients',
+      icon: Icons.people_alt_rounded,
+      label: 'Clientes / CRM',
+    ),
+    _OwnerNavItem(
+      route: '/finance',
+      icon: Icons.account_balance_wallet_rounded,
+      label: 'Fiado',
+    ),
+    _OwnerNavItem(
+      route: '/products',
+      icon: Icons.inventory_2_rounded,
+      label: 'Produtos e estoque',
     ),
     _OwnerNavItem(
       route: '/employees',
@@ -38,9 +49,19 @@ class OwnerShellScaffold extends ConsumerWidget {
       label: 'Funcionários',
     ),
     _OwnerNavItem(
-      route: '/devices',
-      icon: Icons.devices_rounded,
-      label: 'Dispositivos',
+      route: '/reports',
+      icon: Icons.assessment_rounded,
+      label: 'Relatórios',
+    ),
+    _OwnerNavItem(
+      route: '/billing',
+      icon: Icons.receipt_long_rounded,
+      label: 'Assinatura',
+    ),
+    _OwnerNavItem(
+      route: '/settings',
+      icon: Icons.settings_rounded,
+      label: 'Configurações',
     ),
   ];
 
@@ -71,7 +92,10 @@ class OwnerShellScaffold extends ConsumerWidget {
             plan: plan,
           ),
         ),
-        body: Padding(padding: const EdgeInsets.all(16), child: child),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: child,
+        ),
       );
     }
 
@@ -109,7 +133,7 @@ class OwnerShellScaffold extends ConsumerWidget {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Painel do dono para acompanhar a empresa em modo leitura.',
+                              'Painel da empresa para acompanhar indicadores, relatórios e operação em modo consulta.',
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     color: Theme.of(
@@ -177,7 +201,7 @@ class _Sidebar extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'Painel do dono',
+                'Painel da empresa',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -196,7 +220,7 @@ class _Sidebar extends StatelessWidget {
               ],
               const Spacer(),
               Text(
-                'Somente leitura nesta fase',
+                'Modo consulta nesta fase',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -229,7 +253,7 @@ class _CompanyPill extends StatelessWidget {
         children: [
           Text(companyName, style: Theme.of(context).textTheme.titleSmall),
           Text(
-            'Plano $plan',
+            'Plano ${ownerPlanLabel(plan)}',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
@@ -267,10 +291,14 @@ class _NavButton extends StatelessWidget {
                     : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               const SizedBox(width: 12),
-              Text(
-                item.label,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+              Expanded(
+                child: Text(
+                  item.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  ),
                 ),
               ),
             ],

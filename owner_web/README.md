@@ -1,12 +1,12 @@
 # Tatuzin Owner Web
 
-Painel web read-only do dono da empresa Tatuzin. Este app é separado do
-`admin_web`: o futuro domínio `painel.tatuzin.com.br` é para clientes owners,
-enquanto `admin.tatuzin.com.br` continua exclusivo para plataforma/suporte
-interno.
+Painel de gestão da empresa do cliente Tatuzin. Este app é separado do
+`admin_web`: o domínio `painel.tatuzin.com.br` é para o dono ou gestor da
+empresa acompanhar o negócio, enquanto `admin.tatuzin.com.br` continua
+exclusivo para plataforma/suporte interno.
 
-Esta fase prepara a base read-only do painel owner. O app não implementa ações
-de escrita, não usa arquitetura local-first e não depende do `admin_web`.
+Esta fase mantém o painel em modo consulta. O app não implementa ações de
+escrita, não usa arquitetura local-first e não depende do `admin_web`.
 
 ## Stack
 
@@ -20,10 +20,16 @@ de escrita, não usa arquitetura local-first e não depende do `admin_web`.
 
 - `/login`
 - `/dashboard`
+- `/sales`
+- `/clients`
+- `/finance`
+- `/products`
+- `/reports`
 - `/company`
 - `/billing`
 - `/employees`
 - `/devices`
+- `/settings`
 
 Não existe rota `/admin` neste app.
 
@@ -36,7 +42,7 @@ Autenticação segura:
 - `POST /api/auth/refresh`
 - `POST /api/auth/logout`
 
-Dados read-only do owner:
+Dados read-only do painel da empresa:
 
 - `GET /api/owner/company`
 - `GET /api/owner/dashboard`
@@ -47,8 +53,27 @@ Dados read-only do owner:
 
 O app não consome `/api/admin/*`, `/api/billing/*`, `/api/employees/*` ou
 `/api/sync/*` diretamente. A rota visual `/billing` consome somente
-`/api/owner/billing/*`, e a rota visual `/employees` consome somente
-`/api/owner/employees`.
+`/api/owner/billing/*`, a rota visual `/employees` consome somente
+`/api/owner/employees`, e os cards gerenciais sem endpoint real mostram estados
+vazios honestos.
+
+## Produto
+
+O painel é organizado como uma ferramenta de acompanhamento gerencial:
+
+- Dashboard
+- Vendas
+- Clientes / CRM
+- Fiado e financeiro
+- Produtos e estoque
+- Funcionários
+- Relatórios
+- Assinatura e cobranças
+- Configurações
+
+Enquanto o backend ainda não expõe relatórios gerenciais reais, as telas de
+vendas, CRM, financeiro, produtos, estoque, funcionários e relatórios mostram
+estados vazios amigáveis em vez de métricas inventadas.
 
 ## Configuração
 
@@ -99,7 +124,7 @@ Subdomínio recomendado:
 painel.tatuzin.com.br
 ```
 
-O painel owner deve ser publicado como site estático Flutter Web. O exemplo de
+O painel da empresa deve ser publicado como site estático Flutter Web. O exemplo de
 Nginx fica em:
 
 ```text
@@ -161,7 +186,7 @@ precisar de scripts e assets específicos conforme a estratégia de build.
 
 ## Segurança
 
-- Read-only nesta fase.
+- Modo consulta nesta fase.
 - Não implementa cancelamento, troca de plano, refresh de billing, bloqueio de
   dispositivo ou CRUD.
 - Não exibe `providerSubscriptionId` completo.

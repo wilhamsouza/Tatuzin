@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/auth/owner_providers.dart';
 import '../../../core/widgets/owner_async_view.dart';
 import '../../../core/widgets/owner_formatters.dart';
+import '../../../core/widgets/owner_management_widgets.dart';
 
 class OwnerCompanyPage extends ConsumerWidget {
   const OwnerCompanyPage({super.key});
@@ -15,97 +16,47 @@ class OwnerCompanyPage extends ConsumerWidget {
       value: company,
       onRetry: () => ref.invalidate(ownerCompanyProvider),
       builder: (data) {
-        final enabledFeatures = data.features.entries
-            .where((entry) => entry.value)
-            .map((entry) => entry.key)
-            .toList();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      data.name,
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.w900),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        Chip(label: Text('Plano ${data.license.plan}')),
-                        Chip(
-                          label: Text(
-                            'Status ${OwnerFormatters.status(data.license.status)}',
-                          ),
-                        ),
-                        Chip(label: Text('Perfil ${data.membershipRole}')),
-                        Chip(
-                          label: Text(
-                            data.setupCompleted
-                                ? 'Configuração concluída'
-                                : 'Configuração pendente',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+            OwnerPageIntro(
+              title: data.name,
+              subtitle: 'Resumo da empresa e do acesso ao painel.',
+              icon: Icons.storefront_rounded,
+              trailing: Chip(
+                label: Text('Plano ${ownerPlanLabel(data.license.plan)}'),
               ),
             ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: [
-                _InfoCard(
-                  title: 'Dispositivos',
-                  value: '${data.limits.maxDevices}',
-                  detail: 'limite do plano',
-                ),
-                _InfoCard(
-                  title: 'Funcionários',
-                  value: '${data.limits.maxEmployees}',
-                  detail: 'limite do plano',
-                ),
-                _InfoCard(
-                  title: 'Relatórios',
-                  value: data.limits.reportPeriods.isEmpty
-                      ? 'Indisponível'
-                      : data.limits.reportPeriods.join(', '),
-                  detail: 'períodos liberados',
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Recursos liberados',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final feature in enabledFeatures.take(24))
-                          Chip(label: Text(feature)),
-                      ],
-                    ),
-                  ],
-                ),
+            const SizedBox(height: 18),
+            OwnerSectionCard(
+              title: 'Dados da empresa',
+              subtitle: 'Informações disponíveis para consulta.',
+              child: Wrap(
+                spacing: 24,
+                runSpacing: 14,
+                children: [
+                  _InfoItem(label: 'Nome', value: data.name),
+                  _InfoItem(
+                    label: 'Status',
+                    value: OwnerFormatters.status(data.license.status),
+                  ),
+                  _InfoItem(
+                    label: 'Próxima cobrança',
+                    value: OwnerFormatters.date(data.license.nextPaymentDate),
+                  ),
+                  _InfoItem(
+                    label: 'Criada em',
+                    value: OwnerFormatters.date(data.createdAt),
+                  ),
+                  _InfoItem(
+                    label: 'Funcionários no plano',
+                    value: '${data.limits.maxEmployees}',
+                  ),
+                  _InfoItem(
+                    label: 'Dispositivos no plano',
+                    value: '${data.limits.maxDevices}',
+                  ),
+                ],
               ),
             ),
           ],
@@ -115,39 +66,33 @@ class OwnerCompanyPage extends ConsumerWidget {
   }
 }
 
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({
-    required this.title,
-    required this.value,
-    required this.detail,
-  });
+class _InfoItem extends StatelessWidget {
+  const _InfoItem({required this.label, required this.value});
 
-  final String title;
+  final String label;
   final String value;
-  final String detail;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 240,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title),
-              const SizedBox(height: 8),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              Text(detail),
-            ],
+      width: 220,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ],
       ),
     );
   }

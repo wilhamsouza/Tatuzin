@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,10 +15,17 @@ import 'package:tatuzin_owner_web/src/core/auth/owner_providers.dart';
 import 'package:tatuzin_owner_web/src/core/models/owner_models.dart';
 import 'package:tatuzin_owner_web/src/core/network/owner_api_client.dart';
 import 'package:tatuzin_owner_web/src/core/network/owner_api_service.dart';
+import 'package:tatuzin_owner_web/src/core/widgets/owner_shell_scaffold.dart';
 import 'package:tatuzin_owner_web/src/features/billing/presentation/owner_billing_page.dart';
+import 'package:tatuzin_owner_web/src/features/clients/presentation/owner_clients_page.dart';
 import 'package:tatuzin_owner_web/src/features/dashboard/presentation/owner_dashboard_page.dart';
 import 'package:tatuzin_owner_web/src/features/devices/presentation/owner_devices_page.dart';
 import 'package:tatuzin_owner_web/src/features/employees/presentation/owner_employees_page.dart';
+import 'package:tatuzin_owner_web/src/features/finance/presentation/owner_finance_page.dart';
+import 'package:tatuzin_owner_web/src/features/products/presentation/owner_products_page.dart';
+import 'package:tatuzin_owner_web/src/features/reports/presentation/owner_reports_page.dart';
+import 'package:tatuzin_owner_web/src/features/sales/presentation/owner_sales_page.dart';
+import 'package:tatuzin_owner_web/src/features/settings/presentation/owner_settings_page.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 void main() {
@@ -28,8 +36,15 @@ void main() {
   });
 
   test('routes include owner pages and no /admin frontend route', () {
+    expect(ownerRoutePaths, contains('/dashboard'));
+    expect(ownerRoutePaths, contains('/sales'));
+    expect(ownerRoutePaths, contains('/clients'));
+    expect(ownerRoutePaths, contains('/finance'));
+    expect(ownerRoutePaths, contains('/products'));
+    expect(ownerRoutePaths, contains('/reports'));
     expect(ownerRoutePaths, contains('/billing'));
     expect(ownerRoutePaths, contains('/employees'));
+    expect(ownerRoutePaths, contains('/settings'));
     expect(ownerRoutePaths, isNot(contains('/admin')));
   });
 
@@ -37,8 +52,49 @@ void main() {
     await tester.pumpWidget(const ProviderScope(child: OwnerWebApp()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Painel do dono'), findsOneWidget);
+    expect(find.text('Painel da empresa'), findsOneWidget);
     expect(find.text('Entrar'), findsOneWidget);
+  });
+
+  testWidgets('menu shows company management navigation', (tester) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          ownerAuthControllerProvider.overrideWith(
+            (ref) => _ReadyOwnerAuthController(),
+          ),
+        ],
+        child: const MaterialApp(
+          home: OwnerShellScaffold(
+            currentLocation: '/dashboard',
+            title: 'Dashboard',
+            child: SizedBox.shrink(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    for (final label in [
+      'Dashboard',
+      'Vendas',
+      'Clientes / CRM',
+      'Fiado',
+      'Produtos e estoque',
+      'Funcionários',
+      'Relatórios',
+      'Assinatura',
+      'Configurações',
+    ]) {
+      expect(find.text(label), findsWidgets);
+    }
+    expect(find.text('Painel da empresa'), findsOneWidget);
+    expect(find.text('Painel do dono'), findsNothing);
   });
 
   test('debug sanitizer does not expose tokens or passwords', () {
@@ -155,6 +211,28 @@ void main() {
     expect(paths.any((path) => path.startsWith('/api/billing/')), false);
     expect(paths.any((path) => path.startsWith('/api/employees/')), false);
     expect(paths.any((path) => path.startsWith('/api/sync/')), false);
+  });
+
+  test('source does not call admin APIs or owner write endpoints', () {
+    final source = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'))
+        .map((file) => file.readAsStringSync())
+        .join('\n');
+
+    expect(source, isNot(contains('/api/admin')));
+    expect(source, isNot(contains('/admin/')));
+    expect(
+      RegExp(
+        r'''(?:postJson|putJson|patchJson|deleteJson)\(\s*['"]/owner/''',
+      ).hasMatch(source),
+      isFalse,
+    );
+    expect(
+      RegExp(r'''_send\('(?:PUT|PATCH|DELETE)' ''').hasMatch(source),
+      isFalse,
+    );
   });
 
   test('api client clears local session on final 401', () async {
@@ -281,7 +359,7 @@ void main() {
           code: 'FEATURE_NOT_AVAILABLE',
         ),
       ),
-      'Painel web do dono está disponível no plano PRO.',
+      'Painel da empresa está disponível no plano PRO.',
     );
     expect(
       describeOwnerError(TimeoutException('network')),
@@ -289,7 +367,7 @@ void main() {
     );
   });
 
-  testWidgets('dashboard renders owner cards', (tester) async {
+  testWidgets('dashboard renders management language', (tester) async {
     await tester.pumpWidget(
       _withProviders(
         overrides: [
@@ -302,9 +380,50 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Plano atual'), findsOneWidget);
-    expect(find.text('PRO'), findsOneWidget);
-    expect(find.text('Funcionários'), findsOneWidget);
+    expect(find.text('Dashboard da empresa'), findsOneWidget);
+    expect(find.text('Vendas hoje'), findsOneWidget);
+    expect(find.text('Faturamento do mês'), findsOneWidget);
+    expect(find.text('Contas a receber'), findsOneWidget);
+    expect(find.text('Top produtos'), findsOneWidget);
+    expect(find.text('Vendas por funcionário'), findsOneWidget);
+    expect(find.textContaining('Sync'), findsNothing);
+    expect(find.textContaining('ownerWebPanel'), findsNothing);
+  });
+
+  testWidgets('business pages render friendly empty states', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: Column(
+              children: [
+                OwnerSalesPage(),
+                OwnerClientsPage(),
+                OwnerFinancePage(),
+                OwnerProductsPage(),
+                OwnerReportsPage(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Vendas'), findsWidgets);
+    expect(find.text('Clientes / CRM'), findsOneWidget);
+    expect(find.text('Fiado e financeiro'), findsOneWidget);
+    expect(find.text('Produtos e estoque'), findsOneWidget);
+    expect(find.text('Relatórios'), findsOneWidget);
+    expect(find.text('Lucratividade'), findsOneWidget);
+    expect(
+      find.text(
+        'Os indicadores de CRM serão liberados em uma próxima atualização.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('endpoint'), findsNothing);
+    expect(find.textContaining('payload'), findsNothing);
   });
 
   testWidgets('billing page hides full provider id and payload', (
@@ -337,9 +456,11 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.textContaining('prea...9999'), findsOneWidget);
+    expect(find.text('Cobrança vinculada'), findsOneWidget);
+    expect(find.textContaining('prea...9999'), findsNothing);
     expect(find.textContaining('preapproval-owner-secret-9999'), findsNothing);
     expect(find.textContaining('invoice-token'), findsNothing);
+    expect(find.textContaining('payload'), findsNothing);
   });
 
   testWidgets('employees placeholder renders without token or hash', (
@@ -357,15 +478,16 @@ void main() {
     );
     await tester.pump();
 
+    expect(find.text('Desempenho da equipe'), findsOneWidget);
     expect(
-      find.text('Funcionários ainda não estão disponíveis neste painel.'),
+      find.text('Relatórios de funcionários em preparação'),
       findsOneWidget,
     );
     expect(find.textContaining('inviteTokenHash'), findsNothing);
     expect(find.textContaining('token'), findsNothing);
   });
 
-  testWidgets('devices page renders masked client id only', (tester) async {
+  testWidgets('devices page hides technical ids', (tester) async {
     await tester.pumpWidget(
       _withProviders(
         overrides: [
@@ -379,7 +501,49 @@ void main() {
     await tester.pump();
 
     expect(find.textContaining('own-1234-secret-client'), findsNothing);
-    expect(find.textContaining('own-...7890'), findsOneWidget);
+    expect(find.textContaining('own-...7890'), findsNothing);
+    expect(find.text('PDV Principal'), findsOneWidget);
+    expect(find.textContaining('Aplicativo Android'), findsOneWidget);
+  });
+
+  testWidgets('settings keeps devices friendly and secondary', (tester) async {
+    await tester.pumpWidget(
+      _withProviders(
+        overrides: [
+          ownerCompanyProvider.overrideWith((ref) async {
+            return OwnerCompanySummary.fromMap(_companyPayload());
+          }),
+          ownerDevicesProvider.overrideWith((ref) async {
+            return OwnerDevicesResult.fromMap({
+              'items': [
+                {
+                  'id': 'device-1',
+                  'maskedClientInstanceId': 'own-...7890',
+                  'clientInstanceId': 'own-1234-secret-client-7890',
+                  'deviceLabel': 'Tatuzin Owner Web',
+                  'platform': 'web',
+                  'appVersion': 'owner-web',
+                  'status': 'ACTIVE',
+                  'lastSeenAt': '2026-05-03T00:00:00.000Z',
+                },
+              ],
+              'count': 1,
+              'limits': {'maxDevices': 100},
+            });
+          }),
+        ],
+        child: const OwnerSettingsPage(),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Configurações'), findsOneWidget);
+    expect(find.text('Dispositivos conectados'), findsOneWidget);
+    expect(find.text('Painel da empresa'), findsOneWidget);
+    expect(find.textContaining('Tatuzin Owner Web'), findsNothing);
+    expect(find.textContaining('owner-web'), findsNothing);
+    expect(find.textContaining('own-1234-secret-client'), findsNothing);
+    expect(find.textContaining('own-...7890'), findsNothing);
   });
 }
 
@@ -389,7 +553,14 @@ Widget _withProviders({
 }) {
   return ProviderScope(
     overrides: overrides,
-    child: MaterialApp(home: Scaffold(body: child)),
+    child: MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: child,
+        ),
+      ),
+    ),
   );
 }
 
@@ -410,6 +581,39 @@ class _FakeHttpClient extends http.BaseClient {
       request: request,
     );
   }
+}
+
+class _ReadyOwnerAuthController extends OwnerAuthController {
+  _ReadyOwnerAuthController()
+    : super(
+        apiService: _dummyApiService(),
+        authStorage: OwnerAuthStorage(),
+        restoreOnStart: false,
+      );
+
+  @override
+  OwnerSession? get session => OwnerSession.fromLoginResponse(_loginPayload());
+
+  @override
+  bool get isAuthenticated => true;
+
+  @override
+  bool get isRestoring => false;
+
+  @override
+  Future<void> logout() async {}
+}
+
+OwnerApiService _dummyApiService() {
+  final storage = OwnerAuthStorage();
+  return OwnerApiService(
+    apiClient: OwnerApiClient(
+      baseUrl: 'https://api.tatuzin.com.br/api',
+      authStorage: storage,
+      httpClient: _FakeHttpClient((request) => http.Response('', 204)),
+    ),
+    authStorage: storage,
+  );
 }
 
 http.Response _jsonResponse(Map<String, dynamic> payload, {int status = 200}) {

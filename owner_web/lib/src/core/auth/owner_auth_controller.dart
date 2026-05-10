@@ -97,7 +97,7 @@ class OwnerAuthController extends ChangeNotifier {
       final refreshToken = session.refreshToken;
       if (refreshToken == null || refreshToken.trim().isEmpty) {
         throw const OwnerApiException(
-          message: 'A API nao retornou um refresh token valido.',
+          message: 'A sessão não pôde ser iniciada corretamente.',
           statusCode: 401,
           code: 'OWNER_REFRESH_TOKEN_MISSING',
         );
@@ -164,7 +164,7 @@ class OwnerAuthController extends ChangeNotifier {
       return;
     }
     _session = null;
-    _errorMessage = 'Sua sessao terminou. Entre novamente.';
+    _errorMessage = 'Sua sessão terminou. Entre novamente.';
     notifyListeners();
   }
 }
@@ -175,17 +175,17 @@ String describeOwnerError(Object error) {
       case 'OWNER_REQUIRED':
         return 'Apenas o dono da empresa pode acessar este painel.';
       case 'FEATURE_NOT_AVAILABLE':
-        return 'Painel web do dono está disponível no plano PRO.';
+        return 'Painel da empresa está disponível no plano PRO.';
       case 'OWNER_AUTH_REQUIRED':
       case 'AUTH_REQUIRED':
       case 'SESSION_NOT_FOUND':
-        return 'Sua sessao expirou. Entre novamente.';
+        return 'Sua sessão expirou. Entre novamente.';
       default:
         if (error.statusCode == 403) {
           return 'Você não tem permissão para acessar este painel.';
         }
         if (error.statusCode == 401) {
-          return 'Sua sessao expirou. Entre novamente.';
+          return 'Sua sessão expirou. Entre novamente.';
         }
         return error.message;
     }

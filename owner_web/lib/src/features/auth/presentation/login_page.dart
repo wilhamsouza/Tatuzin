@@ -67,7 +67,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Painel do dono',
+                        'Painel da empresa',
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(
                               color: Theme.of(
@@ -127,7 +127,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'Acesso restrito ao dono da empresa com painel web liberado no plano PRO.',
+                        'Acesso restrito ao dono ou gestor autorizado da empresa.',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
