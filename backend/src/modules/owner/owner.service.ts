@@ -5,9 +5,21 @@ import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { toPaginationParams } from '../../shared/http/pagination';
 import type { AppContext } from '../app/app-context.types';
 import { getPlanEntitlements } from '../plans/plan-catalog.service';
-import type { OwnerInvoicesQueryInput } from './owner.schemas';
+import { OwnerReportingService } from './owner-reporting.service';
+import type {
+  OwnerCrmCustomersQueryInput,
+  OwnerCrmSummaryQueryInput,
+  OwnerEmployeesReportQueryInput,
+  OwnerInvoicesQueryInput,
+  OwnerProductsReportQueryInput,
+  OwnerReceivablesQueryInput,
+  OwnerSalesSummaryQueryInput,
+  OwnerStockSummaryQueryInput,
+} from './owner.schemas';
 
 export class OwnerService {
+  private readonly reportingService = new OwnerReportingService();
+
   async getCompanySummary(context: AppContext) {
     const company = await prisma.company.findUniqueOrThrow({
       where: { id: context.company.id },
@@ -187,6 +199,67 @@ export class OwnerService {
       },
       reports: null,
     };
+  }
+
+  async getBusinessDashboard(context: AppContext) {
+    return this.reportingService.getBusinessDashboard(context);
+  }
+
+  async getSalesSummary(
+    context: AppContext,
+    query: OwnerSalesSummaryQueryInput,
+  ) {
+    return this.reportingService.getSalesSummary(context, query);
+  }
+
+  async getProductsReport(
+    context: AppContext,
+    query: OwnerProductsReportQueryInput,
+  ) {
+    return this.reportingService.getProductsReport(context, query);
+  }
+
+  async getStockSummary(
+    context: AppContext,
+    query: OwnerStockSummaryQueryInput,
+  ) {
+    return this.reportingService.getStockSummary(context, query);
+  }
+
+  async getCrmSummary(
+    context: AppContext,
+    query: OwnerCrmSummaryQueryInput,
+  ) {
+    return this.reportingService.getCrmSummary(context, query);
+  }
+
+  async listCrmCustomers(
+    context: AppContext,
+    query: OwnerCrmCustomersQueryInput,
+  ) {
+    return this.reportingService.listCrmCustomers(context, query);
+  }
+
+  async getCrmCustomerDetail(context: AppContext, customerId: string) {
+    return this.reportingService.getCrmCustomerDetail(context, customerId);
+  }
+
+  async listReceivables(
+    context: AppContext,
+    query: OwnerReceivablesQueryInput,
+  ) {
+    return this.reportingService.listReceivables(context, query);
+  }
+
+  async getEmployeeReports(
+    context: AppContext,
+    query: OwnerEmployeesReportQueryInput,
+  ) {
+    return this.reportingService.getEmployeeReports(context, query);
+  }
+
+  async getReportsCatalog(context: AppContext) {
+    return this.reportingService.getReportsCatalog(context);
   }
 }
 

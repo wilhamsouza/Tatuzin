@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'http';
+import { readFileSync } from 'node:fs';
 
 import jwt from 'jsonwebtoken';
 import type { Prisma } from '@prisma/client';
@@ -242,6 +243,342 @@ describe('owner routes', () => {
     assert.equal(payload.employees.reason, 'EMPLOYEES_NOT_IMPLEMENTED');
     assert.equal(payload.reports, null);
   });
+
+  it('protects new business reports with owner and ownerWebPanel checks', async () => {
+    const unauthenticated = await requestJson('GET', '/owner/dashboard/business');
+    assert.equal(unauthenticated.status, 401);
+    assert.equal(
+      (unauthenticated.data as { code?: string }).code,
+      'AUTH_REQUIRED',
+    );
+
+    const operator = await createFixture({ plan: 'PRO', role: 'OPERATOR' });
+    const operatorResponse = await requestJson(
+      'GET',
+      '/owner/dashboard/business',
+      { token: operator.token },
+    );
+    assert.equal(operatorResponse.status, 403);
+    assert.equal(
+      (operatorResponse.data as { code?: string }).code,
+      'OWNER_REQUIRED',
+    );
+
+    const freeOwner = await createFixture({ plan: 'FREE', role: 'OWNER' });
+    const freeResponse = await requestJson(
+      'GET',
+      '/owner/dashboard/business',
+      { token: freeOwner.token },
+    );
+    assert.equal(freeResponse.status, 403);
+    assert.equal(
+      (freeResponse.data as { code?: string }).code,
+      'FEATURE_NOT_AVAILABLE',
+    );
+
+    const pendingOwner = await createFixture({
+      plan: 'BASIC',
+      role: 'OWNER',
+      pendingPlan: 'PRO',
+    });
+    const pendingResponse = await requestJson(
+      'GET',
+      '/owner/reports/sales-summary',
+      { token: pendingOwner.token },
+    );
+    assert.equal(pendingResponse.status, 403);
+    assert.equal(
+      (pendingResponse.data as { code?: string }).code,
+      'FEATURE_NOT_AVAILABLE',
+    );
+  });
+
+  it('returns real business dashboard, sales, products and stock summaries', async () => {
+    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+    await createBusinessData(fixture);
+    const otherFixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+    await createBusinessData(otherFixture);
+
+    const dashboard = await requestJson('GET', '/owner/dashboard/business', {
+      token: fixture.token,
+    });
+    const sales = await requestJson(
+      'GET',
+      `/owner/reports/sales-summary?startDate=${todayDate()}&endDate=${todayDate()}&groupBy=day&page=1&pageSize=10`,
+      { token: fixture.token },
+    );
+    const products = await requestJson(
+      'GET',
+      `/owner/reports/products?startDate=${todayDate()}&endDate=${todayDate()}&limit=5`,
+      { token: fixture.token },
+    );
+    const stock = await requestJson('GET', '/owner/stock/summary?limit=10', {
+      token: fixture.token,
+    });
+
+    assert.equal(dashboard.status, 200);
+    assert.equal(sales.status, 200);
+    assert.equal(products.status, 200);
+    assert.equal(stock.status, 200);
+
+    const dashboardPayload = dashboard.data as {
+      sales: { todayAmountCents: number; todayCount: number };
+      receivables: { openAmountCents: number };
+      products: { outOfStock: number; lowStock: number };
+      employees: { available: boolean; topPerformers: unknown[] };
+    };
+    assert.equal(dashboardPayload.sales.todayAmountCents, 16000);
+    assert.equal(dashboardPayload.sales.todayCount, 3);
+    assert.equal(dashboardPayload.receivables.openAmountCents, 3000);
+    assert.equal(dashboardPayload.products.outOfStock, 1);
+    assert.equal(dashboardPayload.products.lowStock, 1);
+    assert.equal(dashboardPayload.employees.available, true);
+    assert.equal(dashboardPayload.employees.topPerformers.length, 1);
+
+    const salesPayload = sales.data as {
+      totalAmountCents: number;
+      totalCount: number;
+      averageTicketCents: number;
+      byPaymentMethod: Array<{ label: string; totalAmountCents: number }>;
+      recentSales: { items: Array<Record<string, unknown>> };
+    };
+    assert.equal(salesPayload.totalAmountCents, 16000);
+    assert.equal(salesPayload.totalCount, 3);
+    assert.equal(salesPayload.averageTicketCents, 5333);
+    assert.equal(
+      salesPayload.byPaymentMethod.some(
+        (item) => item.label === 'Dinheiro' && item.totalAmountCents === 10000,
+      ),
+      true,
+    );
+    const serializedSales = JSON.stringify(salesPayload.recentSales.items);
+    assert.equal(serializedSales.includes('localUuid'), false);
+    assert.equal(serializedSales.includes('owner-routes-sale'), false);
+
+    const productsPayload = products.data as {
+      topSellingProducts: Array<{ productName: string; amountCents: number }>;
+      stockSummary: { outOfStockCount: number; lowStockCount: number };
+    };
+    assert.equal(productsPayload.topSellingProducts[0]?.productName, 'Cafe coado');
+    assert.equal(productsPayload.topSellingProducts[0]?.amountCents, 15000);
+    assert.equal(productsPayload.stockSummary.outOfStockCount, 1);
+    assert.equal(productsPayload.stockSummary.lowStockCount, 1);
+
+    const stockPayload = stock.data as {
+      totalProducts: number;
+      lowStockCount: number;
+      outOfStockCount: number;
+      itemsLowStock: Array<{ name: string }>;
+      itemsOutOfStock: Array<{ name: string }>;
+    };
+    assert.equal(stockPayload.totalProducts, 3);
+    assert.equal(stockPayload.lowStockCount, 1);
+    assert.equal(stockPayload.outOfStockCount, 1);
+    assert.equal(stockPayload.itemsLowStock[0]?.name, 'Acucar cristal');
+    assert.equal(stockPayload.itemsOutOfStock[0]?.name, 'Leite integral');
+  });
+
+  it('limits owner report date windows safely', async () => {
+    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+
+    const response = await requestJson(
+      'GET',
+      '/owner/reports/sales-summary?startDate=2026-01-01&endDate=2026-05-10',
+      { token: fixture.token },
+    );
+
+    assert.equal(response.status, 422);
+    assert.equal(
+      (response.data as { code?: string }).code,
+      'OWNER_REPORT_DATE_RANGE_TOO_LONG',
+    );
+  });
+
+  it('returns CRM summaries, paginated customers and blocks cross-company customer detail', async () => {
+    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+    const business = await createBusinessData(fixture);
+    const otherFixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+    const otherBusiness = await createBusinessData(otherFixture);
+
+    const summary = await requestJson('GET', '/owner/crm/summary?limit=5', {
+      token: fixture.token,
+    });
+    const customers = await requestJson(
+      'GET',
+      '/owner/crm/customers?status=with_receivables&page=1&pageSize=10',
+      { token: fixture.token },
+    );
+    const searchCustomers = await requestJson(
+      'GET',
+      '/owner/crm/customers?search=ana&page=1&pageSize=10',
+      { token: fixture.token },
+    );
+    const detail = await requestJson(
+      'GET',
+      `/owner/crm/customers/${business.bobCustomerId}`,
+      { token: fixture.token },
+    );
+    const crossCompany = await requestJson(
+      'GET',
+      `/owner/crm/customers/${otherBusiness.aliceCustomerId}`,
+      { token: fixture.token },
+    );
+
+    assert.equal(summary.status, 200);
+    const summaryPayload = summary.data as {
+      totalCustomers: number;
+      activeCustomers: number;
+      inactiveCustomers: number;
+      newCustomersThisMonth: number;
+      customersWithReceivables: number;
+      topCustomers: Array<{ name: string; totalPurchasedCents: number }>;
+    };
+    assert.equal(summaryPayload.totalCustomers, 3);
+    assert.equal(summaryPayload.activeCustomers, 2);
+    assert.equal(summaryPayload.inactiveCustomers, 1);
+    assert.equal(summaryPayload.newCustomersThisMonth, 3);
+    assert.equal(summaryPayload.customersWithReceivables, 1);
+    assert.equal(summaryPayload.topCustomers[0]?.name, 'Ana Cliente');
+
+    assert.equal(customers.status, 200);
+    const customersPayload = customers.data as {
+      items: Array<{ name: string; openReceivableAmountCents: number }>;
+      total: number;
+    };
+    assert.equal(customersPayload.total, 1);
+    assert.equal(customersPayload.items[0]?.name, 'Bruno Fiado');
+    assert.equal(customersPayload.items[0]?.openReceivableAmountCents, 3000);
+
+    assert.equal(searchCustomers.status, 200);
+    const searchPayload = searchCustomers.data as {
+      items: Array<{ name: string }>;
+      total: number;
+    };
+    assert.equal(searchPayload.total, 1);
+    assert.equal(searchPayload.items[0]?.name, 'Ana Cliente');
+
+    assert.equal(detail.status, 200);
+    const detailPayload = detail.data as {
+      customer: { name: string; openReceivableAmountCents: number };
+      topProducts: Array<{ productName: string }>;
+      recentPurchases: Array<{ receiptNumber: string | null }>;
+      receivables: { openAmountCents: number };
+    };
+    assert.equal(detailPayload.customer.name, 'Bruno Fiado');
+    assert.equal(detailPayload.customer.openReceivableAmountCents, 3000);
+    assert.equal(detailPayload.topProducts[0]?.productName, 'Cafe coado');
+    assert.equal(detailPayload.recentPurchases[0]?.receiptNumber, 'F-101');
+    assert.equal(detailPayload.receivables.openAmountCents, 3000);
+
+    assert.equal(crossCompany.status, 404);
+    assert.equal(
+      (crossCompany.data as { code?: string }).code,
+      'OWNER_CUSTOMER_NOT_FOUND',
+    );
+  });
+
+  it('returns receivables, report catalog and employee reports safely', async () => {
+    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+    await createBusinessData(fixture);
+    const emptyFixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+
+    const receivables = await requestJson(
+      'GET',
+      '/owner/financial/receivables?status=open&page=1&pageSize=10',
+      { token: fixture.token },
+    );
+    const employees = await requestJson(
+      'GET',
+      `/owner/reports/employees?startDate=${todayDate()}&endDate=${todayDate()}&limit=5`,
+      { token: fixture.token },
+    );
+    const emptyEmployees = await requestJson(
+      'GET',
+      '/owner/reports/employees?limit=5',
+      { token: emptyFixture.token },
+    );
+    const catalog = await requestJson('GET', '/owner/reports/catalog', {
+      token: fixture.token,
+    });
+
+    assert.equal(receivables.status, 200);
+    const receivablesPayload = receivables.data as {
+      summary: {
+        openAmountCents: number;
+        overdueAmountCents: number;
+        openCount: number;
+        receivedThisMonthCents: number;
+      };
+      items: { items: Array<{ customerName: string; status: string }> };
+    };
+    assert.equal(receivablesPayload.summary.openAmountCents, 3000);
+    assert.equal(receivablesPayload.summary.overdueAmountCents, 0);
+    assert.equal(receivablesPayload.summary.openCount, 1);
+    assert.equal(receivablesPayload.summary.receivedThisMonthCents, 3000);
+    assert.equal(receivablesPayload.items.items[0]?.customerName, 'Bruno Fiado');
+    assert.equal(receivablesPayload.items.items[0]?.status, 'open');
+
+    assert.equal(employees.status, 200);
+    const employeesPayload = employees.data as {
+      available: boolean;
+      topEmployees: Array<{
+        name: string;
+        salesAmountCents: number;
+        salesCount: number;
+        averageTicketCents: number;
+      }>;
+    };
+    assert.equal(employeesPayload.available, true);
+    assert.equal(employeesPayload.topEmployees[0]?.name, 'Owner Routes User');
+    assert.equal(employeesPayload.topEmployees[0]?.salesAmountCents, 16000);
+    assert.equal(employeesPayload.topEmployees[0]?.salesCount, 3);
+    assert.equal(employeesPayload.topEmployees[0]?.averageTicketCents, 5333);
+
+    assert.equal(emptyEmployees.status, 200);
+    assert.deepEqual(emptyEmployees.data, {
+      available: false,
+      reason: 'EMPLOYEE_REPORTS_NOT_AVAILABLE',
+      period: (emptyEmployees.data as { period: unknown }).period,
+      topEmployees: [],
+    });
+
+    assert.equal(catalog.status, 200);
+    const catalogPayload = catalog.data as {
+      items: Array<{ key: string; title: string; available: boolean }>;
+    };
+    const reportKeys = catalogPayload.items.map((item) => item.key);
+    assert.deepEqual(reportKeys, [
+      'sales',
+      'products',
+      'cash',
+      'stock',
+      'customers',
+      'purchases',
+      'profitability',
+      'employees',
+    ]);
+    assert.equal(
+      catalogPayload.items.some(
+        (item) => item.key === 'employees' && item.available,
+      ),
+      true,
+    );
+  });
+
+  it('keeps owner reporting GET-only and free from admin API usage', () => {
+    const routesSource = readFileSync(
+      'src/modules/owner/owner.routes.ts',
+      'utf8',
+    );
+    const serviceSource = readFileSync(
+      'src/modules/owner/owner-reporting.service.ts',
+      'utf8',
+    );
+
+    assert.equal(routesSource.includes('/api/admin'), false);
+    assert.equal(serviceSource.includes('/api/admin'), false);
+    assert.equal(/ownerRouter\.(post|put|patch|delete)\(/.test(routesSource), false);
+  });
 });
 
 async function createFixture(options: {
@@ -312,6 +649,7 @@ async function createFixture(options: {
   return {
     companyId: company.id,
     userId: user.id,
+    membershipId: membership.id,
     token: signToken({
       userId: user.id,
       companyId: company.id,
@@ -349,6 +687,222 @@ async function createInvoice(
       paidAt: new Date('2026-05-03T00:00:00.000Z'),
     },
   });
+}
+
+async function createBusinessData(fixture: {
+  companyId: string;
+  userId: string;
+  membershipId: string;
+}) {
+  await prisma.employeeProfile.create({
+    data: {
+      companyId: fixture.companyId,
+      userId: fixture.userId,
+      membershipId: fixture.membershipId,
+      name: 'Owner Routes User',
+      email: `${fixture.userId}@tatuzin.test`,
+      emailNormalized: `${fixture.userId}@tatuzin.test`,
+      role: 'OWNER',
+      status: 'ACTIVE',
+      permissions: ['employees.manage'] as Prisma.InputJsonValue,
+      createdByUserId: fixture.userId,
+      updatedByUserId: fixture.userId,
+    },
+  });
+
+  const [coffee, sugar, milk] = await Promise.all([
+    prisma.product.create({
+      data: {
+        companyId: fixture.companyId,
+        localUuid: `${runId}-product-coffee`,
+        name: 'Cafe coado',
+        salePriceCents: 5000,
+        costPriceCents: 2000,
+        stockMil: 5000,
+      },
+    }),
+    prisma.product.create({
+      data: {
+        companyId: fixture.companyId,
+        localUuid: `${runId}-product-sugar`,
+        name: 'Acucar cristal',
+        salePriceCents: 1000,
+        costPriceCents: 400,
+        stockMil: 500,
+      },
+    }),
+    prisma.product.create({
+      data: {
+        companyId: fixture.companyId,
+        localUuid: `${runId}-product-milk`,
+        name: 'Leite integral',
+        salePriceCents: 700,
+        costPriceCents: 350,
+        stockMil: 0,
+      },
+    }),
+  ]);
+
+  const [alice, bob, inactive] = await Promise.all([
+    prisma.customer.create({
+      data: {
+        companyId: fixture.companyId,
+        localUuid: `${runId}-customer-alice`,
+        name: 'Ana Cliente',
+        phone: '11999990000',
+      },
+    }),
+    prisma.customer.create({
+      data: {
+        companyId: fixture.companyId,
+        localUuid: `${runId}-customer-bob`,
+        name: 'Bruno Fiado',
+        phone: '11888880000',
+      },
+    }),
+    prisma.customer.create({
+      data: {
+        companyId: fixture.companyId,
+        localUuid: `${runId}-customer-inactive`,
+        name: 'Carla Sem Compra',
+      },
+    }),
+  ]);
+
+  const cashSession = await prisma.cashSession.create({
+    data: {
+      companyId: fixture.companyId,
+      userId: fixture.userId,
+      localUuid: `${runId}-cash-session`,
+      status: 'open',
+      openedAt: new Date(),
+    },
+  });
+
+  const cashSale = await prisma.sale.create({
+    data: {
+      companyId: fixture.companyId,
+      cashSessionId: cashSession.id,
+      localUuid: `${runId}-sale-cash`,
+      customerId: alice.id,
+      receiptNumber: 'F-100',
+      paymentType: 'vista',
+      paymentMethod: 'dinheiro',
+      status: 'active',
+      totalAmountCents: 10000,
+      totalCostCents: 4000,
+      soldAt: new Date(),
+      items: {
+        create: [
+          {
+            productId: coffee.id,
+            productNameSnapshot: coffee.name,
+            quantityMil: 2000,
+            unitPriceCents: 5000,
+            totalPriceCents: 10000,
+            unitCostCents: 2000,
+            totalCostCents: 4000,
+            unitMeasure: 'un',
+            productType: 'unidade',
+          },
+        ],
+      },
+    },
+  });
+
+  const openFiadoSale = await prisma.sale.create({
+    data: {
+      companyId: fixture.companyId,
+      cashSessionId: cashSession.id,
+      localUuid: `${runId}-sale-fiado-open`,
+      customerId: bob.id,
+      receiptNumber: 'F-101',
+      paymentType: 'fiado',
+      paymentMethod: 'fiado',
+      status: 'active',
+      totalAmountCents: 5000,
+      totalCostCents: 2000,
+      soldAt: new Date(),
+      items: {
+        create: [
+          {
+            productId: coffee.id,
+            productNameSnapshot: coffee.name,
+            quantityMil: 1000,
+            unitPriceCents: 5000,
+            totalPriceCents: 5000,
+            unitCostCents: 2000,
+            totalCostCents: 2000,
+            unitMeasure: 'un',
+            productType: 'unidade',
+          },
+        ],
+      },
+    },
+  });
+
+  const paidFiadoSale = await prisma.sale.create({
+    data: {
+      companyId: fixture.companyId,
+      cashSessionId: cashSession.id,
+      localUuid: `${runId}-sale-fiado-paid`,
+      customerId: alice.id,
+      receiptNumber: 'F-102',
+      paymentType: 'fiado',
+      paymentMethod: 'fiado',
+      status: 'active',
+      totalAmountCents: 1000,
+      totalCostCents: 400,
+      soldAt: new Date(),
+      items: {
+        create: [
+          {
+            productId: sugar.id,
+            productNameSnapshot: sugar.name,
+            quantityMil: 1000,
+            unitPriceCents: 1000,
+            totalPriceCents: 1000,
+            unitCostCents: 400,
+            totalCostCents: 400,
+            unitMeasure: 'un',
+            productType: 'unidade',
+          },
+        ],
+      },
+    },
+  });
+
+  await prisma.fiadoPayment.createMany({
+    data: [
+      {
+        companyId: fixture.companyId,
+        saleId: openFiadoSale.id,
+        localUuid: `${runId}-fiado-payment-open`,
+        amountCents: 2000,
+        paymentMethod: 'pix',
+        createdAt: new Date(),
+      },
+      {
+        companyId: fixture.companyId,
+        saleId: paidFiadoSale.id,
+        localUuid: `${runId}-fiado-payment-paid`,
+        amountCents: 1000,
+        paymentMethod: 'dinheiro',
+        createdAt: new Date(),
+      },
+    ],
+  });
+
+  return {
+    aliceCustomerId: alice.id,
+    bobCustomerId: bob.id,
+    inactiveCustomerId: inactive.id,
+    cashSaleId: cashSale.id,
+  };
+}
+
+function todayDate() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function signToken(input: {
