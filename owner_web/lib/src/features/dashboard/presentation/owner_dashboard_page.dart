@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth/owner_providers.dart';
+import '../../../core/models/owner_models.dart';
 import '../../../core/widgets/owner_async_view.dart';
 import '../../../core/widgets/owner_formatters.dart';
 import '../../../core/widgets/owner_management_widgets.dart';
@@ -24,51 +25,62 @@ class OwnerDashboardPage extends ConsumerWidget {
               subtitle:
                   'Visão gerencial de vendas, clientes, estoque, equipe e alertas do negócio.',
               icon: Icons.space_dashboard_rounded,
-              trailing: Chip(
-                label: Text('Plano ${ownerPlanLabel(data.billing.plan)}'),
-              ),
+              trailing: Chip(label: Text(_periodLabel(data.period))),
             ),
             const SizedBox(height: 18),
-            const Wrap(
+            Wrap(
               spacing: 16,
               runSpacing: 16,
               children: [
                 OwnerMetricCard(
                   title: 'Vendas hoje',
-                  value: 'Em preparação',
-                  detail:
-                      'Este indicador será liberado quando os relatórios gerenciais estiverem disponíveis.',
+                  value: _moneyOrUnavailable(data.sales.todayAmountCents),
+                  detail: _salesDetail(data.sales.todayCount, 'hoje'),
                   icon: Icons.point_of_sale_rounded,
+                  isAvailable: data.sales.todayAmountCents != null,
                 ),
                 OwnerMetricCard(
                   title: 'Faturamento do mês',
-                  value: 'Em preparação',
-                  detail: 'Resumo mensal de vendas da empresa.',
+                  value: _moneyOrUnavailable(data.sales.monthAmountCents),
+                  detail: _salesDetail(data.sales.monthCount, 'no mês'),
                   icon: Icons.payments_outlined,
+                  isAvailable: data.sales.monthAmountCents != null,
                 ),
                 OwnerMetricCard(
                   title: 'Ticket médio',
-                  value: 'Em preparação',
-                  detail: 'Valor médio por venda no período.',
+                  value: _moneyOrUnavailable(data.sales.averageTicketCents),
+                  detail: 'Valor médio por venda no mês.',
                   icon: Icons.trending_up_rounded,
+                  isAvailable: data.sales.averageTicketCents != null,
                 ),
                 OwnerMetricCard(
                   title: 'Contas a receber',
-                  value: 'Em preparação',
-                  detail: 'Valores em aberto de fiado e recebíveis.',
+                  value: _moneyOrUnavailable(data.receivables.openAmountCents),
+                  detail:
+                      '${data.receivables.openCount ?? 0} contas em aberto.',
                   icon: Icons.request_quote_outlined,
+                  isAvailable: data.receivables.openAmountCents != null,
                 ),
                 OwnerMetricCard(
                   title: 'Clientes ativos',
-                  value: 'Em preparação',
-                  detail: 'Clientes com compras recentes.',
+                  value: _numberOrUnavailable(data.customers.active),
+                  detail: '${data.customers.total ?? 0} clientes no cadastro.',
                   icon: Icons.people_alt_outlined,
+                  isAvailable: data.customers.active != null,
                 ),
                 OwnerMetricCard(
-                  title: 'Produtos com estoque baixo',
-                  value: 'Em preparação',
-                  detail: 'Alertas de reposição e ruptura.',
+                  title: 'Estoque baixo',
+                  value: _numberOrUnavailable(data.products.lowStock),
+                  detail: '${data.products.outOfStock ?? 0} produtos zerados.',
                   icon: Icons.inventory_outlined,
+                  isAvailable: data.products.lowStock != null,
+                ),
+                OwnerMetricCard(
+                  title: 'Produtos zerados',
+                  value: _numberOrUnavailable(data.products.outOfStock),
+                  detail: '${data.products.total ?? 0} produtos monitorados.',
+                  icon: Icons.remove_shopping_cart_outlined,
+                  isAvailable: data.products.outOfStock != null,
                 ),
               ],
             ),
@@ -77,28 +89,20 @@ class OwnerDashboardPage extends ConsumerWidget {
               spacing: 16,
               runSpacing: 16,
               children: [
-                const SizedBox(
+                SizedBox(
                   width: 420,
                   child: OwnerSectionCard(
                     title: 'Top produtos',
                     subtitle: 'Produtos com maior venda no período.',
-                    child: OwnerEmptyState(
-                      title: 'Ranking em preparação',
-                      message:
-                          'Este indicador será liberado quando o relatório de vendas por produto estiver disponível.',
-                    ),
+                    child: _ProductRanking(items: data.products.topSelling),
                   ),
                 ),
-                const SizedBox(
+                SizedBox(
                   width: 420,
                   child: OwnerSectionCard(
                     title: 'Top clientes',
-                    subtitle: 'Clientes com maior recorrência ou valor.',
-                    child: OwnerEmptyState(
-                      title: 'CRM em preparação',
-                      message:
-                          'Os principais clientes aparecerão aqui quando os indicadores de CRM forem liberados.',
-                    ),
+                    subtitle: 'Clientes com maior valor comprado.',
+                    child: _CustomerRanking(items: data.customers.topCustomers),
                   ),
                 ),
                 SizedBox(
@@ -106,14 +110,7 @@ class OwnerDashboardPage extends ConsumerWidget {
                   child: OwnerSectionCard(
                     title: 'Vendas por funcionário',
                     subtitle: 'Desempenho de atendimento e operação.',
-                    child: OwnerEmptyState(
-                      title: data.employees.available
-                          ? 'Indicador em preparação'
-                          : 'Relatórios de equipe em preparação',
-                      message:
-                          'As vendas por funcionário serão liberadas em uma próxima atualização.',
-                      icon: Icons.badge_outlined,
-                    ),
+                    child: _EmployeeRanking(employees: data.employees),
                   ),
                 ),
                 SizedBox(
@@ -121,11 +118,7 @@ class OwnerDashboardPage extends ConsumerWidget {
                   child: OwnerSectionCard(
                     title: 'Alertas da empresa',
                     subtitle: 'Pontos que merecem atenção do gestor.',
-                    child: _BusinessAlerts(
-                      cancelAtPeriodEnd: data.billing.cancelAtPeriodEnd,
-                      pendingPlan: data.billing.pendingPlan,
-                      nextPaymentDate: data.billing.nextPaymentDate,
-                    ),
+                    child: _BusinessAlerts(alerts: data.alerts),
                   ),
                 ),
               ],
@@ -137,33 +130,117 @@ class OwnerDashboardPage extends ConsumerWidget {
   }
 }
 
-class _BusinessAlerts extends StatelessWidget {
-  const _BusinessAlerts({
-    required this.cancelAtPeriodEnd,
-    required this.pendingPlan,
-    required this.nextPaymentDate,
-  });
+class _ProductRanking extends StatelessWidget {
+  const _ProductRanking({required this.items});
 
-  final bool cancelAtPeriodEnd;
-  final String? pendingPlan;
-  final String? nextPaymentDate;
+  final List<OwnerProductSalesItem> items;
 
   @override
   Widget build(BuildContext context) {
-    final alerts = <String>[
-      if (cancelAtPeriodEnd)
-        'A assinatura tem cancelamento programado. Confira a área de Assinatura.',
-      if (pendingPlan != null)
-        'Existe uma troca de plano aguardando confirmação.',
-      if (nextPaymentDate != null)
-        'Próxima cobrança prevista para ${OwnerFormatters.date(nextPaymentDate)}.',
-    ];
+    if (items.isEmpty) {
+      return const OwnerEmptyState(
+        title: 'Sem vendas de produtos no período',
+        message:
+            'Quando houver vendas vinculadas aos produtos, o ranking aparecerá aqui.',
+      );
+    }
+    return Column(
+      children: [
+        for (final item in items)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(item.productName),
+            subtitle: Text(
+              '${item.salesCount} vendas - ${OwnerFormatters.quantityFromMil(item.quantityMil)} un.',
+            ),
+            trailing: Text(OwnerFormatters.moneyFromCents(item.amountCents)),
+          ),
+      ],
+    );
+  }
+}
 
+class _CustomerRanking extends StatelessWidget {
+  const _CustomerRanking({required this.items});
+
+  final List<OwnerCrmCustomer> items;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return const OwnerEmptyState(
+        title: 'Sem clientes para destacar',
+        message:
+            'Os principais clientes aparecerão quando houver compras registradas.',
+      );
+    }
+    return Column(
+      children: [
+        for (final item in items)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(item.name),
+            subtitle: Text('${item.purchasesCount} compras'),
+            trailing: Text(
+              OwnerFormatters.moneyFromCents(item.totalPurchasedCents),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _EmployeeRanking extends StatelessWidget {
+  const _EmployeeRanking({required this.employees});
+
+  final OwnerBusinessEmployeesMetrics employees;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!employees.available) {
+      return const OwnerEmptyState(
+        title: 'Relatórios de funcionários em preparação',
+        message:
+            'Os relatórios de funcionários serão liberados quando houver vendas vinculadas aos usuários.',
+        icon: Icons.badge_outlined,
+      );
+    }
+    if (employees.topPerformers.isEmpty) {
+      return const OwnerEmptyState(
+        title: 'Sem vendas por funcionário no período',
+        message:
+            'Quando houver vendas vinculadas aos usuários, o ranking aparecerá aqui.',
+        icon: Icons.badge_outlined,
+      );
+    }
+    return Column(
+      children: [
+        for (final item in employees.topPerformers)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(item.name),
+            subtitle: Text('${item.salesCount} vendas'),
+            trailing: Text(
+              OwnerFormatters.moneyFromCents(item.salesAmountCents),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _BusinessAlerts extends StatelessWidget {
+  const _BusinessAlerts({required this.alerts});
+
+  final List<OwnerBusinessAlert> alerts;
+
+  @override
+  Widget build(BuildContext context) {
     if (alerts.isEmpty) {
       return const OwnerEmptyState(
         title: 'Nenhum alerta importante agora',
         message:
-            'Alertas de vendas, estoque, financeiro e assinatura aparecerão aqui quando houver algo relevante.',
+            'Alertas de vendas, estoque e financeiro aparecerão aqui quando houver algo relevante.',
         icon: Icons.check_circle_outline_rounded,
       );
     }
@@ -178,16 +255,61 @@ class _BusinessAlerts extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(
-                  Icons.info_outline_rounded,
+                  _alertIcon(alert.severity),
                   size: 18,
                   color: Theme.of(context).colorScheme.primary,
                 ),
                 const SizedBox(width: 8),
-                Expanded(child: Text(alert)),
+                Expanded(
+                  child: Text(
+                    alert.count == null
+                        ? '${alert.title}: ${alert.message}'
+                        : '${alert.title}: ${alert.message} (${alert.count})',
+                  ),
+                ),
               ],
             ),
           ),
       ],
     );
+  }
+}
+
+String _moneyOrUnavailable(int? value) {
+  if (value == null) {
+    return 'Sem dados';
+  }
+  return OwnerFormatters.moneyFromCents(value);
+}
+
+String _numberOrUnavailable(int? value) {
+  if (value == null) {
+    return 'Sem dados';
+  }
+  return OwnerFormatters.integer(value);
+}
+
+String _salesDetail(int? count, String periodLabel) {
+  if (count == null) {
+    return 'Este indicador ainda não está disponível.';
+  }
+  return '$count ${count == 1 ? 'venda' : 'vendas'} $periodLabel.';
+}
+
+String _periodLabel(OwnerReportPeriod period) {
+  if (period.startDate == null || period.endDate == null) {
+    return 'Período atual';
+  }
+  return '${period.startDate} a ${period.endDate}';
+}
+
+IconData _alertIcon(String severity) {
+  switch (severity.toLowerCase()) {
+    case 'warning':
+      return Icons.warning_amber_rounded;
+    case 'error':
+      return Icons.error_outline_rounded;
+    default:
+      return Icons.info_outline_rounded;
   }
 }

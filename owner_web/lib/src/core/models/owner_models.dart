@@ -727,6 +727,962 @@ class OwnerDashboardSync {
   }
 }
 
+class OwnerReportPeriod {
+  const OwnerReportPeriod({
+    required this.startDate,
+    required this.endDate,
+    required this.timezone,
+  });
+
+  final String? startDate;
+  final String? endDate;
+  final String timezone;
+
+  factory OwnerReportPeriod.fromMap(Map<String, dynamic> map) {
+    return OwnerReportPeriod(
+      startDate: _readOptionalString(map, 'startDate'),
+      endDate: _readOptionalString(map, 'endDate'),
+      timezone: _readString(map, 'timezone', fallback: 'UTC'),
+    );
+  }
+}
+
+class OwnerBusinessDashboard {
+  const OwnerBusinessDashboard({
+    required this.period,
+    required this.sales,
+    required this.receivables,
+    required this.customers,
+    required this.products,
+    required this.employees,
+    required this.alerts,
+  });
+
+  final OwnerReportPeriod period;
+  final OwnerBusinessSalesMetrics sales;
+  final OwnerBusinessReceivablesMetrics receivables;
+  final OwnerBusinessCustomersMetrics customers;
+  final OwnerBusinessProductsMetrics products;
+  final OwnerBusinessEmployeesMetrics employees;
+  final List<OwnerBusinessAlert> alerts;
+
+  factory OwnerBusinessDashboard.fromMap(Map<String, dynamic> map) {
+    return OwnerBusinessDashboard(
+      period: OwnerReportPeriod.fromMap(_readMap(map, 'period')),
+      sales: OwnerBusinessSalesMetrics.fromMap(_readMap(map, 'sales')),
+      receivables: OwnerBusinessReceivablesMetrics.fromMap(
+        _readMap(map, 'receivables'),
+      ),
+      customers: OwnerBusinessCustomersMetrics.fromMap(
+        _readMap(map, 'customers'),
+      ),
+      products: OwnerBusinessProductsMetrics.fromMap(_readMap(map, 'products')),
+      employees: OwnerBusinessEmployeesMetrics.fromMap(
+        _readMap(map, 'employees'),
+      ),
+      alerts: _readMapList(
+        map['alerts'],
+      ).map(OwnerBusinessAlert.fromMap).toList(growable: false),
+    );
+  }
+}
+
+class OwnerBusinessSalesMetrics {
+  const OwnerBusinessSalesMetrics({
+    required this.todayAmountCents,
+    required this.monthAmountCents,
+    required this.todayCount,
+    required this.monthCount,
+    required this.averageTicketCents,
+  });
+
+  final int? todayAmountCents;
+  final int? monthAmountCents;
+  final int? todayCount;
+  final int? monthCount;
+  final int? averageTicketCents;
+
+  factory OwnerBusinessSalesMetrics.fromMap(Map<String, dynamic> map) {
+    return OwnerBusinessSalesMetrics(
+      todayAmountCents: _readOptionalInt(map, 'todayAmountCents'),
+      monthAmountCents: _readOptionalInt(map, 'monthAmountCents'),
+      todayCount: _readOptionalInt(map, 'todayCount'),
+      monthCount: _readOptionalInt(map, 'monthCount'),
+      averageTicketCents: _readOptionalInt(map, 'averageTicketCents'),
+    );
+  }
+}
+
+class OwnerBusinessReceivablesMetrics {
+  const OwnerBusinessReceivablesMetrics({
+    required this.openAmountCents,
+    required this.overdueAmountCents,
+    required this.openCount,
+    required this.overdueCount,
+  });
+
+  final int? openAmountCents;
+  final int? overdueAmountCents;
+  final int? openCount;
+  final int? overdueCount;
+
+  factory OwnerBusinessReceivablesMetrics.fromMap(Map<String, dynamic> map) {
+    return OwnerBusinessReceivablesMetrics(
+      openAmountCents: _readOptionalInt(map, 'openAmountCents'),
+      overdueAmountCents: _readOptionalInt(map, 'overdueAmountCents'),
+      openCount: _readOptionalInt(map, 'openCount'),
+      overdueCount: _readOptionalInt(map, 'overdueCount'),
+    );
+  }
+}
+
+class OwnerBusinessCustomersMetrics {
+  const OwnerBusinessCustomersMetrics({
+    required this.total,
+    required this.active,
+    required this.inactive,
+    required this.newThisMonth,
+    required this.topCustomers,
+  });
+
+  final int? total;
+  final int? active;
+  final int? inactive;
+  final int? newThisMonth;
+  final List<OwnerCrmCustomer> topCustomers;
+
+  factory OwnerBusinessCustomersMetrics.fromMap(Map<String, dynamic> map) {
+    return OwnerBusinessCustomersMetrics(
+      total: _readOptionalInt(map, 'total'),
+      active: _readOptionalInt(map, 'active'),
+      inactive: _readOptionalInt(map, 'inactive'),
+      newThisMonth: _readOptionalInt(map, 'newThisMonth'),
+      topCustomers: _readMapList(
+        map['topCustomers'],
+      ).map(OwnerCrmCustomer.fromMap).toList(growable: false),
+    );
+  }
+}
+
+class OwnerBusinessProductsMetrics {
+  const OwnerBusinessProductsMetrics({
+    required this.total,
+    required this.lowStock,
+    required this.outOfStock,
+    required this.topSelling,
+  });
+
+  final int? total;
+  final int? lowStock;
+  final int? outOfStock;
+  final List<OwnerProductSalesItem> topSelling;
+
+  factory OwnerBusinessProductsMetrics.fromMap(Map<String, dynamic> map) {
+    return OwnerBusinessProductsMetrics(
+      total: _readOptionalInt(map, 'total'),
+      lowStock: _readOptionalInt(map, 'lowStock'),
+      outOfStock: _readOptionalInt(map, 'outOfStock'),
+      topSelling: _readMapList(
+        map['topSelling'],
+      ).map(OwnerProductSalesItem.fromMap).toList(growable: false),
+    );
+  }
+}
+
+class OwnerBusinessEmployeesMetrics {
+  const OwnerBusinessEmployeesMetrics({
+    required this.available,
+    required this.reason,
+    required this.topPerformers,
+  });
+
+  final bool available;
+  final String? reason;
+  final List<OwnerEmployeePerformance> topPerformers;
+
+  factory OwnerBusinessEmployeesMetrics.fromMap(Map<String, dynamic> map) {
+    return OwnerBusinessEmployeesMetrics(
+      available: map['available'] == true,
+      reason: _readOptionalString(map, 'reason'),
+      topPerformers: _readMapList(
+        map['topPerformers'],
+      ).map(OwnerEmployeePerformance.fromMap).toList(growable: false),
+    );
+  }
+}
+
+class OwnerBusinessAlert {
+  const OwnerBusinessAlert({
+    required this.key,
+    required this.severity,
+    required this.title,
+    required this.message,
+    required this.count,
+  });
+
+  final String key;
+  final String severity;
+  final String title;
+  final String message;
+  final int? count;
+
+  factory OwnerBusinessAlert.fromMap(Map<String, dynamic> map) {
+    return OwnerBusinessAlert(
+      key: _readString(map, 'key'),
+      severity: _readString(map, 'severity', fallback: 'info'),
+      title: _readString(map, 'title', fallback: 'Alerta'),
+      message: _readString(map, 'message'),
+      count: _readOptionalInt(map, 'count'),
+    );
+  }
+}
+
+class OwnerSalesSummary {
+  const OwnerSalesSummary({
+    required this.period,
+    required this.totalAmountCents,
+    required this.totalCount,
+    required this.averageTicketCents,
+    required this.series,
+    required this.byPaymentMethod,
+    required this.recentSales,
+  });
+
+  final OwnerReportPeriod period;
+  final int totalAmountCents;
+  final int totalCount;
+  final int averageTicketCents;
+  final List<OwnerSalesSeriesPoint> series;
+  final List<OwnerPaymentMethodSummary> byPaymentMethod;
+  final OwnerRecentSalesPage recentSales;
+
+  factory OwnerSalesSummary.fromMap(Map<String, dynamic> map) {
+    return OwnerSalesSummary(
+      period: OwnerReportPeriod.fromMap(_readMap(map, 'period')),
+      totalAmountCents: _readOptionalInt(map, 'totalAmountCents') ?? 0,
+      totalCount: _readOptionalInt(map, 'totalCount') ?? 0,
+      averageTicketCents: _readOptionalInt(map, 'averageTicketCents') ?? 0,
+      series: _readMapList(
+        map['series'],
+      ).map(OwnerSalesSeriesPoint.fromMap).toList(growable: false),
+      byPaymentMethod: _readMapList(
+        map['byPaymentMethod'],
+      ).map(OwnerPaymentMethodSummary.fromMap).toList(growable: false),
+      recentSales: OwnerRecentSalesPage.fromMap(_readMap(map, 'recentSales')),
+    );
+  }
+}
+
+class OwnerSalesSeriesPoint {
+  const OwnerSalesSeriesPoint({
+    required this.date,
+    required this.totalAmountCents,
+    required this.totalCount,
+    required this.averageTicketCents,
+  });
+
+  final String date;
+  final int totalAmountCents;
+  final int totalCount;
+  final int averageTicketCents;
+
+  factory OwnerSalesSeriesPoint.fromMap(Map<String, dynamic> map) {
+    return OwnerSalesSeriesPoint(
+      date: _readString(map, 'date'),
+      totalAmountCents: _readOptionalInt(map, 'totalAmountCents') ?? 0,
+      totalCount: _readOptionalInt(map, 'totalCount') ?? 0,
+      averageTicketCents: _readOptionalInt(map, 'averageTicketCents') ?? 0,
+    );
+  }
+}
+
+class OwnerPaymentMethodSummary {
+  const OwnerPaymentMethodSummary({
+    required this.key,
+    required this.label,
+    required this.totalAmountCents,
+    required this.count,
+  });
+
+  final String key;
+  final String label;
+  final int totalAmountCents;
+  final int count;
+
+  factory OwnerPaymentMethodSummary.fromMap(Map<String, dynamic> map) {
+    return OwnerPaymentMethodSummary(
+      key: _readString(map, 'key', fallback: 'outro'),
+      label: _friendlyPaymentMethodLabel(
+        _readString(
+          map,
+          'label',
+          fallback: _readString(map, 'key', fallback: 'Outro'),
+        ),
+      ),
+      totalAmountCents: _readOptionalInt(map, 'totalAmountCents') ?? 0,
+      count: _readOptionalInt(map, 'count') ?? 0,
+    );
+  }
+}
+
+class OwnerRecentSalesPage {
+  const OwnerRecentSalesPage({
+    required this.items,
+    required this.page,
+    required this.pageSize,
+    required this.total,
+    required this.count,
+    required this.hasNext,
+    required this.hasPrevious,
+  });
+
+  final List<OwnerRecentSale> items;
+  final int page;
+  final int pageSize;
+  final int total;
+  final int count;
+  final bool hasNext;
+  final bool hasPrevious;
+
+  factory OwnerRecentSalesPage.fromMap(Map<String, dynamic> map) {
+    return OwnerRecentSalesPage(
+      items: _readMapList(
+        map['items'],
+      ).map(OwnerRecentSale.fromMap).toList(growable: false),
+      page: _readOptionalInt(map, 'page') ?? 1,
+      pageSize: _readOptionalInt(map, 'pageSize') ?? 20,
+      total: _readOptionalInt(map, 'total') ?? 0,
+      count: _readOptionalInt(map, 'count') ?? 0,
+      hasNext: map['hasNext'] == true,
+      hasPrevious: map['hasPrevious'] == true,
+    );
+  }
+}
+
+class OwnerRecentSale {
+  const OwnerRecentSale({
+    required this.title,
+    required this.receiptNumber,
+    required this.customerName,
+    required this.paymentMethod,
+    required this.totalAmountCents,
+    required this.status,
+    required this.soldAt,
+    required this.canceledAt,
+  });
+
+  final String title;
+  final String? receiptNumber;
+  final String? customerName;
+  final String paymentMethod;
+  final int totalAmountCents;
+  final String status;
+  final String? soldAt;
+  final String? canceledAt;
+
+  factory OwnerRecentSale.fromMap(Map<String, dynamic> map) {
+    return OwnerRecentSale(
+      title: _readString(map, 'title', fallback: 'Venda recebida'),
+      receiptNumber: _safeReceiptNumber(
+        _readOptionalString(map, 'receiptNumber'),
+      ),
+      customerName: _readOptionalString(map, 'customerName'),
+      paymentMethod: _friendlyPaymentMethodLabel(
+        _readString(map, 'paymentMethod', fallback: 'Outro'),
+      ),
+      totalAmountCents: _readOptionalInt(map, 'totalAmountCents') ?? 0,
+      status: _readString(map, 'status', fallback: 'active'),
+      soldAt: _readOptionalString(map, 'soldAt'),
+      canceledAt: _readOptionalString(map, 'canceledAt'),
+    );
+  }
+}
+
+class OwnerProductsReport {
+  const OwnerProductsReport({
+    required this.period,
+    required this.topSellingProducts,
+    required this.lowSellingProducts,
+    required this.byCategory,
+    required this.stockSummary,
+  });
+
+  final OwnerReportPeriod period;
+  final List<OwnerProductSalesItem> topSellingProducts;
+  final List<OwnerProductSalesItem> lowSellingProducts;
+  final List<OwnerProductCategorySummary> byCategory;
+  final OwnerProductsStockSummary stockSummary;
+
+  factory OwnerProductsReport.fromMap(Map<String, dynamic> map) {
+    return OwnerProductsReport(
+      period: OwnerReportPeriod.fromMap(_readMap(map, 'period')),
+      topSellingProducts: _readMapList(
+        map['topSellingProducts'],
+      ).map(OwnerProductSalesItem.fromMap).toList(growable: false),
+      lowSellingProducts: _readMapList(
+        map['lowSellingProducts'],
+      ).map(OwnerProductSalesItem.fromMap).toList(growable: false),
+      byCategory: _readMapList(
+        map['byCategory'],
+      ).map(OwnerProductCategorySummary.fromMap).toList(growable: false),
+      stockSummary: OwnerProductsStockSummary.fromMap(
+        _readMap(map, 'stockSummary'),
+      ),
+    );
+  }
+}
+
+class OwnerProductSalesItem {
+  const OwnerProductSalesItem({
+    required this.productId,
+    required this.productName,
+    required this.quantityMil,
+    required this.salesCount,
+    required this.amountCents,
+    required this.salePriceCents,
+  });
+
+  final String? productId;
+  final String productName;
+  final int quantityMil;
+  final int salesCount;
+  final int amountCents;
+  final int? salePriceCents;
+
+  factory OwnerProductSalesItem.fromMap(Map<String, dynamic> map) {
+    return OwnerProductSalesItem(
+      productId: _readOptionalString(map, 'productId'),
+      productName: _readString(map, 'productName', fallback: 'Produto'),
+      quantityMil: _readOptionalInt(map, 'quantityMil') ?? 0,
+      salesCount: _readOptionalInt(map, 'salesCount') ?? 0,
+      amountCents: _readOptionalInt(map, 'amountCents') ?? 0,
+      salePriceCents: _readOptionalInt(map, 'salePriceCents'),
+    );
+  }
+}
+
+class OwnerProductCategorySummary {
+  const OwnerProductCategorySummary({
+    required this.categoryId,
+    required this.categoryName,
+    required this.quantityMil,
+    required this.amountCents,
+    required this.salesCount,
+  });
+
+  final String? categoryId;
+  final String categoryName;
+  final int quantityMil;
+  final int amountCents;
+  final int salesCount;
+
+  factory OwnerProductCategorySummary.fromMap(Map<String, dynamic> map) {
+    return OwnerProductCategorySummary(
+      categoryId: _readOptionalString(map, 'categoryId'),
+      categoryName: _readString(map, 'categoryName', fallback: 'Sem categoria'),
+      quantityMil: _readOptionalInt(map, 'quantityMil') ?? 0,
+      amountCents: _readOptionalInt(map, 'amountCents') ?? 0,
+      salesCount: _readOptionalInt(map, 'salesCount') ?? 0,
+    );
+  }
+}
+
+class OwnerProductsStockSummary {
+  const OwnerProductsStockSummary({
+    required this.totalProducts,
+    required this.lowStockCount,
+    required this.outOfStockCount,
+    required this.totalEstimatedCostCents,
+  });
+
+  final int totalProducts;
+  final int lowStockCount;
+  final int outOfStockCount;
+  final int? totalEstimatedCostCents;
+
+  factory OwnerProductsStockSummary.fromMap(Map<String, dynamic> map) {
+    return OwnerProductsStockSummary(
+      totalProducts: _readOptionalInt(map, 'totalProducts') ?? 0,
+      lowStockCount: _readOptionalInt(map, 'lowStockCount') ?? 0,
+      outOfStockCount: _readOptionalInt(map, 'outOfStockCount') ?? 0,
+      totalEstimatedCostCents: _readOptionalInt(map, 'totalEstimatedCostCents'),
+    );
+  }
+}
+
+class OwnerStockSummary {
+  const OwnerStockSummary({
+    required this.totalProducts,
+    required this.lowStockCount,
+    required this.outOfStockCount,
+    required this.totalEstimatedCostCents,
+    required this.lowStockThresholdMil,
+    required this.itemsLowStock,
+    required this.itemsOutOfStock,
+  });
+
+  final int totalProducts;
+  final int lowStockCount;
+  final int outOfStockCount;
+  final int? totalEstimatedCostCents;
+  final int lowStockThresholdMil;
+  final List<OwnerStockItem> itemsLowStock;
+  final List<OwnerStockItem> itemsOutOfStock;
+
+  factory OwnerStockSummary.fromMap(Map<String, dynamic> map) {
+    return OwnerStockSummary(
+      totalProducts: _readOptionalInt(map, 'totalProducts') ?? 0,
+      lowStockCount: _readOptionalInt(map, 'lowStockCount') ?? 0,
+      outOfStockCount: _readOptionalInt(map, 'outOfStockCount') ?? 0,
+      totalEstimatedCostCents: _readOptionalInt(map, 'totalEstimatedCostCents'),
+      lowStockThresholdMil: _readOptionalInt(map, 'lowStockThresholdMil') ?? 0,
+      itemsLowStock: _readMapList(
+        map['itemsLowStock'],
+      ).map(OwnerStockItem.fromMap).toList(growable: false),
+      itemsOutOfStock: _readMapList(
+        map['itemsOutOfStock'],
+      ).map(OwnerStockItem.fromMap).toList(growable: false),
+    );
+  }
+}
+
+class OwnerStockItem {
+  const OwnerStockItem({
+    required this.id,
+    required this.productId,
+    required this.productVariantId,
+    required this.name,
+    required this.variantName,
+    required this.sku,
+    required this.currentStockMil,
+    required this.costPriceCents,
+    required this.salePriceCents,
+    required this.estimatedCostCents,
+  });
+
+  final String id;
+  final String productId;
+  final String? productVariantId;
+  final String name;
+  final String? variantName;
+  final String? sku;
+  final int currentStockMil;
+  final int costPriceCents;
+  final int salePriceCents;
+  final int estimatedCostCents;
+
+  factory OwnerStockItem.fromMap(Map<String, dynamic> map) {
+    return OwnerStockItem(
+      id: _readString(map, 'id'),
+      productId: _readString(map, 'productId'),
+      productVariantId: _readOptionalString(map, 'productVariantId'),
+      name: _readString(map, 'name', fallback: 'Produto'),
+      variantName: _readOptionalString(map, 'variantName'),
+      sku: _readOptionalString(map, 'sku'),
+      currentStockMil: _readOptionalInt(map, 'currentStockMil') ?? 0,
+      costPriceCents: _readOptionalInt(map, 'costPriceCents') ?? 0,
+      salePriceCents: _readOptionalInt(map, 'salePriceCents') ?? 0,
+      estimatedCostCents: _readOptionalInt(map, 'estimatedCostCents') ?? 0,
+    );
+  }
+}
+
+class OwnerCrmSummary {
+  const OwnerCrmSummary({
+    required this.inactiveAfterDays,
+    required this.totalCustomers,
+    required this.activeCustomers,
+    required this.inactiveCustomers,
+    required this.newCustomersThisMonth,
+    required this.customersWithReceivables,
+    required this.topCustomers,
+    required this.customersAtRisk,
+  });
+
+  final int inactiveAfterDays;
+  final int totalCustomers;
+  final int activeCustomers;
+  final int inactiveCustomers;
+  final int newCustomersThisMonth;
+  final int customersWithReceivables;
+  final List<OwnerCrmCustomer> topCustomers;
+  final List<OwnerCrmCustomer> customersAtRisk;
+
+  factory OwnerCrmSummary.fromMap(Map<String, dynamic> map) {
+    return OwnerCrmSummary(
+      inactiveAfterDays: _readOptionalInt(map, 'inactiveAfterDays') ?? 90,
+      totalCustomers: _readOptionalInt(map, 'totalCustomers') ?? 0,
+      activeCustomers: _readOptionalInt(map, 'activeCustomers') ?? 0,
+      inactiveCustomers: _readOptionalInt(map, 'inactiveCustomers') ?? 0,
+      newCustomersThisMonth:
+          _readOptionalInt(map, 'newCustomersThisMonth') ?? 0,
+      customersWithReceivables:
+          _readOptionalInt(map, 'customersWithReceivables') ?? 0,
+      topCustomers: _readMapList(
+        map['topCustomers'],
+      ).map(OwnerCrmCustomer.fromMap).toList(growable: false),
+      customersAtRisk: _readMapList(
+        map['customersAtRisk'],
+      ).map(OwnerCrmCustomer.fromMap).toList(growable: false),
+    );
+  }
+}
+
+class OwnerCrmCustomerPage {
+  const OwnerCrmCustomerPage({
+    required this.items,
+    required this.page,
+    required this.pageSize,
+    required this.total,
+    required this.count,
+    required this.hasNext,
+    required this.hasPrevious,
+  });
+
+  final List<OwnerCrmCustomer> items;
+  final int page;
+  final int pageSize;
+  final int total;
+  final int count;
+  final bool hasNext;
+  final bool hasPrevious;
+
+  factory OwnerCrmCustomerPage.fromMap(Map<String, dynamic> map) {
+    return OwnerCrmCustomerPage(
+      items: _readMapList(
+        map['items'],
+      ).map(OwnerCrmCustomer.fromMap).toList(growable: false),
+      page: _readOptionalInt(map, 'page') ?? 1,
+      pageSize: _readOptionalInt(map, 'pageSize') ?? 20,
+      total: _readOptionalInt(map, 'total') ?? 0,
+      count: _readOptionalInt(map, 'count') ?? 0,
+      hasNext: map['hasNext'] == true,
+      hasPrevious: map['hasPrevious'] == true,
+    );
+  }
+}
+
+class OwnerCrmCustomer {
+  const OwnerCrmCustomer({
+    required this.id,
+    required this.name,
+    required this.phone,
+    required this.email,
+    required this.totalPurchasedCents,
+    required this.purchasesCount,
+    required this.averageTicketCents,
+    required this.lastPurchaseAt,
+    required this.openReceivableAmountCents,
+    required this.status,
+    required this.statusLabel,
+    required this.tags,
+  });
+
+  final String id;
+  final String name;
+  final String? phone;
+  final String? email;
+  final int totalPurchasedCents;
+  final int purchasesCount;
+  final int averageTicketCents;
+  final String? lastPurchaseAt;
+  final int openReceivableAmountCents;
+  final String status;
+  final String statusLabel;
+  final List<OwnerCustomerTag> tags;
+
+  factory OwnerCrmCustomer.fromMap(Map<String, dynamic> map) {
+    return OwnerCrmCustomer(
+      id: _readString(map, 'id'),
+      name: _readString(map, 'name', fallback: 'Cliente'),
+      phone: _readOptionalString(map, 'phone'),
+      email: _readOptionalString(map, 'email'),
+      totalPurchasedCents: _readOptionalInt(map, 'totalPurchasedCents') ?? 0,
+      purchasesCount: _readOptionalInt(map, 'purchasesCount') ?? 0,
+      averageTicketCents: _readOptionalInt(map, 'averageTicketCents') ?? 0,
+      lastPurchaseAt: _readOptionalString(map, 'lastPurchaseAt'),
+      openReceivableAmountCents:
+          _readOptionalInt(map, 'openReceivableAmountCents') ?? 0,
+      status: _readString(map, 'status', fallback: 'inactive'),
+      statusLabel: _readString(map, 'statusLabel', fallback: 'Inativo'),
+      tags: _readMapList(
+        map['tags'],
+      ).map(OwnerCustomerTag.fromMap).toList(growable: false),
+    );
+  }
+}
+
+class OwnerCustomerTag {
+  const OwnerCustomerTag({
+    required this.id,
+    required this.label,
+    required this.color,
+  });
+
+  final String id;
+  final String label;
+  final String? color;
+
+  factory OwnerCustomerTag.fromMap(Map<String, dynamic> map) {
+    return OwnerCustomerTag(
+      id: _readString(map, 'id'),
+      label: _readString(map, 'label', fallback: 'Etiqueta'),
+      color: _readOptionalString(map, 'color'),
+    );
+  }
+}
+
+class OwnerCrmCustomerDetail {
+  const OwnerCrmCustomerDetail({
+    required this.customer,
+    required this.topProducts,
+    required this.recentPurchases,
+    required this.receivables,
+  });
+
+  final OwnerCrmCustomer customer;
+  final List<OwnerProductSalesItem> topProducts;
+  final List<OwnerRecentSale> recentPurchases;
+  final OwnerReceivablesSummary receivables;
+
+  factory OwnerCrmCustomerDetail.fromMap(Map<String, dynamic> map) {
+    return OwnerCrmCustomerDetail(
+      customer: OwnerCrmCustomer.fromMap(_readMap(map, 'customer')),
+      topProducts: _readMapList(
+        map['topProducts'],
+      ).map(OwnerProductSalesItem.fromMap).toList(growable: false),
+      recentPurchases: _readMapList(
+        map['recentPurchases'],
+      ).map(OwnerRecentSale.fromMap).toList(growable: false),
+      receivables: OwnerReceivablesSummary.fromMap(
+        _readMap(map, 'receivables'),
+      ),
+    );
+  }
+}
+
+class OwnerReceivablesReport {
+  const OwnerReceivablesReport({required this.summary, required this.items});
+
+  final OwnerReceivablesSummary summary;
+  final OwnerReceivableItemPage items;
+
+  factory OwnerReceivablesReport.fromMap(Map<String, dynamic> map) {
+    return OwnerReceivablesReport(
+      summary: OwnerReceivablesSummary.fromMap(_readMap(map, 'summary')),
+      items: OwnerReceivableItemPage.fromMap(_readMap(map, 'items')),
+    );
+  }
+}
+
+class OwnerReceivablesSummary {
+  const OwnerReceivablesSummary({
+    required this.openAmountCents,
+    required this.overdueAmountCents,
+    required this.openCount,
+    required this.overdueCount,
+    required this.paidCount,
+    required this.receivedThisMonthCents,
+  });
+
+  final int openAmountCents;
+  final int overdueAmountCents;
+  final int openCount;
+  final int overdueCount;
+  final int paidCount;
+  final int receivedThisMonthCents;
+
+  factory OwnerReceivablesSummary.fromMap(Map<String, dynamic> map) {
+    return OwnerReceivablesSummary(
+      openAmountCents: _readOptionalInt(map, 'openAmountCents') ?? 0,
+      overdueAmountCents: _readOptionalInt(map, 'overdueAmountCents') ?? 0,
+      openCount: _readOptionalInt(map, 'openCount') ?? 0,
+      overdueCount: _readOptionalInt(map, 'overdueCount') ?? 0,
+      paidCount: _readOptionalInt(map, 'paidCount') ?? 0,
+      receivedThisMonthCents:
+          _readOptionalInt(map, 'receivedThisMonthCents') ?? 0,
+    );
+  }
+}
+
+class OwnerReceivableItemPage {
+  const OwnerReceivableItemPage({
+    required this.items,
+    required this.page,
+    required this.pageSize,
+    required this.total,
+    required this.count,
+    required this.hasNext,
+    required this.hasPrevious,
+  });
+
+  final List<OwnerReceivableItem> items;
+  final int page;
+  final int pageSize;
+  final int total;
+  final int count;
+  final bool hasNext;
+  final bool hasPrevious;
+
+  factory OwnerReceivableItemPage.fromMap(Map<String, dynamic> map) {
+    return OwnerReceivableItemPage(
+      items: _readMapList(
+        map['items'],
+      ).map(OwnerReceivableItem.fromMap).toList(growable: false),
+      page: _readOptionalInt(map, 'page') ?? 1,
+      pageSize: _readOptionalInt(map, 'pageSize') ?? 20,
+      total: _readOptionalInt(map, 'total') ?? 0,
+      count: _readOptionalInt(map, 'count') ?? 0,
+      hasNext: map['hasNext'] == true,
+      hasPrevious: map['hasPrevious'] == true,
+    );
+  }
+}
+
+class OwnerReceivableItem {
+  const OwnerReceivableItem({
+    required this.id,
+    required this.customerId,
+    required this.customerName,
+    required this.openAmountCents,
+    required this.overdueAmountCents,
+    required this.paidAmountCents,
+    required this.totalAmountCents,
+    required this.salesCount,
+    required this.dueDate,
+    required this.status,
+  });
+
+  final String id;
+  final String? customerId;
+  final String customerName;
+  final int openAmountCents;
+  final int overdueAmountCents;
+  final int paidAmountCents;
+  final int totalAmountCents;
+  final int salesCount;
+  final String? dueDate;
+  final String status;
+
+  factory OwnerReceivableItem.fromMap(Map<String, dynamic> map) {
+    return OwnerReceivableItem(
+      id: _readString(map, 'id'),
+      customerId: _readOptionalString(map, 'customerId'),
+      customerName: _readString(map, 'customerName', fallback: 'Cliente'),
+      openAmountCents: _readOptionalInt(map, 'openAmountCents') ?? 0,
+      overdueAmountCents: _readOptionalInt(map, 'overdueAmountCents') ?? 0,
+      paidAmountCents: _readOptionalInt(map, 'paidAmountCents') ?? 0,
+      totalAmountCents: _readOptionalInt(map, 'totalAmountCents') ?? 0,
+      salesCount: _readOptionalInt(map, 'salesCount') ?? 0,
+      dueDate: _readOptionalString(map, 'dueDate'),
+      status: _readString(map, 'status', fallback: 'open'),
+    );
+  }
+}
+
+class OwnerEmployeeReports {
+  const OwnerEmployeeReports({
+    required this.available,
+    required this.reason,
+    required this.period,
+    required this.topEmployees,
+  });
+
+  final bool available;
+  final String? reason;
+  final OwnerReportPeriod period;
+  final List<OwnerEmployeePerformance> topEmployees;
+
+  factory OwnerEmployeeReports.fromMap(Map<String, dynamic> map) {
+    return OwnerEmployeeReports(
+      available: map['available'] == true,
+      reason: _readOptionalString(map, 'reason'),
+      period: OwnerReportPeriod.fromMap(_readMap(map, 'period')),
+      topEmployees: _readMapList(
+        map['topEmployees'],
+      ).map(OwnerEmployeePerformance.fromMap).toList(growable: false),
+    );
+  }
+}
+
+class OwnerEmployeePerformance {
+  const OwnerEmployeePerformance({
+    required this.employeeId,
+    required this.userId,
+    required this.name,
+    required this.role,
+    required this.status,
+    required this.salesAmountCents,
+    required this.salesCount,
+    required this.averageTicketCents,
+    required this.lastSaleAt,
+  });
+
+  final String employeeId;
+  final String userId;
+  final String name;
+  final String? role;
+  final String? status;
+  final int salesAmountCents;
+  final int salesCount;
+  final int averageTicketCents;
+  final String? lastSaleAt;
+
+  factory OwnerEmployeePerformance.fromMap(Map<String, dynamic> map) {
+    return OwnerEmployeePerformance(
+      employeeId: _readString(map, 'employeeId'),
+      userId: _readString(map, 'userId'),
+      name: _readString(map, 'name', fallback: 'Funcionário'),
+      role: _readOptionalString(map, 'role'),
+      status: _readOptionalString(map, 'status'),
+      salesAmountCents: _readOptionalInt(map, 'salesAmountCents') ?? 0,
+      salesCount: _readOptionalInt(map, 'salesCount') ?? 0,
+      averageTicketCents: _readOptionalInt(map, 'averageTicketCents') ?? 0,
+      lastSaleAt: _readOptionalString(map, 'lastSaleAt'),
+    );
+  }
+}
+
+class OwnerReportsCatalog {
+  const OwnerReportsCatalog({required this.items});
+
+  final List<OwnerReportCatalogItem> items;
+
+  factory OwnerReportsCatalog.fromMap(Map<String, dynamic> map) {
+    return OwnerReportsCatalog(
+      items: _readMapList(
+        map['items'],
+      ).map(OwnerReportCatalogItem.fromMap).toList(growable: false),
+    );
+  }
+}
+
+class OwnerReportCatalogItem {
+  const OwnerReportCatalogItem({
+    required this.key,
+    required this.title,
+    required this.description,
+    required this.available,
+    required this.reason,
+  });
+
+  final String key;
+  final String title;
+  final String description;
+  final bool available;
+  final String? reason;
+
+  factory OwnerReportCatalogItem.fromMap(Map<String, dynamic> map) {
+    return OwnerReportCatalogItem(
+      key: _readString(map, 'key'),
+      title: _readString(map, 'title', fallback: 'Relatório'),
+      description: _readString(map, 'description'),
+      available: map['available'] == true,
+      reason: _readOptionalString(map, 'reason'),
+    );
+  }
+}
+
 Map<String, dynamic> _readMap(Map<String, dynamic> map, String key) {
   final value = map[key];
   if (value is Map<String, dynamic>) {
@@ -799,4 +1755,42 @@ Map<String, bool> _readBoolMap(Object? value) {
   return Map<String, bool>.unmodifiable(
     value.map((key, item) => MapEntry(key.toString(), item == true)),
   );
+}
+
+String? _safeReceiptNumber(String? value) {
+  final trimmed = value?.trim();
+  if (trimmed == null || trimmed.isEmpty || trimmed.length > 20) {
+    return null;
+  }
+  return trimmed;
+}
+
+String _friendlyPaymentMethodLabel(String value) {
+  final raw = value.trim();
+  final rawLower = raw.toLowerCase();
+  final normalized = rawLower
+      .replaceAll('[pm:', '')
+      .replaceAll('pm:', '')
+      .replaceAll(']', '')
+      .replaceAll(' ', '_');
+  switch (normalized) {
+    case 'dinheiro':
+      return 'Dinheiro';
+    case 'pix':
+      return 'Pix';
+    case 'cartao':
+    case 'cartao_credito':
+    case 'cartao_debito':
+    case 'cartão':
+    case 'cartão_crédito':
+    case 'cartão_débito':
+      return 'Cartão';
+    case 'fiado':
+      return 'Fiado';
+    default:
+      if (raw.isEmpty || rawLower.contains('pm:') || raw.contains('[')) {
+        return 'Outro';
+      }
+      return raw;
+  }
 }

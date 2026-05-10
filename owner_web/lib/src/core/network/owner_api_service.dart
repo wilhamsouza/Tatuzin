@@ -19,6 +19,136 @@ class OwnerInvoicesQuery {
   }
 }
 
+class OwnerSalesSummaryQuery {
+  const OwnerSalesSummaryQuery({
+    this.startDate,
+    this.endDate,
+    this.groupBy = 'day',
+    this.page = 1,
+    this.pageSize = 20,
+    this.limit = 10,
+  });
+
+  final String? startDate;
+  final String? endDate;
+  final String groupBy;
+  final int page;
+  final int pageSize;
+  final int limit;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      if (startDate != null && startDate!.trim().isNotEmpty)
+        'startDate': startDate!.trim(),
+      if (endDate != null && endDate!.trim().isNotEmpty)
+        'endDate': endDate!.trim(),
+      'groupBy': groupBy,
+      'page': '$page',
+      'pageSize': '$pageSize',
+      'limit': '$limit',
+    };
+  }
+}
+
+class OwnerDateReportQuery {
+  const OwnerDateReportQuery({this.startDate, this.endDate, this.limit = 10});
+
+  final String? startDate;
+  final String? endDate;
+  final int limit;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      if (startDate != null && startDate!.trim().isNotEmpty)
+        'startDate': startDate!.trim(),
+      if (endDate != null && endDate!.trim().isNotEmpty)
+        'endDate': endDate!.trim(),
+      'limit': '$limit',
+    };
+  }
+}
+
+class OwnerStockSummaryQuery {
+  const OwnerStockSummaryQuery({
+    this.page = 1,
+    this.pageSize = 20,
+    this.limit = 10,
+  });
+
+  final int page;
+  final int pageSize;
+  final int limit;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      'page': '$page',
+      'pageSize': '$pageSize',
+      'limit': '$limit',
+    };
+  }
+}
+
+class OwnerCrmSummaryQuery {
+  const OwnerCrmSummaryQuery({this.limit = 10});
+
+  final int limit;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{'limit': '$limit'};
+  }
+}
+
+class OwnerCrmCustomersQuery {
+  const OwnerCrmCustomersQuery({
+    this.search,
+    this.status = 'all',
+    this.page = 1,
+    this.pageSize = 20,
+  });
+
+  final String? search;
+  final String status;
+  final int page;
+  final int pageSize;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      if (search != null && search!.trim().isNotEmpty) 'search': search!.trim(),
+      'status': status,
+      'page': '$page',
+      'pageSize': '$pageSize',
+    };
+  }
+}
+
+class OwnerReceivablesQuery {
+  const OwnerReceivablesQuery({
+    this.status = 'open',
+    this.page = 1,
+    this.pageSize = 20,
+  });
+
+  final String status;
+  final int page;
+  final int pageSize;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      'status': status,
+      'page': '$page',
+      'pageSize': '$pageSize',
+    };
+  }
+}
+
+class OwnerEmployeesReportQuery extends OwnerDateReportQuery {
+  const OwnerEmployeesReportQuery({
+    super.startDate,
+    super.endDate,
+    super.limit = 10,
+  });
+}
+
 class OwnerApiService {
   const OwnerApiService({
     required OwnerApiClient apiClient,
@@ -114,6 +244,158 @@ class OwnerApiService {
       );
     }
     return OwnerDashboard.fromMap(response);
+  }
+
+  Future<OwnerBusinessDashboard> getBusinessDashboard() async {
+    final response = await _apiClient.getJson(
+      '/owner/dashboard/business',
+      accessToken: await _readRequiredToken(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message:
+            'A API nao retornou o dashboard gerencial no formato esperado.',
+      );
+    }
+    return OwnerBusinessDashboard.fromMap(response);
+  }
+
+  Future<OwnerSalesSummary> getSalesSummary({
+    OwnerSalesSummaryQuery query = const OwnerSalesSummaryQuery(),
+  }) async {
+    final response = await _apiClient.getJson(
+      '/owner/reports/sales-summary',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou as vendas no formato esperado.',
+      );
+    }
+    return OwnerSalesSummary.fromMap(response);
+  }
+
+  Future<OwnerProductsReport> getProductsReport({
+    OwnerDateReportQuery query = const OwnerDateReportQuery(),
+  }) async {
+    final response = await _apiClient.getJson(
+      '/owner/reports/products',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou produtos no formato esperado.',
+      );
+    }
+    return OwnerProductsReport.fromMap(response);
+  }
+
+  Future<OwnerStockSummary> getStockSummary({
+    OwnerStockSummaryQuery query = const OwnerStockSummaryQuery(),
+  }) async {
+    final response = await _apiClient.getJson(
+      '/owner/stock/summary',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou estoque no formato esperado.',
+      );
+    }
+    return OwnerStockSummary.fromMap(response);
+  }
+
+  Future<OwnerCrmSummary> getCrmSummary({
+    OwnerCrmSummaryQuery query = const OwnerCrmSummaryQuery(),
+  }) async {
+    final response = await _apiClient.getJson(
+      '/owner/crm/summary',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou CRM no formato esperado.',
+      );
+    }
+    return OwnerCrmSummary.fromMap(response);
+  }
+
+  Future<OwnerCrmCustomerPage> getCrmCustomers({
+    OwnerCrmCustomersQuery query = const OwnerCrmCustomersQuery(),
+  }) async {
+    final response = await _apiClient.getJson(
+      '/owner/crm/customers',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou clientes no formato esperado.',
+      );
+    }
+    return OwnerCrmCustomerPage.fromMap(response);
+  }
+
+  Future<OwnerCrmCustomerDetail> getCrmCustomer(String id) async {
+    final response = await _apiClient.getJson(
+      '/owner/crm/customers/${Uri.encodeComponent(id)}',
+      accessToken: await _readRequiredToken(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou o cliente no formato esperado.',
+      );
+    }
+    return OwnerCrmCustomerDetail.fromMap(response);
+  }
+
+  Future<OwnerReceivablesReport> getReceivables({
+    OwnerReceivablesQuery query = const OwnerReceivablesQuery(),
+  }) async {
+    final response = await _apiClient.getJson(
+      '/owner/financial/receivables',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou contas a receber no formato esperado.',
+      );
+    }
+    return OwnerReceivablesReport.fromMap(response);
+  }
+
+  Future<OwnerEmployeeReports> getEmployeeReports({
+    OwnerEmployeesReportQuery query = const OwnerEmployeesReportQuery(),
+  }) async {
+    final response = await _apiClient.getJson(
+      '/owner/reports/employees',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou funcionarios no formato esperado.',
+      );
+    }
+    return OwnerEmployeeReports.fromMap(response);
+  }
+
+  Future<OwnerReportsCatalog> getReportsCatalog() async {
+    final response = await _apiClient.getJson(
+      '/owner/reports/catalog',
+      accessToken: await _readRequiredToken(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou o catalogo no formato esperado.',
+      );
+    }
+    return OwnerReportsCatalog.fromMap(response);
   }
 
   Future<OwnerBillingStatus> getBillingStatus() async {

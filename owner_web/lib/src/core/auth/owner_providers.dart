@@ -51,9 +51,136 @@ final ownerCompanyProvider = FutureProvider<OwnerCompanySummary>((ref) async {
   return ref.watch(ownerApiServiceProvider).getCompany();
 });
 
-final ownerDashboardProvider = FutureProvider<OwnerDashboard>((ref) async {
+final ownerDashboardProvider = FutureProvider<OwnerBusinessDashboard>((
+  ref,
+) async {
   ref.watch(ownerRefreshTickProvider);
-  return ref.watch(ownerApiServiceProvider).getDashboard();
+  return ref.watch(ownerApiServiceProvider).getBusinessDashboard();
+});
+
+final ownerReportStartDateProvider = StateProvider<String?>((ref) {
+  return _dateOnly(DateTime.now().subtract(const Duration(days: 29)));
+});
+
+final ownerReportEndDateProvider = StateProvider<String?>((ref) {
+  return _dateOnly(DateTime.now());
+});
+
+final ownerSalesGroupByProvider = StateProvider<String>((ref) => 'day');
+
+final ownerSalesSummaryProvider = FutureProvider<OwnerSalesSummary>((
+  ref,
+) async {
+  ref.watch(ownerRefreshTickProvider);
+  final startDate = ref.watch(ownerReportStartDateProvider);
+  final endDate = ref.watch(ownerReportEndDateProvider);
+  final groupBy = ref.watch(ownerSalesGroupByProvider);
+  return ref
+      .watch(ownerApiServiceProvider)
+      .getSalesSummary(
+        query: OwnerSalesSummaryQuery(
+          startDate: startDate,
+          endDate: endDate,
+          groupBy: groupBy,
+          page: 1,
+          pageSize: 10,
+          limit: 10,
+        ),
+      );
+});
+
+final ownerProductsReportProvider = FutureProvider<OwnerProductsReport>((
+  ref,
+) async {
+  ref.watch(ownerRefreshTickProvider);
+  final startDate = ref.watch(ownerReportStartDateProvider);
+  final endDate = ref.watch(ownerReportEndDateProvider);
+  return ref
+      .watch(ownerApiServiceProvider)
+      .getProductsReport(
+        query: OwnerDateReportQuery(
+          startDate: startDate,
+          endDate: endDate,
+          limit: 10,
+        ),
+      );
+});
+
+final ownerStockSummaryProvider = FutureProvider<OwnerStockSummary>((
+  ref,
+) async {
+  ref.watch(ownerRefreshTickProvider);
+  return ref
+      .watch(ownerApiServiceProvider)
+      .getStockSummary(query: const OwnerStockSummaryQuery(pageSize: 20));
+});
+
+final ownerCrmSummaryProvider = FutureProvider<OwnerCrmSummary>((ref) async {
+  ref.watch(ownerRefreshTickProvider);
+  return ref.watch(ownerApiServiceProvider).getCrmSummary();
+});
+
+final ownerCrmSearchProvider = StateProvider<String>((ref) => '');
+final ownerCrmStatusProvider = StateProvider<String>((ref) => 'all');
+final ownerCrmPageProvider = StateProvider<int>((ref) => 1);
+
+final ownerCrmCustomersProvider = FutureProvider<OwnerCrmCustomerPage>((
+  ref,
+) async {
+  ref.watch(ownerRefreshTickProvider);
+  final search = ref.watch(ownerCrmSearchProvider);
+  final status = ref.watch(ownerCrmStatusProvider);
+  final page = ref.watch(ownerCrmPageProvider);
+  return ref
+      .watch(ownerApiServiceProvider)
+      .getCrmCustomers(
+        query: OwnerCrmCustomersQuery(
+          search: search,
+          status: status,
+          page: page,
+          pageSize: 20,
+        ),
+      );
+});
+
+final ownerReceivablesStatusProvider = StateProvider<String>((ref) => 'open');
+final ownerReceivablesPageProvider = StateProvider<int>((ref) => 1);
+
+final ownerReceivablesProvider = FutureProvider<OwnerReceivablesReport>((
+  ref,
+) async {
+  ref.watch(ownerRefreshTickProvider);
+  final status = ref.watch(ownerReceivablesStatusProvider);
+  final page = ref.watch(ownerReceivablesPageProvider);
+  return ref
+      .watch(ownerApiServiceProvider)
+      .getReceivables(
+        query: OwnerReceivablesQuery(status: status, page: page, pageSize: 20),
+      );
+});
+
+final ownerEmployeeReportsProvider = FutureProvider<OwnerEmployeeReports>((
+  ref,
+) async {
+  ref.watch(ownerRefreshTickProvider);
+  final startDate = ref.watch(ownerReportStartDateProvider);
+  final endDate = ref.watch(ownerReportEndDateProvider);
+  return ref
+      .watch(ownerApiServiceProvider)
+      .getEmployeeReports(
+        query: OwnerEmployeesReportQuery(
+          startDate: startDate,
+          endDate: endDate,
+          limit: 10,
+        ),
+      );
+});
+
+final ownerReportsCatalogProvider = FutureProvider<OwnerReportsCatalog>((
+  ref,
+) async {
+  ref.watch(ownerRefreshTickProvider);
+  return ref.watch(ownerApiServiceProvider).getReportsCatalog();
 });
 
 final ownerBillingStatusProvider = FutureProvider<OwnerBillingStatus>((
@@ -90,3 +217,10 @@ final ownerDevicesProvider = FutureProvider<OwnerDevicesResult>((ref) async {
   ref.watch(ownerRefreshTickProvider);
   return ref.watch(ownerApiServiceProvider).getDevices();
 });
+
+String _dateOnly(DateTime value) {
+  final local = value.toLocal();
+  return '${local.year.toString().padLeft(4, '0')}-'
+      '${local.month.toString().padLeft(2, '0')}-'
+      '${local.day.toString().padLeft(2, '0')}';
+}

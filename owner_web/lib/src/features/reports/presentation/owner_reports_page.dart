@@ -1,76 +1,99 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/auth/owner_providers.dart';
+import '../../../core/models/owner_models.dart';
+import '../../../core/widgets/owner_async_view.dart';
 import '../../../core/widgets/owner_management_widgets.dart';
 
-class OwnerReportsPage extends StatelessWidget {
+class OwnerReportsPage extends ConsumerWidget {
   const OwnerReportsPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return const Column(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final catalog = ref.watch(ownerReportsCatalogProvider);
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        OwnerPageIntro(
+        const OwnerPageIntro(
           title: 'Relatórios',
           subtitle:
               'Central de relatórios gerenciais por tema para acompanhar a empresa.',
           icon: Icons.assessment_outlined,
         ),
-        SizedBox(height: 18),
-        Wrap(
-          spacing: 16,
-          runSpacing: 16,
-          children: [
-            OwnerReportThemeCard(
-              title: 'Vendas',
-              description: 'Faturamento, formas de pagamento e evolução.',
-              icon: Icons.point_of_sale_rounded,
-            ),
-            OwnerReportThemeCard(
-              title: 'Produtos',
-              description: 'Itens vendidos, margem e desempenho.',
-              icon: Icons.inventory_2_outlined,
-            ),
-            OwnerReportThemeCard(
-              title: 'Caixa',
-              description: 'Sessões, entradas, saídas e conferências.',
-              icon: Icons.account_balance_wallet_outlined,
-            ),
-            OwnerReportThemeCard(
-              title: 'Estoque',
-              description: 'Saldo, rupturas, giro e alertas.',
-              icon: Icons.warehouse_outlined,
-            ),
-            OwnerReportThemeCard(
-              title: 'Clientes',
-              description: 'Recorrência, fiado e relacionamento.',
-              icon: Icons.people_alt_outlined,
-            ),
-            OwnerReportThemeCard(
-              title: 'Compras',
-              description: 'Fornecedores, reposição e custos.',
-              icon: Icons.local_shipping_outlined,
-            ),
-            OwnerReportThemeCard(
-              title: 'Lucratividade',
-              description: 'Receita, custo e margem por período.',
-              icon: Icons.trending_up_rounded,
-            ),
-            OwnerReportThemeCard(
-              title: 'Funcionários',
-              description: 'Vendas, ticket médio e desempenho por pessoa.',
-              icon: Icons.badge_outlined,
-            ),
-          ],
-        ),
-        SizedBox(height: 18),
-        OwnerEmptyState(
-          title: 'Relatórios gerenciais em preparação',
-          message:
-              'Cada tema será liberado conforme as fontes de dados gerenciais ficarem disponíveis.',
-          icon: Icons.insights_rounded,
+        const SizedBox(height: 18),
+        OwnerAsyncView(
+          value: catalog,
+          onRetry: () => ref.invalidate(ownerReportsCatalogProvider),
+          builder: (data) {
+            if (data.items.isEmpty) {
+              return const OwnerEmptyState(
+                title: 'Relatórios em preparação',
+                message:
+                    'Os temas de relatórios aparecerão aqui conforme forem liberados.',
+                icon: Icons.insights_rounded,
+              );
+            }
+            return Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              children: [
+                for (final item in data.items)
+                  OwnerReportThemeCard(
+                    title: item.title,
+                    description: item.description,
+                    icon: _reportIcon(item.key),
+                    available: item.available,
+                    reason: _friendlyReason(item),
+                  ),
+              ],
+            );
+          },
         ),
       ],
     );
+  }
+}
+
+IconData _reportIcon(String key) {
+  switch (key) {
+    case 'sales':
+      return Icons.point_of_sale_rounded;
+    case 'products':
+      return Icons.inventory_2_outlined;
+    case 'cash':
+      return Icons.account_balance_wallet_outlined;
+    case 'stock':
+      return Icons.warehouse_outlined;
+    case 'customers':
+      return Icons.people_alt_outlined;
+    case 'purchases':
+      return Icons.local_shipping_outlined;
+    case 'profitability':
+      return Icons.trending_up_rounded;
+    case 'employees':
+      return Icons.badge_outlined;
+    default:
+      return Icons.assessment_outlined;
+  }
+}
+
+String? _friendlyReason(OwnerReportCatalogItem item) {
+  if (item.available) {
+    return null;
+  }
+  switch (item.reason) {
+    case 'NO_PRODUCTS_REGISTERED':
+      return 'Será exibido quando houver produtos cadastrados.';
+    case 'NO_CUSTOMER_DATA':
+      return 'Será exibido quando houver clientes ou vendas.';
+    case 'NO_SALES_DATA':
+      return 'Será exibido quando houver vendas no período.';
+    case 'EMPLOYEE_REPORTS_NOT_AVAILABLE':
+      return 'Será exibido quando houver vendas vinculadas aos usuários.';
+    case 'PURCHASE_REPORTS_NOT_AVAILABLE':
+      return 'Este relatório será liberado em uma próxima atualização.';
+    default:
+      return 'Este relatório será liberado em uma próxima atualização.';
   }
 }

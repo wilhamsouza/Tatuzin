@@ -239,14 +239,19 @@ class OwnerReportThemeCard extends StatelessWidget {
     required this.title,
     required this.description,
     required this.icon,
+    this.available = false,
+    this.reason,
   });
 
   final String title;
   final String description;
   final IconData icon;
+  final bool available;
+  final String? reason;
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return SizedBox(
       width: 250,
       child: Card(
@@ -255,7 +260,7 @@ class OwnerReportThemeCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, color: Theme.of(context).colorScheme.primary),
+              Icon(icon, color: colorScheme.primary),
               const SizedBox(height: 14),
               Text(
                 title,
@@ -266,7 +271,23 @@ class OwnerReportThemeCard extends StatelessWidget {
               const SizedBox(height: 8),
               Text(description),
               const SizedBox(height: 12),
-              const Chip(label: Text('Em preparação')),
+              Chip(
+                label: Text(available ? 'Disponível' : 'Em preparação'),
+                backgroundColor: available
+                    ? colorScheme.primaryContainer
+                    : colorScheme.surfaceContainerHighest,
+              ),
+              if (!available &&
+                  reason != null &&
+                  reason!.trim().isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  reason!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ],
           ),
         ),

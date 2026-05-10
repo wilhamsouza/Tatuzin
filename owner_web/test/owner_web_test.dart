@@ -144,12 +144,50 @@ void main() {
       'available': false,
       'reason': 'EMPLOYEES_NOT_IMPLEMENTED',
     });
+    final dashboard = OwnerBusinessDashboard.fromMap({
+      'sales': {'todayAmountCents': null},
+      'employees': {
+        'available': false,
+        'reason': 'EMPLOYEE_REPORTS_NOT_AVAILABLE',
+        'inviteTokenHash': 'secret-hash',
+      },
+      'alerts': [],
+    });
+    final sales = OwnerSalesSummary.fromMap({
+      ..._salesSummaryPayload(),
+      'byPaymentMethod': [
+        {
+          'key': 'pm:vale_interno',
+          'label': '[pm:vale_interno]',
+          'totalAmountCents': 1000,
+          'count': 1,
+        },
+      ],
+      'recentSales': {
+        ...(_salesSummaryPayload()['recentSales'] as Map<String, dynamic>),
+        'items': [
+          {
+            'title': 'Venda recebida',
+            'receiptNumber': 'sale-very-long-internal-id-123456',
+            'paymentMethod': '[pm:dinheiro]',
+            'totalAmountCents': 1000,
+            'soldAt': '2026-05-10T00:00:00.000Z',
+          },
+        ],
+      },
+      'payload': {'token': 'secret'},
+    });
 
     expect(billing.maskedProviderSubscriptionId, 'prea...9999');
     expect(invoice.amountCents, 12990);
     expect(device.maskedClientInstanceId, 'full...e-id');
     expect(employees.available, false);
     expect(employees.reason, 'EMPLOYEES_NOT_IMPLEMENTED');
+    expect(dashboard.sales.todayAmountCents, isNull);
+    expect(dashboard.employees.reason, 'EMPLOYEE_REPORTS_NOT_AVAILABLE');
+    expect(sales.recentSales.items.single.receiptNumber, isNull);
+    expect(sales.recentSales.items.single.paymentMethod, 'Dinheiro');
+    expect(sales.byPaymentMethod.single.label, 'Outro');
   });
 
   test('api service calls only auth and owner endpoints', () async {
@@ -161,6 +199,26 @@ void main() {
           return _jsonResponse(_companyPayload());
         case '/api/owner/dashboard':
           return _jsonResponse(_dashboardPayload());
+        case '/api/owner/dashboard/business':
+          return _jsonResponse(_businessDashboardPayload());
+        case '/api/owner/reports/sales-summary':
+          return _jsonResponse(_salesSummaryPayload());
+        case '/api/owner/reports/products':
+          return _jsonResponse(_productsReportPayload());
+        case '/api/owner/stock/summary':
+          return _jsonResponse(_stockSummaryPayload());
+        case '/api/owner/crm/summary':
+          return _jsonResponse(_crmSummaryPayload());
+        case '/api/owner/crm/customers':
+          return _jsonResponse(_crmCustomersPayload());
+        case '/api/owner/crm/customers/customer-1':
+          return _jsonResponse(_crmCustomerDetailPayload());
+        case '/api/owner/financial/receivables':
+          return _jsonResponse(_receivablesPayload());
+        case '/api/owner/reports/employees':
+          return _jsonResponse(_employeeReportsPayload());
+        case '/api/owner/reports/catalog':
+          return _jsonResponse(_reportsCatalogPayload());
         case '/api/owner/billing/status':
           return _jsonResponse(_billingPayload());
         case '/api/owner/billing/invoices':
@@ -190,6 +248,16 @@ void main() {
     await service.login(email: 'owner@tatuzin.com', password: 'secret123');
     await service.getCompany();
     await service.getDashboard();
+    await service.getBusinessDashboard();
+    await service.getSalesSummary();
+    await service.getProductsReport();
+    await service.getStockSummary();
+    await service.getCrmSummary();
+    await service.getCrmCustomers();
+    await service.getCrmCustomer('customer-1');
+    await service.getReceivables();
+    await service.getEmployeeReports();
+    await service.getReportsCatalog();
     await service.getBillingStatus();
     await service.getBillingInvoices(
       query: const OwnerInvoicesQuery(page: 2, pageSize: 10, status: 'paid'),
@@ -203,6 +271,16 @@ void main() {
     expect(paths, contains('/api/auth/login'));
     expect(paths, contains('/api/owner/company'));
     expect(paths, contains('/api/owner/dashboard'));
+    expect(paths, contains('/api/owner/dashboard/business'));
+    expect(paths, contains('/api/owner/reports/sales-summary'));
+    expect(paths, contains('/api/owner/reports/products'));
+    expect(paths, contains('/api/owner/stock/summary'));
+    expect(paths, contains('/api/owner/crm/summary'));
+    expect(paths, contains('/api/owner/crm/customers'));
+    expect(paths, contains('/api/owner/crm/customers/customer-1'));
+    expect(paths, contains('/api/owner/financial/receivables'));
+    expect(paths, contains('/api/owner/reports/employees'));
+    expect(paths, contains('/api/owner/reports/catalog'));
     expect(paths, contains('/api/owner/billing/status'));
     expect(paths, contains('/api/owner/billing/invoices'));
     expect(paths, contains('/api/owner/employees'));
@@ -372,7 +450,7 @@ void main() {
       _withProviders(
         overrides: [
           ownerDashboardProvider.overrideWith((ref) async {
-            return OwnerDashboard.fromMap(_dashboardPayload());
+            return OwnerBusinessDashboard.fromMap(_businessDashboardPayload());
           }),
         ],
         child: const OwnerDashboardPage(),
@@ -383,6 +461,8 @@ void main() {
     expect(find.text('Dashboard da empresa'), findsOneWidget);
     expect(find.text('Vendas hoje'), findsOneWidget);
     expect(find.text('Faturamento do mês'), findsOneWidget);
+    expect(find.text('R\$ 250,00'), findsOneWidget);
+    expect(find.text('R\$ 4250,00'), findsOneWidget);
     expect(find.text('Contas a receber'), findsOneWidget);
     expect(find.text('Top produtos'), findsOneWidget);
     expect(find.text('Vendas por funcionário'), findsOneWidget);
@@ -390,21 +470,83 @@ void main() {
     expect(find.textContaining('ownerWebPanel'), findsNothing);
   });
 
+  testWidgets('dashboard treats null values and unavailable employees safely', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _withProviders(
+        overrides: [
+          ownerDashboardProvider.overrideWith((ref) async {
+            return OwnerBusinessDashboard.fromMap({
+              'period': {'startDate': '2026-05-01', 'endDate': '2026-05-30'},
+              'sales': {
+                'todayAmountCents': null,
+                'monthAmountCents': null,
+                'todayCount': null,
+                'monthCount': null,
+                'averageTicketCents': null,
+              },
+              'receivables': {},
+              'customers': {},
+              'products': {},
+              'employees': {
+                'available': false,
+                'reason': 'EMPLOYEE_REPORTS_NOT_AVAILABLE',
+                'topPerformers': [],
+              },
+              'alerts': [],
+            });
+          }),
+        ],
+        child: const OwnerDashboardPage(),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Sem dados'), findsWidgets);
+    expect(
+      find.text(
+        'Os relatórios de funcionários serão liberados quando houver vendas vinculadas aos usuários.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('0,00'), findsNothing);
+  });
+
   testWidgets('business pages render friendly empty states', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: Column(
-              children: [
-                OwnerSalesPage(),
-                OwnerClientsPage(),
-                OwnerFinancePage(),
-                OwnerProductsPage(),
-                OwnerReportsPage(),
-              ],
-            ),
-          ),
+      _withProviders(
+        overrides: [
+          ownerSalesSummaryProvider.overrideWith((ref) async {
+            return OwnerSalesSummary.fromMap(_salesSummaryPayload());
+          }),
+          ownerCrmSummaryProvider.overrideWith((ref) async {
+            return OwnerCrmSummary.fromMap(_crmSummaryPayload());
+          }),
+          ownerCrmCustomersProvider.overrideWith((ref) async {
+            return OwnerCrmCustomerPage.fromMap(_crmCustomersPayload());
+          }),
+          ownerReceivablesProvider.overrideWith((ref) async {
+            return OwnerReceivablesReport.fromMap(_receivablesPayload());
+          }),
+          ownerProductsReportProvider.overrideWith((ref) async {
+            return OwnerProductsReport.fromMap(_productsReportPayload());
+          }),
+          ownerStockSummaryProvider.overrideWith((ref) async {
+            return OwnerStockSummary.fromMap(_stockSummaryPayload());
+          }),
+          ownerReportsCatalogProvider.overrideWith((ref) async {
+            return OwnerReportsCatalog.fromMap(_reportsCatalogPayload());
+          }),
+        ],
+        child: const Column(
+          children: [
+            OwnerSalesPage(),
+            OwnerClientsPage(),
+            OwnerFinancePage(),
+            OwnerProductsPage(),
+            OwnerReportsPage(),
+          ],
         ),
       ),
     );
@@ -416,14 +558,41 @@ void main() {
     expect(find.text('Produtos e estoque'), findsOneWidget);
     expect(find.text('Relatórios'), findsOneWidget);
     expect(find.text('Lucratividade'), findsOneWidget);
-    expect(
-      find.text(
-        'Os indicadores de CRM serão liberados em uma próxima atualização.',
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('R\$ 198,50'), findsWidgets);
+    expect(find.text('Cliente Maria'), findsWidgets);
+    expect(find.textContaining('Sem vencimento informado'), findsOneWidget);
+    expect(find.text('Produto A'), findsWidgets);
+    expect(find.text('Em preparação'), findsWidgets);
     expect(find.textContaining('endpoint'), findsNothing);
     expect(find.textContaining('payload'), findsNothing);
+    expect(find.textContaining('[pm:dinheiro]'), findsNothing);
+    expect(find.textContaining('sale-very-long-internal-id'), findsNothing);
+  });
+
+  testWidgets('reports catalog translates unavailable reasons', (tester) async {
+    await tester.pumpWidget(
+      _withProviders(
+        overrides: [
+          ownerReportsCatalogProvider.overrideWith((ref) async {
+            return OwnerReportsCatalog.fromMap(_reportsCatalogPayload());
+          }),
+        ],
+        child: const OwnerReportsPage(),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Compras'), findsOneWidget);
+    expect(
+      find.text('Este relatório será liberado em uma próxima atualização.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Será exibido quando houver vendas vinculadas aos usuários.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('PURCHASE_REPORTS_NOT_AVAILABLE'), findsNothing);
+    expect(find.textContaining('EMPLOYEE_REPORTS_NOT_AVAILABLE'), findsNothing);
   });
 
   testWidgets('billing page hides full provider id and payload', (
@@ -469,8 +638,10 @@ void main() {
     await tester.pumpWidget(
       _withProviders(
         overrides: [
-          ownerEmployeesProvider.overrideWith((ref) async {
-            return OwnerEmployeesPlaceholder.fromMap(_employeesPayload());
+          ownerEmployeeReportsProvider.overrideWith((ref) async {
+            return OwnerEmployeeReports.fromMap(
+              _employeeReportsPayload(available: false),
+            );
           }),
         ],
         child: const OwnerEmployeesPage(),
@@ -752,6 +923,372 @@ Map<String, dynamic> _devicesPayload() {
     ],
     'count': 1,
     'limits': {'maxDevices': 100},
+  };
+}
+
+Map<String, dynamic> _businessDashboardPayload() {
+  return {
+    'period': {
+      'startDate': '2026-05-01',
+      'endDate': '2026-05-30',
+      'timezone': 'UTC',
+    },
+    'sales': {
+      'todayAmountCents': 25000,
+      'monthAmountCents': 425000,
+      'todayCount': 2,
+      'monthCount': 20,
+      'averageTicketCents': 21250,
+    },
+    'receivables': {
+      'openAmountCents': 19850,
+      'overdueAmountCents': 0,
+      'openCount': 1,
+      'overdueCount': 0,
+    },
+    'customers': {
+      'total': 12,
+      'active': 8,
+      'inactive': 4,
+      'newThisMonth': 2,
+      'topCustomers': [_crmCustomerItemPayload()],
+    },
+    'products': {
+      'total': 30,
+      'lowStock': 2,
+      'outOfStock': 1,
+      'topSelling': [_productSalesItemPayload()],
+    },
+    'employees': {
+      'available': false,
+      'reason': 'EMPLOYEE_REPORTS_NOT_AVAILABLE',
+      'topPerformers': [],
+    },
+    'alerts': [
+      {
+        'key': 'OPEN_RECEIVABLES',
+        'severity': 'info',
+        'title': 'Contas a receber',
+        'message': 'Há valores em aberto no fiado para acompanhar.',
+        'count': 1,
+      },
+    ],
+  };
+}
+
+Map<String, dynamic> _salesSummaryPayload() {
+  return {
+    'period': {
+      'startDate': '2026-05-01',
+      'endDate': '2026-05-30',
+      'timezone': 'UTC',
+    },
+    'totalAmountCents': 19850,
+    'totalCount': 2,
+    'averageTicketCents': 9925,
+    'series': [
+      {
+        'date': '2026-05-10',
+        'totalAmountCents': 19850,
+        'totalCount': 2,
+        'averageTicketCents': 9925,
+      },
+    ],
+    'byPaymentMethod': [
+      {
+        'key': 'dinheiro',
+        'label': 'Dinheiro',
+        'totalAmountCents': 19850,
+        'count': 2,
+      },
+    ],
+    'recentSales': {
+      'items': [
+        {
+          'title': 'Venda recebida',
+          'receiptNumber': 'sale-very-long-internal-id-123456',
+          'customerName': 'Cliente Maria',
+          'paymentMethod': 'Dinheiro',
+          'totalAmountCents': 19850,
+          'status': 'active',
+          'soldAt': '2026-05-10T00:00:00.000Z',
+          'canceledAt': null,
+        },
+      ],
+      'page': 1,
+      'pageSize': 10,
+      'total': 1,
+      'count': 1,
+      'hasNext': false,
+      'hasPrevious': false,
+    },
+  };
+}
+
+Map<String, dynamic> _productsReportPayload() {
+  return {
+    'period': {
+      'startDate': '2026-05-01',
+      'endDate': '2026-05-30',
+      'timezone': 'UTC',
+    },
+    'topSellingProducts': [_productSalesItemPayload()],
+    'lowSellingProducts': [],
+    'byCategory': [
+      {
+        'categoryId': 'category-1',
+        'categoryName': 'Bebidas',
+        'quantityMil': 3000,
+        'amountCents': 19850,
+        'salesCount': 2,
+      },
+    ],
+    'stockSummary': {
+      'totalProducts': 30,
+      'lowStockCount': 2,
+      'outOfStockCount': 1,
+      'totalEstimatedCostCents': 150000,
+    },
+  };
+}
+
+Map<String, dynamic> _stockSummaryPayload() {
+  return {
+    'totalProducts': 30,
+    'lowStockCount': 2,
+    'outOfStockCount': 1,
+    'totalEstimatedCostCents': 150000,
+    'lowStockThresholdMil': 1000,
+    'itemsLowStock': [
+      {
+        'id': 'stock-1',
+        'productId': 'product-1',
+        'productVariantId': null,
+        'name': 'Produto Baixo',
+        'variantName': null,
+        'sku': 'SKU-1',
+        'currentStockMil': 500,
+        'costPriceCents': 1000,
+        'salePriceCents': 1990,
+        'estimatedCostCents': 500,
+      },
+    ],
+    'itemsOutOfStock': [
+      {
+        'id': 'stock-2',
+        'productId': 'product-2',
+        'productVariantId': null,
+        'name': 'Produto Zerado',
+        'variantName': null,
+        'sku': 'SKU-2',
+        'currentStockMil': 0,
+        'costPriceCents': 1000,
+        'salePriceCents': 1990,
+        'estimatedCostCents': 0,
+      },
+    ],
+  };
+}
+
+Map<String, dynamic> _crmSummaryPayload() {
+  return {
+    'inactiveAfterDays': 90,
+    'totalCustomers': 12,
+    'activeCustomers': 8,
+    'inactiveCustomers': 4,
+    'newCustomersThisMonth': 2,
+    'customersWithReceivables': 1,
+    'topCustomers': [_crmCustomerItemPayload()],
+    'customersAtRisk': [],
+  };
+}
+
+Map<String, dynamic> _crmCustomersPayload() {
+  return {
+    'items': [_crmCustomerItemPayload()],
+    'page': 1,
+    'pageSize': 20,
+    'total': 1,
+    'count': 1,
+    'hasNext': false,
+    'hasPrevious': false,
+  };
+}
+
+Map<String, dynamic> _crmCustomerDetailPayload() {
+  return {
+    'customer': _crmCustomerItemPayload(),
+    'topProducts': [_productSalesItemPayload()],
+    'recentPurchases': [
+      {
+        'title': 'Venda recebida',
+        'receiptNumber': '123',
+        'paymentMethod': 'Dinheiro',
+        'totalAmountCents': 19850,
+        'status': 'active',
+        'soldAt': '2026-05-10T00:00:00.000Z',
+      },
+    ],
+    'receivables': {
+      'openAmountCents': 19850,
+      'overdueAmountCents': 0,
+      'openCount': 1,
+      'overdueCount': 0,
+      'paidCount': 0,
+    },
+    'timeline': [],
+  };
+}
+
+Map<String, dynamic> _receivablesPayload() {
+  return {
+    'summary': {
+      'openAmountCents': 19850,
+      'overdueAmountCents': 0,
+      'openCount': 1,
+      'overdueCount': 0,
+      'paidCount': 0,
+      'receivedThisMonthCents': 5000,
+    },
+    'items': {
+      'items': [
+        {
+          'id': 'customer-1',
+          'customerId': 'customer-1',
+          'customerName': 'Cliente Maria',
+          'openAmountCents': 19850,
+          'overdueAmountCents': 0,
+          'paidAmountCents': 5000,
+          'totalAmountCents': 24850,
+          'salesCount': 2,
+          'dueDate': null,
+          'status': 'open',
+        },
+      ],
+      'page': 1,
+      'pageSize': 20,
+      'total': 1,
+      'count': 1,
+      'hasNext': false,
+      'hasPrevious': false,
+    },
+  };
+}
+
+Map<String, dynamic> _employeeReportsPayload({bool available = true}) {
+  return {
+    'available': available,
+    'reason': available ? null : 'EMPLOYEE_REPORTS_NOT_AVAILABLE',
+    'period': {
+      'startDate': '2026-05-01',
+      'endDate': '2026-05-30',
+      'timezone': 'UTC',
+    },
+    'topEmployees': available
+        ? [
+            {
+              'employeeId': 'employee-1',
+              'userId': 'user-1',
+              'name': 'Ana Caixa',
+              'role': 'CASHIER',
+              'status': 'ACTIVE',
+              'salesAmountCents': 19850,
+              'salesCount': 2,
+              'averageTicketCents': 9925,
+              'lastSaleAt': '2026-05-10T00:00:00.000Z',
+            },
+          ]
+        : [],
+  };
+}
+
+Map<String, dynamic> _reportsCatalogPayload() {
+  return {
+    'items': [
+      {
+        'key': 'sales',
+        'title': 'Vendas',
+        'description': 'Resumo de vendas e formas de pagamento.',
+        'available': true,
+        'reason': null,
+      },
+      {
+        'key': 'products',
+        'title': 'Produtos',
+        'description': 'Produtos mais vendidos e itens com pouca saída.',
+        'available': true,
+        'reason': null,
+      },
+      {
+        'key': 'cash',
+        'title': 'Caixa',
+        'description': 'Indicadores de caixa.',
+        'available': true,
+        'reason': null,
+      },
+      {
+        'key': 'stock',
+        'title': 'Estoque',
+        'description': 'Produtos zerados e baixo estoque.',
+        'available': true,
+        'reason': null,
+      },
+      {
+        'key': 'customers',
+        'title': 'Clientes',
+        'description': 'CRM e relacionamento.',
+        'available': true,
+        'reason': null,
+      },
+      {
+        'key': 'purchases',
+        'title': 'Compras',
+        'description': 'Compras por fornecedor.',
+        'available': false,
+        'reason': 'PURCHASE_REPORTS_NOT_AVAILABLE',
+      },
+      {
+        'key': 'profitability',
+        'title': 'Lucratividade',
+        'description': 'Receita, custo e margem.',
+        'available': true,
+        'reason': null,
+      },
+      {
+        'key': 'employees',
+        'title': 'Funcionários',
+        'description': 'Desempenho por funcionário.',
+        'available': false,
+        'reason': 'EMPLOYEE_REPORTS_NOT_AVAILABLE',
+      },
+    ],
+  };
+}
+
+Map<String, dynamic> _crmCustomerItemPayload() {
+  return {
+    'id': 'customer-1',
+    'name': 'Cliente Maria',
+    'phone': '(11) 99999-0000',
+    'totalPurchasedCents': 19850,
+    'purchasesCount': 2,
+    'averageTicketCents': 9925,
+    'lastPurchaseAt': '2026-05-10T00:00:00.000Z',
+    'openReceivableAmountCents': 19850,
+    'status': 'active',
+    'statusLabel': 'Ativo',
+    'tags': [],
+  };
+}
+
+Map<String, dynamic> _productSalesItemPayload() {
+  return {
+    'productId': 'product-1',
+    'productName': 'Produto A',
+    'quantityMil': 3000,
+    'salesCount': 2,
+    'amountCents': 19850,
+    'salePriceCents': 1990,
   };
 }
 
