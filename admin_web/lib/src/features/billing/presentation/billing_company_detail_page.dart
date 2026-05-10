@@ -314,13 +314,13 @@ class _BillingCompanyDetailPageState
         );
       },
     );
-    controller.dispose();
+    _disposeDialogControllers(controller);
     return result;
   }
 
   Future<_ForcePlanInput?> _showForcePlanDialog() async {
-    var plan = 'FREE';
-    String? status;
+    var plan = 'PRO';
+    String? status = 'ACTIVE';
     var clearProvider = false;
     final currentPeriodEndController = TextEditingController();
     final reasonController = TextEditingController();
@@ -463,8 +463,7 @@ class _BillingCompanyDetailPageState
         );
       },
     );
-    currentPeriodEndController.dispose();
-    reasonController.dispose();
+    _disposeDialogControllers(currentPeriodEndController, reasonController);
     return result;
   }
 
@@ -539,9 +538,18 @@ class _BillingCompanyDetailPageState
         );
       },
     );
-    reasonController.dispose();
+    _disposeDialogControllers(reasonController);
     return result;
   }
+}
+
+void _disposeDialogControllers(TextEditingController first, [
+  TextEditingController? second,
+]) {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    first.dispose();
+    second?.dispose();
+  });
 }
 
 class _BillingStatusSection extends StatelessWidget {

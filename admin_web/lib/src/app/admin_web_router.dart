@@ -30,17 +30,21 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
       final isLoginRoute = path == '/login';
 
       if (authController.isRestoring) {
-        final redirect = isLoginRoute ? null : '/login';
         adminDebugLog('router.redirect', {
           'path': path,
           'reason': 'restoring_session',
-          'redirect': redirect,
+          'redirect': null,
         });
-        return redirect;
+        return null;
       }
 
       if (!authController.isAuthenticated) {
-        final redirect = isLoginRoute ? null : '/login';
+        final redirect = isLoginRoute
+            ? null
+            : Uri(
+                path: '/login',
+                queryParameters: {'from': state.uri.toString()},
+              ).toString();
         adminDebugLog('router.redirect', {
           'path': path,
           'reason': 'not_authenticated',
@@ -60,12 +64,14 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (isLoginRoute) {
+        final from = _safeLoginRedirect(state.uri.queryParameters['from']);
+        final redirect = from ?? '/dashboard';
         adminDebugLog('router.redirect', {
           'path': path,
           'reason': 'authenticated_admin',
-          'redirect': '/dashboard',
+          'redirect': redirect,
         });
-        return '/dashboard';
+        return redirect;
       }
 
       adminDebugLog('router.redirect', {
@@ -199,4 +205,19 @@ String _titleForLocation(String location) {
     return 'Auditoria';
   }
   return 'Dashboard da Plataforma';
+}
+
+String? _safeLoginRedirect(String? value) {
+  if (value == null || value.trim().isEmpty) {
+    return null;
+  }
+  final uri = Uri.tryParse(value.trim());
+  if (uri == null ||
+      uri.hasScheme ||
+      uri.hasAuthority ||
+      uri.path.isEmpty ||
+      uri.path == '/login') {
+    return null;
+  }
+  return uri.toString();
 }

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:http/testing.dart';
 import 'package:tatuzin_admin_web/src/core/auth/admin_auth_storage.dart';
 import 'package:tatuzin_admin_web/src/core/auth/admin_debug_log.dart';
@@ -95,6 +96,39 @@ void main() {
     expect(find.textContaining('preapproval-secret-full-id'), findsNothing);
   });
 
+  testWidgets('Billing Admin abre detalhe ao clicar na empresa', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeAdminApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(service: service, initialLocation: '/billing'),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Loja Moda Sul').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Billing de Loja Moda Sul'), findsOneWidget);
+    expect(service.statusFetchCount, greaterThanOrEqualTo(1));
+  });
+
+  testWidgets('Billing Admin renderiza detalhe acessado por deep link', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeAdminApiService(),
+        initialLocation: '/billing/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Billing de Loja Moda Sul'), findsOneWidget);
+    expect(find.text('Dashboard Plataforma'), findsNothing);
+  });
+
   testWidgets('Billing detalhe sanitiza eventos e exige reason no cancel-local', (
     tester,
   ) async {
@@ -165,6 +199,35 @@ void main() {
     expect(find.text('Informe um motivo.'), findsOneWidget);
   });
 
+  testWidgets('Billing force-plan permite PRO e recarrega detalhe', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeAdminApiService();
+    await tester.pumpWidget(
+      _adminTestApp(
+        service: service,
+        child: const BillingCompanyDetailPage(companyId: 'company-1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Force-plan'));
+    await tester.pumpAndSettle();
+    expect(find.text('PRO'), findsWidgets);
+    await tester.enterText(find.byType(TextField).last, 'ajuste suporte PRO');
+    await tester.tap(find.text('Continuar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Aplicar force-plan'));
+    await tester.pumpAndSettle();
+
+    expect(service.forcePlanCalls, 1);
+    expect(service.lastForcePlan, 'PRO');
+    expect(service.lastForcePlanStatus, 'ACTIVE');
+    expect(service.lastForcePlanReason, 'ajuste suporte PRO');
+    expect(service.statusFetchCount, greaterThanOrEqualTo(2));
+  });
+
   testWidgets('/licenses mostra aviso legado e continua acessivel', (
     tester,
   ) async {
@@ -206,6 +269,32 @@ Widget _adminTestApp({
   );
 }
 
+Widget _adminRouterTestApp({
+  required AdminApiService service,
+  required String initialLocation,
+}) {
+  final router = GoRouter(
+    initialLocation: initialLocation,
+    routes: [
+      GoRoute(
+        path: '/billing',
+        builder: (context, state) => const BillingAdminPage(),
+      ),
+      GoRoute(
+        path: '/billing/:companyId',
+        builder: (context, state) => BillingCompanyDetailPage(
+          companyId: state.pathParameters['companyId'] ?? '',
+        ),
+      ),
+    ],
+  );
+
+  return ProviderScope(
+    overrides: [adminApiServiceProvider.overrideWithValue(service)],
+    child: MaterialApp.router(routerConfig: router),
+  );
+}
+
 class _FakeAdminApiService extends AdminApiService {
   _FakeAdminApiService()
     : super(
@@ -218,6 +307,12 @@ class _FakeAdminApiService extends AdminApiService {
         ),
         authStorage: AdminAuthStorage(),
       );
+
+  int statusFetchCount = 0;
+  int forcePlanCalls = 0;
+  String? lastForcePlan;
+  String? lastForcePlanStatus;
+  String? lastForcePlanReason;
 
   @override
   Future<AdminPaginatedResult<AdminBillingCompanySummary>>
@@ -253,6 +348,7 @@ class _FakeAdminApiService extends AdminApiService {
   Future<AdminBillingCompanyStatus> fetchBillingCompanyStatus(
     String companyId,
   ) async {
+    statusFetchCount += 1;
     return AdminBillingCompanyStatus.fromMap({
       'company': {'id': companyId, 'name': 'Loja Moda Sul'},
       'license': {
@@ -349,5 +445,34 @@ class _FakeAdminApiService extends AdminApiService {
       filters: {},
       sort: AdminSortMeta(by: 'updatedAt', direction: 'desc'),
     );
+  }
+
+  @override
+  Future<AdminBillingActionResult> forceBillingPlan({
+    required String companyId,
+    required String plan,
+    required String reason,
+    String? status,
+    DateTime? currentPeriodEnd,
+    bool clearProvider = false,
+  }) async {
+    if (reason.trim().isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da ação administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    forcePlanCalls += 1;
+    lastForcePlan = plan;
+    lastForcePlanStatus = status;
+    lastForcePlanReason = reason;
+    return AdminBillingActionResult.fromMap({
+      'message': 'Force-plan aplicado.',
+      'status': {
+        'companyId': companyId,
+        'plan': plan,
+        'status': status ?? 'ACTIVE',
+      },
+    });
   }
 }

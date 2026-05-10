@@ -186,6 +186,7 @@ class _BillingCompaniesTable extends StatelessWidget {
         ],
         rows: companies
             .map((company) {
+              void openCompany() => onOpen(company.companyId);
               return DataRow(
                 cells: [
                   DataCell(
@@ -193,17 +194,37 @@ class _BillingCompaniesTable extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(company.companyName),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.open_in_new_rounded, size: 16),
+                            const SizedBox(width: 6),
+                            Text(
+                              company.companyName,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
                         Text(
                           company.companyId,
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
                     ),
+                    onTap: openCompany,
                   ),
-                  DataCell(Text(AdminFormatters.formatPlan(company.plan))),
+                  DataCell(
+                    Text(AdminFormatters.formatPlan(company.plan)),
+                    onTap: openCompany,
+                  ),
                   DataCell(Text(company.licenseStatus ?? 'Não informado')),
-                  DataCell(Text(company.billingProvider ?? 'Sem provider')),
+                  DataCell(
+                    Text(company.billingProvider ?? 'Sem provider'),
+                    onTap: openCompany,
+                  ),
                   DataCell(
                     Text(company.hasProviderSubscription ? 'Sim' : 'Não'),
                   ),
@@ -221,11 +242,15 @@ class _BillingCompaniesTable extends StatelessWidget {
                   DataCell(
                     Text(company.cancelAtPeriodEnd ? 'Agendado' : 'Não'),
                   ),
-                  DataCell(Text(company.pendingPlan ?? 'Nenhum')),
                   DataCell(
-                    FilledButton.tonal(
-                      onPressed: () => onOpen(company.companyId),
-                      child: const Text('Abrir'),
+                    Text(company.pendingPlan ?? 'Nenhum'),
+                    onTap: openCompany,
+                  ),
+                  DataCell(
+                    FilledButton.tonalIcon(
+                      onPressed: openCompany,
+                      icon: const Icon(Icons.arrow_forward_rounded),
+                      label: const Text('Abrir'),
                     ),
                   ),
                 ],

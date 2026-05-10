@@ -126,11 +126,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         .login(
           email: _emailController.text.trim(),
           password: _passwordController.text,
-        );
+    );
 
     if (ok && mounted) {
-      adminDebugLog('auth.ui.login.redirecting', {'route': '/dashboard'});
-      context.go('/dashboard');
+      final target =
+          _safeLoginRedirect(
+            GoRouterState.of(context).uri.queryParameters['from'],
+          ) ??
+          '/dashboard';
+      adminDebugLog('auth.ui.login.redirecting', {'route': target});
+      context.go(target);
       return;
     }
 
@@ -145,6 +150,21 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       );
     }
   }
+}
+
+String? _safeLoginRedirect(String? value) {
+  if (value == null || value.trim().isEmpty) {
+    return null;
+  }
+  final uri = Uri.tryParse(value.trim());
+  if (uri == null ||
+      uri.hasScheme ||
+      uri.hasAuthority ||
+      uri.path.isEmpty ||
+      uri.path == '/login') {
+    return null;
+  }
+  return uri.toString();
 }
 
 class _HeroPanel extends StatelessWidget {
