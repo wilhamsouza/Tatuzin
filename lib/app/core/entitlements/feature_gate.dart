@@ -55,8 +55,8 @@ class LockedFeatureCard extends StatelessWidget {
     final layout = context.appLayout;
     final requiredPlan = PlanEntitlements.requiredPlanForFeature(feature);
     final defaultMessage = requiredPlan == null
-        ? 'Este recurso nao esta disponivel no seu plano atual.'
-        : 'Disponivel no plano ${_planLabel(requiredPlan)}.';
+        ? 'Este recurso não está disponível no seu plano atual.'
+        : 'Este recurso está disponível no plano ${_planLabel(requiredPlan)}.';
 
     return Card(
       elevation: 0,
@@ -136,15 +136,32 @@ class LockedFeaturePage extends StatelessWidget {
   }
 }
 
-class UpgradePrompt extends StatelessWidget {
+class UpgradePrompt extends ConsumerWidget {
   const UpgradePrompt({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return FilledButton.icon(
-      onPressed: () => context.goNamed(AppRouteNames.subscription),
-      icon: const Icon(Icons.workspace_premium_outlined),
-      label: const Text('Atualizar plano'),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canManageSubscription = ref.watch(appSessionProvider).isCompanyOwner;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!canManageSubscription) ...[
+          Text(
+            'Peça ao dono da empresa para alterar o plano.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        FilledButton.icon(
+          onPressed: () => context.goNamed(AppRouteNames.subscription),
+          icon: const Icon(Icons.workspace_premium_outlined),
+          label: const Text('Ver planos'),
+        ),
+      ],
     );
   }
 }
@@ -154,7 +171,7 @@ String _planLabel(PlanKey plan) {
     case PlanKey.free:
       return 'Free';
     case PlanKey.basic:
-      return 'Basico';
+      return 'Básico';
     case PlanKey.pro:
       return 'Pro';
   }

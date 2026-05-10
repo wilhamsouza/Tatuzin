@@ -83,7 +83,7 @@ void main() {
 
     await _pumpRouterFlow(tester, container: container, router: router);
 
-    await tester.tap(find.text('Vendas liquidas').first);
+    await tester.tap(find.text('Vendas líquidas'));
     await tester.pumpAndSettle();
 
     expect(find.text('Relatorio de vendas'), findsOneWidget);
@@ -93,7 +93,7 @@ void main() {
           .read(reportPageSessionProvider)
           .drilldownFor(ReportPageKey.sales)
           ?.sourceLabel,
-      'KPI Vendas liquidas',
+      'KPI Vendas líquidas',
     );
   });
 

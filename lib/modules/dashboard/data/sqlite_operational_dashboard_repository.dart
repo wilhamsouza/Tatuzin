@@ -105,7 +105,7 @@ class SqliteOperationalDashboardRepository
       case 'suprimento':
         return 'Suprimento';
       case 'cancelamento':
-        return 'Cancelamento';
+        return 'Venda cancelada';
       case 'ajuste':
         return 'Ajuste manual';
       default:

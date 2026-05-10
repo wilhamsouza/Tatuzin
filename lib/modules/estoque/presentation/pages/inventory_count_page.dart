@@ -32,12 +32,12 @@ class _InventoryCountPageState extends ConsumerState<InventoryCountPage> {
     final actionState = ref.watch(inventoryCountActionControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Inventario fisico')),
+      appBar: AppBar(title: const Text('Inventário físico')),
       drawer: const AppMainDrawer(),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: actionState.isLoading ? null : _createSession,
         icon: const Icon(Icons.add_task_rounded),
-        label: const Text('Nova sessao'),
+        label: const Text('Nova sessão'),
       ),
       body: Column(
         children: [
@@ -49,7 +49,7 @@ class _InventoryCountPageState extends ConsumerState<InventoryCountPage> {
               layout.space4,
             ),
             child: const AppPageHeader(
-              title: 'Inventario fisico',
+              title: 'Inventário físico',
               subtitle:
                   'Abra sessoes de contagem, confira divergencias e aplique os ajustes em lote com trilha de auditoria.',
               badgeLabel: 'Contagem',
@@ -78,7 +78,7 @@ class _InventoryCountPageState extends ConsumerState<InventoryCountPage> {
                   child: FilledButton.tonalIcon(
                     onPressed: actionState.isLoading ? null : _createSession,
                     icon: const Icon(Icons.add_task_rounded),
-                    label: const Text('Nova sessao'),
+                    label: const Text('Nova sessão'),
                   ),
                 ),
               ],
@@ -174,13 +174,13 @@ class _InventoryCountPageState extends ConsumerState<InventoryCountPage> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Nova sessao de inventario'),
+          title: const Text('Nova sessão de inventário'),
           content: TextField(
             controller: controller,
             autofocus: true,
             decoration: const InputDecoration(
               labelText: 'Nome da sessao',
-              hintText: 'Ex.: Inventario loja abril',
+              hintText: 'Ex.: Inventário loja abril',
             ),
           ),
           actions: [

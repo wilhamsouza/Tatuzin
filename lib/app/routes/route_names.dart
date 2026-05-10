@@ -6,6 +6,8 @@ abstract final class AppRouteNames {
   static const dashboard = 'dashboard';
   static const more = 'more';
   static const accountCloud = 'account-cloud';
+  static const company = 'company';
+  static const settings = 'settings';
   static const subscription = 'subscription';
   static const categories = 'categories';
   static const categoryForm = 'category-form';
@@ -68,6 +70,8 @@ abstract final class AppRoutePaths {
   static const dashboard = '/';
   static const more = '/mais';
   static const accountCloud = '/conta';
+  static const company = '/empresa';
+  static const settings = '/configuracoes';
   static const subscription = '/conta/assinatura';
   static const categories = '/categorias';
   static const categoryForm = '/categorias/form';

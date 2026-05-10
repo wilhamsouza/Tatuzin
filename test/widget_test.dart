@@ -30,13 +30,13 @@ void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
-  testWidgets('app abre shell somente com sessao tenant valida', (
+  testWidgets('app abre shell somente com sessão tenant válida', (
     tester,
   ) async {
     await _pumpAuthenticatedApp(tester);
 
     expect(find.byType(DashboardPage), findsOneWidget);
-    expect(find.text('Inicio'), findsAtLeastNWidgets(1));
+    expect(find.text('Início'), findsAtLeastNWidgets(1));
     expect(find.text('Nova venda'), findsAtLeastNWidgets(1));
     expect(find.text('Vendas de hoje'), findsOneWidget);
 
@@ -60,13 +60,13 @@ void main() {
     expect(find.text('Estoque do produto'), findsOneWidget);
 
     await tester.scrollUntilVisible(
-      find.text('Configuracoes'),
+      find.text('Configurações'),
       200,
       scrollable: drawerScrollable,
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Configuracoes'), findsOneWidget);
+    expect(find.text('Configurações'), findsOneWidget);
     expect(find.text('Sistema'), findsNothing);
     expect(find.text('Admin cloud'), findsNothing);
 
@@ -105,13 +105,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Nuvem'), findsOneWidget);
-    expect(find.text('Sessao'), findsOneWidget);
+    expect(find.text('Sessão'), findsOneWidget);
     expect(find.text('Ajuda e suporte'), findsOneWidget);
     expect(find.text('Ferramentas internas'), findsNothing);
     expect(find.text('Painel cloud interno'), findsNothing);
   });
 
   testWidgets('abre a tela de estoque pelo drawer', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await _pumpAuthenticatedApp(
       tester,
       additionalOverrides: [
@@ -143,9 +148,73 @@ void main() {
 
     expect(find.byType(Drawer), findsNothing);
     expect(find.text('Estoque atual'), findsOneWidget);
-    expect(find.text('Ver movimentacoes'), findsOneWidget);
+    expect(find.text('Ver movimentações'), findsOneWidget);
     expect(find.text('Novo ajuste'), findsOneWidget);
-    expect(find.text('Inventario fisico'), findsOneWidget);
+    expect(find.text('Inventário físico'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Configurações no drawer abre tela própria', (tester) async {
+    await _pumpAuthenticatedApp(tester);
+
+    await tester.tap(find.byIcon(Icons.menu).first);
+    await tester.pumpAndSettle();
+
+    final drawerScrollable = find.descendant(
+      of: find.byType(Drawer),
+      matching: find.byType(Scrollable),
+    );
+
+    await tester.scrollUntilVisible(
+      find.text('Configurações'),
+      200,
+      scrollable: drawerScrollable,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Configurações'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Drawer), findsNothing);
+    expect(find.text('Configurações'), findsWidgets);
+    expect(find.textContaining('Preferências do aplicativo'), findsOneWidget);
+    expect(find.text('Mais'), findsNothing);
+  });
+
+  testWidgets('Dashboard mostra últimas vendas sem código interno', (
+    tester,
+  ) async {
+    await _pumpAuthenticatedApp(
+      tester,
+      additionalOverrides: [
+        operationalDashboardSnapshotProvider.overrideWith(
+          (ref) async => OperationalDashboardSnapshot(
+            soldTodayCents: 1200,
+            currentCashCents: 1200,
+            pendingFiadoCount: 0,
+            pendingFiadoCents: 0,
+            activeOperationalOrdersCount: 0,
+            recentMovements: [
+              OperationalDashboardRecentMovement(
+                label: 'Venda recebida',
+                amountCents: 1200,
+                createdAt: DateTime(2026, 5, 9, 10, 30),
+                direction: OperationalDashboardMovementDirection.inflow,
+                description:
+                    '[pm:dinheiro] Venda 177811123456 recebida via Dinheiro.',
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    await tester.ensureVisible(find.text('Últimas vendas'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Venda recebida'), findsOneWidget);
+    expect(find.text('Pagamento em dinheiro.'), findsOneWidget);
+    expect(find.textContaining('[pm:dinheiro]'), findsNothing);
+    expect(find.textContaining('177811123456'), findsNothing);
   });
 
   testWidgets('abre o inventario fisico pelo drawer', (tester) async {
@@ -179,11 +248,11 @@ void main() {
     await tester.tap(find.text('Estoque do produto'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Inventario fisico'));
+    await tester.tap(find.text('Inventário físico'));
     await tester.pumpAndSettle();
 
     expect(find.byType(Drawer), findsNothing);
-    expect(find.text('Nova sessao'), findsAtLeastNWidgets(1));
+    expect(find.text('Nova sessão'), findsAtLeastNWidgets(1));
     expect(find.text('Em andamento'), findsOneWidget);
   });
 }

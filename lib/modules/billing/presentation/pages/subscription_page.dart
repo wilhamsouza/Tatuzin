@@ -21,6 +21,7 @@ class SubscriptionPage extends ConsumerWidget {
     final plansAsync = ref.watch(billingPlansProvider);
     final statusAsync = ref.watch(billingStatusProvider);
     final company = ref.watch(currentCompanyContextProvider);
+    final session = ref.watch(appSessionProvider);
     final controller = ref.watch(billingControllerProvider);
     final fallbackStatus = BillingStatus(
       companyId: company.remoteId ?? '',
@@ -32,21 +33,24 @@ class SubscriptionPage extends ConsumerWidget {
       provider: null,
       hasProviderSubscription: false,
       maskedProviderSubscriptionId: null,
-      canManageBilling: false,
+      canManageBilling: session.isCompanyOwner,
       nextPaymentDate: null,
       entitlements: company.entitlements,
     );
     final status = statusAsync.valueOrNull ?? fallbackStatus;
+    final canManageSubscription =
+        status.canManageBilling || session.isCompanyOwner;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Assinatura')),
+      appBar: AppBar(title: const Text('Assinatura e planos')),
       drawer: const AppMainDrawer(),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
           AppPageHeader(
-            title: 'Assinatura',
-            subtitle: 'Planos Tatuzin para liberar recursos no app.',
+            title: 'Assinatura e planos',
+            subtitle:
+                'Veja o plano atual e escolha o melhor acesso para sua empresa.',
             badgeLabel: _planLabel(status.plan),
             badgeIcon: Icons.workspace_premium_outlined,
             emphasized: true,
@@ -58,18 +62,29 @@ class SubscriptionPage extends ConsumerWidget {
             hasError: statusAsync.hasError,
             onRefresh: () => _refreshStatus(context, ref),
           ),
+          if (!canManageSubscription) ...[
+            const SizedBox(height: 18),
+            const AppSectionCard(
+              title: 'Modo leitura',
+              subtitle: 'Apenas o dono da empresa pode gerenciar a assinatura.',
+              child: Text(
+                'Você pode consultar o plano atual. Para contratar ou trocar de plano, peça ao dono da empresa para fazer a alteração.',
+              ),
+            ),
+          ],
           const SizedBox(height: 18),
           plansAsync.when(
             data: (plans) => _PlanCards(
               plans: plans,
               status: status,
+              canManageSubscription: canManageSubscription,
               isBusy: controller.isLoading,
               onSubscribe: (plan) => _subscribe(context, ref, plan),
             ),
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (error, _) => AppSectionCard(
               title: 'Planos',
-              subtitle: 'Nao foi possivel carregar os planos agora.',
+              subtitle: 'Não foi possível carregar os planos agora.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -104,7 +119,7 @@ class SubscriptionPage extends ConsumerWidget {
       final checkoutUrl = result.checkoutUrl;
       if (checkoutUrl == null || checkoutUrl.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Este ja e o seu plano atual.')),
+          const SnackBar(content: Text('Este já é o seu plano atual.')),
         );
         return;
       }
@@ -122,7 +137,7 @@ class SubscriptionPage extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Apos o pagamento, seu plano sera atualizado automaticamente.',
+            'Após o pagamento, seu plano será atualizado automaticamente.',
           ),
         ),
       );
@@ -131,7 +146,7 @@ class SubscriptionPage extends ConsumerWidget {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Nao foi possivel iniciar assinatura: $error')),
+        SnackBar(content: Text('Não foi possível iniciar assinatura: $error')),
       );
     }
   }
@@ -150,7 +165,7 @@ class SubscriptionPage extends ConsumerWidget {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Nao foi possivel atualizar o status: $error')),
+        SnackBar(content: Text('Não foi possível atualizar o status: $error')),
       );
     }
   }
@@ -174,7 +189,7 @@ class _BillingStatusCard extends StatelessWidget {
     return AppSectionCard(
       title: 'Plano atual',
       subtitle: hasError
-          ? 'Mostrando os dados salvos da sessao. Tente atualizar novamente.'
+          ? 'Mostrando os dados salvos da sessão. Tente atualizar novamente.'
           : 'Status lido do backend Tatuzin.',
       trailing: AppButton.secondary(
         label: isLoading ? 'Atualizando...' : 'Atualizar status',
@@ -191,12 +206,12 @@ class _BillingStatusCard extends StatelessWidget {
             value: '${status.entitlements.limits.maxDevices}',
           ),
           _InfoRow(
-            label: 'Funcionarios',
+            label: 'Funcionários',
             value: '${status.entitlements.limits.maxEmployees}',
           ),
           if (status.nextPaymentDate != null)
             _InfoRow(
-              label: 'Proximo pagamento',
+              label: 'Próximo pagamento',
               value: AppFormatters.shortDate(status.nextPaymentDate!),
             ),
           if (status.hasProviderSubscription)
@@ -216,12 +231,14 @@ class _PlanCards extends StatelessWidget {
   const _PlanCards({
     required this.plans,
     required this.status,
+    required this.canManageSubscription,
     required this.isBusy,
     required this.onSubscribe,
   });
 
   final List<BillingPlan> plans;
   final BillingStatus status;
+  final bool canManageSubscription;
   final bool isBusy;
   final ValueChanged<BillingPlan> onSubscribe;
 
@@ -242,7 +259,7 @@ class _PlanCards extends StatelessWidget {
                 child: _PlanCard(
                   plan: plan,
                   currentPlan: status.plan,
-                  canManageBilling: status.canManageBilling,
+                  canManageBilling: canManageSubscription,
                   isBusy: isBusy,
                   onSubscribe: () => onSubscribe(plan),
                 ),
@@ -273,16 +290,16 @@ class _PlanCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isCurrent = plan.key == currentPlan;
-    final isPaidUpgrade =
-        plan.key != PlanKey.free &&
-        _planRank(plan.key) > _planRank(currentPlan);
+    final isActionablePlan = plan.key != PlanKey.free && !isCurrent;
     final buttonLabel = isCurrent
         ? 'Plano atual'
         : !canManageBilling
-        ? 'Somente owner'
-        : isPaidUpgrade
-        ? 'Assinar ${plan.name}'
-        : 'Incluso';
+        ? 'Apenas o dono da empresa pode alterar'
+        : plan.key == PlanKey.free
+        ? 'Plano gratuito'
+        : currentPlan == PlanKey.free
+        ? 'Assinar plano ${_planLabel(plan.key)}'
+        : 'Trocar para ${_planLabel(plan.key)}';
 
     return AppSectionCard(
       title: plan.name,
@@ -298,8 +315,8 @@ class _PlanCard extends StatelessWidget {
         children: [
           Text(
             plan.priceCents == 0
-                ? 'Gratis'
-                : '${AppFormatters.currencyFromCents(plan.priceCents)}/mes',
+                ? 'Grátis'
+                : '${AppFormatters.currencyFromCents(plan.priceCents)}/mês',
             style: theme.textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.w800,
             ),
@@ -323,7 +340,7 @@ class _PlanCard extends StatelessWidget {
             label: isBusy ? 'Aguarde...' : buttonLabel,
             icon: isCurrent ? Icons.check_rounded : Icons.open_in_new_rounded,
             onPressed:
-                isBusy || isCurrent || !canManageBilling || !isPaidUpgrade
+                isBusy || isCurrent || !canManageBilling || !isActionablePlan
                 ? null
                 : onSubscribe,
             expand: true,
@@ -379,7 +396,7 @@ Future<void> _showCopyCheckoutDialog(
   return showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Nao foi possivel abrir o checkout'),
+      title: const Text('Não foi possível abrir o checkout'),
       content: SelectableText(checkoutUrl),
       actions: [
         TextButton(
@@ -408,7 +425,7 @@ String _planLabel(PlanKey plan) {
     case PlanKey.free:
       return 'Free';
     case PlanKey.basic:
-      return 'Basico';
+      return 'Básico';
     case PlanKey.pro:
       return 'Pro';
   }
@@ -426,16 +443,5 @@ String _statusLabel(String status) {
       return 'Expirada';
     default:
       return status;
-  }
-}
-
-int _planRank(PlanKey plan) {
-  switch (plan) {
-    case PlanKey.free:
-      return 0;
-    case PlanKey.basic:
-      return 1;
-    case PlanKey.pro:
-      return 2;
   }
 }

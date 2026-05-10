@@ -59,7 +59,18 @@ void main() {
     );
 
     expect(find.text('Recebimentos por forma'), findsOneWidget);
-    expect(find.text('Saude do estoque'), findsOneWidget);
+    for (final category in [
+      'Vendas',
+      'Produtos',
+      'Caixa',
+      'Estoque',
+      'Clientes',
+      'Compras',
+      'Lucratividade',
+    ]) {
+      expect(find.text(category), findsWidgets);
+    }
+    expect(find.text('Saúde do estoque'), findsOneWidget);
     expect(find.text('Exportar'), findsNothing);
   });
 

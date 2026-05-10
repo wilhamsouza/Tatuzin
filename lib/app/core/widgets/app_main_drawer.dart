@@ -172,7 +172,7 @@ class AppMainDrawer extends ConsumerWidget {
                 ),
                 children: [
                   _DrawerGroup(
-                    label: 'OPERACAO',
+                    label: 'OPERAÇÃO',
                     children: [
                       _DrawerItem(
                         label: 'Dashboard',
@@ -258,7 +258,7 @@ class AppMainDrawer extends ConsumerWidget {
                       ),
                       if (can(FeatureKey.inventoryAdvanced))
                         _DrawerItem(
-                          label: 'Inventario fisico',
+                          label: 'Inventário físico',
                           icon: Icons.fact_check_rounded,
                           isSelected: selected(AppRoutePaths.inventoryCounts),
                           onTap: () => _navigateTo(
@@ -287,7 +287,7 @@ class AppMainDrawer extends ConsumerWidget {
                     children: [
                       if (can(FeatureKey.costs))
                         _DrawerItem(
-                          label: 'Custos',
+                          label: 'Custos e lançamentos',
                           icon: Icons.account_balance_rounded,
                           isSelected: selected(AppRoutePaths.costs),
                           onTap: () => _navigateTo(
@@ -310,7 +310,7 @@ class AppMainDrawer extends ConsumerWidget {
                           ),
                         ),
                       _DrawerItem(
-                        label: 'Relatorios',
+                          label: 'Relatórios',
                         icon: Icons.assessment_rounded,
                         isSelected: selected(AppRoutePaths.reports),
                         onTap: () => _navigateTo(
@@ -321,7 +321,7 @@ class AppMainDrawer extends ConsumerWidget {
                         ),
                       ),
                       _DrawerItem(
-                        label: 'Historico de vendas',
+                          label: 'Histórico de vendas',
                         icon: Icons.history_rounded,
                         isSelected: selected(AppRoutePaths.salesHistory),
                         onTap: () => _navigateTo(
@@ -373,7 +373,7 @@ class AppMainDrawer extends ConsumerWidget {
                         ),
                       if (can(FeatureKey.employees))
                         _DrawerItem(
-                          label: 'Funcionarios',
+                          label: 'Funcionários',
                           icon: Icons.badge_outlined,
                           isSelected: selected(AppRoutePaths.employees),
                           onTap: () => _navigateTo(
@@ -386,10 +386,10 @@ class AppMainDrawer extends ConsumerWidget {
                     ],
                   ),
                   _DrawerGroup(
-                    label: 'RODAPE',
+                    label: 'SISTEMA',
                     children: [
                       _DrawerItem(
-                        label: 'Conta',
+                        label: 'Minha conta',
                         icon: Icons.person_outline_rounded,
                         isSelected: selected(AppRoutePaths.accountCloud),
                         onTap: () => _navigateTo(
@@ -400,14 +400,36 @@ class AppMainDrawer extends ConsumerWidget {
                         ),
                       ),
                       _DrawerItem(
-                        label: 'Configuracoes',
-                        icon: Icons.settings_rounded,
-                        isSelected: selected(AppRoutePaths.more),
+                        label: 'Empresa',
+                        icon: Icons.storefront_rounded,
+                        isSelected: selected(AppRoutePaths.company),
                         onTap: () => _navigateTo(
                           context,
                           currentPath: currentPath,
-                          path: AppRoutePaths.more,
-                          routeName: AppRouteNames.more,
+                          path: AppRoutePaths.company,
+                          routeName: AppRouteNames.company,
+                        ),
+                      ),
+                      _DrawerItem(
+                        label: 'Assinatura e planos',
+                        icon: Icons.workspace_premium_outlined,
+                        isSelected: selected(AppRoutePaths.subscription),
+                        onTap: () => _navigateTo(
+                          context,
+                          currentPath: currentPath,
+                          path: AppRoutePaths.subscription,
+                          routeName: AppRouteNames.subscription,
+                        ),
+                      ),
+                      _DrawerItem(
+                        label: 'Configurações',
+                        icon: Icons.settings_rounded,
+                        isSelected: selected(AppRoutePaths.settings),
+                        onTap: () => _navigateTo(
+                          context,
+                          currentPath: currentPath,
+                          path: AppRoutePaths.settings,
+                          routeName: AppRouteNames.settings,
                         ),
                       ),
                       _DrawerItem(
@@ -491,7 +513,7 @@ class AppMainDrawer extends ConsumerWidget {
                       if (authStatus.isRemoteAuthenticated) ...[
                         SizedBox(height: layout.space2),
                         Text(
-                          'Licenca: ${authStatus.licensePlanLabel} - ${authStatus.licenseStatusLabel}',
+                          'Licença: ${authStatus.licensePlanLabel} - ${authStatus.licenseStatusLabel}',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                           ),
@@ -570,7 +592,7 @@ class AppMainDrawer extends ConsumerWidget {
       messenger.showSnackBar(
         const SnackBar(
           content: Text(
-            'Voce saiu da conta. Entre novamente para acessar a empresa.',
+            'Você saiu da conta. Entre novamente para acessar a empresa.',
           ),
         ),
       );
@@ -600,7 +622,7 @@ class AppMainDrawer extends ConsumerWidget {
               const ListTile(
                 title: Text('Ferramentas internas'),
                 subtitle: Text(
-                  'Acesso reservado para suporte, homologacao e evolucao do produto. O admin web continua sendo a superficie administrativa principal.',
+                  'Acesso reservado para suporte, homologação e evolução do produto. O admin web continua sendo a superfície administrativa principal.',
                 ),
               ),
               if (access.canOpenTechnicalSystem)
@@ -608,7 +630,7 @@ class AppMainDrawer extends ConsumerWidget {
                   leading: const Icon(Icons.build_circle_outlined),
                   title: const Text('Ferramentas internas'),
                   subtitle: const Text(
-                    'Diagnosticos, suporte tecnico e acompanhamento interno.',
+                    'Diagnósticos, suporte técnico e acompanhamento interno.',
                   ),
                   onTap: () => Navigator.of(
                     sheetContext,
@@ -619,7 +641,7 @@ class AppMainDrawer extends ConsumerWidget {
                   leading: const Icon(Icons.admin_panel_settings_outlined),
                   title: const Text('Admin interno de apoio'),
                   subtitle: const Text(
-                    'Consulta interna e provisoria dentro do app. Use o admin web como superficie administrativa principal.',
+                    'Consulta interna e provisória dentro do app. Use o admin web como superfície administrativa principal.',
                   ),
                   onTap: () =>
                       Navigator.of(sheetContext).pop(AppRouteNames.admin),

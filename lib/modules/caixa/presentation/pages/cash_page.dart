@@ -62,7 +62,6 @@ class _CashPageState extends ConsumerState<CashPage> {
     final filter = ref.watch(cashMovementFilterProvider);
     final movementCounts = ref.watch(cashMovementCountsProvider);
     final actionState = ref.watch(cashActionControllerProvider);
-    final operatorName = ref.watch(currentCashOperatorNameProvider);
     final layout = context.appLayout;
     final currentSession = currentSessionAsync.valueOrNull;
 
@@ -73,9 +72,9 @@ class _CashPageState extends ConsumerState<CashPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Caixa'),
+            const Text('Caixa operacional'),
             Text(
-              'Sessao operacional',
+              'Sessão atual',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w600,
@@ -114,11 +113,11 @@ class _CashPageState extends ConsumerState<CashPage> {
             layout.space10,
           ),
           children: [
-            AppPageHeader(
+            const AppPageHeader(
               title: 'Caixa operacional',
               subtitle:
-                  'SessÃ£o atual, saldo fÃ­sico e aÃ§Ãµes do operador $operatorName.',
-              badgeLabel: 'OperaÃ§Ã£o do caixa',
+                  'Acompanhe a sessão atual, saldo físico e ações do operador.',
+              badgeLabel: 'Operação do caixa',
               badgeIcon: Icons.account_balance_wallet_rounded,
             ),
             const SizedBox(height: 14),
@@ -156,7 +155,7 @@ class _CashPageState extends ConsumerState<CashPage> {
             if (actionState.hasError) ...[
               SizedBox(height: layout.sectionGap),
               AppStateCard(
-                title: 'Falha em uma acao do caixa',
+                title: 'Falha em uma ação do caixa',
                 message: actionState.error.toString(),
                 tone: AppStateTone.error,
                 compact: true,
@@ -164,16 +163,14 @@ class _CashPageState extends ConsumerState<CashPage> {
             ],
             SizedBox(height: layout.sectionGap),
             AppSectionCard(
-              title: 'MovimentaÃ§Ãµes',
+              title: 'Movimentações',
               subtitle:
-                  'Mostrando ${visibleMovements.length} movimentaÃ§Ãµes${filteredMovements.length != visibleMovements.length ? ' de ${filteredMovements.length}' : ''}.',
+                  'Mostrando ${visibleMovements.length} movimentações${filteredMovements.length != visibleMovements.length ? ' de ${filteredMovements.length}' : ''}.',
               padding: const EdgeInsets.all(16),
               child: movementsAsync.when(
                 data: (_) {
                   if (filteredMovements.isEmpty) {
-                    return const Text(
-                      'Nenhuma movimentaÃ§Ã£o encontrada para o filtro selecionado.',
-                    );
+                    return const Text('Nenhuma movimentação encontrada.');
                   }
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -220,18 +217,18 @@ class _CashPageState extends ConsumerState<CashPage> {
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (error, _) =>
-                    Text('Falha ao carregar movimentaÃ§Ãµes: $error'),
+                    Text('Falha ao carregar movimentações: $error'),
               ),
             ),
             SizedBox(height: layout.sectionGap),
             AppSectionCard(
-              title: 'HistÃ³rico de sessÃµes',
-              subtitle: 'Fechamentos recentes e divergÃªncias de caixa.',
+              title: 'Histórico de sessões',
+              subtitle: 'Fechamentos recentes e divergências de caixa.',
               padding: const EdgeInsets.all(16),
               child: sessionsAsync.when(
                 data: (sessions) {
                   if (sessions.isEmpty) {
-                    return const Text('Nenhuma sessÃ£o registrada ainda.');
+                    return const Text('Nenhuma sessão registrada ainda.');
                   }
                   return Column(
                     children: [
@@ -247,7 +244,7 @@ class _CashPageState extends ConsumerState<CashPage> {
                 },
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (error, _) =>
-                    Text('Falha ao carregar histÃ³rico: $error'),
+                    Text('Falha ao carregar histórico: $error'),
               ),
             ),
           ],
@@ -299,7 +296,7 @@ class _CashPageState extends ConsumerState<CashPage> {
               TextField(
                 controller: notesController,
                 decoration: const InputDecoration(
-                  labelText: 'ObservaÃ§Ã£o',
+                  labelText: 'Observação',
                   hintText: 'Opcional',
                 ),
               ),
@@ -344,12 +341,12 @@ class _CashPageState extends ConsumerState<CashPage> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Abertura automÃ¡tica do caixa'),
+        title: const Text('Abertura automática do caixa'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Informe o troco inicial para iniciar a sessÃ£o.'),
+            const Text('Informe o troco inicial para iniciar a sessão.'),
             const SizedBox(height: 12),
             TextField(
               controller: amountController,
@@ -392,7 +389,7 @@ class _CashPageState extends ConsumerState<CashPage> {
             .read(cashActionControllerProvider.notifier)
             .closeSession(
               countedBalanceCents: session.expectedBalanceCents,
-              notes: 'SessÃ£o encerrada sem confirmaÃ§Ã£o do troco inicial.',
+              notes: 'Sessão encerrada sem confirmação do troco inicial.',
             );
         if (!mounted) return;
         AppFeedback.success(context, 'Caixa fechado.');
@@ -488,7 +485,7 @@ class _CashPageState extends ConsumerState<CashPage> {
                 ),
                 const SizedBox(height: 14),
                 _SummaryLine(
-                  label: 'PerÃ­odo',
+                  label: 'Período',
                   value:
                       '${AppFormatters.shortDateTime(session.openedAt)} - agora',
                 ),
@@ -518,7 +515,7 @@ class _CashPageState extends ConsumerState<CashPage> {
                   ),
                 ),
                 _SummaryLine(
-                  label: 'Fiado recebido por cartÃ£o',
+                  label: 'Fiado recebido por cartão',
                   value: AppFormatters.currencyFromCents(
                     session.fiadoReceiptsCardCents,
                   ),
@@ -549,7 +546,7 @@ class _CashPageState extends ConsumerState<CashPage> {
                   controller: notesController,
                   maxLines: 3,
                   decoration: const InputDecoration(
-                    labelText: 'ObservaÃ§Ã£o de fechamento',
+                    labelText: 'Observação de fechamento',
                     hintText: 'Opcional',
                   ),
                 ),
@@ -649,7 +646,7 @@ class _CashPageState extends ConsumerState<CashPage> {
               TextField(
                 controller: descriptionController,
                 maxLines: 3,
-                decoration: const InputDecoration(labelText: 'DescriÃ§Ã£o'),
+                decoration: const InputDecoration(labelText: 'Descrição'),
               ),
             ],
           ),
@@ -730,7 +727,7 @@ class _CurrentSessionSection extends StatelessWidget {
 
     if (session == null) {
       return AppSectionCard(
-        title: 'SessÃ£o atual',
+        title: 'Sessão atual',
         subtitle: 'Nenhum caixa aberto no momento.',
         padding: const EdgeInsets.all(16),
         trailing: const AppStatusBadge(
@@ -753,14 +750,14 @@ class _CurrentSessionSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AppSectionCard(
-          title: 'SessÃ£o atual',
+          title: 'Sessão atual',
           subtitle: current.awaitingInitialFloatConfirmation
-              ? 'Abertura pendente de confirmaÃ§Ã£o do troco inicial.'
+              ? 'Abertura pendente de confirmação do troco inicial.'
               : 'Caixa ${current.isOpen ? 'aberto' : 'fechado'} desde ${AppFormatters.shortDateTime(current.openedAt)}.',
           padding: const EdgeInsets.all(16),
           trailing: current.awaitingInitialFloatConfirmation
               ? const AppStatusBadge(
-                  label: 'Aguardando confirmaÃ§Ã£o',
+                  label: 'Aguardando confirmação',
                   tone: AppStatusTone.warning,
                   icon: Icons.hourglass_top_rounded,
                 )
@@ -792,7 +789,7 @@ class _CurrentSessionSection extends StatelessWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            'Sessao #${current.id}',
+                            'Sessão #${current.id}',
                             style: Theme.of(context).textTheme.titleSmall
                                 ?.copyWith(
                                   color: Colors.white.withValues(alpha: 0.82),
@@ -868,7 +865,7 @@ class _CurrentSessionSection extends StatelessWidget {
                   ),
                   _InfoLine(label: 'Operador', value: current.operatorName),
                   _InfoLine(
-                    label: 'DuraÃ§Ã£o',
+                    label: 'Duração',
                     value: _formatDuration(
                       (current.closedAt ?? DateTime.now()).difference(
                         current.openedAt,
@@ -896,7 +893,7 @@ class _CurrentSessionSection extends StatelessWidget {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Troco inicial nÃ£o informado. Confirme a abertura para liberar suprimento, sangria e contagem.',
+                          'Troco inicial não informado. Confirme a abertura para liberar suprimento, sangria e contagem.',
                           style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(color: colorScheme.onPrimaryContainer),
                         ),
@@ -925,7 +922,7 @@ class _CurrentSessionSection extends StatelessWidget {
                 Align(
                   alignment: Alignment.centerRight,
                   child: Text(
-                    'Atualizado Ã s ${TimeOfDay.fromDateTime(updatedAt!).format(context)}',
+                    'Atualizado às ${TimeOfDay.fromDateTime(updatedAt!).format(context)}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
@@ -934,10 +931,10 @@ class _CurrentSessionSection extends StatelessWidget {
           ),
         ),
         AppSectionCard(
-          title: 'AÃ§Ãµes principais',
+          title: 'Ações principais',
           subtitle: current.awaitingInitialFloatConfirmation
               ? 'Confirme a abertura antes de seguir.'
-              : 'OperaÃ§Ãµes mais usadas no caixa.',
+              : 'Operações mais usadas no caixa.',
           padding: const EdgeInsets.all(16),
           child: Wrap(
             spacing: 10,
@@ -992,7 +989,7 @@ class _CurrentSessionSection extends StatelessWidget {
         const SizedBox(height: 14),
         AppSectionCard(
           title: 'Resumo financeiro',
-          subtitle: 'Toque em um bloco para filtrar as movimentaÃ§Ãµes abaixo.',
+          subtitle: 'Toque em um bloco para filtrar as movimentações abaixo.',
           padding: const EdgeInsets.all(16),
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -1159,7 +1156,8 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = (MediaQuery.of(context).size.width - 64) / 2;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final width = screenWidth < 360 ? screenWidth - 64 : (screenWidth - 80) / 2;
     final foreground = isDanger
         ? Theme.of(context).colorScheme.error
         : Theme.of(context).colorScheme.primary;
@@ -1228,7 +1226,7 @@ class _MovementTile extends StatelessWidget {
                     AppFormatters.shortDateTime(movement.createdAt),
                     if (movement.paymentMethod != null)
                       movement.paymentMethod!.label,
-                  ].join(' â€¢ '),
+                  ].join(' • '),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -1281,10 +1279,10 @@ class _SessionHistoryTile extends StatelessWidget {
         : difference == null
         ? 'Fechado'
         : isNegativeDifference
-        ? 'DiferenÃ§a negativa'
+        ? 'Diferença negativa'
         : isPositiveDifference
-        ? 'DiferenÃ§a positiva'
-        : 'Fechado sem diferenÃ§a';
+        ? 'Diferença positiva'
+        : 'Fechado sem diferença';
     final badgeBackground = isNegativeDifference
         ? negativePalette.surface
         : isPositiveDifference
@@ -1302,7 +1300,7 @@ class _SessionHistoryTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  session.isOpen ? 'SessÃ£o em aberto' : 'SessÃ£o encerrada',
+                  session.isOpen ? 'Sessão em aberto' : 'Sessão encerrada',
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 const SizedBox(height: 2),
@@ -1316,7 +1314,7 @@ class _SessionHistoryTile extends StatelessWidget {
                     'Abertura ${AppFormatters.shortDateTime(session.openedAt)}',
                     if (session.closedAt != null)
                       'Fechamento ${AppFormatters.shortDateTime(session.closedAt!)}',
-                  ].join(' â€¢ '),
+                  ].join(' • '),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -1460,7 +1458,7 @@ class _DifferenceBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        'DiferenÃ§a calculada: ${differenceCents > 0 ? '+' : ''}${AppFormatters.currencyFromCents(differenceCents)}',
+        'Diferença calculada: ${differenceCents > 0 ? '+' : ''}${AppFormatters.currencyFromCents(differenceCents)}',
         style: Theme.of(context).textTheme.titleSmall?.copyWith(color: color),
       ),
     );

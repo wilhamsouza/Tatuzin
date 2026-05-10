@@ -16,7 +16,7 @@ enum InventoryItemStatus { available, belowMinimum, zeroed, inactive }
 extension InventoryItemStatusX on InventoryItemStatus {
   String get label {
     return switch (this) {
-      InventoryItemStatus.available => 'Disponivel',
+      InventoryItemStatus.available => 'Disponível',
       InventoryItemStatus.belowMinimum => 'Abaixo do minimo',
       InventoryItemStatus.zeroed => 'Zerado',
       InventoryItemStatus.inactive => 'Inativo',

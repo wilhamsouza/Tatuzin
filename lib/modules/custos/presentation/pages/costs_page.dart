@@ -109,7 +109,7 @@ class _CostsPageState extends ConsumerState<CostsPage> {
                 suggestedType: _typeFilter.costType,
               ),
         icon: const Icon(Icons.add_rounded),
-        label: const Text('Novo custo'),
+        label: const Text('Novo lançamento'),
       ),
       body: RefreshIndicator(
         onRefresh: () => _refreshCosts(ref),
@@ -122,9 +122,9 @@ class _CostsPageState extends ConsumerState<CostsPage> {
           ),
           children: [
             const AppPageHeader(
-              title: 'Custos',
+              title: 'Custos e lançamentos',
               subtitle:
-                  'Despesas fixas, variaveis, vencimentos e pagamento sem misturar com o caixa operacional.',
+                  'Registre despesas, entradas e movimentações financeiras.',
               badgeLabel: 'Financeiro',
               badgeIcon: Icons.account_balance_rounded,
               emphasized: true,
@@ -266,9 +266,9 @@ class _CostsAppBarTitle extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text('Custos'),
+        const Text('Custos e lançamentos'),
         Text(
-          'Financeiro e insumos indiretos',
+          'Despesas e movimentações financeiras',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w600,

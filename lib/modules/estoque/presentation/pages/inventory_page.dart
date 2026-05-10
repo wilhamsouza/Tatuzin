@@ -6,7 +6,6 @@ import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_list_tile_card.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
-import '../../../../app/core/widgets/app_metric_card.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_search_field.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
@@ -63,7 +62,7 @@ class _InventoryPageState extends ConsumerState<InventoryPage> {
             child: const AppPageHeader(
               title: 'Estoque atual',
               subtitle:
-                  'Acompanhe o saldo operacional dos produtos acabados sem alterar a semantica atual do cadastro.',
+                  'Acompanhe o saldo operacional dos produtos acabados sem alterar a semântica atual do cadastro.',
               badgeLabel: 'Produtos',
               badgeIcon: Icons.inventory_2_rounded,
               emphasized: true,
@@ -127,48 +126,46 @@ class _InventoryPageState extends ConsumerState<InventoryPage> {
               layout.pagePadding,
               layout.space5,
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () => context.pushNamed(
-                                AppRouteNames.inventoryMovements,
-                              ),
-                              icon: const Icon(Icons.history_rounded),
-                              label: const Text('Ver movimentacoes'),
-                            ),
-                          ),
-                          SizedBox(width: layout.space4),
-                          Expanded(
-                            child: FilledButton.tonalIcon(
-                              onPressed: () => context.pushNamed(
-                                AppRouteNames.inventoryAdjustment,
-                              ),
-                              icon: const Icon(Icons.tune_rounded),
-                              label: const Text('Novo ajuste'),
-                            ),
-                          ),
-                        ],
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final buttonWidth = constraints.maxWidth < 360
+                    ? constraints.maxWidth
+                    : (constraints.maxWidth - layout.space4) / 2;
+                return Wrap(
+                  spacing: layout.space4,
+                  runSpacing: layout.space3,
+                  children: [
+                    SizedBox(
+                      width: buttonWidth,
+                      child: OutlinedButton.icon(
+                        onPressed: () =>
+                            context.pushNamed(AppRouteNames.inventoryMovements),
+                        icon: const Icon(Icons.history_rounded),
+                        label: const Text('Ver movimentações'),
                       ),
-                      SizedBox(height: layout.space4),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () =>
-                              context.pushNamed(AppRouteNames.inventoryCounts),
-                          icon: const Icon(Icons.fact_check_rounded),
-                          label: const Text('Inventario fisico'),
+                    ),
+                    SizedBox(
+                      width: buttonWidth,
+                      child: FilledButton.tonalIcon(
+                        onPressed: () => context.pushNamed(
+                          AppRouteNames.inventoryAdjustment,
                         ),
+                        icon: const Icon(Icons.tune_rounded),
+                        label: const Text('Novo ajuste'),
                       ),
-                    ],
-                  ),
-                ),
-              ],
+                    ),
+                    SizedBox(
+                      width: buttonWidth,
+                      child: OutlinedButton.icon(
+                        onPressed: () =>
+                            context.pushNamed(AppRouteNames.inventoryCounts),
+                        icon: const Icon(Icons.fact_check_rounded),
+                        label: const Text('Inventário físico'),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
           Expanded(
@@ -209,7 +206,7 @@ class _InventoryPageState extends ConsumerState<InventoryPage> {
                 padding: EdgeInsets.all(layout.pagePadding),
                 child: const AppStateCard(
                   title: 'Carregando estoque',
-                  message: 'Buscando o saldo atual de produtos e variacoes.',
+              message: 'Buscando o saldo atual de produtos e variações.',
                   tone: AppStateTone.loading,
                   compact: true,
                 ),
@@ -241,51 +238,82 @@ class _InventorySummaryPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final layout = context.appLayout;
-    return Wrap(
-      spacing: layout.space4,
-      runSpacing: layout.space4,
-      children: [
-        SizedBox(
-          width: 190,
-          child: AppMetricCard(
-            label: 'Total de SKUs',
+    return AppCard(
+      padding: EdgeInsets.all(layout.compactCardPadding),
+      child: Wrap(
+        spacing: layout.space4,
+        runSpacing: layout.space3,
+        children: [
+          _CompactInventoryStat(
+            label: 'SKUs',
             value: '${summary.totalSkus}',
             icon: Icons.qr_code_2_rounded,
-            caption: 'Itens visiveis no filtro atual',
-            accentColor: context.appColors.brand.base,
+            color: context.appColors.brand.base,
           ),
-        ),
-        SizedBox(
-          width: 190,
-          child: AppMetricCard(
-            label: 'Itens zerados',
+          _CompactInventoryStat(
+            label: 'Zerados',
             value: '${summary.zeroedItems}',
             icon: Icons.remove_shopping_cart_rounded,
-            caption: 'Sem saldo disponivel agora',
-            accentColor: context.appColors.warning.base,
+            color: context.appColors.warning.base,
           ),
-        ),
-        SizedBox(
-          width: 190,
-          child: AppMetricCard(
-            label: 'Abaixo do minimo',
+          _CompactInventoryStat(
+            label: 'Abaixo do mínimo',
             value: '${summary.belowMinimumItems}',
             icon: Icons.priority_high_rounded,
-            caption: 'Precisam de atencao operacional',
-            accentColor: context.appColors.danger.base,
+            color: context.appColors.danger.base,
           ),
-        ),
-        SizedBox(
-          width: 210,
-          child: AppMetricCard(
-            label: 'Valor em custo',
+          _CompactInventoryStat(
+            label: 'Custo',
             value: AppFormatters.currencyFromCents(summary.estimatedCostCents),
             icon: Icons.payments_outlined,
-            caption: 'Estimativa pelo custo atual cadastrado',
-            accentColor: context.appColors.success.base,
+            color: context.appColors.success.base,
           ),
-        ),
-      ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactInventoryStat extends StatelessWidget {
+  const _CompactInventoryStat({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 130, maxWidth: 180),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '$label: ',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  TextSpan(text: value),
+                ],
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -319,7 +347,7 @@ class _InventoryItemTile extends StatelessWidget {
         'Tam ${item.variantSizeLabel!.trim()}',
     ];
     final subtitle = subtitleParts.isEmpty
-        ? (item.hasVariant ? 'Variacao sem atributos' : 'Produto simples')
+        ? (item.hasVariant ? 'Variação sem atributos' : 'Produto simples')
         : subtitleParts.join('  |  ');
 
     return AppListTileCard(
@@ -377,7 +405,7 @@ class _InventoryItemTile extends StatelessWidget {
         AppStatusBadge(label: item.status.label, tone: statusTone),
         AppStatusBadge(
           label:
-              'Minimo ${AppFormatters.quantityFromMil(item.minimumStockMil)} ${item.unitMeasure}',
+              'Mínimo ${AppFormatters.quantityFromMil(item.minimumStockMil)} ${item.unitMeasure}',
           tone: AppStatusTone.neutral,
         ),
         AppStatusBadge(

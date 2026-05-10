@@ -150,8 +150,8 @@ class InventoryMovement {
             : 'Devolucao/Troca #$referenceId';
       case 'inventory_count_session':
         return referenceId == null
-            ? 'Inventario fisico'
-            : 'Inventario #$referenceId';
+            ? 'Inventário físico'
+            : 'Inventário #$referenceId';
       case 'manual_adjustment':
         return 'Ajuste manual';
       default:

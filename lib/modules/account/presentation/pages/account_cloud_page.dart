@@ -53,7 +53,7 @@ class AccountCloudPage extends ConsumerWidget {
           AppPageHeader(
             title: 'Conta e nuvem',
             subtitle:
-                'Veja sua conta, sua empresa e como a nuvem esta ajudando o seu negocio sem entrar em detalhes tecnicos.',
+                'Veja sua conta, sua empresa e como a nuvem está ajudando o seu negócio sem entrar em detalhes técnicos.',
             badgeLabel: accountCloud.statusLabel,
             badgeIcon: accountCloud.icon,
             emphasized: true,
@@ -61,14 +61,14 @@ class AccountCloudPage extends ConsumerWidget {
           if (hasSyncAttention) ...[
             const SizedBox(height: 18),
             AppSectionCard(
-              title: 'Itens com revisao',
+              title: 'Itens com revisão',
               subtitle:
                   'Detalhes reais da fila local para entender o que precisa de nova tentativa ou ajuste.',
               child: syncIssuesAsync!.when(
                 data: (issues) {
                   if (issues.isEmpty) {
                     return Text(
-                      'A fila informou atencao, mas nenhum item detalhado foi encontrado nesta leitura.',
+                      'A fila informou atenção, mas nenhum item detalhado foi encontrado nesta leitura.',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),
@@ -93,7 +93,7 @@ class AccountCloudPage extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Nao foi possivel carregar os detalhes da fila: $error',
+                      'Não foi possível carregar os detalhes da fila: $error',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: colorScheme.error,
                         fontWeight: FontWeight.w700,
@@ -115,9 +115,9 @@ class AccountCloudPage extends ConsumerWidget {
           const SizedBox(height: 18),
           if (authStatus.isRemoteAuthenticated) ...[
             AppSectionCard(
-              title: 'Fila de sincronizacao',
+              title: 'Fila de sincronização',
               subtitle:
-                  'Resumo por modulo para saber o que ainda precisa sair deste aparelho.',
+                  'Resumo por módulo para saber o que ainda precisa sair deste aparelho.',
               child: syncSummariesAsync!.when(
                 data: (summaries) {
                   final activeSummaries = summaries
@@ -132,7 +132,7 @@ class AccountCloudPage extends ConsumerWidget {
                       .toList(growable: false);
                   if (activeSummaries.isEmpty) {
                     return Text(
-                      'Nenhuma pendencia local aguardando envio.',
+                      'Nenhuma pendência local aguardando envio.',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),
@@ -157,7 +157,7 @@ class AccountCloudPage extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Nao foi possivel carregar o resumo da fila: $error',
+                      'Não foi possível carregar o resumo da fila: $error',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: colorScheme.error,
                         fontWeight: FontWeight.w700,
@@ -186,10 +186,10 @@ class AccountCloudPage extends ConsumerWidget {
                 _InfoRow(label: 'Usuario', value: authStatus.userLabel),
                 if (authStatus.email?.trim().isNotEmpty ?? false)
                   _InfoRow(label: 'E-mail', value: authStatus.email!.trim()),
-                _InfoRow(label: 'Sessao', value: accountCloud.accountModeLabel),
+                _InfoRow(label: 'Sessão', value: accountCloud.accountModeLabel),
                 const _InfoRow(
                   label: 'Acesso local',
-                  value: 'Sempre disponivel neste aparelho',
+                  value: 'Sempre disponível neste aparelho',
                 ),
               ],
             ),
@@ -198,37 +198,37 @@ class AccountCloudPage extends ConsumerWidget {
           AppSectionCard(
             title: 'Sua empresa',
             subtitle:
-                'Resumo comercial da empresa conectada a esta instalacao do Tatuzin.',
+                'Resumo comercial da empresa conectada a esta instalação do Tatuzin.',
             child: Column(
               children: [
                 _InfoRow(label: 'Empresa', value: authStatus.companyLabel),
                 _InfoRow(label: 'Plano', value: authStatus.licensePlanLabel),
                 _InfoRow(
-                  label: 'Licenca',
+                  label: 'Licença',
                   value: authStatus.licenseStatusLabel,
                 ),
                 _InfoRow(
                   label: 'Validade',
                   value: authStatus.licenseExpiresAt == null
-                      ? 'Nao informada'
+                      ? 'Não informada'
                       : AppFormatters.shortDate(authStatus.licenseExpiresAt!),
                 ),
                 _InfoRow(
                   label: 'Uso na nuvem',
                   value: company.allowsCloudSync
-                      ? 'Disponivel'
-                      : 'Uso local disponivel',
+                      ? 'Disponível'
+                      : 'Uso local disponível',
                 ),
               ],
             ),
           ),
           const SizedBox(height: 18),
           AppSectionCard(
-            title: 'Assinatura',
+            title: 'Assinatura e planos',
             subtitle:
-                'Veja planos, status e atualize sua assinatura quando precisar liberar novos recursos.',
+                'Veja planos, status e opções para liberar novos recursos.',
             child: AppButton.secondary(
-              label: 'Ver assinatura',
+              label: 'Ver planos',
               icon: Icons.workspace_premium_outlined,
               onPressed: () => context.goNamed(AppRouteNames.subscription),
               expand: true,
@@ -238,7 +238,7 @@ class AccountCloudPage extends ConsumerWidget {
           AppSectionCard(
             title: 'Nuvem',
             subtitle:
-                'Um status claro para voce saber se a conta esta conectada e se a nuvem esta acompanhando sua empresa.',
+                'Um status claro para você saber se a conta está conectada e se a nuvem está acompanhando sua empresa.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -297,32 +297,32 @@ class AccountCloudPage extends ConsumerWidget {
                       value: '${accountCloud.conflictCount}',
                     ),
                   _InfoRow(
-                    label: 'Ultima sincronizacao',
+                    label: 'Última sincronização',
                     value: accountCloud.lastSyncedAt == null
-                        ? 'Ainda nao concluida'
+                        ? 'Ainda não concluída'
                         : AppFormatters.shortDateTime(
                             accountCloud.lastSyncedAt!,
                           ),
                   ),
                   _InfoRow(
-                    label: 'Ultima tentativa',
+                    label: 'Última tentativa',
                     value: autoSyncSnapshot.lastStartedAt == null
-                        ? 'Ainda nao iniciada'
+                        ? 'Ainda não iniciada'
                         : AppFormatters.shortDateTime(
                             autoSyncSnapshot.lastStartedAt!,
                           ),
                   ),
                   _InfoRow(
-                    label: 'Ultima conclusao',
+                    label: 'Última conclusão',
                     value: autoSyncSnapshot.lastFinishedAt == null
-                        ? 'Ainda nao concluida'
+                        ? 'Ainda não concluída'
                         : AppFormatters.shortDateTime(
                             autoSyncSnapshot.lastFinishedAt!,
                           ),
                   ),
                   if (accountCloud.nextRetryAt != null)
                     _InfoRow(
-                      label: 'Proxima tentativa',
+                      label: 'Próxima tentativa',
                       value: AppFormatters.shortDateTime(
                         accountCloud.nextRetryAt!,
                       ),
@@ -340,7 +340,7 @@ class AccountCloudPage extends ConsumerWidget {
                   ),
                 ] else if (accountCloud.supportingValue != null)
                   _InfoRow(
-                    label: accountCloud.supportingLabel ?? 'Atualizacao',
+                    label: accountCloud.supportingLabel ?? 'Atualização',
                     value: accountCloud.supportingValue!,
                   ),
               ],
@@ -348,7 +348,7 @@ class AccountCloudPage extends ConsumerWidget {
           ),
           const SizedBox(height: 18),
           AppSectionCard(
-            title: 'Sessao',
+            title: 'Sessão',
             subtitle:
                 'Entre, saia ou recupere sua conta para manter a empresa local vinculada ao seu login.',
             child: Column(
@@ -368,7 +368,7 @@ class AccountCloudPage extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   AppButton.secondary(
-                    label: 'Restaurar sessao',
+                    label: 'Restaurar sessão',
                     icon: Icons.refresh_rounded,
                     onPressed: authState.isLoading
                         ? null
@@ -405,12 +405,12 @@ class AccountCloudPage extends ConsumerWidget {
           AppSectionCard(
             title: 'Ajuda e suporte',
             subtitle:
-                'Quando a internet oscila, a operacao local continua disponivel apenas para sessoes ja validadas.',
+                'Quando a internet oscila, a operação local continua disponível apenas para sessões já validadas.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Se voce precisar renovar o acesso, entre novamente na sua conta. Em caso de internet instavel, o Tatuzin usa o tenant local ja vinculado a esta empresa.',
+                  'Se você precisar renovar o acesso, entre novamente na sua conta. Em caso de internet instável, o Tatuzin usa a empresa local já vinculada a esta conta.',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
@@ -473,13 +473,13 @@ class AccountCloudPage extends ConsumerWidget {
       if (session == null) {
         messenger.showSnackBar(
           const SnackBar(
-            content: Text('Nao encontramos uma sessao salva neste aparelho.'),
+            content: Text('Não encontramos uma sessão salva neste aparelho.'),
           ),
         );
         return;
       }
       messenger.showSnackBar(
-        const SnackBar(content: Text('Sessao restaurada com sucesso.')),
+        const SnackBar(content: Text('Sessão restaurada com sucesso.')),
       );
     } catch (error) {
       if (!context.mounted) {
@@ -490,7 +490,7 @@ class AccountCloudPage extends ConsumerWidget {
           content: Text(
             friendlySessionFeedbackMessage(
               error,
-              fallback: 'Nao foi possivel restaurar sua sessao agora.',
+              fallback: 'Não foi possível restaurar sua sessão agora.',
             ),
           ),
         ),
@@ -538,7 +538,7 @@ class AccountCloudPage extends ConsumerWidget {
           content: Text(
             friendlySessionFeedbackMessage(
               error,
-              fallback: 'Nao foi possivel sair da conta agora.',
+              fallback: 'Não foi possível sair da conta agora.',
             ),
           ),
         ),
@@ -567,7 +567,7 @@ class AccountCloudPage extends ConsumerWidget {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Nao foi possivel sincronizar agora: $error')),
+        SnackBar(content: Text('Não foi possível sincronizar agora: $error')),
       );
     }
   }
@@ -582,7 +582,7 @@ class AccountCloudPage extends ConsumerWidget {
             return AlertDialog(
               title: const Text('Pendencias aguardando envio'),
               content: Text(
-                'Existem $pendingCount pendencias aguardando envio. '
+                'Existem $pendingCount pendências aguardando envio. '
                 'Elas continuarao salvas neste dispositivo.',
               ),
               actions: [
@@ -622,7 +622,7 @@ class _AccountCloudAppBarTitle extends StatelessWidget {
       children: [
         const Text('Conta e nuvem'),
         Text(
-          'Licenca, empresa e sincronizacao',
+          'Licença, empresa e sincronização',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w600,
@@ -702,7 +702,7 @@ class _SyncFeatureSummaryTile extends StatelessWidget {
               ),
             if (nextRetryAt != null)
               _IssueLine(
-                label: 'Proxima tentativa',
+                label: 'Próxima tentativa',
                 value: AppFormatters.shortDateTime(nextRetryAt),
               ),
             if (summary.lastError?.trim().isNotEmpty == true)
@@ -761,7 +761,7 @@ class _SyncIssueTile extends ConsumerWidget {
               label: 'ID remoto',
               value: issue.remoteId?.trim().isNotEmpty == true
                   ? issue.remoteId!
-                  : 'Ainda nao criado',
+                  : 'Ainda não criado',
             ),
             _IssueLine(label: 'Endpoint', value: issue.endpoint),
             if (issue.httpStatusCode != null)
@@ -772,7 +772,7 @@ class _SyncIssueTile extends ConsumerWidget {
               value: AppFormatters.shortDateTime(issue.updatedAt),
             ),
             _IssueLine(
-              label: 'Proxima tentativa',
+              label: 'Próxima tentativa',
               value: nextRetryAt == null
                   ? 'Sem retry automatico'
                   : AppFormatters.shortDateTime(nextRetryAt),

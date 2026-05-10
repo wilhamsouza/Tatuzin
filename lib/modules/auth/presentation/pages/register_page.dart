@@ -91,7 +91,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Cadastre sua empresa e seu usuario owner para entrar no fluxo cloud do Tatuzin.',
+                            'Cadastre sua empresa e o dono da empresa para entrar no Tatuzin conectado.',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                             ),
@@ -99,7 +99,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                           const SizedBox(height: 18),
                           AppInput(
                             controller: _userNameController,
-                            labelText: 'Nome do responsavel',
+                            labelText: 'Nome do responsável',
                             hintText: 'Seu nome',
                             textInputAction: TextInputAction.next,
                             autofillHints: const [AutofillHints.name],
@@ -200,7 +200,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                                 friendlySessionFeedbackMessage(
                                   authState.error,
                                   fallback:
-                                      'Nao foi possivel concluir o cadastro agora.',
+                                      'Não foi possível concluir o cadastro agora.',
                                 ),
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   color: colorScheme.onErrorContainer,
@@ -255,7 +255,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       messenger.showSnackBar(
         const SnackBar(
           content: Text(
-            'Preencha os dados da empresa e do responsavel para continuar.',
+            'Preencha os dados da empresa e do responsável para continuar.',
           ),
         ),
       );
@@ -266,7 +266,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       messenger.showSnackBar(
         const SnackBar(
           content: Text(
-            'Informe pelo menos 3 caracteres no nome do responsavel e da empresa.',
+            'Informe pelo menos 3 caracteres no nome do responsável e da empresa.',
           ),
         ),
       );
@@ -334,7 +334,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
           content: Text(
             friendlySessionFeedbackMessage(
               error,
-              fallback: 'Nao foi possivel concluir o cadastro agora.',
+              fallback: 'Não foi possível concluir o cadastro agora.',
             ),
           ),
         ),

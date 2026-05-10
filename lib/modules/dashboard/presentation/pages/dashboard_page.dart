@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/session/auth_provider.dart';
+import '../../../../app/core/utils/payment_method_note_codec.dart';
 import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_empty_state.dart';
 import '../../../../app/core/widgets/app_list_tile_card.dart';
@@ -18,6 +19,7 @@ import '../../../account/presentation/providers/account_cloud_providers.dart';
 import '../../../estoque/domain/services/inventory_alert_service.dart';
 import '../../../estoque/presentation/providers/inventory_providers.dart';
 import '../../../historico_vendas/presentation/providers/sale_history_providers.dart';
+import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../domain/entities/operational_dashboard_snapshot.dart';
 import '../providers/dashboard_providers.dart';
 
@@ -37,13 +39,13 @@ class DashboardPage extends ConsumerWidget {
       appBar: AppBar(
         titleSpacing: 0,
         title: _DashboardAppBarTitle(
-          title: 'Inicio',
+          title: 'Início',
           subtitle:
               '${_greeting(DateTime.now())} - Dashboard comercial - ${_dateLabel(DateTime.now())}',
         ),
         actions: [
           IconButton(
-            tooltip: 'Status da conta e sincronizacao',
+            tooltip: 'Status da conta e sincronização',
             onPressed: () => context.pushNamed(AppRouteNames.accountCloud),
             icon: Badge(
               isLabelVisible: accountCloud.pendingCount > 0,
@@ -104,54 +106,62 @@ class DashboardPage extends ConsumerWidget {
                       onTap: () => _openTodaySales(context, ref),
                     ),
                     SizedBox(height: layout.sectionGap),
-                    GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisSpacing: layout.gridGap,
-                      mainAxisSpacing: layout.gridGap,
-                      childAspectRatio: 1.08,
-                      children: [
-                        AppMetricCard(
-                          label: 'Vendas',
-                          value: '$recentSalesCount',
-                          caption: 'Nas movimentacoes recentes',
-                          icon: Icons.point_of_sale_rounded,
-                          accentColor: tokens.sales.base,
-                          onTap: () => _openTodaySales(context, ref),
-                        ),
-                        AppMetricCard(
-                          label: 'Fiado',
-                          value: AppFormatters.currencyFromCents(
-                            snapshot.pendingFiadoCents,
-                          ),
-                          caption:
-                              '${snapshot.pendingFiadoCount} nota(s) em aberto',
-                          icon: Icons.receipt_long_rounded,
-                          accentColor: tokens.warning.base,
-                          onTap: () => context.pushNamed(AppRouteNames.fiado),
-                        ),
-                        AppMetricCard(
-                          label: 'Clientes',
-                          value: '-',
-                          caption: 'Cadastro em Clientes',
-                          icon: Icons.people_alt_rounded,
-                          accentColor: tokens.info.base,
-                          onTap: () => context.pushNamed(AppRouteNames.clients),
-                        ),
-                        AppMetricCard(
-                          label: 'Ticket medio',
-                          value: '-',
-                          caption: 'Disponivel nos relatorios',
-                          icon: Icons.trending_up_rounded,
-                          accentColor: tokens.success.base,
-                          onTap: () => context.pushNamed(AppRouteNames.reports),
-                        ),
-                      ],
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isCompact = constraints.maxWidth < 420;
+                        return GridView.count(
+                          crossAxisCount: 2,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          crossAxisSpacing: layout.gridGap,
+                          mainAxisSpacing: layout.gridGap,
+                          childAspectRatio: isCompact ? 0.9 : 1.08,
+                          children: [
+                            AppMetricCard(
+                              label: 'Vendas',
+                              value: '$recentSalesCount',
+                              caption: 'Nas movimentações recentes',
+                              icon: Icons.point_of_sale_rounded,
+                              accentColor: tokens.sales.base,
+                              onTap: () => _openTodaySales(context, ref),
+                            ),
+                            AppMetricCard(
+                              label: 'Fiado',
+                              value: AppFormatters.currencyFromCents(
+                                snapshot.pendingFiadoCents,
+                              ),
+                              caption:
+                                  '${snapshot.pendingFiadoCount} nota(s) em aberto',
+                              icon: Icons.receipt_long_rounded,
+                              accentColor: tokens.warning.base,
+                              onTap: () =>
+                                  context.pushNamed(AppRouteNames.fiado),
+                            ),
+                            AppMetricCard(
+                              label: 'Clientes',
+                              value: '-',
+                              caption: 'Cadastro em Clientes',
+                              icon: Icons.people_alt_rounded,
+                              accentColor: tokens.info.base,
+                              onTap: () =>
+                                  context.pushNamed(AppRouteNames.clients),
+                            ),
+                            AppMetricCard(
+                              label: 'Ticket médio',
+                              value: '-',
+                              caption: 'Disponível nos relatórios',
+                              icon: Icons.trending_up_rounded,
+                              accentColor: tokens.success.base,
+                              onTap: () =>
+                                  context.pushNamed(AppRouteNames.reports),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                     SizedBox(height: layout.sectionGap),
                     AppSectionCard(
-                      title: 'Acesso rapido',
+                      title: 'Acesso rápido',
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final isCompact = constraints.maxWidth < 420;
@@ -185,7 +195,7 @@ class DashboardPage extends ConsumerWidget {
                                     context.pushNamed(AppRouteNames.cash),
                               ),
                               _QuickAccessItem(
-                                label: 'Relatorio',
+                                label: 'Relatório',
                                 icon: Icons.insights_rounded,
                                 palette: tokens.success,
                                 onTap: () =>
@@ -198,11 +208,11 @@ class DashboardPage extends ConsumerWidget {
                     ),
                     SizedBox(height: layout.sectionGap),
                     AppSectionCard(
-                      title: 'Ultimas vendas',
-                      subtitle: 'Transacoes reais recentes do caixa local.',
+                      title: 'Últimas vendas',
+                      subtitle: 'Movimentos comerciais recentes do caixa.',
                       child: snapshot.recentMovements.isEmpty
                           ? const AppEmptyState(
-                              title: 'Sem transacoes recentes',
+                              title: 'Sem transações recentes',
                               message:
                                   'Quando uma venda ou movimento de caixa acontecer, ela aparece aqui.',
                               compact: true,
@@ -236,7 +246,7 @@ class DashboardPage extends ConsumerWidget {
                               _DashboardAlertTile(
                                 title: 'Produtos com estoque baixo',
                                 subtitle:
-                                    '$lowStockCount produto(s) precisam de reposicao.',
+                                    '$lowStockCount produto(s) precisam de reposição.',
                                 icon: Icons.inventory_2_outlined,
                                 tone: AppCardTone.warning,
                                 onTap: () =>
@@ -248,7 +258,7 @@ class DashboardPage extends ConsumerWidget {
                               _DashboardAlertTile(
                                 title: 'Vendas aguardando envio',
                                 subtitle:
-                                    '$pendingSendCount registro(s) aguardando sincronizacao.',
+                                    '$pendingSendCount registro(s) aguardando sincronização.',
                                 icon: Icons.schedule_send_rounded,
                                 tone: AppCardTone.info,
                                 onTap: () => context.pushNamed(
@@ -276,7 +286,7 @@ class DashboardPage extends ConsumerWidget {
                 subtitle: error.toString(),
                 tone: AppCardTone.danger,
                 child: AppStateCard(
-                  title: 'Nao foi possivel atualizar o dashboard',
+                  title: 'Não foi possível atualizar o dashboard',
                   message: 'Puxe para baixo ou tente novamente em instantes.',
                   tone: AppStateTone.error,
                   compact: true,
@@ -361,14 +371,16 @@ class _FaturamentoHeroCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Wrap(
+                  spacing: layout.space3,
+                  runSpacing: layout.space2,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Icon(
                       Icons.payments_rounded,
                       color: Colors.white.withValues(alpha: 0.82),
                       size: layout.iconLg,
                     ),
-                    SizedBox(width: layout.space4),
                     Text(
                       'Faturamento hoje',
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -376,7 +388,6 @@ class _FaturamentoHeroCard extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    SizedBox(width: layout.space3),
                     Container(
                       padding: EdgeInsets.symmetric(
                         horizontal: layout.space3,
@@ -633,9 +644,7 @@ class _RecentMovementTile extends StatelessWidget {
                 ),
                 SizedBox(height: layout.space2),
                 Text(
-                  movement.description?.trim().isNotEmpty == true
-                      ? movement.description!
-                      : AppFormatters.shortDateTime(movement.createdAt),
+                  _friendlyMovementDescription(movement),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -667,6 +676,65 @@ class _RecentMovementTile extends StatelessWidget {
       ),
     );
   }
+}
+
+String _friendlyMovementDescription(
+  OperationalDashboardRecentMovement movement,
+) {
+  final rawDescription = movement.description;
+  final paymentMethod = PaymentMethodNoteCodec.parse(rawDescription);
+  final cleanDescription = PaymentMethodNoteCodec.clean(rawDescription);
+
+  if (movement.label == 'Venda recebida') {
+    if (paymentMethod != null) {
+      return 'Pagamento em ${_paymentMethodText(paymentMethod)}.';
+    }
+    return 'Venda recebida no caixa.';
+  }
+
+  if (movement.label == 'Venda cancelada') {
+    final reason = _extractReason(cleanDescription);
+    return reason == null ? 'Devolução simples.' : 'Motivo: $reason';
+  }
+
+  final fallback = cleanDescription?.trim();
+  if (fallback != null && fallback.isNotEmpty) {
+    return _hideLongInternalIds(fallback);
+  }
+  return AppFormatters.shortDateTime(movement.createdAt);
+}
+
+String _paymentMethodText(PaymentMethod method) {
+  switch (method) {
+    case PaymentMethod.cash:
+      return 'dinheiro';
+    case PaymentMethod.pix:
+      return 'Pix';
+    case PaymentMethod.card:
+      return 'cartão';
+    case PaymentMethod.fiado:
+      return 'fiado';
+  }
+}
+
+String? _extractReason(String? description) {
+  final value = description?.trim();
+  if (value == null || value.isEmpty) {
+    return null;
+  }
+  final marker = RegExp(
+    r'motivo:\s*(.+)$',
+    caseSensitive: false,
+  ).firstMatch(value);
+  final reason = marker?.group(1)?.trim();
+  if (reason == null || reason.isEmpty) {
+    return null;
+  }
+  return _hideLongInternalIds(reason);
+}
+
+String _hideLongInternalIds(String value) {
+  return value.replaceAllMapped(RegExp(r'\b\d{7,}\b'), (_) => 'registro');
 }
 
 class _DashboardAlertTile extends StatelessWidget {

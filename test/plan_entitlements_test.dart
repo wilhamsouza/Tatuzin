@@ -71,6 +71,9 @@ void main() {
     expect(restored.company.plan, PlanKey.basic);
     expect(restored.company.hasFeature(FeatureKey.costs), isTrue);
     expect(restored.company.hasFeature(FeatureKey.employees), isFalse);
+    expect(restored.membership?.role, 'OWNER');
+    expect(restored.isCompanyOwner, isTrue);
+    expect(restored.hasEffectivePermission('subscription.manage'), isTrue);
     expect(restored.company.limits.reportPeriods, {
       ReportPeriodKey.daily,
       ReportPeriodKey.weekly,
@@ -106,7 +109,15 @@ void main() {
     );
 
     expect(find.text('Recurso bloqueado'), findsWidgets);
-    expect(find.text('Atualizar plano'), findsOneWidget);
+    expect(find.text('Ver planos'), findsOneWidget);
+    expect(
+      find.text('Peça ao dono da empresa para alterar o plano.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Este recurso está disponível no plano Básico.'),
+      findsOneWidget,
+    );
     expect(find.text('Custos liberados'), findsNothing);
 
     container
@@ -131,6 +142,10 @@ AppSession _remoteSession(PlanEntitlements entitlements) {
     startedAt: DateTime(2026, 5, 7),
     isOfflineFallback: false,
     clientInstanceId: 'device-1',
+    membership: const AppMembershipContext(
+      role: 'OWNER',
+      permissions: {'subscription.manage'},
+    ),
   );
 }
 

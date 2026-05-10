@@ -75,10 +75,10 @@ class ReportsPage extends ConsumerWidget {
           ),
           children: [
             const AppPageHeader(
-              title: 'Hub executivo',
+              title: 'Relatórios',
               subtitle:
-                  'KPIs do periodo, atalhos por tema e leitura rapida para decidir o proximo passo.',
-              badgeLabel: 'Relatorios',
+                  'Indicadores organizados por tema para encontrar a análise certa mais rápido.',
+              badgeLabel: 'Relatórios',
               badgeIcon: Icons.insights_rounded,
               emphasized: true,
             ),
@@ -92,11 +92,11 @@ class ReportsPage extends ConsumerWidget {
                   ReportKpiGrid(
                     items: [
                       ReportKpiItem(
-                        label: 'Vendas liquidas',
+                        label: 'Vendas líquidas',
                         value: AppFormatters.currencyFromCents(
                           overview.netSalesCents,
                         ),
-                        caption: '${overview.salesCount} venda(s) no periodo',
+                        caption: '${overview.salesCount} venda(s) no período',
                         icon: Icons.point_of_sale_rounded,
                         accentColor: context.appColors.sales.base,
                         onTap: () => openDrilldown(
@@ -106,9 +106,9 @@ class ReportsPage extends ConsumerWidget {
                             onlyCanceled: false,
                             clearFocus: true,
                           ),
-                          sourceLabel: 'KPI Vendas liquidas',
+                          sourceLabel: 'KPI Vendas líquidas',
                           message:
-                              'A pagina de vendas abriu com o mesmo periodo do hub para aprofundar faturamento, tendencia e itens vendidos.',
+                              'A página de vendas abriu com o mesmo período do hub para aprofundar faturamento, tendência e itens vendidos.',
                         ),
                       ),
                       ReportKpiItem(
@@ -116,7 +116,7 @@ class ReportsPage extends ConsumerWidget {
                         value: AppFormatters.currencyFromCents(
                           overview.totalReceivedCents,
                         ),
-                        caption: 'Entradas liquidas do caixa',
+                        caption: 'Entradas líquidas do caixa',
                         icon: Icons.account_balance_wallet_rounded,
                         accentColor: context.appColors.cashflowPositive.base,
                         onTap: () => openDrilldown(
@@ -129,7 +129,7 @@ class ReportsPage extends ConsumerWidget {
                           ),
                           sourceLabel: 'KPI Total recebido',
                           message:
-                              'O relatorio de caixa abriu com foco nas entradas do periodo, sem trocar a base do caixa real.',
+                              'O relatório de caixa abriu com foco nas entradas do período, sem trocar a base do caixa real.',
                           isFocusOnly: true,
                         ),
                       ),
@@ -138,7 +138,7 @@ class ReportsPage extends ConsumerWidget {
                         value: AppFormatters.currencyFromCents(
                           overview.realizedProfitCents,
                         ),
-                        caption: 'Lucro reconhecido no periodo',
+                        caption: 'Lucro reconhecido no período',
                         icon: Icons.trending_up_rounded,
                         accentColor: context.appColors.success.base,
                         onTap: () => openDrilldown(
@@ -151,7 +151,7 @@ class ReportsPage extends ConsumerWidget {
                           ),
                           sourceLabel: 'KPI Lucro realizado',
                           message:
-                              'A lucratividade abriu destacando os itens com maior lucro dentro da mesma semantica atual de receita, custo e margem.',
+                              'A lucratividade abriu destacando os itens com maior lucro dentro da mesma semântica atual de receita, custo e margem.',
                           isFocusOnly: true,
                         ),
                       ),
@@ -173,7 +173,7 @@ class ReportsPage extends ConsumerWidget {
                           ),
                           sourceLabel: 'KPI Fiado pendente',
                           message:
-                              'A leitura de clientes abriu priorizando pendencias em aberto para facilitar cobranca e acompanhamento.',
+                              'A leitura de clientes abriu priorizando pendências em aberto para facilitar cobrança e acompanhamento.',
                           isFocusOnly: true,
                         ),
                       ),
@@ -182,8 +182,8 @@ class ReportsPage extends ConsumerWidget {
                   SizedBox(height: layout.sectionGap),
                   previousOverviewAsync.when(
                     data: (previous) => ReportComparisonCard(
-                      title: 'Comparacao com o periodo anterior',
-                      subtitle: 'Leitura rapida de vendas liquidas.',
+                      title: 'Comparação com o período anterior',
+                      subtitle: 'Leitura rápida de vendas líquidas.',
                       currentValue: AppFormatters.currencyFromCents(
                         overview.netSalesCents,
                       ),
@@ -201,7 +201,7 @@ class ReportsPage extends ConsumerWidget {
                   AppSectionCard(
                     title: 'Atalhos por tema',
                     subtitle:
-                        'Abra o relatorio certo sem perder o contexto do periodo.',
+                        'Abra o relatório certo sem perder o contexto do período.',
                     padding: const EdgeInsets.all(14),
                     child: LayoutBuilder(
                       builder: (context, constraints) {
@@ -217,7 +217,7 @@ class ReportsPage extends ConsumerWidget {
                               child: ReportShortcutCard(
                                 title: 'Vendas',
                                 subtitle:
-                                    'Faturamento, tendencia e itens vendidos.',
+                                    'Faturamento, tendência e itens vendidos.',
                                 icon: Icons.shopping_bag_outlined,
                                 palette: context.appColors.sales,
                                 onTap: () => context.pushNamed(
@@ -228,9 +228,22 @@ class ReportsPage extends ConsumerWidget {
                             SizedBox(
                               width: shortcutWidth,
                               child: ReportShortcutCard(
+                                title: 'Produtos',
+                                subtitle:
+                                    'Itens vendidos, variações e desempenho.',
+                                icon: Icons.inventory_2_outlined,
+                                palette: context.appColors.brand,
+                                onTap: () => context.pushNamed(
+                                  AppRouteNames.salesReports,
+                                ),
+                              ),
+                            ),
+                            SizedBox(
+                              width: shortcutWidth,
+                              child: ReportShortcutCard(
                                 title: 'Caixa',
                                 subtitle:
-                                    'Entradas, saidas e fluxo do caixa real.',
+                                    'Entradas, saídas e fluxo do caixa real.',
                                 icon: Icons.payments_outlined,
                                 palette: context.appColors.cashflowPositive,
                                 onTap: () => context.pushNamed(
@@ -243,7 +256,7 @@ class ReportsPage extends ConsumerWidget {
                               child: ReportShortcutCard(
                                 title: 'Estoque',
                                 subtitle:
-                                    'Saude, itens criticos e movimentacoes.',
+                                    'Saúde, itens críticos e movimentações.',
                                 icon: Icons.inventory_2_outlined,
                                 palette: context.appColors.stockLow,
                                 onTap: () => context.pushNamed(
@@ -268,7 +281,7 @@ class ReportsPage extends ConsumerWidget {
                               child: ReportShortcutCard(
                                 title: 'Compras',
                                 subtitle:
-                                    'Fornecedores, reposicao e pendencias.',
+                                    'Fornecedores, reposição e pendências.',
                                 icon: Icons.local_shipping_outlined,
                                 palette: context.appColors.interactive,
                                 onTap: () => context.pushNamed(
@@ -307,7 +320,7 @@ class ReportsPage extends ConsumerWidget {
                             width: chartWidth,
                             child: ReportDonutChartCard(
                               title: 'Recebimentos por forma',
-                              subtitle: 'Como o dinheiro entrou no periodo.',
+                              subtitle: 'Como o dinheiro entrou no período.',
                               slices: _buildPaymentSlices(
                                 context,
                                 overview.paymentSummaries,
@@ -340,13 +353,13 @@ class ReportsPage extends ConsumerWidget {
                                   sourceLabel:
                                       'Recebimentos por forma: ${slice.label}',
                                   message:
-                                      'A pagina de vendas abriu com a forma ${slice.label} em destaque para aprofundar o recebimento ligado as vendas.',
+                                      'A página de vendas abriu com a forma ${slice.label} em destaque para aprofundar o recebimento ligado às vendas.',
                                   isFocusOnly: true,
                                 );
                               },
                               emptyTitle: 'Sem recebimentos',
                               emptyMessage:
-                                  'As formas de pagamento vao aparecer aqui quando houver movimento.',
+                                  'As formas de pagamento vão aparecer aqui quando houver movimento.',
                             ),
                           ),
                           SizedBox(
@@ -358,7 +371,7 @@ class ReportsPage extends ConsumerWidget {
                                   summary,
                                 );
                                 return ReportDonutChartCard(
-                                  title: 'Saude do estoque',
+                                  title: 'Saúde do estoque',
                                   subtitle:
                                       'Panorama rapido entre itens saudaveis e em alerta.',
                                   slices: slices,
@@ -382,25 +395,25 @@ class ReportsPage extends ConsumerWidget {
                                               onlyCanceled: false,
                                             ),
                                       sourceLabel:
-                                          'Saude do estoque: ${slice.label}',
+                                          'Saúde do estoque: ${slice.label}',
                                       message:
-                                          'O relatorio de estoque abriu priorizando ${slice.label.toLowerCase()} para facilitar a proxima acao.',
+                                          'O relatório de estoque abriu priorizando ${slice.label.toLowerCase()} para facilitar a próxima ação.',
                                       isFocusOnly: true,
                                     );
                                   },
                                   emptyTitle: 'Sem estoque monitorado',
                                   emptyMessage:
-                                      'Os indicadores de estoque vao aparecer aqui quando houver itens cadastrados.',
+                                      'Os indicadores de estoque vão aparecer aqui quando houver itens cadastrados.',
                                 );
                               },
                               loading: () => const AppStateCard(
-                                title: 'Carregando saude do estoque',
-                                message: 'Consolidando os alertas do periodo.',
+                                title: 'Carregando saúde do estoque',
+                                message: 'Consolidando os alertas do período.',
                                 tone: AppStateTone.loading,
                                 compact: true,
                               ),
                               error: (error, _) => AppStateCard(
-                                title: 'Falha ao carregar saude do estoque',
+                                title: 'Falha ao carregar saúde do estoque',
                                 message: '$error',
                                 tone: AppStateTone.error,
                                 compact: true,
@@ -434,7 +447,7 @@ class ReportsPage extends ConsumerWidget {
                           ),
                           sourceLabel: 'Top produto: ${product.productName}',
                           message:
-                              'A pagina de vendas abriu filtrada para ${product.productName}, mantendo o mesmo periodo do hub.',
+                              'A página de vendas abriu filtrada para ${product.productName}, mantendo o mesmo período do hub.',
                         );
                       },
                     ),
@@ -458,7 +471,7 @@ class ReportsPage extends ConsumerWidget {
               ),
               loading: () => const AppStateCard(
                 title: 'Atualizando hub',
-                message: 'Organizando os principais indicadores do periodo.',
+                message: 'Organizando os principais indicadores do período.',
                 tone: AppStateTone.loading,
                 compact: true,
               ),
@@ -519,7 +532,7 @@ class ReportsPage extends ConsumerWidget {
         formattedValue: '',
       ),
       ReportDonutSlice(
-        label: 'Abaixo do minimo',
+        label: 'Abaixo do mínimo',
         value: summary.belowMinimumOnlyItemsCount.toDouble(),
         percentage: 0,
         color: colors.stockLow.base,
@@ -552,14 +565,14 @@ class ReportsPage extends ConsumerWidget {
         if (leader.percentage >= 50) {
           return '${leader.label} concentra a maior parte dos recebimentos.';
         }
-        return '${leader.label} lidera os recebimentos do periodo.';
+        return '${leader.label} lidera os recebimentos do período.';
       },
     );
   }
 
   String _buildInventoryInsight(ReportInventoryHealthSummary summary) {
     if (summary.totalItemsCount <= 0) {
-      return 'Ainda nao ha itens suficientes para medir a saude do estoque.';
+      return 'Ainda não há itens suficientes para medir a saúde do estoque.';
     }
 
     final alertCount = summary.alertItemsCount;
@@ -605,7 +618,7 @@ class ReportsPage extends ConsumerWidget {
     switch (label) {
       case 'Zerado':
         return ReportFocus.inventoryZeroed;
-      case 'Abaixo do minimo':
+      case 'Abaixo do mínimo':
         return ReportFocus.inventoryCritical;
       case 'Saudavel':
         return null;
@@ -626,9 +639,9 @@ class _ReportsAppBarTitle extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text('Relatorios'),
+        const Text('Relatórios'),
         Text(
-          'KPIs, graficos e rankings',
+          'KPIs, gráficos e rankings',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w600,

@@ -55,10 +55,15 @@ void main() {
     );
     await _pumpSubscriptionPage(tester, fakeBilling: fakeBilling);
 
-    expect(find.text('Assinatura'), findsWidgets);
+    expect(find.text('Assinatura e planos'), findsWidgets);
     expect(find.text('Plano atual'), findsWidgets);
-    expect(find.text('Assinar Basico'), findsOneWidget);
-    expect(find.text('Assinar Pro'), findsOneWidget);
+    expect(find.text('Assinar plano Básico'), findsOneWidget);
+    expect(find.text('Assinar plano Pro'), findsOneWidget);
+    expect(
+      find.textContaining(RegExp('owner', caseSensitive: false)),
+      findsNothing,
+    );
+    expect(find.text('Somente owner'), findsNothing);
   });
 
   testWidgets('SubscriptionPage mostra Pro como plano atual', (tester) async {
@@ -71,9 +76,62 @@ void main() {
       session: _session(PlanEntitlements.pro),
     );
 
-    expect(find.text('Assinar Basico'), findsNothing);
-    expect(find.text('Assinar Pro'), findsNothing);
+    expect(find.text('Assinar plano Básico'), findsNothing);
+    expect(find.text('Assinar plano Pro'), findsNothing);
     expect(find.text('Plano atual'), findsWidgets);
+  });
+
+  testWidgets('OWNER por membership consegue ver ação de assinatura', (
+    tester,
+  ) async {
+    final fakeBilling = _FakeBillingRemoteDataSource(
+      status: _status(PlanEntitlements.free, canManageBilling: false),
+    );
+    await _pumpSubscriptionPage(
+      tester,
+      fakeBilling: fakeBilling,
+      session: _session(
+        PlanEntitlements.free,
+        membership: const AppMembershipContext(
+          role: 'OWNER',
+          permissions: <String>{},
+        ),
+      ),
+    );
+
+    expect(find.text('Assinar plano Básico'), findsOneWidget);
+    expect(
+      find.text('Apenas o dono da empresa pode gerenciar a assinatura.'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('não-OWNER ve aviso amigável e não gerencia assinatura', (
+    tester,
+  ) async {
+    final fakeBilling = _FakeBillingRemoteDataSource(
+      status: _status(PlanEntitlements.free, canManageBilling: false),
+    );
+    await _pumpSubscriptionPage(tester, fakeBilling: fakeBilling);
+
+    expect(
+      find.text('Apenas o dono da empresa pode gerenciar a assinatura.'),
+      findsOneWidget,
+    );
+    await tester.scrollUntilVisible(find.text('Básico'), 240);
+    await tester.pumpAndSettle();
+    final disabledPlanActions = find.text(
+      'Apenas o dono da empresa pode alterar',
+    );
+    expect(disabledPlanActions, findsWidgets);
+    expect(find.text('Assinar plano Básico'), findsNothing);
+    expect(find.text('Assinar plano Pro'), findsNothing);
+    expect(fakeBilling.subscribedPlans, isEmpty);
+    expect(
+      find.textContaining(RegExp('owner', caseSensitive: false)),
+      findsNothing,
+    );
+    expect(find.text('Somente owner'), findsNothing);
   });
 
   testWidgets('assinar chama subscribe e abre checkout externo', (
@@ -91,13 +149,13 @@ void main() {
 
     await tester.drag(find.byType(ListView), const Offset(0, -360));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Assinar Basico'));
+    await tester.tap(find.text('Assinar plano Básico'));
     await tester.pumpAndSettle();
 
     expect(fakeBilling.subscribedPlans, ['BASIC']);
     expect(launcher.openedUrls, ['https://checkout.tatuzin.test/basic']);
     expect(
-      find.text('Apos o pagamento, seu plano sera atualizado automaticamente.'),
+      find.text('Após o pagamento, seu plano será atualizado automaticamente.'),
       findsOneWidget,
     );
   });
@@ -117,7 +175,7 @@ void main() {
 
     await tester.drag(find.byType(ListView), const Offset(0, -360));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Assinar Basico'));
+    await tester.tap(find.text('Assinar plano Básico'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Copiar link'));
     await tester.pumpAndSettle();
@@ -197,6 +255,8 @@ Future<ProviderContainer> _pumpSubscriptionPage(
         user: _user,
         company: (session ?? _session(PlanEntitlements.free)).company,
         clientInstanceId: 'device-1',
+        membership: session?.membership,
+        employee: session?.employee,
       );
 
   await tester.pumpWidget(
@@ -212,7 +272,10 @@ Future<ProviderContainer> _pumpSubscriptionPage(
   return container;
 }
 
-BillingStatus _status(PlanEntitlements entitlements) {
+BillingStatus _status(
+  PlanEntitlements entitlements, {
+  bool canManageBilling = true,
+}) {
   return BillingStatus(
     companyId: 'company-1',
     plan: entitlements.plan,
@@ -225,13 +288,16 @@ BillingStatus _status(PlanEntitlements entitlements) {
     maskedProviderSubscriptionId: entitlements.plan == PlanKey.free
         ? null
         : 'prea...1234',
-    canManageBilling: true,
+    canManageBilling: canManageBilling,
     nextPaymentDate: null,
     entitlements: entitlements,
   );
 }
 
-AppSession _session(PlanEntitlements entitlements) {
+AppSession _session(
+  PlanEntitlements entitlements, {
+  AppMembershipContext? membership,
+}) {
   return AppSession(
     scope: SessionScope.authenticatedRemote,
     user: _user,
@@ -249,15 +315,16 @@ AppSession _session(PlanEntitlements entitlements) {
     startedAt: DateTime(2026, 5, 7),
     isOfflineFallback: true,
     clientInstanceId: 'device-1',
+    membership: membership,
   );
 }
 
 const _user = AppUser(
   localId: null,
   remoteId: 'user-1',
-  displayName: 'Owner',
-  email: 'owner@tatuzin.test',
-  roleLabel: 'Owner',
+  displayName: 'Dona da empresa',
+  email: 'dona@tatuzin.test',
+  roleLabel: 'Dono da empresa',
   kind: AppUserKind.remoteAuthenticated,
 );
 
@@ -286,11 +353,11 @@ class _FakeBillingRemoteDataSource extends BillingRemoteDataSource {
     ),
     BillingPlan(
       key: PlanKey.basic,
-      name: 'Basico',
+      name: 'Básico',
       priceCents: 3500,
       currency: 'BRL',
       billingCycle: 'monthly',
-      description: 'Gestao individual.',
+      description: 'Gestão individual.',
       featuresSummary: ['Custos e insumos'],
     ),
     BillingPlan(
