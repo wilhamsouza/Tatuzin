@@ -4,10 +4,13 @@ import { CompanyDeviceStatus, LicenseStatus } from '@prisma/client';
 import { prisma } from '../../database/prisma';
 import { AppError } from '../../shared/http/app-error';
 import { logger } from '../../shared/observability/logger';
+import { EmployeeContextService } from '../employees/employee-context.service';
 import { getPlanEntitlements } from '../plans/plan-catalog.service';
 import type { AppContext } from './app-context.types';
 
 export class AppContextService {
+  private readonly employeeContextService = new EmployeeContextService();
+
   async resolveFromRequest(request: Request): Promise<AppContext> {
     const auth = request.auth;
     if (auth == null) {
@@ -82,6 +85,15 @@ export class AppContextService {
 
     this.assertLicenseCanOperate(license);
     const entitlements = getPlanEntitlements(license.plan);
+    const employeeContext =
+      await this.employeeContextService.resolveForMembership({
+        companyId: membership.companyId,
+        userId: membership.userId,
+        membershipId: membership.id,
+        membershipRole: membership.role,
+        userName: membership.user.name,
+        userEmail: membership.user.email,
+      });
 
     const device = await prisma.companyDevice.findUnique({
       where: {
@@ -139,8 +151,9 @@ export class AppContextService {
       membership: {
         id: membership.id,
         role: membership.role,
-        permissions: this.permissionsForRole(membership.role),
+        permissions: employeeContext.permissions,
       },
+      employee: employeeContext.employee,
       license: {
         id: license.id,
         plan: license.plan,
@@ -241,22 +254,6 @@ export class AppContextService {
         403,
         'LICENSE_REQUIRED',
       );
-    }
-  }
-
-  private permissionsForRole(role: string) {
-    switch (role) {
-      case 'OWNER':
-        return ['*'];
-      case 'ADMIN':
-        return [
-          'catalog:write',
-          'sales:write',
-          'cash:write',
-          'reports:read',
-        ];
-      default:
-        return ['operations:write', 'reports:read'];
     }
   }
 

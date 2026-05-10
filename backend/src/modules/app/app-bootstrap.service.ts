@@ -8,6 +8,7 @@ export class AppBootstrapService {
       user: context.user,
       company: context.company,
       membership: context.membership,
+      employee: context.employee ?? null,
       license: context.license,
       plan: context.plan,
       features: context.features,
