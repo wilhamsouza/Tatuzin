@@ -66,6 +66,8 @@ class AppSession {
     return effectivePermissions.contains(permission);
   }
 
+  bool get isCompanyOwner => membership?.isOwner ?? false;
+
   bool get hasClientInstanceId {
     final value = clientInstanceId?.trim();
     return value != null && value.isNotEmpty;
@@ -117,6 +119,15 @@ class AppMembershipContext {
 
   final String role;
   final Set<String> permissions;
+
+  bool get isOwner {
+    final normalizedRole = role.trim().toUpperCase();
+    return normalizedRole == 'OWNER' ||
+        normalizedRole == 'DONO DA EMPRESA' ||
+        normalizedRole == 'DONO' ||
+        normalizedRole == 'PROPRIETARIO' ||
+        normalizedRole == 'PROPRIETÁRIO';
+  }
 
   bool hasPermission(String permission) => permissions.contains(permission);
 }

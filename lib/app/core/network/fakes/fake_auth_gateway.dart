@@ -36,7 +36,7 @@ class FakeAuthGateway implements AuthGateway {
       displayName: userName,
       companyName: companyName,
       isPlatformAdmin: false,
-      roleLabel: 'Proprietario',
+      roleLabel: 'Dono da empresa',
     );
   }
 

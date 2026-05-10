@@ -84,11 +84,17 @@ class CompanyContext {
   }
 
   String get licensePlanLabel {
-    final plan = licensePlan?.trim() ?? entitlements.plan.key;
-    if (plan.isEmpty) {
-      return 'Local';
+    switch ((licensePlan?.trim().toLowerCase() ?? entitlements.plan.key)) {
+      case 'free':
+      case 'trial':
+        return 'Free';
+      case 'basic':
+        return 'Básico';
+      case 'pro':
+        return 'Pro';
+      default:
+        return 'Local';
     }
-    return plan[0].toUpperCase() + plan.substring(1);
   }
 
   String get cloudSyncLabel => allowsCloudSync

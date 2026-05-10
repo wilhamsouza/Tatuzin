@@ -224,7 +224,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Atualizar plano'), findsOneWidget);
+    expect(find.text('Ver planos'), findsOneWidget);
     expect(find.text('Novo funcionário'), findsNothing);
   });
 
@@ -237,7 +237,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Atualizar plano'), findsOneWidget);
+    expect(find.text('Ver planos'), findsOneWidget);
     expect(find.text('Novo funcionário'), findsNothing);
   });
 

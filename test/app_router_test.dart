@@ -67,6 +67,11 @@ void main() {
         router.namedLocation(AppRouteNames.subscription),
         AppRoutePaths.subscription,
       );
+      expect(router.namedLocation(AppRouteNames.company), AppRoutePaths.company);
+      expect(
+        router.namedLocation(AppRouteNames.settings),
+        AppRoutePaths.settings,
+      );
       expect(
         router.namedLocation(
           AppRouteNames.orderDetail,
@@ -149,7 +154,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Funcionários'), findsWidgets);
-    expect(find.text('Atualizar plano'), findsOneWidget);
+    expect(find.text('Ver planos'), findsOneWidget);
     expect(find.textContaining('plano Pro'), findsOneWidget);
   });
 
@@ -162,7 +167,7 @@ void main() {
 
     expect(find.text('Funcionários'), findsWidgets);
     expect(find.text('Sem permissão'), findsOneWidget);
-    expect(find.text('Atualizar plano'), findsNothing);
+    expect(find.text('Ver planos'), findsNothing);
   });
 }
 

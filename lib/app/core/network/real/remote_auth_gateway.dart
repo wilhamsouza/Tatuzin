@@ -514,7 +514,7 @@ class RemoteAuthGateway implements AuthGateway {
   String _roleLabel(String role) {
     switch (role.toUpperCase()) {
       case 'OWNER':
-        return 'Proprietario';
+        return 'Dono da empresa';
       case 'ADMIN':
         return 'Administrador';
       case 'OPERATOR':

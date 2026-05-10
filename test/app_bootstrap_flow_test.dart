@@ -110,7 +110,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(DashboardPage), findsOneWidget);
-      expect(find.text('Inicio'), findsAtLeastNWidgets(1));
+      expect(find.text('Início'), findsAtLeastNWidgets(1));
 
       await container.read(backendConnectionStatusProvider.future);
       final cloudStatus = container.read(accountCloudStatusProvider);

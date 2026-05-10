@@ -35,6 +35,7 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
   static const _maxDevicesKey = 'session.cached.max_devices';
   static const _syncEnabledKey = 'session.cached.sync_enabled';
   static const _clientInstanceIdKey = 'session.cached.client_instance_id';
+  static const _membershipRoleKey = 'session.cached.membership.role';
   static const _membershipPermissionsKey =
       'session.cached.membership.permissions';
   static const _employeeIdKey = 'session.cached.employee.id';
@@ -68,6 +69,7 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
     _maxDevicesKey,
     _syncEnabledKey,
     _clientInstanceIdKey,
+    _membershipRoleKey,
     _membershipPermissionsKey,
     _employeeIdKey,
     _employeeRoleKey,
@@ -131,7 +133,10 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
       isOfflineFallback: true,
       clientInstanceId: clientInstanceId,
       membership: AppMembershipContext(
-        role: _readString(preferences, _userRoleKey) ?? 'Operador',
+        role:
+            _readString(preferences, _membershipRoleKey) ??
+            _readString(preferences, _userRoleKey) ??
+            'Operador',
         permissions: _readStringSet(preferences, _membershipPermissionsKey),
       ),
       employee: _readEmployeeContext(preferences),
@@ -200,6 +205,11 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
     await preferences.setString(
       _clientInstanceIdKey,
       session.clientInstanceId!.trim(),
+    );
+    await _setOptionalString(
+      preferences,
+      _membershipRoleKey,
+      session.membership?.role,
     );
     await preferences.setStringList(
       _membershipPermissionsKey,
