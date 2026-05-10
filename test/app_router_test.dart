@@ -153,7 +153,7 @@ void main() {
     expect(find.textContaining('plano Pro'), findsOneWidget);
   });
 
-  testWidgets('PRO abre placeholder de funcionarios', (tester) async {
+  testWidgets('PRO sem employees.manage mostra sem permissão', (tester) async {
     await _pumpApp(tester, configureSession: _setProTenantSession);
 
     final router = GoRouter.of(tester.element(find.byType(DashboardPage)));
@@ -161,12 +161,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Funcionários'), findsWidgets);
-    expect(
-      find.text(
-        'Em breve: cadastre vendedores, caixas e gerentes com permissões.',
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('Sem permissão'), findsOneWidget);
     expect(find.text('Atualizar plano'), findsNothing);
   });
 }

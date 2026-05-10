@@ -58,6 +58,8 @@ class SessionController extends Notifier<AppSession> {
     required CompanyContext company,
     bool isOfflineFallback = false,
     String? clientInstanceId,
+    AppMembershipContext? membership,
+    AppEmployeeContext? employee,
   }) {
     final oldRuntimeKey = _safeRuntimeKeyFor(state);
     final nextState = state.copyWith(
@@ -68,6 +70,10 @@ class SessionController extends Notifier<AppSession> {
       isOfflineFallback: isOfflineFallback,
       clientInstanceId: clientInstanceId,
       clearClientInstanceId: clientInstanceId == null,
+      membership: membership,
+      employee: employee,
+      clearMembership: membership == null,
+      clearEmployee: employee == null,
     );
     final newRuntimeKey = _safeRuntimeKeyFor(nextState);
     AppLogger.info(

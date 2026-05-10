@@ -67,6 +67,15 @@ void main() {
         expect(session.company.plan, PlanKey.pro);
         expect(session.company.hasFeature(FeatureKey.employees), isTrue);
         expect(session.company.limits.maxDevices, 100);
+        expect(
+          session.membership?.permissions.contains('employees.manage'),
+          isTrue,
+        );
+        expect(session.employee?.role, 'OWNER');
+        expect(
+          session.employee?.permissions.contains('employees.manage'),
+          isTrue,
+        );
         expect(session.clientInstanceId, 'device-123');
       },
     );
@@ -323,7 +332,17 @@ Map<String, dynamic> _bootstrapPayload() {
       'documentNumber': company['documentNumber'],
       'setupCompleted': true,
     },
-    'membership': <String, dynamic>{'id': 'membership-1', 'role': 'OWNER'},
+    'membership': <String, dynamic>{
+      'id': 'membership-1',
+      'role': 'OWNER',
+      'permissions': <String>['employees.manage', 'subscription.manage'],
+    },
+    'employee': <String, dynamic>{
+      'id': 'employee-1',
+      'role': 'OWNER',
+      'status': 'ACTIVE',
+      'permissions': <String>['employees.manage', 'subscription.manage'],
+    },
     'license': company['license'],
     'plan': 'PRO',
     'features': <String, bool>{

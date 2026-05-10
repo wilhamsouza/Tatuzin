@@ -35,6 +35,12 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
   static const _maxDevicesKey = 'session.cached.max_devices';
   static const _syncEnabledKey = 'session.cached.sync_enabled';
   static const _clientInstanceIdKey = 'session.cached.client_instance_id';
+  static const _membershipPermissionsKey =
+      'session.cached.membership.permissions';
+  static const _employeeIdKey = 'session.cached.employee.id';
+  static const _employeeRoleKey = 'session.cached.employee.role';
+  static const _employeeStatusKey = 'session.cached.employee.status';
+  static const _employeePermissionsKey = 'session.cached.employee.permissions';
   static const _entitlementsPlanKey = 'session.cached.entitlements.plan';
   static const _entitlementsFeaturesKey =
       'session.cached.entitlements.features';
@@ -62,6 +68,11 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
     _maxDevicesKey,
     _syncEnabledKey,
     _clientInstanceIdKey,
+    _membershipPermissionsKey,
+    _employeeIdKey,
+    _employeeRoleKey,
+    _employeeStatusKey,
+    _employeePermissionsKey,
     _entitlementsPlanKey,
     _entitlementsFeaturesKey,
     _entitlementsMaxDevicesKey,
@@ -119,6 +130,11 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
       startedAt: DateTime.now(),
       isOfflineFallback: true,
       clientInstanceId: clientInstanceId,
+      membership: AppMembershipContext(
+        role: _readString(preferences, _userRoleKey) ?? 'Operador',
+        permissions: _readStringSet(preferences, _membershipPermissionsKey),
+      ),
+      employee: _readEmployeeContext(preferences),
     );
   }
 
@@ -185,6 +201,11 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
       _clientInstanceIdKey,
       session.clientInstanceId!.trim(),
     );
+    await preferences.setStringList(
+      _membershipPermissionsKey,
+      session.membership?.permissions.toList() ?? const <String>[],
+    );
+    await _saveEmployeeContext(preferences, session.employee);
     await _saveEntitlements(preferences, session.company.entitlements);
   }
 
@@ -227,6 +248,50 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
       return;
     }
     await preferences.setString(key, value.toIso8601String());
+  }
+
+  static Set<String> _readStringSet(SharedPreferences preferences, String key) {
+    return (preferences.getStringList(key) ?? const <String>[])
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toSet();
+  }
+
+  static AppEmployeeContext? _readEmployeeContext(
+    SharedPreferences preferences,
+  ) {
+    final id = _readString(preferences, _employeeIdKey);
+    final role = _readString(preferences, _employeeRoleKey);
+    final status = _readString(preferences, _employeeStatusKey);
+    if (id == null || role == null || status == null) {
+      return null;
+    }
+    return AppEmployeeContext(
+      id: id,
+      role: role,
+      status: status,
+      permissions: _readStringSet(preferences, _employeePermissionsKey),
+    );
+  }
+
+  static Future<void> _saveEmployeeContext(
+    SharedPreferences preferences,
+    AppEmployeeContext? employee,
+  ) async {
+    if (employee == null) {
+      await preferences.remove(_employeeIdKey);
+      await preferences.remove(_employeeRoleKey);
+      await preferences.remove(_employeeStatusKey);
+      await preferences.remove(_employeePermissionsKey);
+      return;
+    }
+    await preferences.setString(_employeeIdKey, employee.id.trim());
+    await preferences.setString(_employeeRoleKey, employee.role.trim());
+    await preferences.setString(_employeeStatusKey, employee.status.trim());
+    await preferences.setStringList(
+      _employeePermissionsKey,
+      employee.permissions.toList(),
+    );
   }
 
   static PlanEntitlements _readEntitlements(SharedPreferences preferences) {

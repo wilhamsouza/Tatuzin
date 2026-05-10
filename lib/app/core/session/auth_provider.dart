@@ -326,6 +326,8 @@ class AuthController extends AsyncNotifier<void> {
           company: session.company,
           isOfflineFallback: session.isOfflineFallback,
           clientInstanceId: session.clientInstanceId,
+          membership: session.membership,
+          employee: session.employee,
         );
 
     await _ensureStartupReady();
