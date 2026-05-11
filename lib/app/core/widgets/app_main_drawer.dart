@@ -310,7 +310,7 @@ class AppMainDrawer extends ConsumerWidget {
                           ),
                         ),
                       _DrawerItem(
-                          label: 'Relatórios',
+                        label: 'Relatórios',
                         icon: Icons.assessment_rounded,
                         isSelected: selected(AppRoutePaths.reports),
                         onTap: () => _navigateTo(
@@ -321,7 +321,7 @@ class AppMainDrawer extends ConsumerWidget {
                         ),
                       ),
                       _DrawerItem(
-                          label: 'Histórico de vendas',
+                        label: 'Histórico de vendas',
                         icon: Icons.history_rounded,
                         isSelected: selected(AppRoutePaths.salesHistory),
                         onTap: () => _navigateTo(
@@ -478,22 +478,26 @@ class AppMainDrawer extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '${AppConstants.appName} v${AppConstants.appVersion}',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                          AppStatusBadge(
+                      Text(
+                        '${AppConstants.appName} v${AppConstants.appVersion}',
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      SizedBox(height: layout.space4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 220),
+                          child: AppStatusBadge(
                             label: cloudLabel,
                             tone: accountCloud.tone,
                             icon: accountCloud.icon,
                           ),
-                        ],
+                        ),
                       ),
                       SizedBox(height: layout.space5),
                       Text(

@@ -47,7 +47,9 @@ final appStartupSyncKickoffProvider = Provider<AppStartupSyncKickoff>((ref) {
       );
       return;
     }
-    ref.read(autoSyncCoordinatorProvider).onRemoteSessionAvailable();
+    await ref
+        .read(autoSyncCoordinatorProvider)
+        .runNowIfEligible(reason: 'remote-session-available');
   };
 });
 
@@ -135,7 +137,11 @@ class AuthController extends AsyncNotifier<void> {
       await _applySession(session);
       state = const AsyncData(null);
       return session;
-    } on NetworkRequestException catch (error) {
+    } on NetworkRequestException catch (error, stackTrace) {
+      if (!_canRestoreCachedSessionAfter(error)) {
+        state = AsyncError(error, stackTrace);
+        rethrow;
+      }
       try {
         final session = await _restoreCachedSessionOfflineOrThrow(error);
         state = const AsyncData(null);
@@ -454,6 +460,23 @@ class AuthController extends AsyncNotifier<void> {
     );
     await _applySession(offlineSession);
     return offlineSession;
+  }
+
+  bool _canRestoreCachedSessionAfter(NetworkRequestException error) {
+    final cause = error.cause;
+    if (cause is int) {
+      return false;
+    }
+
+    final normalized = error.message.toLowerCase();
+    if (normalized.contains('license_expired') ||
+        normalized.contains('invalid_credentials') ||
+        normalized.contains('auth_required') ||
+        normalized.contains('invalid_access_token')) {
+      return false;
+    }
+
+    return true;
   }
 
   void _logOfflineBlocked({

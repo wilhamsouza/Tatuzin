@@ -481,6 +481,9 @@ String _buildAttentionMessage(
         'conflitos pendentes',
       ),
     );
+    parts.add(
+      'a revisão de conflitos será disponibilizada em uma próxima atualização',
+    );
   }
 
   final nextAttemptAt = _nextOperatorAttemptAt(

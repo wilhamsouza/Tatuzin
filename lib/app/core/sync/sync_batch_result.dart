@@ -37,14 +37,25 @@ class SyncBatchResult {
   bool get isClean => !hasAttention && !hasServerDataStale;
 
   String get message {
-    final scope = reprocessedOnly ? 'pendencias' : 'fila';
+    final scope = reprocessedOnly ? 'pendências' : 'fila';
     if (hasServerDataStale) {
-      return 'Processamento de $scope enviado, mas os dados do servidor ficaram desatualizados.';
+      return 'Sincronização concluída, mas os dados do servidor ficaram desatualizados.';
     }
     if (isClean) {
-      return 'Processamento de $scope concluido com sucesso.';
+      return 'Processamento de $scope concluído com sucesso.';
     }
 
-    return 'Processamento de $scope concluido com pendencias ou falhas.';
+    final parts = <String>[];
+    if (conflictCount > 0) {
+      parts.add('Conflitos: $conflictCount');
+    }
+    if (failedCount > 0) {
+      parts.add('Erros: $failedCount');
+    }
+    if (blockedCount > 0) {
+      parts.add('Bloqueados: $blockedCount');
+    }
+    final suffix = parts.isEmpty ? '' : ' ${parts.join(' · ')}.';
+    return 'Sincronização concluída, mas ainda há itens que precisam de revisão.$suffix';
   }
 }

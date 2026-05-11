@@ -85,6 +85,48 @@ void main() {
     );
   });
 
+  test(
+    'LICENSE_EXPIRED nao restaura cache offline nem mascara o erro',
+    () async {
+      final container = ProviderContainer(
+        overrides: [
+          initialAppEnvironmentProvider.overrideWith(
+            (ref) => _remoteEnvironment,
+          ),
+          remoteAuthGatewayProvider.overrideWith(
+            (ref) => _LicenseExpiredGateway(),
+          ),
+          cachedSessionStorageProvider.overrideWith(
+            (ref) => _MemoryCachedSessionStorage(_remoteSession()),
+          ),
+          tenantDatabaseExistsProvider.overrideWith((ref) {
+            return (isolationKey) async => true;
+          }),
+          appStartupOpenDatabaseProvider.overrideWith((ref) {
+            return (isolationKey) async {};
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await expectLater(
+        () => container
+            .read(authControllerProvider.notifier)
+            .signInRemote(email: 'owner@tatuzin.test', password: '12345678'),
+        throwsA(
+          isA<NetworkRequestException>()
+              .having(
+                (error) => error.message,
+                'message',
+                contains('LICENSE_EXPIRED'),
+              )
+              .having((error) => error.cause, 'cause', 403),
+        ),
+      );
+      expect(container.read(appSessionProvider).isLocalDefault, isTrue);
+    },
+  );
+
   test('sessao local anterior com tenant permite entrada offline', () async {
     final cachedSession = _remoteSession().copyWith(isOfflineFallback: true);
     final container = ProviderContainer(
@@ -298,5 +340,15 @@ class _NetworkFailureGateway extends _NoSessionGateway {
     required String password,
   }) async {
     throw const NetworkRequestException('backend offline');
+  }
+}
+
+class _LicenseExpiredGateway extends _NoSessionGateway {
+  @override
+  Future<AppSession> signIn({
+    required String identifier,
+    required String password,
+  }) async {
+    throw const NetworkRequestException('LICENSE_EXPIRED', cause: 403);
   }
 }

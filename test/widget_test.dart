@@ -217,6 +217,90 @@ void main() {
     expect(find.textContaining('177811123456'), findsNothing);
   });
 
+  testWidgets('Dashboard vazio com conflitos mostra aviso de hidratacao', (
+    tester,
+  ) async {
+    await _pumpAuthenticatedApp(
+      tester,
+      additionalOverrides: [
+        operationalDashboardSnapshotProvider.overrideWith(
+          (ref) async => const OperationalDashboardSnapshot(
+            soldTodayCents: 0,
+            currentCashCents: 0,
+            pendingFiadoCount: 0,
+            pendingFiadoCents: 0,
+            activeOperationalOrdersCount: 0,
+            recentMovements: <OperationalDashboardRecentMovement>[],
+          ),
+        ),
+        syncHealthOverviewProvider.overrideWith(
+          (ref) => const SyncHealthOverview(
+            totalPending: 0,
+            totalProcessing: 0,
+            totalActiveProcessing: 0,
+            totalStaleProcessing: 0,
+            totalSynced: 17,
+            totalErrors: 1,
+            totalBlocked: 0,
+            totalConflicts: 8,
+            totalAttempts: 29,
+            lastProcessedAt: null,
+            lastErrorAt: null,
+            nextRetryAt: null,
+          ),
+        ),
+      ],
+    );
+
+    expect(find.text('Sincronização precisa de revisão'), findsOneWidget);
+    expect(find.textContaining('Seus dados existem na nuvem'), findsOneWidget);
+    expect(find.textContaining('precisam de revisão'), findsOneWidget);
+  });
+
+  testWidgets('drawer preserva versao com badge longo em tela pequena', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpAuthenticatedApp(
+      tester,
+      additionalOverrides: [
+        syncHealthOverviewProvider.overrideWith(
+          (ref) => const SyncHealthOverview(
+            totalPending: 0,
+            totalProcessing: 0,
+            totalActiveProcessing: 0,
+            totalStaleProcessing: 0,
+            totalSynced: 0,
+            totalErrors: 0,
+            totalBlocked: 0,
+            totalConflicts: 0,
+            totalAttempts: 0,
+            lastProcessedAt: null,
+            lastErrorAt: null,
+            nextRetryAt: null,
+            hasServerDataStale: true,
+            lastSnapshotError: 'snapshot offline',
+          ),
+        ),
+      ],
+    );
+
+    await tester.tap(find.byIcon(Icons.menu).first);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Drawer), findsOneWidget);
+    expect(find.textContaining('Tatuzin v'), findsOneWidget);
+    expect(
+      find.text('Dados do servidor desatualizados'),
+      findsAtLeastNWidgets(1),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('abre o inventario fisico pelo drawer', (tester) async {
     await _pumpAuthenticatedApp(
       tester,

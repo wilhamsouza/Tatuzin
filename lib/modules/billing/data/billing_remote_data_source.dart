@@ -57,7 +57,7 @@ class BillingRemoteDataSource {
     final token = await _tokenStorage.readAccessToken();
     if (token == null || token.trim().isEmpty) {
       throw const AuthenticationException(
-        'Sessao remota nao encontrada. Entre novamente para gerenciar assinatura.',
+        'Sua sessão expirou. Entre novamente para gerenciar a assinatura.',
       );
     }
     return <String, String>{'Authorization': 'Bearer ${token.trim()}'};

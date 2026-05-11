@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/session/auth_provider.dart';
+import '../../../../app/core/sync/sync_providers.dart';
 import '../../../../app/core/utils/payment_method_note_codec.dart';
 import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_empty_state.dart';
@@ -32,6 +33,7 @@ class DashboardPage extends ConsumerWidget {
     final accountCloud = ref.watch(accountCloudStatusProvider);
     final inventoryItemsAsync = ref.watch(inventoryItemOptionsProvider);
     final authStatus = ref.watch(authStatusProvider);
+    final autoSyncSnapshot = ref.watch(autoSyncSnapshotProvider);
     final tokens = context.appColors;
     final layout = context.appLayout;
 
@@ -94,10 +96,30 @@ class DashboardPage extends ConsumerWidget {
                 final recentSalesCount = snapshot.recentMovements
                     .where((movement) => movement.label == 'Venda recebida')
                     .length;
+                final dashboardLooksEmpty = _dashboardLooksEmpty(snapshot);
+                final hasCloudAttention =
+                    accountCloud.conflictCount > 0 ||
+                    accountCloud.errorCount > 0 ||
+                    accountCloud.pendingCount > 0 ||
+                    accountCloud.statusLabel ==
+                        'Dados do servidor desatualizados';
+                final isInitialHydrationRunning =
+                    dashboardLooksEmpty &&
+                    (accountCloud.syncingNowCount > 0 ||
+                        autoSyncSnapshot.isRunning ||
+                        autoSyncSnapshot.isScheduled);
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (dashboardLooksEmpty &&
+                        (hasCloudAttention || isInitialHydrationRunning)) ...[
+                      _DashboardDataNotice(
+                        isLoading: isInitialHydrationRunning,
+                        accountCloud: accountCloud,
+                      ),
+                      SizedBox(height: layout.sectionGap),
+                    ],
                     _FaturamentoHeroCard(
                       value: AppFormatters.currencyFromCents(
                         snapshot.soldTodayCents,
@@ -313,6 +335,48 @@ class DashboardPage extends ConsumerWidget {
     ref.read(saleHistoryFromProvider.notifier).state = startOfDay;
     ref.read(saleHistoryToProvider.notifier).state = endOfDay;
     context.pushNamed(AppRouteNames.salesHistory);
+  }
+}
+
+bool _dashboardLooksEmpty(OperationalDashboardSnapshot snapshot) {
+  return snapshot.soldTodayCents == 0 &&
+      snapshot.currentCashCents == 0 &&
+      snapshot.pendingFiadoCount == 0 &&
+      snapshot.pendingFiadoCents == 0 &&
+      snapshot.activeOperationalOrdersCount == 0 &&
+      snapshot.recentMovements.isEmpty;
+}
+
+class _DashboardDataNotice extends StatelessWidget {
+  const _DashboardDataNotice({
+    required this.isLoading,
+    required this.accountCloud,
+  });
+
+  final bool isLoading;
+  final AccountCloudStatusSnapshot accountCloud;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasConflicts = accountCloud.conflictCount > 0;
+    final hasErrors = accountCloud.errorCount > 0;
+    final title = isLoading
+        ? 'Carregando dados da empresa'
+        : hasConflicts || hasErrors
+        ? 'Sincronização precisa de revisão'
+        : 'Dados do servidor desatualizados';
+    final message = isLoading
+        ? 'Estamos buscando os dados da nuvem para atualizar este dispositivo.'
+        : hasConflicts || hasErrors
+        ? 'Seus dados existem na nuvem, mas há conflitos de sincronização que precisam de revisão para atualizar este dispositivo.'
+        : 'Não foi possível atualizar os dados da nuvem agora. Os dados locais preservados continuam disponíveis.';
+
+    return AppStateCard(
+      title: title,
+      message: message,
+      tone: isLoading ? AppStateTone.loading : AppStateTone.warning,
+      compact: true,
+    );
   }
 }
 
@@ -537,10 +601,15 @@ class _DashboardSyncCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    AppStatusBadge(
-                      label: accountCloud.statusLabel,
-                      tone: accountCloud.tone,
-                      icon: accountCloud.icon,
+                    Flexible(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: AppStatusBadge(
+                          label: accountCloud.statusLabel,
+                          tone: accountCloud.tone,
+                          icon: accountCloud.icon,
+                        ),
+                      ),
                     ),
                   ],
                 ),

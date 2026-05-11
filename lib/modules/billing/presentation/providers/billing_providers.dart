@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/entitlements/plan_entitlements.dart';
+import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/session/auth_provider.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
@@ -42,9 +43,10 @@ class BillingController extends AsyncNotifier<void> {
   Future<BillingSubscribeResult> subscribe(PlanKey plan) async {
     state = const AsyncLoading();
     try {
-      final result = await ref
-          .read(billingRemoteDataSourceProvider)
-          .subscribe(plan: plan.key);
+      final result = await _withRemoteSessionRestored(
+        () =>
+            ref.read(billingRemoteDataSourceProvider).subscribe(plan: plan.key),
+      );
       state = const AsyncData(null);
       return result;
     } catch (error, stackTrace) {
@@ -56,7 +58,9 @@ class BillingController extends AsyncNotifier<void> {
   Future<BillingStatus> refreshStatus() async {
     state = const AsyncLoading();
     try {
-      final status = await ref.read(billingRemoteDataSourceProvider).refresh();
+      final status = await _withRemoteSessionRestored(
+        () => ref.read(billingRemoteDataSourceProvider).refresh(),
+      );
       await ref
           .read(authControllerProvider.notifier)
           .refreshAuthenticatedSession();
@@ -66,6 +70,22 @@ class BillingController extends AsyncNotifier<void> {
     } catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);
       rethrow;
+    }
+  }
+
+  Future<T> _withRemoteSessionRestored<T>(Future<T> Function() action) async {
+    try {
+      return await action();
+    } on AuthenticationException {
+      final restored = await ref
+          .read(authControllerProvider.notifier)
+          .restoreRemoteSession();
+      if (restored == null) {
+        throw const AuthenticationException(
+          'Sua sessão expirou. Entre novamente para gerenciar a assinatura.',
+        );
+      }
+      return action();
     }
   }
 }

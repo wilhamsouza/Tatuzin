@@ -11,6 +11,19 @@ String friendlySessionFeedbackMessage(
       .replaceFirst(RegExp(r'^Falha ao chamar [^:]+:\s*'), '')
       .trim();
   final normalized = sanitized.toLowerCase();
+  if (normalized.contains('license_expired')) {
+    return 'A licença da empresa está expirada. Regularize a assinatura para continuar.';
+  }
+
+  if (normalized.contains('invalid_credentials')) {
+    return 'E-mail ou senha inválidos.';
+  }
+
+  if (normalized.contains('auth_required') ||
+      normalized.contains('invalid_access_token')) {
+    return 'Sua sessão expirou. Entre novamente.';
+  }
+
   if (normalized.contains('session_revoked') ||
       normalized.contains('sessao revogada') ||
       normalized.contains('sessao foi encerrada')) {
@@ -21,7 +34,7 @@ String friendlySessionFeedbackMessage(
       normalized.contains('refresh token expired') ||
       normalized.contains('jwt expired') ||
       normalized.contains('sessao expirada')) {
-    return 'Sua sessao expirou. Entre novamente para continuar usando a nuvem.';
+    return 'Sua sessão expirou. Entre novamente.';
   }
 
   if (normalized.contains('device_limit') ||
@@ -85,7 +98,7 @@ String friendlySessionFeedbackMessage(
       normalized.contains('socket') ||
       normalized.contains('internet') ||
       normalized.contains('conexao')) {
-    return 'Nao foi possivel falar com a nuvem agora. Tente novamente quando a internet estiver estavel.';
+    return 'Não foi possível falar com a nuvem agora. Verifique sua conexão.';
   }
 
   return sanitized;

@@ -10,6 +10,9 @@ import 'package:erp_pdv_app/app/core/session/app_user.dart';
 import 'package:erp_pdv_app/app/core/session/auth_provider.dart';
 import 'package:erp_pdv_app/app/core/session/company_context.dart';
 import 'package:erp_pdv_app/app/core/session/session_provider.dart';
+import 'package:erp_pdv_app/app/core/sync/auto_sync_coordinator.dart';
+import 'package:erp_pdv_app/app/core/sync/sync_batch_result.dart';
+import 'package:erp_pdv_app/app/core/sync/sync_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,6 +58,68 @@ void main() {
     expect(openedDatabases, ['remote:${session.company.remoteId}']);
     expect((await container.read(appStartupProvider.future)).isSuccess, isTrue);
   });
+
+  test(
+    'signInRemote dispara sync inicial imediatamente apos bootstrap',
+    () async {
+      final session = _remoteSession(licenseStatus: 'trial');
+      final syncStarted = Completer<void>();
+      final syncCanFinish = Completer<void>();
+      final container = ProviderContainer(
+        overrides: [
+          initialAppEnvironmentProvider.overrideWith(
+            (ref) => _remoteEnvironment,
+          ),
+          remoteAuthGatewayProvider.overrideWith((ref) {
+            return _FakeAuthGateway(signInSession: session);
+          }),
+          appStartupOpenDatabaseProvider.overrideWith((ref) {
+            return (isolationKey) async {};
+          }),
+          autoSyncCoordinatorProvider.overrideWith((ref) {
+            final coordinator = AutoSyncCoordinator(
+              isEligible: () => true,
+              isRunning: () => false,
+              runSync: () async {
+                if (!syncStarted.isCompleted) {
+                  syncStarted.complete();
+                }
+                await syncCanFinish.future;
+                final now = DateTime(2026, 5, 10, 12);
+                return SyncBatchResult(
+                  processedCount: 0,
+                  syncedCount: 0,
+                  failedCount: 0,
+                  blockedCount: 0,
+                  conflictCount: 0,
+                  reprocessedOnly: false,
+                  startedAt: now,
+                  finishedAt: now,
+                );
+              },
+              loadQueueSummaries: () async => const [],
+            );
+            ref.onDispose(() {
+              unawaited(coordinator.dispose());
+            });
+            return coordinator;
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
+      addTearDown(() {
+        if (!syncCanFinish.isCompleted) {
+          syncCanFinish.complete();
+        }
+      });
+
+      await container
+          .read(authControllerProvider.notifier)
+          .signInRemote(email: 'operador@tatuzin.test', password: '12345678');
+
+      expect(syncStarted.isCompleted, isTrue);
+    },
+  );
 
   test('signUpRemote with trial company completes bootstrap', () async {
     final session = _remoteSession(licenseStatus: 'trial');

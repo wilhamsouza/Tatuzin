@@ -7,6 +7,7 @@ import '../../../../app/core/session/auth_provider.dart';
 import '../../../../app/core/session/session_feedback.dart';
 import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/sync_display_state.dart';
+import '../../../../app/core/sync/sync_batch_result.dart';
 import '../../../../app/core/sync/sync_providers.dart';
 import '../../../../app/core/sync/sync_queue_feature_summary.dart';
 import '../../../../app/core/widgets/app_button.dart';
@@ -555,13 +556,9 @@ class AccountCloudPage extends ConsumerWidget {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${result.message} Enviados: ${result.syncedCount}. Falhas: ${result.failedCount}.',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_syncResultMessage(result))));
     } catch (error) {
       if (!context.mounted) {
         return;
@@ -607,6 +604,21 @@ class AccountCloudPage extends ConsumerWidget {
         ) ??
         _SignOutDecision.cancel;
   }
+}
+
+String _syncResultMessage(SyncBatchResult result) {
+  final hasAttention =
+      result.failedCount > 0 ||
+      result.blockedCount > 0 ||
+      result.conflictCount > 0;
+  if (!hasAttention) {
+    return '${result.message} Enviados: ${result.syncedCount}. Falhas: ${result.failedCount}.';
+  }
+
+  final reviewHint = result.conflictCount > 0
+      ? ' A revisão de conflitos será disponibilizada em uma próxima atualização.'
+      : '';
+  return '${result.message}$reviewHint';
 }
 
 class _AccountCloudAppBarTitle extends StatelessWidget {
