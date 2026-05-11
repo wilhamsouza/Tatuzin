@@ -5,6 +5,7 @@ import '../models/admin_billing_models.dart';
 import '../models/admin_crm_models.dart';
 import '../models/admin_hybrid_governance_models.dart';
 import '../models/admin_models.dart';
+import '../models/admin_sync_center_models.dart';
 import 'admin_api_client.dart';
 
 class AdminApiService {
@@ -529,6 +530,229 @@ class AdminApiService {
     return AdminSyncOperationalSummary.fromMap(response);
   }
 
+  Future<AdminPaginatedResult<AdminSyncCenterCompany>>
+  fetchSyncCenterCompanies({AdminSyncCenterCompaniesQuery? query}) async {
+    final response = await _apiClient.getJson(
+      '/admin/sync/companies',
+      accessToken: await _readRequiredToken(),
+      queryParameters: (query ?? const AdminSyncCenterCompaniesQuery())
+          .toQueryParameters(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return AdminPaginatedResult<AdminSyncCenterCompany>(
+      items: readAdminItems(
+        payload,
+      ).map(AdminSyncCenterCompany.fromMap).toList(growable: false),
+      pagination: AdminPaginationMeta.fromPayload(payload),
+      filters: readAdminFilters(payload),
+      sort: AdminSortMeta.fromPayload(payload),
+    );
+  }
+
+  Future<AdminSyncCenterCompanySummary> fetchSyncCenterCompanySummary(
+    String companyId,
+  ) async {
+    final response = await _apiClient.getJson(
+      '/admin/sync/companies/$companyId/summary',
+      accessToken: await _readRequiredToken(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message:
+            'A API nao retornou o resumo de sincronizacao no formato esperado.',
+      );
+    }
+
+    return AdminSyncCenterCompanySummary.fromMap(response);
+  }
+
+  Future<AdminPaginatedResult<AdminSyncCenterEvent>> fetchSyncCenterEvents({
+    required AdminSyncCenterEventsQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/sync/companies/${query.companyId}/events',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return AdminPaginatedResult<AdminSyncCenterEvent>(
+      items: readAdminItems(
+        payload,
+      ).map(AdminSyncCenterEvent.fromMap).toList(growable: false),
+      pagination: AdminPaginationMeta.fromPayload(payload),
+      filters: readAdminFilters(payload),
+      sort: AdminSortMeta.fromPayload(payload),
+    );
+  }
+
+  Future<AdminPaginatedResult<AdminSyncCenterConflict>>
+  fetchSyncCenterConflicts({
+    required AdminSyncCenterConflictsQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/sync/companies/${query.companyId}/conflicts',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return AdminPaginatedResult<AdminSyncCenterConflict>(
+      items: readAdminItems(
+        payload,
+      ).map(AdminSyncCenterConflict.fromMap).toList(growable: false),
+      pagination: AdminPaginationMeta.fromPayload(payload),
+      filters: readAdminFilters(payload),
+      sort: AdminSortMeta.fromPayload(payload),
+    );
+  }
+
+  Future<AdminSyncCenterEventDetail> fetchSyncCenterEventDetail({
+    required String companyId,
+    required String eventId,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/sync/events/$eventId',
+      accessToken: await _readRequiredToken(),
+      queryParameters: <String, String>{'companyId': companyId},
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message:
+            'A API nao retornou o evento de sincronizacao no formato esperado.',
+      );
+    }
+
+    return AdminSyncCenterEventDetail.fromMap(response);
+  }
+
+  Future<AdminSyncCenterConflictDetail> fetchSyncCenterConflictDetail({
+    required String companyId,
+    required String conflictId,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/sync/conflicts/$conflictId',
+      accessToken: await _readRequiredToken(),
+      queryParameters: <String, String>{'companyId': companyId},
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message:
+            'A API nao retornou o conflito de sincronizacao no formato esperado.',
+      );
+    }
+
+    return AdminSyncCenterConflictDetail.fromMap(response);
+  }
+
+  Future<AdminSyncCenterDryRunResult> dryRunSyncEventReprocess({
+    required String companyId,
+    required String eventId,
+    required String reason,
+  }) async {
+    final body = _syncCenterReasonBody(companyId: companyId, reason: reason);
+    final response = await _apiClient.postJson(
+      '/admin/sync/events/$eventId/reprocess-dry-run',
+      accessToken: await _readRequiredToken(),
+      body: body,
+    );
+    return AdminSyncCenterDryRunResult.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
+  Future<AdminSyncCenterActionResult> reprocessSyncEvent({
+    required String companyId,
+    required String eventId,
+    required String reason,
+    required String confirmationText,
+  }) async {
+    final body = _syncCenterReasonBody(companyId: companyId, reason: reason);
+    final confirmation = confirmationText.trim();
+    if (confirmation != 'REPROCESSAR') {
+      throw const AdminApiException(
+        message: 'Digite REPROCESSAR para confirmar.',
+        code: 'ADMIN_CONFIRMATION_REQUIRED',
+      );
+    }
+    final response = await _apiClient.postJson(
+      '/admin/sync/events/$eventId/reprocess',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{...body, 'confirmationText': confirmation},
+    );
+    return AdminSyncCenterActionResult.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
+  Future<AdminSyncCenterDryRunResult> dryRunSyncConflictArchive({
+    required String companyId,
+    required String conflictId,
+    required String reason,
+  }) async {
+    final body = _syncCenterReasonBody(companyId: companyId, reason: reason);
+    final response = await _apiClient.postJson(
+      '/admin/sync/conflicts/$conflictId/archive-dry-run',
+      accessToken: await _readRequiredToken(),
+      body: body,
+    );
+    return AdminSyncCenterDryRunResult.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
+  Future<AdminSyncCenterActionResult> archiveSyncConflict({
+    required String companyId,
+    required String conflictId,
+    required String reason,
+    required String confirmationText,
+    String? note,
+  }) async {
+    final body = _syncCenterReasonBody(companyId: companyId, reason: reason);
+    final confirmation = confirmationText.trim();
+    if (confirmation != 'ARQUIVAR') {
+      throw const AdminApiException(
+        message: 'Digite ARQUIVAR para confirmar.',
+        code: 'ADMIN_CONFIRMATION_REQUIRED',
+      );
+    }
+    final response = await _apiClient.postJson(
+      '/admin/sync/conflicts/$conflictId/archive',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        ...body,
+        'confirmationText': confirmation,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      },
+    );
+    return AdminSyncCenterActionResult.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
+  Future<AdminSyncCenterDryRunResult> dryRunManualStockAdjustment({
+    required String companyId,
+    required String conflictId,
+    required String reason,
+  }) async {
+    final body = _syncCenterReasonBody(companyId: companyId, reason: reason);
+    final response = await _apiClient.postJson(
+      '/admin/sync/conflicts/$conflictId/manual-stock-adjustment-dry-run',
+      accessToken: await _readRequiredToken(),
+      body: body,
+    );
+    return AdminSyncCenterDryRunResult.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
   Future<AdminManagementDashboardSnapshot> fetchManagementDashboard({
     required AdminManagementScopeQuery query,
   }) async {
@@ -841,5 +1065,29 @@ class AdminApiService {
       );
     }
     return token.trim();
+  }
+
+  Map<String, dynamic> _syncCenterReasonBody({
+    required String companyId,
+    required String reason,
+  }) {
+    final normalizedCompanyId = companyId.trim();
+    final normalizedReason = reason.trim();
+    if (normalizedCompanyId.isEmpty) {
+      throw const AdminApiException(
+        message: 'Empresa obrigatoria para a acao de sincronizacao.',
+        code: 'ADMIN_COMPANY_REQUIRED',
+      );
+    }
+    if (normalizedReason.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    return <String, dynamic>{
+      'companyId': normalizedCompanyId,
+      'reason': normalizedReason,
+    };
   }
 }

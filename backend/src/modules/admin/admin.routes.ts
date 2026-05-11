@@ -23,8 +23,24 @@ import {
   type AdminCompanySyncIncidentsQueryInput,
   type AdminCompaniesQueryInput,
   type AdminLicensesQueryInput,
+  type AdminSyncCenterArchiveBodyInput,
+  type AdminSyncCenterCompaniesQueryInput,
+  type AdminSyncCenterConflictsQueryInput,
+  type AdminSyncCenterDetailQueryInput,
+  type AdminSyncCenterDryRunBodyInput,
+  type AdminSyncCenterEventsQueryInput,
+  type AdminSyncCenterManualStockAdjustmentBodyInput,
+  type AdminSyncCenterReprocessBodyInput,
   type AdminSyncOperationalQueryInput,
   type AdminSyncQueryInput,
+  adminSyncCenterArchiveBodySchema,
+  adminSyncCenterCompaniesQuerySchema,
+  adminSyncCenterConflictsQuerySchema,
+  adminSyncCenterDetailQuerySchema,
+  adminSyncCenterDryRunBodySchema,
+  adminSyncCenterEventsQuerySchema,
+  adminSyncCenterManualStockAdjustmentBodySchema,
+  adminSyncCenterReprocessBodySchema,
   adminCompanySyncConflictsQuerySchema,
   adminCompanySyncEventsQuerySchema,
   adminCompanySyncIncidentsQuerySchema,
@@ -35,11 +51,13 @@ import {
   adminSyncOperationalQuerySchema,
   adminSyncQuerySchema,
 } from './admin.schemas';
+import { AdminSyncCenterService } from './admin-sync-center.service';
 import { AdminSyncHealthService } from './admin-sync-health.service';
 import { AdminService } from './admin.service';
 
 const adminService = new AdminService();
 const adminSyncHealthService = new AdminSyncHealthService();
+const adminSyncCenterService = new AdminSyncCenterService();
 const billingAdminService = new BillingAdminService();
 
 export const adminRouter = Router();
@@ -316,6 +334,167 @@ adminRouter.get(
 function readParam(value: string | string[]) {
   return Array.isArray(value) ? value[0] : value;
 }
+
+adminRouter.get(
+  '/sync/companies',
+  validateQuery(adminSyncCenterCompaniesQuerySchema),
+  asyncHandler(async (request, response) => {
+    const payload = await adminSyncCenterService.listCompanies(
+      request.query as unknown as AdminSyncCenterCompaniesQueryInput,
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/sync/companies/:companyId/summary',
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await adminSyncCenterService.getCompanySummary(companyId);
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/sync/companies/:companyId/events',
+  validateQuery(adminSyncCenterEventsQuerySchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await adminSyncCenterService.listEvents(
+      companyId,
+      request.query as unknown as AdminSyncCenterEventsQueryInput,
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/sync/events/:eventId',
+  validateQuery(adminSyncCenterDetailQuerySchema),
+  asyncHandler(async (request, response) => {
+    const eventId = readParam(request.params.eventId);
+    const { companyId } =
+      request.query as unknown as AdminSyncCenterDetailQueryInput;
+    const payload = await adminSyncCenterService.getEvent(eventId, companyId);
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/sync/companies/:companyId/conflicts',
+  validateQuery(adminSyncCenterConflictsQuerySchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await adminSyncCenterService.listConflicts(
+      companyId,
+      request.query as unknown as AdminSyncCenterConflictsQueryInput,
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/sync/conflicts/:conflictId',
+  validateQuery(adminSyncCenterDetailQuerySchema),
+  asyncHandler(async (request, response) => {
+    const conflictId = readParam(request.params.conflictId);
+    const { companyId } =
+      request.query as unknown as AdminSyncCenterDetailQueryInput;
+    const payload = await adminSyncCenterService.getConflict(
+      conflictId,
+      companyId,
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  '/sync/events/:eventId/reprocess-dry-run',
+  validateBody(adminSyncCenterDryRunBodySchema),
+  asyncHandler(async (request, response) => {
+    const eventId = readParam(request.params.eventId);
+    const payload = await adminSyncCenterService.reprocessDryRun(
+      eventId,
+      request.body as AdminSyncCenterDryRunBodyInput,
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  '/sync/events/:eventId/reprocess',
+  validateBody(adminSyncCenterReprocessBodySchema),
+  asyncHandler(async (request, response) => {
+    const eventId = readParam(request.params.eventId);
+    const payload = await adminSyncCenterService.reprocessEvent(
+      eventId,
+      request.body as AdminSyncCenterReprocessBodyInput,
+      {
+        actorUserId: request.auth!.userId,
+        ipAddress: request.ip ?? null,
+        userAgent: request.get('user-agent') ?? null,
+      },
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  '/sync/conflicts/:conflictId/archive-dry-run',
+  validateBody(adminSyncCenterDryRunBodySchema),
+  asyncHandler(async (request, response) => {
+    const conflictId = readParam(request.params.conflictId);
+    const payload = await adminSyncCenterService.archiveDryRun(
+      conflictId,
+      request.body as AdminSyncCenterDryRunBodyInput,
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  '/sync/conflicts/:conflictId/archive',
+  validateBody(adminSyncCenterArchiveBodySchema),
+  asyncHandler(async (request, response) => {
+    const conflictId = readParam(request.params.conflictId);
+    const payload = await adminSyncCenterService.archiveConflict(
+      conflictId,
+      request.body as AdminSyncCenterArchiveBodyInput,
+      {
+        actorUserId: request.auth!.userId,
+        ipAddress: request.ip ?? null,
+        userAgent: request.get('user-agent') ?? null,
+      },
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  '/sync/conflicts/:conflictId/manual-stock-adjustment-dry-run',
+  validateBody(adminSyncCenterDryRunBodySchema),
+  asyncHandler(async (request, response) => {
+    const conflictId = readParam(request.params.conflictId);
+    const payload = await adminSyncCenterService.manualStockAdjustmentDryRun(
+      conflictId,
+      request.body as AdminSyncCenterDryRunBodyInput,
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  '/sync/conflicts/:conflictId/manual-stock-adjustment',
+  validateBody(adminSyncCenterManualStockAdjustmentBodySchema),
+  asyncHandler(async (request, response) => {
+    const conflictId = readParam(request.params.conflictId);
+    const payload = await adminSyncCenterService.manualStockAdjustment(
+      conflictId,
+      request.body as AdminSyncCenterManualStockAdjustmentBodyInput,
+    );
+    response.json(payload);
+  }),
+);
 
 adminRouter.get(
   '/sync/summary',

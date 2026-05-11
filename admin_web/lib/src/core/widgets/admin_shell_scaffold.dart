@@ -64,6 +64,11 @@ class AdminShellScaffold extends ConsumerWidget {
       label: 'Saúde da Sync',
     ),
     _AdminNavItem(
+      route: '/sync',
+      icon: Icons.sync_problem_rounded,
+      label: 'Sincronização',
+    ),
+    _AdminNavItem(
       route: '/audit',
       icon: Icons.fact_check_rounded,
       label: 'Auditoria',

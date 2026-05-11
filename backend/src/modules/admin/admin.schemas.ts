@@ -93,6 +93,17 @@ const syncConflictStatusQuerySchema = z
   .transform((value) => value.toUpperCase())
   .optional();
 
+const adminSyncCenterStatusSchema = z
+  .enum(['all', 'requires_review', 'failed', 'conflict', 'healthy'])
+  .default('requires_review');
+
+const requiredBodyString = (field: string, maxLength = 1000) =>
+  z
+    .string({ required_error: `${field} obrigatorio.` })
+    .trim()
+    .min(1, `${field} obrigatorio.`)
+    .max(maxLength);
+
 export const adminLicensePatchSchema = z
   .object({
     plan: z.string().trim().min(1).max(60).optional(),
@@ -181,6 +192,68 @@ export const adminCompanySyncIncidentsQuerySchema =
     to: optionalDateQuery,
   });
 
+export const adminSyncCenterCompaniesQuerySchema =
+  paginationQuerySchema.extend({
+    search: optionalQueryString(120),
+    status: adminSyncCenterStatusSchema,
+  });
+
+export const adminSyncCenterEventsQuerySchema = paginationQuerySchema.extend({
+  status: syncEventStatusQuerySchema,
+  entity: optionalQueryString(80),
+  operation: optionalQueryString(40),
+  feature: optionalQueryString(80),
+  startDate: optionalDateQuery,
+  endDate: optionalDateQuery,
+});
+
+export const adminSyncCenterConflictsQuerySchema =
+  paginationQuerySchema.extend({
+    status: syncConflictStatusQuerySchema,
+    code: optionalQueryString(120),
+    entity: optionalQueryString(80),
+  });
+
+export const adminSyncCenterDetailQuerySchema = z.object({
+  companyId: requiredBodyString('companyId', 80),
+});
+
+export const adminSyncCenterDryRunBodySchema = z.object({
+  companyId: requiredBodyString('companyId', 80),
+  reason: requiredBodyString('reason'),
+});
+
+export const adminSyncCenterReprocessBodySchema =
+  adminSyncCenterDryRunBodySchema.extend({
+    confirmationText: z.literal('REPROCESSAR', {
+      errorMap: () => ({
+        message: 'confirmationText precisa ser REPROCESSAR.',
+      }),
+    }),
+  });
+
+export const adminSyncCenterArchiveBodySchema =
+  adminSyncCenterDryRunBodySchema.extend({
+    confirmationText: z.literal('ARQUIVAR', {
+      errorMap: () => ({
+        message: 'confirmationText precisa ser ARQUIVAR.',
+      }),
+    }),
+    note: optionalQueryString(1000),
+  });
+
+export const adminSyncCenterManualStockAdjustmentBodySchema =
+  adminSyncCenterDryRunBodySchema.extend({
+    confirmationText: z.literal('AJUSTAR_ESTOQUE', {
+      errorMap: () => ({
+        message: 'confirmationText precisa ser AJUSTAR_ESTOQUE.',
+      }),
+    }),
+    productId: requiredBodyString('productId', 80),
+    productVariantId: optionalQueryString(80),
+    quantityDeltaMil: z.coerce.number().int(),
+  });
+
 export type AdminLicensePatchInput = z.infer<typeof adminLicensePatchSchema>;
 export type AdminCompaniesQueryInput = z.infer<typeof adminCompaniesQuerySchema>;
 export type AdminLicensesQueryInput = z.infer<typeof adminLicensesQuerySchema>;
@@ -197,4 +270,28 @@ export type AdminCompanySyncConflictsQueryInput = z.infer<
 >;
 export type AdminCompanySyncIncidentsQueryInput = z.infer<
   typeof adminCompanySyncIncidentsQuerySchema
+>;
+export type AdminSyncCenterCompaniesQueryInput = z.infer<
+  typeof adminSyncCenterCompaniesQuerySchema
+>;
+export type AdminSyncCenterEventsQueryInput = z.infer<
+  typeof adminSyncCenterEventsQuerySchema
+>;
+export type AdminSyncCenterConflictsQueryInput = z.infer<
+  typeof adminSyncCenterConflictsQuerySchema
+>;
+export type AdminSyncCenterDetailQueryInput = z.infer<
+  typeof adminSyncCenterDetailQuerySchema
+>;
+export type AdminSyncCenterDryRunBodyInput = z.infer<
+  typeof adminSyncCenterDryRunBodySchema
+>;
+export type AdminSyncCenterReprocessBodyInput = z.infer<
+  typeof adminSyncCenterReprocessBodySchema
+>;
+export type AdminSyncCenterArchiveBodyInput = z.infer<
+  typeof adminSyncCenterArchiveBodySchema
+>;
+export type AdminSyncCenterManualStockAdjustmentBodyInput = z.infer<
+  typeof adminSyncCenterManualStockAdjustmentBodySchema
 >;

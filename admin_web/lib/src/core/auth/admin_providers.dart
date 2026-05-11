@@ -6,6 +6,7 @@ import '../models/admin_crm_models.dart';
 import '../models/admin_hybrid_governance_models.dart';
 import '../../config/admin_env.dart';
 import '../models/admin_models.dart';
+import '../models/admin_sync_center_models.dart';
 import '../network/admin_api_client.dart';
 import '../network/admin_api_service.dart';
 import 'admin_auth_controller.dart';
@@ -194,6 +195,77 @@ final adminSyncOperationalSummaryProvider =
       return ref
           .watch(adminApiServiceProvider)
           .fetchSyncOperationalSummary(query: query);
+    });
+
+final adminSyncCenterCompaniesProvider =
+    FutureProvider.family<
+      AdminPaginatedResult<AdminSyncCenterCompany>,
+      AdminSyncCenterCompaniesQuery
+    >((ref, query) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchSyncCenterCompanies(query: query);
+    });
+
+final adminSyncCenterCompanySummaryProvider =
+    FutureProvider.family<AdminSyncCenterCompanySummary, String>((
+      ref,
+      companyId,
+    ) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchSyncCenterCompanySummary(companyId);
+    });
+
+final adminSyncCenterEventsProvider =
+    FutureProvider.family<
+      AdminPaginatedResult<AdminSyncCenterEvent>,
+      AdminSyncCenterEventsQuery
+    >((ref, query) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchSyncCenterEvents(query: query);
+    });
+
+final adminSyncCenterConflictsProvider =
+    FutureProvider.family<
+      AdminPaginatedResult<AdminSyncCenterConflict>,
+      AdminSyncCenterConflictsQuery
+    >((ref, query) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchSyncCenterConflicts(query: query);
+    });
+
+final adminSyncCenterEventDetailProvider =
+    FutureProvider.family<AdminSyncCenterEventDetail, AdminSyncCenterDetailKey>(
+      (ref, key) async {
+        ref.watch(adminRefreshTickProvider);
+        return ref
+            .watch(adminApiServiceProvider)
+            .fetchSyncCenterEventDetail(
+              companyId: key.companyId,
+              eventId: key.targetId,
+            );
+      },
+    );
+
+final adminSyncCenterConflictDetailProvider =
+    FutureProvider.family<
+      AdminSyncCenterConflictDetail,
+      AdminSyncCenterDetailKey
+    >((ref, key) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchSyncCenterConflictDetail(
+            companyId: key.companyId,
+            conflictId: key.targetId,
+          );
     });
 
 final adminManagementCompanyOptionsProvider =

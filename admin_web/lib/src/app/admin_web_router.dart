@@ -17,6 +17,7 @@ import '../features/management/crm/presentation/crm_customers_page.dart';
 import '../features/management/dashboard/presentation/management_dashboard_page.dart';
 import '../features/management/governance/presentation/hybrid_governance_page.dart';
 import '../features/management/reports/presentation/management_reports_page.dart';
+import '../features/sync_center/presentation/sync_center_pages.dart';
 import '../features/sync_health/presentation/sync_health_page.dart';
 
 final adminRouterProvider = Provider<GoRouter>((ref) {
@@ -158,6 +159,39 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const SyncHealthPage(),
           ),
           GoRoute(
+            path: '/sync',
+            builder: (context, state) => const SyncCenterPage(),
+          ),
+          GoRoute(
+            path: '/sync/:companyId',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              return SyncCompanyPage(companyId: companyId);
+            },
+          ),
+          GoRoute(
+            path: '/sync/:companyId/events/:eventId',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              final eventId = state.pathParameters['eventId'] ?? '';
+              return SyncEventDetailPage(
+                companyId: companyId,
+                eventId: eventId,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/sync/:companyId/conflicts/:conflictId',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              final conflictId = state.pathParameters['conflictId'] ?? '';
+              return SyncConflictDetailPage(
+                companyId: companyId,
+                conflictId: conflictId,
+              );
+            },
+          ),
+          GoRoute(
             path: '/audit',
             builder: (context, state) => const AuditPage(),
           ),
@@ -200,6 +234,9 @@ String _titleForLocation(String location) {
   }
   if (location.startsWith('/sync-health')) {
     return 'Saúde da sync';
+  }
+  if (location.startsWith('/sync')) {
+    return 'Sincronização';
   }
   if (location.startsWith('/audit')) {
     return 'Auditoria';
