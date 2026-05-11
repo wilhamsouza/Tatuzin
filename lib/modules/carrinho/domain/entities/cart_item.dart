@@ -2,7 +2,7 @@ import '../../../produtos/domain/entities/product.dart';
 import 'cart_enums.dart';
 
 const operationalProductMissingRemoteMessage =
-    'Este produto ainda não foi sincronizado com o servidor. Conecte-se à internet e atualize os produtos antes de vender.';
+    'Este produto ainda não foi sincronizado com a nuvem. Sincronize antes de vender.';
 
 class CartItemModifier {
   const CartItemModifier({

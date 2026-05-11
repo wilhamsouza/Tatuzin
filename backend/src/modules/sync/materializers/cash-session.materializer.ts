@@ -19,6 +19,14 @@ export class CashSessionMaterializer {
   async materialize(
     input: SyncMaterializerInput,
   ): Promise<SyncMaterializerResult> {
+    if (!['create', 'update', 'upsert'].includes(input.event.operation)) {
+      return {
+        outcome: 'rejected',
+        code: 'INVALID_OPERATION',
+        message: 'cashSession aceita create, update ou upsert.',
+      };
+    }
+
     const localUuid = localIdentityFor(input.event, input.payload);
     if (localUuid == null) {
       return {
@@ -67,6 +75,19 @@ export class CashSessionMaterializer {
     const requestedStatus = normalizeCashSessionStatus(
       firstString(input.payload, ['status', 'state']),
     );
+    if (!['open', 'closed'].includes(requestedStatus)) {
+      return {
+        outcome: 'rejected',
+        code: 'CASH_SESSION_INVALID_STATUS',
+        message: 'Status de sessao de caixa invalido para sync operacional.',
+        details: {
+          entity: input.event.entity,
+          operation: input.event.operation,
+          entityLocalId: input.event.entityLocalId,
+          status: firstString(input.payload, ['status', 'state']),
+        },
+      };
+    }
 
     if (
       existing != null &&
@@ -86,10 +107,39 @@ export class CashSessionMaterializer {
       };
     }
 
+    if (
+      existing == null &&
+      input.event.operation === 'update' &&
+      !this.canCreateMissingOpenSession(input, requestedStatus)
+    ) {
+      return {
+        outcome: 'conflict',
+        code: 'CASH_SESSION_NOT_FOUND',
+        message: 'Sessao de caixa nao encontrada para atualizacao.',
+        payload: {
+          entity: input.event.entity,
+          operation: input.event.operation,
+          entityLocalId: input.event.entityLocalId,
+          localUuid,
+          status: requestedStatus,
+          hasOpenedAt:
+            firstString(input.payload, ['openedAt', 'createdAt']) != null,
+        },
+      };
+    }
+
     const now = new Date();
-    const openedAt = firstDate(input.payload, ['openedAt', 'createdAt'], now);
+    const openedAt = firstDate(
+      input.payload,
+      ['openedAt', 'createdAt'],
+      existing?.openedAt ?? now,
+    );
     const closedAt = isClosedStatus(requestedStatus)
-      ? firstDate(input.payload, ['closedAt', 'finishedAt', 'updatedAt'], now)
+      ? firstDate(
+          input.payload,
+          ['closedAt', 'finishedAt', 'updatedAt'],
+          existing?.closedAt ?? now,
+        )
       : null;
 
     const data = {
@@ -140,5 +190,16 @@ export class CashSessionMaterializer {
       entityServerId: updated.id,
       materializedAt: updated.updatedAt,
     };
+  }
+
+  private canCreateMissingOpenSession(
+    input: SyncMaterializerInput,
+    requestedStatus: string,
+  ) {
+    if (!isOpenStatus(requestedStatus)) {
+      return false;
+    }
+
+    return firstString(input.payload, ['openedAt', 'createdAt']) != null;
   }
 }

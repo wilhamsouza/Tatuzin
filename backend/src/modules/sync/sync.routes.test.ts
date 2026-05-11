@@ -270,7 +270,12 @@ describe("operational local-first sync routes", () => {
         feature: "cash",
         operation: "update",
         entityLocalId,
-        payload: { status: "closed", closingBalanceCents: 1500 },
+        payload: {
+          status: "closed",
+          countedBalanceCents: 1500,
+          expectedBalanceCents: 1400,
+          differenceCents: 100,
+        },
       }),
     ]);
     assert.equal(closeResponse.status, 202);
@@ -284,6 +289,12 @@ describe("operational local-first sync routes", () => {
       },
     });
     assert.equal(cashSession.status, "closed");
+    assert.equal(cashSession.closingBalanceCents, 1500);
+    assert.equal(cashSession.expectedBalanceCents, 1400);
+    assert.equal(
+      (cashSession.payload as Record<string, unknown> | null)?.differenceCents,
+      100,
+    );
     assert.equal(cashSession.lastLocalSequence, null);
 
     const reopenResponse = await push(fixture, [
@@ -380,6 +391,166 @@ describe("operational local-first sync routes", () => {
     });
     assert.equal(afterStale.expectedBalanceCents, 1500);
     assert.equal(afterStale.lastLocalSequence, 3);
+  });
+
+  it("normalizes cashSession/update status aberto for an existing open session", async () => {
+    const fixture = await createFixture();
+    const entityLocalId = `${runId}-cash-session-aberto`;
+    await push(fixture, [
+      buildEvent("cash-session-aberto-create", "cashSession", {
+        feature: "cash",
+        entityLocalId,
+        payload: {
+          status: "open",
+          openedAt: "2026-05-06T20:41:08.169407Z",
+          initialFloatCents: 0,
+        },
+      }),
+    ]);
+
+    const response = await push(fixture, [
+      buildEvent("cash-session-aberto-update", "cashSession", {
+        feature: "cash",
+        operation: "update",
+        entityLocalId,
+        payload: {
+          uuid: entityLocalId,
+          status: "aberto",
+          openedAt: "2026-05-06T20:41:08.169407Z",
+          expectedBalanceCents: 130400,
+        },
+      }),
+    ]);
+
+    assert.equal(
+      (response.data as { summary: { accepted: number } }).summary.accepted,
+      1,
+    );
+    const cashSession = await prisma.cashSession.findUniqueOrThrow({
+      where: {
+        companyId_localUuid: {
+          companyId: fixture.companyId,
+          localUuid: entityLocalId,
+        },
+      },
+    });
+    assert.equal(cashSession.status, "open");
+    assert.equal(cashSession.expectedBalanceCents, 130400);
+    assert.equal(
+      cashSession.openedAt?.toISOString(),
+      "2026-05-06T20:41:08.169Z",
+    );
+  });
+
+  it("creates a missing open cashSession update idempotently when opening metadata is present", async () => {
+    const fixture = await createFixture();
+    const entityLocalId = `${runId}-cash-session-open-update-create`;
+    const event = buildEvent("cash-session-open-update-create", "cashSession", {
+      feature: "cash",
+      operation: "update",
+      entityLocalId,
+      payload: {
+        uuid: entityLocalId,
+        status: "aberto",
+        localId: 3,
+        openedAt: "2026-05-06T20:41:08.169407Z",
+        operatorName: "Operador local",
+        expectedBalanceCents: 130400,
+        initialFloatCents: 0,
+      },
+    });
+
+    const first = await push(fixture, [event]);
+    const duplicate = await push(fixture, [event]);
+
+    assert.equal(
+      (first.data as { summary: { accepted: number; rejected: number } })
+        .summary.accepted,
+      1,
+    );
+    assert.equal(
+      (first.data as { summary: { accepted: number; rejected: number } })
+        .summary.rejected,
+      0,
+    );
+    assert.equal(
+      (duplicate.data as { summary: { duplicates: number } }).summary
+        .duplicates,
+      1,
+    );
+    const [cashSessionsCount, failedCount] = await Promise.all([
+      prisma.cashSession.count({
+        where: { companyId: fixture.companyId, localUuid: entityLocalId },
+      }),
+      prisma.syncEvent.count({
+        where: {
+          companyId: fixture.companyId,
+          eventId: "cash-session-open-update-create",
+          status: "FAILED",
+        },
+      }),
+    ]);
+    assert.equal(cashSessionsCount, 1);
+    assert.equal(failedCount, 0);
+  });
+
+  it("returns CASH_SESSION_NOT_FOUND for expected missing closed-session updates", async () => {
+    const fixture = await createFixture();
+    const response = await push(fixture, [
+      buildEvent("cash-session-missing-close-update", "cashSession", {
+        feature: "cash",
+        operation: "update",
+        entityLocalId: `${runId}-cash-session-missing-close`,
+        payload: {
+          status: "fechado",
+          closedAt: "2026-05-06T22:41:08.169407Z",
+          countedBalanceCents: 130400,
+        },
+      }),
+    ]);
+
+    const payload = response.data as {
+      conflicts: Array<{ code: string }>;
+      rejected: Array<{ code: string }>;
+    };
+    assert.equal(payload.conflicts[0]?.code, "CASH_SESSION_NOT_FOUND");
+    assert.equal(payload.rejected.length, 0);
+    const failedCount = await prisma.syncEvent.count({
+      where: {
+        companyId: fixture.companyId,
+        eventId: "cash-session-missing-close-update",
+        status: "FAILED",
+      },
+    });
+    assert.equal(failedCount, 0);
+  });
+
+  it("rejects cashSession updates with invalid status without generic failure", async () => {
+    const fixture = await createFixture();
+    const response = await push(fixture, [
+      buildEvent("cash-session-invalid-status", "cashSession", {
+        feature: "cash",
+        operation: "update",
+        entityLocalId: `${runId}-cash-session-invalid-status`,
+        payload: {
+          status: "em_conferencia",
+          openedAt: "2026-05-06T20:41:08.169407Z",
+        },
+      }),
+    ]);
+
+    const rejected = (
+      response.data as { rejected: Array<{ code: string }> }
+    ).rejected;
+    assert.equal(rejected[0]?.code, "CASH_SESSION_INVALID_STATUS");
+    const failedCount = await prisma.syncEvent.count({
+      where: {
+        companyId: fixture.companyId,
+        eventId: "cash-session-invalid-status",
+        status: "FAILED",
+      },
+    });
+    assert.equal(failedCount, 0);
   });
 
   it("materializes cashMovement/create and keeps it idempotent", async () => {
@@ -791,7 +962,112 @@ describe("operational local-first sync routes", () => {
     });
   });
 
-  it("rejects local numeric product ids in stock remote id fields", async () => {
+  it("materializes stockDeduction/create with a valid remote variant id", async () => {
+    const fixture = await createFixture();
+    const product = await createProduct(fixture, { stockMil: 10_000 });
+    const variant = await createProductVariant(product, { stockMil: 5_000 });
+
+    const response = await push(fixture, [
+      buildEvent("stock-deduction-valid-variant", "stockDeduction", {
+        entityLocalId: `${runId}-stock-deduction-valid-variant`,
+        payload: {
+          productVariantId: variant.id,
+          quantityDeltaMil: -2_000,
+        },
+      }),
+    ]);
+
+    assert.equal(
+      (response.data as { summary: { accepted: number } }).summary.accepted,
+      1,
+    );
+    const [deduction, updatedVariant] = await Promise.all([
+      prisma.stockDeduction.findFirstOrThrow({
+        where: {
+          companyId: fixture.companyId,
+          localUuid: `${runId}-stock-deduction-valid-variant`,
+        },
+      }),
+      prisma.productVariant.findUniqueOrThrow({ where: { id: variant.id } }),
+    ]);
+    assert.equal(deduction.productId, product.id);
+    assert.equal(deduction.productVariantId, variant.id);
+    assert.equal(updatedVariant.stockMil, 3_000);
+  });
+
+  it("materializes stockDeduction/create with a remote product id only when the product has no active variants", async () => {
+    const fixture = await createFixture();
+    const product = await createProduct(fixture, { stockMil: 10_000 });
+
+    const response = await push(fixture, [
+      buildEvent("stock-deduction-valid-product", "stockDeduction", {
+        entityLocalId: `${runId}-stock-deduction-valid-product`,
+        payload: {
+          productId: product.id,
+          quantityDeltaMil: -1_500,
+        },
+      }),
+    ]);
+
+    assert.equal(
+      (response.data as { summary: { accepted: number } }).summary.accepted,
+      1,
+    );
+    const [deduction, updatedProduct] = await Promise.all([
+      prisma.stockDeduction.findFirstOrThrow({
+        where: {
+          companyId: fixture.companyId,
+          localUuid: `${runId}-stock-deduction-valid-product`,
+        },
+      }),
+      prisma.product.findUniqueOrThrow({ where: { id: product.id } }),
+    ]);
+    assert.equal(deduction.productId, product.id);
+    assert.equal(deduction.productVariantId, null);
+    assert.equal(updatedProduct.stockMil, 8_500);
+  });
+
+  it("does not deduct product-level stock for a product with active variants when variant identity is missing", async () => {
+    const fixture = await createFixture();
+    const product = await createProduct(fixture, { stockMil: 10_000 });
+    const variant = await createProductVariant(product, { stockMil: 5_000 });
+
+    const response = await push(fixture, [
+      buildEvent("stock-deduction-product-with-variants", "stockDeduction", {
+        entityLocalId: `${runId}-stock-deduction-product-with-variants`,
+        payload: {
+          productId: product.id,
+          quantityDeltaMil: -1_000,
+        },
+      }),
+    ]);
+
+    const payload = response.data as {
+      conflicts: Array<{ code: string; details?: Record<string, unknown> }>;
+    };
+    assert.equal(
+      payload.conflicts[0]?.code,
+      "STOCK_DEDUCTION_REMOTE_ID_REQUIRED",
+    );
+    assert.equal(
+      payload.conflicts[0]?.details?.reason,
+      "PRODUCT_VARIANT_REMOTE_ID_REQUIRED",
+    );
+
+    const [updatedProduct, updatedVariant, deductionsCount] =
+      await Promise.all([
+        prisma.product.findUniqueOrThrow({ where: { id: product.id } }),
+        prisma.productVariant.findUniqueOrThrow({ where: { id: variant.id } }),
+        prisma.stockDeduction.count({
+          where: { companyId: fixture.companyId },
+        }),
+      ]);
+    assert.equal(updatedProduct.stockMil, 10_000);
+    assert.equal(updatedVariant.stockMil, 5_000);
+    assert.equal(deductionsCount, 0);
+  });
+
+  it("creates a safe stock conflict for local numeric product ids in deduction remote fields", async () => {
     const fixture = await createFixture();
 
     const response = await push(fixture, [
@@ -806,14 +1082,119 @@ describe("operational local-first sync routes", () => {
       }),
     ]);
 
-    const rejected = (
+    const conflicts = (
       response.data as {
-        rejected: Array<{ eventId: string; code: string }>;
+        conflicts: Array<{
+          eventId: string;
+          code: string;
+          details?: Record<string, unknown>;
+        }>;
       }
-    ).rejected;
+    ).conflicts;
     assert.deepEqual(
-      rejected.map((item) => [item.eventId, item.code]),
-      [["stock-deduction-local-product-id", "INVALID_REMOTE_ID"]],
+      conflicts.map((item) => [item.eventId, item.code]),
+      [
+        [
+          "stock-deduction-local-product-id",
+          "STOCK_DEDUCTION_REMOTE_ID_REQUIRED",
+        ],
+      ],
+    );
+    assert.equal(conflicts[0]?.details?.productId, "1");
+    assert.equal(conflicts[0]?.details?.productLocalId, "1");
+  });
+
+  it("keeps sale materialization accepted when stockDeduction needs review", async () => {
+    const fixture = await createFixture();
+    const product = await createProduct(fixture, { stockMil: 10_000 });
+    const saleLocalId = `${runId}-stock-conflict-sale`;
+
+    const response = await push(fixture, [
+      buildEvent("stock-conflict-sale-create", "sale", {
+        entityLocalId: saleLocalId,
+        payload: { status: "finalized", totalCents: 1000 },
+      }),
+      buildEvent("stock-conflict-sale-item-create", "saleItem", {
+        entityLocalId: `${runId}-stock-conflict-sale-item`,
+        payload: {
+          saleLocalId,
+          productId: product.id,
+          productNameSnapshot: "Produto com estoque pendente",
+          quantityMil: 1000,
+          unitPriceCents: 1000,
+          subtotalCents: 1000,
+        },
+      }),
+      buildEvent("stock-conflict-payment-create", "payment", {
+        entityLocalId: `${runId}-stock-conflict-payment`,
+        payload: {
+          saleLocalId,
+          amountCents: 1000,
+          paymentMethod: "pix",
+        },
+      }),
+      buildEvent("stock-conflict-deduction-create", "stockDeduction", {
+        entityLocalId: `${runId}-stock-conflict-deduction`,
+        payload: {
+          saleLocalId,
+          productId: 5,
+          productLocalId: 5,
+          quantityDeltaMil: -1000,
+        },
+      }),
+    ]);
+
+    const payload = response.data as {
+      summary: { accepted: number; conflicts: number };
+      conflicts: Array<{ code: string }>;
+    };
+    assert.equal(payload.summary.accepted, 3);
+    assert.equal(payload.summary.conflicts, 1);
+    assert.equal(
+      payload.conflicts[0]?.code,
+      "STOCK_DEDUCTION_REMOTE_ID_REQUIRED",
+    );
+
+    const [salesCount, saleItemsCount, paymentsCount, deductionsCount] =
+      await Promise.all([
+        prisma.sale.count({ where: { companyId: fixture.companyId } }),
+        prisma.saleItem.count({
+          where: { sale: { companyId: fixture.companyId } },
+        }),
+        prisma.financialEvent.count({
+          where: { companyId: fixture.companyId, eventType: "sale_payment" },
+        }),
+        prisma.stockDeduction.count({
+          where: { companyId: fixture.companyId },
+        }),
+      ]);
+    assert.equal(salesCount, 1);
+    assert.equal(saleItemsCount, 1);
+    assert.equal(paymentsCount, 1);
+    assert.equal(deductionsCount, 0);
+  });
+
+  it("creates STOCK_PRODUCT_NOT_FOUND for missing remote product ids", async () => {
+    const fixture = await createFixture();
+
+    const response = await push(fixture, [
+      buildEvent("stock-deduction-missing-product", "stockDeduction", {
+        entityLocalId: `${runId}-stock-deduction-missing-product`,
+        payload: {
+          productId: "11111111-1111-4111-8111-111111111111",
+          quantityDeltaMil: -1000,
+        },
+      }),
+    ]);
+
+    const conflicts = (
+      response.data as {
+        conflicts: Array<{ eventId: string; code: string }>;
+      }
+    ).conflicts;
+    assert.deepEqual(
+      conflicts.map((item) => [item.eventId, item.code]),
+      [["stock-deduction-missing-product", "STOCK_PRODUCT_NOT_FOUND"]],
     );
   });
 
@@ -1682,9 +2063,31 @@ describe("operational local-first sync routes", () => {
     );
   });
 
-  it("returns checkpoints and current server version in status", async () => {
+  it("returns sync status counters and review/error flags", async () => {
     const fixture = await createFixture();
-    await push(fixture, [buildEvent("status-sale", "sale")]);
+    await push(fixture, [
+      buildEvent("status-sale", "sale", {
+        entityLocalId: `${runId}-status-sale`,
+        payload: { status: "finalized", totalCents: 1000 },
+      }),
+    ]);
+    await push(fixture, [
+      buildEvent("status-stock-conflict", "stockDeduction", {
+        payload: {
+          productId: 1,
+          productLocalId: 1,
+          quantityDeltaMil: -1000,
+        },
+      }),
+    ]);
+    await push(fixture, [
+      buildEvent("status-payment-failure", "payment", {
+        payload: {
+          saleLocalId: `${runId}-status-sale`,
+          amountCents: 3_000_000_000,
+        },
+      }),
+    ]);
 
     const response = await requestJson("GET", "/sync/status", {
       token: fixture.token,
@@ -1695,20 +2098,32 @@ describe("operational local-first sync routes", () => {
       currentServerVersion: string;
       checkpoints: Array<{ feature: string; lastServerVersion: string }>;
       openConflictsCount: number;
+      requiresReviewCount: number;
+      pendingCount: number;
       acceptedCount: number;
+      duplicateCount: number;
       conflictCount: number;
       rejectedCount: number;
       failedCount: number;
+      errorCount: number;
+      requiresReview: boolean;
+      hasError: boolean;
       lastMaterializedAt: string | null;
     };
-    assert.equal(payload.currentServerVersion, "1");
+    assert.equal(payload.currentServerVersion, "2");
     assert.equal(payload.checkpoints[0]?.feature, "pdv");
-    assert.equal(payload.checkpoints[0]?.lastServerVersion, "1");
-    assert.equal(payload.openConflictsCount, 0);
+    assert.equal(payload.checkpoints[0]?.lastServerVersion, "2");
+    assert.equal(payload.openConflictsCount, 1);
+    assert.equal(payload.requiresReviewCount, 1);
+    assert.equal(payload.pendingCount, 0);
     assert.equal(payload.acceptedCount, 1);
-    assert.equal(payload.conflictCount, 0);
+    assert.equal(payload.duplicateCount, 0);
+    assert.equal(payload.conflictCount, 1);
     assert.equal(payload.rejectedCount, 0);
-    assert.equal(payload.failedCount, 0);
+    assert.equal(payload.failedCount, 1);
+    assert.equal(payload.errorCount, 1);
+    assert.equal(payload.requiresReview, true);
+    assert.equal(payload.hasError, true);
     assert.notEqual(payload.lastMaterializedAt, null);
   });
 
@@ -1886,6 +2301,24 @@ async function createProduct(
       name: "Produto Sync Materializer",
       salePriceCents: 1000,
       stockMil: options?.stockMil ?? 0,
+    },
+  });
+}
+
+async function createProductVariant(
+  product: { id: string },
+  options?: { stockMil?: number },
+) {
+  return prisma.productVariant.create({
+    data: {
+      productId: product.id,
+      sku: `${runId}-variant-${Date.now()}-${Math.random()
+        .toString(16)
+        .slice(2)}`,
+      colorLabel: "Padrao",
+      sizeLabel: "Unico",
+      stockMil: options?.stockMil ?? 0,
+      isActive: true,
     },
   });
 }

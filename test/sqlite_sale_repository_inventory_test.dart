@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:erp_pdv_app/app/core/app_context/app_operational_context.dart';
 import 'package:erp_pdv_app/app/core/config/app_environment.dart';
 import 'package:erp_pdv_app/app/core/database/table_names.dart';
+import 'package:erp_pdv_app/app/core/errors/app_exceptions.dart';
 import 'package:erp_pdv_app/app/core/session/app_session.dart';
 import 'package:erp_pdv_app/app/core/sync/operational_sync_event.dart';
 import 'package:erp_pdv_app/app/core/sync/operational_sync_queue_item.dart';
@@ -435,6 +436,62 @@ void main() {
         expect(deduction.payload['productVariantLocalId'], 10);
       },
     );
+
+    test('bloqueia venda operacional de produto sem identidade remota', () async {
+      database = await openSaleInventoryTestDatabase();
+      final operationalQueue = _RecordingOperationalSyncQueueRepository();
+      final repository = SqliteSaleRepository.forDatabase(
+        databaseLoader: () async => database,
+        operationalContext: AppOperationalContext(
+          environment: const AppEnvironment.localDefault(),
+          session: AppSession.localDefault(),
+        ),
+        syncMetadataRepository: RecordingSyncMetadataRepository(),
+        syncQueueRepository: RecordingSyncQueueRepository(),
+        operationalSyncQueueRepository: operationalQueue,
+      );
+      await insertSimpleProduct(
+        database,
+        productId: 1,
+        name: 'Bone',
+        stockMil: 5000,
+      );
+
+      await expectLater(
+        repository.completeCashSale(
+          input: CheckoutInput(
+            items: [
+              buildSimpleCartItem(
+                productId: 1,
+                productName: 'Bone',
+                quantityMil: 1000,
+                availableStockMil: 5000,
+                productRemoteId: null,
+              ),
+            ],
+            saleType: SaleType.cash,
+            paymentMethod: PaymentMethod.pix,
+          ),
+        ),
+        throwsA(
+          isA<ValidationException>().having(
+            (error) => error.message,
+            'message',
+            contains(
+              'Este produto ainda não foi sincronizado com a nuvem. Sincronize antes de vender.',
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        operationalQueue.events.where(
+          (event) => event.entity == 'stockDeduction',
+        ),
+        isEmpty,
+      );
+      expect(await countRows(database, TableNames.vendas), 0);
+    });
   });
 }
 

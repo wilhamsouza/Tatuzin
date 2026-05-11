@@ -29,6 +29,16 @@ type StockTarget =
       stockMil: number;
     };
 
+type DeductionTargetResolution =
+  | {
+      ok: true;
+      target: StockTarget;
+    }
+  | {
+      ok: false;
+      result: SyncMaterializerResult;
+    };
+
 export class StockMaterializer {
   constructor(private readonly saleMaterializer = new SaleMaterializer()) {}
 
@@ -202,15 +212,16 @@ export class StockMaterializer {
       };
     }
 
-    const invalidRemote = this.invalidStockRemoteIdentity(input);
-    if (invalidRemote != null) {
-      return invalidRemote;
+    const remoteIdentityIssue = this.stockDeductionRemoteIdentityIssue(input);
+    if (remoteIdentityIssue != null) {
+      return remoteIdentityIssue;
     }
 
-    const target = await this.resolveStockTarget(input);
-    if (target == null) {
-      return this.variantNotFound(input);
+    const targetResolution = await this.resolveDeductionStockTarget(input);
+    if (!targetResolution.ok) {
+      return targetResolution.result;
     }
+    const target = targetResolution.target;
 
     if (target.stockMil < quantityMil) {
       return this.stockUnavailable(quantityMil, target.stockMil);
@@ -313,6 +324,91 @@ export class StockMaterializer {
     };
   }
 
+  private async resolveDeductionStockTarget(
+    input: SyncMaterializerInput,
+  ): Promise<DeductionTargetResolution> {
+    const variantId = firstUuid(input.payload, [
+      "productVariantId",
+      "productVariantServerId",
+      "variantId",
+    ]);
+    if (variantId != null) {
+      const variant = await input.tx.productVariant.findFirst({
+        where: {
+          id: variantId,
+          product: {
+            companyId: input.context.company.id,
+            deletedAt: null,
+          },
+        },
+        include: { product: { select: { id: true } } },
+      });
+      if (variant == null) {
+        return { ok: false, result: this.variantNotFound(input) };
+      }
+      return {
+        ok: true,
+        target: {
+          type: "variant",
+          productId: variant.product.id,
+          productVariantId: variant.id,
+          stockMil: variant.stockMil,
+        },
+      };
+    }
+
+    const productId = firstUuid(input.payload, [
+      "productId",
+      "productServerId",
+    ]);
+    if (productId == null) {
+      return {
+        ok: false,
+        result: this.stockDeductionRemoteIdRequired(input),
+      };
+    }
+
+    const product = await input.tx.product.findFirst({
+      where: {
+        id: productId,
+        companyId: input.context.company.id,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        stockMil: true,
+      },
+    });
+    if (product == null) {
+      return { ok: false, result: this.productNotFound(input) };
+    }
+
+    const activeVariantsCount = await input.tx.productVariant.count({
+      where: {
+        productId: product.id,
+        isActive: true,
+      },
+    });
+    if (activeVariantsCount > 0) {
+      return {
+        ok: false,
+        result: this.stockDeductionRemoteIdRequired(input, {
+          reason: "PRODUCT_VARIANT_REMOTE_ID_REQUIRED",
+        }),
+      };
+    }
+
+    return {
+      ok: true,
+      target: {
+        type: "product",
+        productId: product.id,
+        productVariantId: null,
+        stockMil: product.stockMil,
+      },
+    };
+  }
+
   private variantNotFound(
     input: SyncMaterializerInput,
   ): SyncMaterializerResult {
@@ -335,6 +431,90 @@ export class StockMaterializer {
         productVariantLocalId: firstIdentity(input.payload, [
           "productVariantLocalId",
         ]),
+      },
+    };
+  }
+
+  private productNotFound(
+    input: SyncMaterializerInput,
+  ): SyncMaterializerResult {
+    return {
+      outcome: "conflict",
+      code: "STOCK_PRODUCT_NOT_FOUND",
+      message: "Produto remoto nao encontrado para estoque operacional.",
+      payload: {
+        entity: input.event.entity,
+        operation: input.event.operation,
+        entityLocalId: input.event.entityLocalId,
+        productId: firstString(input.payload, ["productId", "productServerId"]),
+        productVariantId: firstString(input.payload, [
+          "productVariantId",
+          "productVariantServerId",
+          "variantId",
+        ]),
+        productLocalId: firstIdentity(input.payload, ["productLocalId"]),
+        productVariantLocalId: firstIdentity(input.payload, [
+          "productVariantLocalId",
+        ]),
+      },
+    };
+  }
+
+  private stockDeductionRemoteIdentityIssue(
+    input: SyncMaterializerInput,
+  ): SyncMaterializerResult | null {
+    const invalid = invalidRemoteIdentity(input.payload, [
+      "productId",
+      "productServerId",
+      "productVariantId",
+      "productVariantServerId",
+      "variantId",
+    ]);
+    if (invalid != null) {
+      return this.stockDeductionRemoteIdRequired(input, {
+        field: invalid.field,
+        value: invalid.value,
+      });
+    }
+
+    const hasProductRemote =
+      firstUuid(input.payload, ["productId", "productServerId"]) != null;
+    const hasVariantRemote =
+      firstUuid(input.payload, [
+        "productVariantId",
+        "productVariantServerId",
+        "variantId",
+      ]) != null;
+    if (!hasProductRemote && !hasVariantRemote) {
+      return this.stockDeductionRemoteIdRequired(input);
+    }
+
+    return null;
+  }
+
+  private stockDeductionRemoteIdRequired(
+    input: SyncMaterializerInput,
+    extra: Record<string, string> = {},
+  ): SyncMaterializerResult {
+    return {
+      outcome: "conflict",
+      code: "STOCK_DEDUCTION_REMOTE_ID_REQUIRED",
+      message: "Produto sem identificacao remota para baixa de estoque.",
+      payload: {
+        entity: input.event.entity,
+        operation: input.event.operation,
+        entityLocalId: input.event.entityLocalId,
+        productId: firstIdentity(input.payload, ["productId", "productServerId"]),
+        productVariantId: firstIdentity(input.payload, [
+          "productVariantId",
+          "productVariantServerId",
+          "variantId",
+        ]),
+        productLocalId: firstIdentity(input.payload, ["productLocalId"]),
+        productVariantLocalId: firstIdentity(input.payload, [
+          "productVariantLocalId",
+        ]),
+        ...extra,
       },
     };
   }

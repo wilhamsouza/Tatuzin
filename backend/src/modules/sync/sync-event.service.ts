@@ -278,6 +278,12 @@ export class SyncEventService {
     ]);
     const countByStatus = (status: SyncEventStatus) =>
       eventCounts.find((item) => item.status === status)?._count._all ?? 0;
+    const pendingCount = countByStatus(SyncEventStatus.PENDING);
+    const acceptedCount = countByStatus(SyncEventStatus.ACCEPTED);
+    const duplicateCount = countByStatus(SyncEventStatus.DUPLICATE);
+    const conflictCount = countByStatus(SyncEventStatus.CONFLICT);
+    const rejectedCount = countByStatus(SyncEventStatus.REJECTED);
+    const failedCount = countByStatus(SyncEventStatus.FAILED);
 
     return {
       ok: true,
@@ -287,10 +293,16 @@ export class SyncEventService {
       currentServerVersion: state.currentVersion.toString(),
       checkpoints,
       openConflictsCount,
-      acceptedCount: countByStatus(SyncEventStatus.ACCEPTED),
-      conflictCount: countByStatus(SyncEventStatus.CONFLICT),
-      rejectedCount: countByStatus(SyncEventStatus.REJECTED),
-      failedCount: countByStatus(SyncEventStatus.FAILED),
+      requiresReviewCount: openConflictsCount,
+      pendingCount,
+      acceptedCount,
+      duplicateCount,
+      conflictCount,
+      rejectedCount,
+      failedCount,
+      errorCount: rejectedCount + failedCount,
+      requiresReview: openConflictsCount > 0,
+      hasError: failedCount > 0,
       lastMaterializedAt:
         lastMaterialized?.materializedAt?.toISOString() ?? null,
       lastIncidents: lastIncidents.map((incident) => ({
