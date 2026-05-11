@@ -28,9 +28,9 @@ class OwnerReportsPage extends ConsumerWidget {
           builder: (data) {
             if (data.items.isEmpty) {
               return const OwnerEmptyState(
-                title: 'Relatórios em preparação',
+                title: 'Relatórios indisponíveis no momento',
                 message:
-                    'Os temas de relatórios aparecerão aqui conforme forem liberados.',
+                    'Este indicador será liberado quando houver dados suficientes.',
                 icon: Icons.insights_rounded,
               );
             }

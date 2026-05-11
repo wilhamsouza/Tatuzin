@@ -141,7 +141,7 @@ class _RecentSalesList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (page.items.isEmpty) {
       return const OwnerEmptyState(
-        title: 'Nenhuma venda no período',
+        title: 'Nenhuma venda encontrada no período',
         message: 'As vendas recentes aparecerão aqui quando houver registros.',
       );
     }

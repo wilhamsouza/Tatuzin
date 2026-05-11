@@ -52,8 +52,19 @@ void main() {
     await tester.pumpWidget(const ProviderScope(child: OwnerWebApp()));
     await tester.pumpAndSettle();
 
+    expect(find.text('Tatuzin'), findsOneWidget);
     expect(find.text('Painel da empresa'), findsOneWidget);
+    expect(
+      find.text('Acesse indicadores, relatórios e informações da sua empresa.'),
+      findsOneWidget,
+    );
     expect(find.text('Entrar'), findsOneWidget);
+    expect(find.text('Painel do dono'), findsNothing);
+    expect(find.textContaining('dono'), findsNothing);
+    expect(
+      find.textContaining(RegExp('owner', caseSensitive: false)),
+      findsNothing,
+    );
   });
 
   testWidgets('menu shows company management navigation', (tester) async {
@@ -95,6 +106,13 @@ void main() {
     }
     expect(find.text('Painel da empresa'), findsOneWidget);
     expect(find.text('Painel do dono'), findsNothing);
+    expect(find.text('Consulta gerencial'), findsOneWidget);
+    expect(find.text('Modo consulta nesta fase'), findsNothing);
+    expect(find.text('Assinatura e cobranças'), findsNothing);
+    expect(
+      find.textContaining(RegExp('owner', caseSensitive: false)),
+      findsNothing,
+    );
   });
 
   test('debug sanitizer does not expose tokens or passwords', () {
@@ -461,11 +479,16 @@ void main() {
     expect(find.text('Dashboard da empresa'), findsOneWidget);
     expect(find.text('Vendas hoje'), findsOneWidget);
     expect(find.text('Faturamento do mês'), findsOneWidget);
+    expect(find.text('Ticket médio'), findsOneWidget);
     expect(find.text('R\$ 250,00'), findsOneWidget);
     expect(find.text('R\$ 4250,00'), findsOneWidget);
     expect(find.text('Contas a receber'), findsOneWidget);
+    expect(find.text('Clientes ativos'), findsOneWidget);
+    expect(find.text('Estoque baixo'), findsOneWidget);
+    expect(find.text('Produtos zerados'), findsOneWidget);
     expect(find.text('Top produtos'), findsOneWidget);
     expect(find.text('Vendas por funcionário'), findsOneWidget);
+    expect(find.text('Alertas da empresa'), findsOneWidget);
     expect(find.textContaining('Sync'), findsNothing);
     expect(find.textContaining('ownerWebPanel'), findsNothing);
   });
@@ -506,7 +529,7 @@ void main() {
     expect(find.text('Sem dados'), findsWidgets);
     expect(
       find.text(
-        'Os relatórios de funcionários serão liberados quando houver vendas vinculadas aos usuários.',
+        'Este indicador será liberado quando houver dados suficientes.',
       ),
       findsOneWidget,
     );
@@ -650,9 +673,12 @@ void main() {
     await tester.pump();
 
     expect(find.text('Desempenho da equipe'), findsOneWidget);
+    expect(find.text('Indicador em preparação'), findsOneWidget);
     expect(
-      find.text('Relatórios de funcionários em preparação'),
-      findsOneWidget,
+      find.text(
+        'Este indicador será liberado quando houver dados suficientes.',
+      ),
+      findsWidgets,
     );
     expect(find.textContaining('inviteTokenHash'), findsNothing);
     expect(find.textContaining('token'), findsNothing);

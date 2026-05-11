@@ -127,7 +127,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'Acesso restrito ao dono ou gestor autorizado da empresa.',
+                        'Acesse indicadores, relatórios e informações da sua empresa.',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,

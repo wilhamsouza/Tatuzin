@@ -43,10 +43,10 @@ class OwnerEmployeesPage extends ConsumerWidget {
                   title: 'Funcionários com vendas',
                   value: data.available
                       ? '${data.topEmployees.length}'
-                      : 'Em preparação',
+                      : 'Sem dados',
                   detail: data.available
                       ? 'Pessoas com vendas vinculadas no período.'
-                      : 'Aguardando vendas vinculadas aos usuários.',
+                      : 'Este indicador será liberado quando houver dados suficientes.',
                   icon: Icons.groups_outlined,
                   isAvailable: data.available,
                 ),
@@ -54,10 +54,10 @@ class OwnerEmployeesPage extends ConsumerWidget {
                   title: 'Vendas por funcionário',
                   value: data.available
                       ? OwnerFormatters.moneyFromCents(totalAmount)
-                      : 'Em preparação',
+                      : 'Sem dados',
                   detail: data.available
                       ? '$totalCount vendas no período.'
-                      : 'Faturamento por pessoa aparecerá aqui.',
+                      : 'Este indicador será liberado quando houver dados suficientes.',
                   icon: Icons.point_of_sale_rounded,
                   isAvailable: data.available,
                 ),
@@ -67,15 +67,16 @@ class OwnerEmployeesPage extends ConsumerWidget {
                       ? OwnerFormatters.moneyFromCents(
                           (totalAmount / totalCount).round(),
                         )
-                      : 'Em preparação',
+                      : 'Sem dados',
                   detail: 'Valor médio por venda em cada atendimento.',
                   icon: Icons.trending_up_rounded,
                   isAvailable: data.available && totalCount > 0,
                 ),
                 const OwnerMetricCard(
                   title: 'Comissões',
-                  value: 'Em preparação',
-                  detail: 'Área prevista para acompanhamento futuro.',
+                  value: 'Sem dados',
+                  detail:
+                      'Este indicador será liberado quando houver dados suficientes.',
                   icon: Icons.payments_outlined,
                 ),
               ],
@@ -102,9 +103,9 @@ class _EmployeeList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!report.available) {
       return const OwnerEmptyState(
-        title: 'Relatórios de funcionários em preparação',
+        title: 'Indicador em preparação',
         message:
-            'Os relatórios de funcionários serão liberados quando houver vendas vinculadas aos usuários.',
+            'Este indicador será liberado quando houver dados suficientes.',
         icon: Icons.insights_rounded,
       );
     }

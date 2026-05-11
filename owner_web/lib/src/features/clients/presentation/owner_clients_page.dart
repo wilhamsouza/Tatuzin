@@ -165,9 +165,9 @@ class _CustomerRanking extends StatelessWidget {
   Widget build(BuildContext context) {
     if (items.isEmpty) {
       return const OwnerEmptyState(
-        title: 'Indicadores de CRM em preparação',
+        title: 'Indicador em preparação',
         message:
-            'Os indicadores de CRM serão liberados quando houver clientes e vendas suficientes.',
+            'Este indicador será liberado quando houver dados suficientes.',
       );
     }
     return Column(
@@ -195,7 +195,7 @@ class _CustomerList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (page.items.isEmpty) {
       return const OwnerEmptyState(
-        title: 'Nenhum cliente encontrado',
+        title: 'Nenhum cliente encontrado.',
         message:
             'Ajuste a busca ou aguarde os dados de clientes sincronizarem.',
         icon: Icons.people_alt_outlined,

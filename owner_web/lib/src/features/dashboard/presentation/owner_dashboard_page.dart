@@ -199,9 +199,9 @@ class _EmployeeRanking extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!employees.available) {
       return const OwnerEmptyState(
-        title: 'Relatórios de funcionários em preparação',
+        title: 'Indicador em preparação',
         message:
-            'Os relatórios de funcionários serão liberados quando houver vendas vinculadas aos usuários.',
+            'Este indicador será liberado quando houver dados suficientes.',
         icon: Icons.badge_outlined,
       );
     }

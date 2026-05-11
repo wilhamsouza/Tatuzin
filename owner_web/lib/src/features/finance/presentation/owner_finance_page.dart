@@ -125,7 +125,7 @@ class _ReceivableList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (page.items.isEmpty) {
       return const OwnerEmptyState(
-        title: 'Nenhuma conta encontrada',
+        title: 'Sem contas em aberto.',
         message: 'As contas a receber aparecerão aqui quando houver fiado.',
         icon: Icons.request_quote_outlined,
       );

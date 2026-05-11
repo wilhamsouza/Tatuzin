@@ -133,7 +133,7 @@ class OwnerShellScaffold extends ConsumerWidget {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Painel da empresa para acompanhar indicadores, relatórios e operação em modo consulta.',
+                              'Consulta gerencial de indicadores, relatórios e operação da empresa.',
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     color: Theme.of(
@@ -220,7 +220,7 @@ class _Sidebar extends StatelessWidget {
               ],
               const Spacer(),
               Text(
-                'Modo consulta nesta fase',
+                'Consulta gerencial',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
