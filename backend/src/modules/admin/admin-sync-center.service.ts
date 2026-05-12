@@ -3,22 +3,22 @@ import {
   SyncConflictStatus,
   SyncEventStatus,
   type SyncEvent,
-} from '@prisma/client';
+} from "@prisma/client";
 
-import { prisma } from '../../database/prisma';
-import { buildAdminListResponse } from '../../shared/http/api-response';
-import { AppError } from '../../shared/http/app-error';
-import { toPaginationParams } from '../../shared/http/pagination';
-import type { AppContext } from '../app/app-context.types';
-import { SyncCheckpointService } from '../sync/sync-checkpoint.service';
+import { prisma } from "../../database/prisma";
+import { buildAdminListResponse } from "../../shared/http/api-response";
+import { AppError } from "../../shared/http/app-error";
+import { toPaginationParams } from "../../shared/http/pagination";
+import type { AppContext } from "../app/app-context.types";
+import { SyncCheckpointService } from "../sync/sync-checkpoint.service";
 import {
   SyncDiagnosticsService,
   type SyncDiagnosticResult,
-} from '../sync/sync-diagnostics.service';
-import { SyncMaterializerService } from '../sync/materializers/sync-materializer.service';
-import { asRecord } from '../sync/materializers/payload-utils';
-import type { SyncPushEventInput } from '../sync/sync.schemas';
-import { SyncVersionService } from '../sync/sync-version.service';
+} from "../sync/sync-diagnostics.service";
+import { SyncMaterializerService } from "../sync/materializers/sync-materializer.service";
+import { asRecord } from "../sync/materializers/payload-utils";
+import type { SyncPushEventInput } from "../sync/sync.schemas";
+import { SyncVersionService } from "../sync/sync-version.service";
 import type {
   AdminSyncCenterArchiveBodyInput,
   AdminSyncCenterCompaniesQueryInput,
@@ -27,7 +27,7 @@ import type {
   AdminSyncCenterEventsQueryInput,
   AdminSyncCenterManualStockAdjustmentBodyInput,
   AdminSyncCenterReprocessBodyInput,
-} from './admin.schemas';
+} from "./admin.schemas";
 
 type AdminActionContext = {
   actorUserId: string;
@@ -39,7 +39,7 @@ type EventWithRelations = Prisma.SyncEventGetPayload<{
   include: {
     conflict: true;
     incidents: {
-      orderBy: { createdAt: 'desc' };
+      orderBy: { createdAt: "desc" };
       take: 5;
     };
     device: {
@@ -67,7 +67,7 @@ type ConflictWithRelations = Prisma.SyncConflictGetPayload<{
     syncEvent: {
       include: {
         incidents: {
-          orderBy: { createdAt: 'desc' };
+          orderBy: { createdAt: "desc" };
           take: 5;
         };
       };
@@ -112,7 +112,7 @@ export class AdminSyncCenterService {
         license: true,
         syncState: true,
       },
-      orderBy: { name: 'asc' },
+      orderBy: { name: "asc" },
     });
     const companyIds = companies.map((company) => company.id);
     const [
@@ -123,27 +123,27 @@ export class AdminSyncCenterService {
       latestIncidentRows,
     ] = await Promise.all([
       prisma.syncEvent.groupBy({
-        by: ['companyId', 'status'],
+        by: ["companyId", "status"],
         where: { companyId: { in: companyIds } },
         _count: { _all: true },
       }),
       prisma.syncConflict.groupBy({
-        by: ['companyId', 'status'],
+        by: ["companyId", "status"],
         where: { companyId: { in: companyIds } },
         _count: { _all: true },
       }),
       prisma.syncIncident.groupBy({
-        by: ['companyId'],
+        by: ["companyId"],
         where: { companyId: { in: companyIds } },
         _count: { _all: true },
       }),
       prisma.syncEvent.groupBy({
-        by: ['companyId'],
+        by: ["companyId"],
         where: { companyId: { in: companyIds } },
         _max: { createdAt: true },
       }),
       prisma.syncIncident.groupBy({
-        by: ['companyId'],
+        by: ["companyId"],
         where: { companyId: { in: companyIds } },
         _max: { createdAt: true },
       }),
@@ -169,9 +169,9 @@ export class AdminSyncCenterService {
         companyName: company.name,
         plan: company.license?.plan ?? null,
         syncStatus,
-        currentVersion: company.syncState?.currentVersion.toString() ?? '0',
+        currentVersion: company.syncState?.currentVersion.toString() ?? "0",
         serverFirstSnapshotVersion:
-          company.syncState?.serverFirstSnapshotVersion.toString() ?? '0',
+          company.syncState?.serverFirstSnapshotVersion.toString() ?? "0",
         acceptedCount: counts.ACCEPTED,
         duplicateCount: counts.DUPLICATE,
         pendingCount: counts.PENDING,
@@ -180,17 +180,16 @@ export class AdminSyncCenterService {
         openConflictCount,
         incidentCount,
         lastEventAt: latestEventAt.get(company.id)?.toISOString() ?? null,
-        lastIncidentAt:
-          latestIncidentAt.get(company.id)?.toISOString() ?? null,
-        requiresReview: syncStatus !== 'healthy',
+        lastIncidentAt: latestIncidentAt.get(company.id)?.toISOString() ?? null,
+        requiresReview: syncStatus !== "healthy",
       };
     });
 
     const filtered = summaries.filter((item) => {
-      if (query.status === 'all') {
+      if (query.status === "all") {
         return true;
       }
-      if (query.status === 'requires_review') {
+      if (query.status === "requires_review") {
         return item.requiresReview;
       }
       return item.syncStatus === query.status;
@@ -206,7 +205,7 @@ export class AdminSyncCenterService {
         search: query.search ?? null,
         status: query.status,
       },
-      sort: { by: 'companyName', direction: 'asc' },
+      sort: { by: "companyName", direction: "asc" },
     });
   }
 
@@ -222,39 +221,39 @@ export class AdminSyncCenterService {
       latestIncidents,
     ] = await Promise.all([
       prisma.syncEvent.groupBy({
-        by: ['status'],
+        by: ["status"],
         where: { companyId },
         _count: { _all: true },
       }),
       prisma.syncEvent.groupBy({
-        by: ['entity', 'operation', 'status'],
+        by: ["entity", "operation", "status"],
         where: { companyId },
         _count: { _all: true },
       }),
       prisma.syncConflict.groupBy({
-        by: ['code', 'entity', 'status'],
+        by: ["code", "entity", "status"],
         where: { companyId },
         _count: { _all: true },
       }),
       prisma.syncIncident.groupBy({
-        by: ['severity', 'code'],
+        by: ["severity", "code"],
         where: { companyId },
         _count: { _all: true },
       }),
       prisma.syncEvent.findMany({
         where: { companyId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: 10,
       }),
       prisma.syncConflict.findMany({
         where: { companyId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: 10,
         include: { syncEvent: true },
       }),
       prisma.syncIncident.findMany({
         where: { companyId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: 10,
       }),
     ]);
@@ -264,7 +263,7 @@ export class AdminSyncCenterService {
       eventCounts[row.status] = row._count._all;
     }
     const openConflictCount = conflictRows
-      .filter((row) => row.status === 'OPEN')
+      .filter((row) => row.status === "OPEN")
       .reduce((total, row) => total + row._count._all, 0);
     const syncStatus = classifyCompanySyncStatus({
       counts: eventCounts,
@@ -282,9 +281,9 @@ export class AdminSyncCenterService {
         plan: company.license?.plan ?? null,
       },
       syncState: {
-        currentVersion: company.syncState?.currentVersion.toString() ?? '0',
+        currentVersion: company.syncState?.currentVersion.toString() ?? "0",
         serverFirstSnapshotVersion:
-          company.syncState?.serverFirstSnapshotVersion.toString() ?? '0',
+          company.syncState?.serverFirstSnapshotVersion.toString() ?? "0",
         updatedAt: company.syncState?.updatedAt.toISOString() ?? null,
       },
       eventStatusCounts: eventCountsToDto(eventCounts),
@@ -319,14 +318,11 @@ export class AdminSyncCenterService {
         createdAt: incident.createdAt.toISOString(),
       })),
       recommendation: this.recommendCompanyAction(syncStatus),
-      requiresReview: syncStatus !== 'healthy',
+      requiresReview: syncStatus !== "healthy",
     };
   }
 
-  async listEvents(
-    companyId: string,
-    query: AdminSyncCenterEventsQueryInput,
-  ) {
+  async listEvents(companyId: string, query: AdminSyncCenterEventsQueryInput) {
     await this.requireCompany(companyId);
     const where: Prisma.SyncEventWhereInput = {
       companyId,
@@ -345,12 +341,21 @@ export class AdminSyncCenterService {
         where,
         skip,
         take,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
+        include: {
+          conflict: {
+            select: {
+              id: true,
+            },
+          },
+        },
       }),
     ]);
 
     return buildAdminListResponse({
-      items: await Promise.all(events.map((event) => this.toEventListItem(event))),
+      items: await Promise.all(
+        events.map((event) => this.toEventListItem(event)),
+      ),
       page: query.page,
       pageSize: query.pageSize,
       total,
@@ -362,20 +367,25 @@ export class AdminSyncCenterService {
         startDate: query.startDate?.toISOString() ?? null,
         endDate: query.endDate?.toISOString() ?? null,
       },
-      sort: { by: 'createdAt', direction: 'desc' },
+      sort: { by: "createdAt", direction: "desc" },
     });
   }
 
   async getEvent(eventId: string, companyId: string) {
     const event = await this.findEvent(eventId, companyId);
     if (event == null) {
-      throw new AppError('Evento de sync nao encontrado.', 404, 'SYNC_EVENT_NOT_FOUND');
+      throw new AppError(
+        "Evento de sync nao encontrado.",
+        404,
+        "SYNC_EVENT_NOT_FOUND",
+      );
     }
 
     const diagnostic = await this.classifyEvent(event);
     return {
       event: {
         ...this.eventBaseDto(event),
+        relatedConflictId: event.conflict?.id ?? null,
         payload: this.diagnostics.sanitizePayload(event.payload),
         safePayloadPreview: this.diagnostics.safePayloadPreview(
           event.entity,
@@ -424,7 +434,7 @@ export class AdminSyncCenterService {
         where,
         skip,
         take,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         include: { syncEvent: true },
       }),
     ]);
@@ -441,7 +451,7 @@ export class AdminSyncCenterService {
         code: query.code ?? null,
         entity: query.entity ?? null,
       },
-      sort: { by: 'createdAt', direction: 'desc' },
+      sort: { by: "createdAt", direction: "desc" },
     });
   }
 
@@ -449,9 +459,9 @@ export class AdminSyncCenterService {
     const conflict = await this.findConflict(conflictId, companyId);
     if (conflict == null) {
       throw new AppError(
-        'Conflito de sync nao encontrado.',
+        "Conflito de sync nao encontrado.",
         404,
-        'SYNC_CONFLICT_NOT_FOUND',
+        "SYNC_CONFLICT_NOT_FOUND",
       );
     }
 
@@ -482,15 +492,17 @@ export class AdminSyncCenterService {
       recommendedAction: diagnostic.recommendedAction,
       canReprocess: diagnostic.canReprocess,
       canArchive: diagnostic.canArchive,
-      canCreateManualStockAdjustment:
-        diagnostic.canCreateManualStockAdjustment,
+      canCreateManualStockAdjustment: diagnostic.canCreateManualStockAdjustment,
       risks: diagnostic.risks,
       blockers: diagnostic.blockers,
       message: diagnostic.message,
     };
   }
 
-  async reprocessDryRun(eventId: string, input: AdminSyncCenterDryRunBodyInput) {
+  async reprocessDryRun(
+    eventId: string,
+    input: AdminSyncCenterDryRunBodyInput,
+  ) {
     const event = await this.requireEvent(eventId, input.companyId);
     const diagnostic = await this.classifyEvent(event);
     return {
@@ -522,7 +534,7 @@ export class AdminSyncCenterService {
         payload: asRecord(event.payload),
       });
 
-      if (materialized.outcome === 'accepted') {
+      if (materialized.outcome === "accepted") {
         const serverVersion = await this.versionService.nextCompanyVersion(
           tx,
           event.companyId,
@@ -550,7 +562,7 @@ export class AdminSyncCenterService {
         });
       }
 
-      if (materialized.outcome === 'duplicate') {
+      if (materialized.outcome === "duplicate") {
         return tx.syncEvent.update({
           where: { id: event.id },
           data: {
@@ -562,7 +574,7 @@ export class AdminSyncCenterService {
         });
       }
 
-      if (materialized.outcome === 'conflict') {
+      if (materialized.outcome === "conflict") {
         const serverVersion = await this.versionService.nextCompanyVersion(
           tx,
           event.companyId,
@@ -622,14 +634,14 @@ export class AdminSyncCenterService {
     await this.recordAudit({
       actorUserId: action.actorUserId,
       companyId: input.companyId,
-      action: 'sync.event.reprocess',
-      targetType: 'SyncEvent',
+      action: "sync.event.reprocess",
+      targetType: "SyncEvent",
       targetId: event.id,
       before,
       after: this.eventAuditSnapshot(result),
       reason: input.reason,
       metadata: {
-        source: 'admin_sync_center',
+        source: "admin_sync_center",
         classification: diagnostic.classification,
         confirmationText: input.confirmationText,
       },
@@ -641,7 +653,7 @@ export class AdminSyncCenterService {
       ok: true,
       event: this.eventBaseDto(result),
       classification: diagnostic.classification,
-      message: 'Evento reprocessado com auditoria.',
+      message: "Evento reprocessado com auditoria.",
     };
   }
 
@@ -657,7 +669,7 @@ export class AdminSyncCenterService {
       blockers: diagnostic.canArchive ? [] : diagnostic.blockers,
       risks: diagnostic.risks,
       message: diagnostic.canArchive
-        ? 'Conflito pode ser arquivado com auditoria. Nenhum dado operacional sera alterado.'
+        ? "Conflito pode ser arquivado com auditoria. Nenhum dado operacional sera alterado."
         : diagnostic.message,
     };
   }
@@ -671,21 +683,24 @@ export class AdminSyncCenterService {
     const diagnostic = await this.classifyConflict(conflict);
     if (!diagnostic.canArchive) {
       throw new AppError(
-        'Conflito bloqueado para arquivamento automatico.',
+        "Conflito bloqueado para arquivamento automatico.",
         409,
-        'SYNC_CONFLICT_ARCHIVE_BLOCKED',
-        { classification: diagnostic.classification, blockers: diagnostic.blockers },
+        "SYNC_CONFLICT_ARCHIVE_BLOCKED",
+        {
+          classification: diagnostic.classification,
+          blockers: diagnostic.blockers,
+        },
       );
     }
 
     const before = this.conflictAuditSnapshot(conflict);
     const resolution = {
-      strategy: 'archived_legacy_event',
+      strategy: "archived_legacy_event",
       reason: input.reason,
       reviewedBy: action.actorUserId,
       reviewedAt: new Date().toISOString(),
       note: input.note ?? null,
-      source: 'admin_sync_center',
+      source: "admin_sync_center",
     };
     const archived = await prisma.syncConflict.update({
       where: { id: conflict.id },
@@ -700,14 +715,14 @@ export class AdminSyncCenterService {
     await this.recordAudit({
       actorUserId: action.actorUserId,
       companyId: input.companyId,
-      action: 'sync.conflict.archive',
-      targetType: 'SyncConflict',
+      action: "sync.conflict.archive",
+      targetType: "SyncConflict",
       targetId: conflict.id,
       before,
       after: this.conflictAuditSnapshot(archived),
       reason: input.reason,
       metadata: {
-        source: 'admin_sync_center',
+        source: "admin_sync_center",
         classification: diagnostic.classification,
         confirmationText: input.confirmationText,
       },
@@ -723,7 +738,8 @@ export class AdminSyncCenterService {
         resolution: archived.resolution,
         resolvedAt: archived.resolvedAt?.toISOString() ?? null,
       },
-      message: 'Conflito arquivado com auditoria. Nenhum dado operacional foi alterado.',
+      message:
+        "Conflito arquivado com auditoria. Nenhum dado operacional foi alterado.",
     };
   }
 
@@ -737,11 +753,11 @@ export class AdminSyncCenterService {
       canCreateManualStockAdjustment: false,
       classification: diagnostic.classification,
       blockers: [
-        'Ajuste manual auditado de estoque ainda nao esta disponivel no Centro de Sincronizacao.',
+        "Ajuste manual auditado de estoque ainda nao esta disponivel no Centro de Sincronizacao.",
       ],
       risks: diagnostic.risks,
       message:
-        'Ajuste manual auditado ainda nao esta disponivel. Use revisao operacional fora desta fase.',
+        "Ajuste manual auditado ainda nao esta disponivel. Use revisao operacional fora desta fase.",
     };
   }
 
@@ -750,16 +766,19 @@ export class AdminSyncCenterService {
     _input: AdminSyncCenterManualStockAdjustmentBodyInput,
   ) {
     throw new AppError(
-      'Ajuste manual auditado de estoque ainda nao esta disponivel.',
+      "Ajuste manual auditado de estoque ainda nao esta disponivel.",
       501,
-      'MANUAL_STOCK_ADJUSTMENT_NOT_IMPLEMENTED',
+      "MANUAL_STOCK_ADJUSTMENT_NOT_IMPLEMENTED",
     );
   }
 
-  private async toEventListItem(event: SyncEvent) {
+  private async toEventListItem(
+    event: SyncEvent & { conflict?: { id: string } | null },
+  ) {
     const diagnostic = await this.classifyEvent(event);
     return {
       ...this.eventBaseDto(event),
+      relatedConflictId: event.conflict?.id ?? null,
       classification: diagnostic.classification,
       recommendedAction: diagnostic.recommendedAction,
       canReprocess: diagnostic.canReprocess,
@@ -847,8 +866,7 @@ export class AdminSyncCenterService {
       recommendedAction: diagnostic.recommendedAction,
       canReprocess: diagnostic.canReprocess,
       canArchive: diagnostic.canArchive,
-      canCreateManualStockAdjustment:
-        diagnostic.canCreateManualStockAdjustment,
+      canCreateManualStockAdjustment: diagnostic.canCreateManualStockAdjustment,
       safePayloadPreview: this.diagnostics.safePayloadPreview(
         conflict.entity,
         conflict.payload,
@@ -889,7 +907,7 @@ export class AdminSyncCenterService {
     return this.diagnostics.classify({
       companyId: conflict.companyId,
       entity: conflict.entity,
-      operation: conflict.syncEvent?.operation ?? 'create',
+      operation: conflict.syncEvent?.operation ?? "create",
       status: conflict.syncEvent?.status ?? null,
       rejectionCode: conflict.syncEvent?.rejectionCode ?? null,
       code: conflict.code,
@@ -907,9 +925,9 @@ export class AdminSyncCenterService {
     });
     if (company == null) {
       throw new AppError(
-        'Empresa nao encontrada.',
+        "Empresa nao encontrada.",
         404,
-        'ADMIN_COMPANY_NOT_FOUND',
+        "ADMIN_COMPANY_NOT_FOUND",
       );
     }
     return company;
@@ -924,7 +942,7 @@ export class AdminSyncCenterService {
       include: {
         conflict: true,
         incidents: {
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: "desc" },
           take: 5,
         },
         device: {
@@ -951,7 +969,11 @@ export class AdminSyncCenterService {
   private async requireEvent(eventId: string, companyId: string) {
     const event = await this.findEvent(eventId, companyId);
     if (event == null) {
-      throw new AppError('Evento de sync nao encontrado.', 404, 'SYNC_EVENT_NOT_FOUND');
+      throw new AppError(
+        "Evento de sync nao encontrado.",
+        404,
+        "SYNC_EVENT_NOT_FOUND",
+      );
     }
     return event;
   }
@@ -966,7 +988,7 @@ export class AdminSyncCenterService {
         syncEvent: {
           include: {
             incidents: {
-              orderBy: { createdAt: 'desc' },
+              orderBy: { createdAt: "desc" },
               take: 5,
             },
           },
@@ -1001,20 +1023,20 @@ export class AdminSyncCenterService {
     const conflict = await this.findConflict(conflictId, companyId);
     if (conflict == null) {
       throw new AppError(
-        'Conflito de sync nao encontrado.',
+        "Conflito de sync nao encontrado.",
         404,
-        'SYNC_CONFLICT_NOT_FOUND',
+        "SYNC_CONFLICT_NOT_FOUND",
       );
     }
     return conflict;
   }
 
   private assertReprocessable(diagnostic: SyncDiagnosticResult) {
-    if (diagnostic.classification !== 'REPROCESSABLE') {
+    if (diagnostic.classification !== "REPROCESSABLE") {
       throw new AppError(
-        'Evento bloqueado para reprocessamento automatico.',
+        "Evento bloqueado para reprocessamento automatico.",
         409,
-        'SYNC_REPROCESS_BLOCKED',
+        "SYNC_REPROCESS_BLOCKED",
         {
           classification: diagnostic.classification,
           blockers: diagnostic.blockers,
@@ -1058,14 +1080,14 @@ export class AdminSyncCenterService {
         setupCompleted: true,
       },
       membership: {
-        id: 'admin-sync-center',
-        role: 'PLATFORM_ADMIN',
+        id: "admin-sync-center",
+        role: "PLATFORM_ADMIN",
         permissions: [],
       },
       license: {
-        id: license?.id ?? 'admin-sync-center-license',
-        plan: license?.plan ?? 'unknown',
-        status: license?.status.toString().toLowerCase() ?? 'unknown',
+        id: license?.id ?? "admin-sync-center-license",
+        plan: license?.plan ?? "unknown",
+        status: license?.status.toString().toLowerCase() ?? "unknown",
         syncEnabled: license?.syncEnabled ?? true,
         maxDevices: license?.maxDevices ?? null,
         expiresAt: license?.expiresAt?.toISOString() ?? null,
@@ -1079,9 +1101,9 @@ export class AdminSyncCenterService {
         appVersion: event.device.appVersion,
         lastSeenAt: null,
       },
-      plan: 'PRO',
-      features: {} as AppContext['features'],
-      limits: {} as AppContext['limits'],
+      plan: "PRO",
+      features: {} as AppContext["features"],
+      limits: {} as AppContext["limits"],
       clientInstanceId: event.device.clientInstanceId,
       tenantReady: true,
     };
@@ -1159,30 +1181,32 @@ export class AdminSyncCenterService {
     };
   }
 
-  private companySearchWhere(search: string | undefined): Prisma.CompanyWhereInput {
+  private companySearchWhere(
+    search: string | undefined,
+  ): Prisma.CompanyWhereInput {
     if (search == null) {
       return {};
     }
     return {
       OR: [
-        { name: { contains: search, mode: 'insensitive' } },
-        { legalName: { contains: search, mode: 'insensitive' } },
-        { slug: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search, mode: "insensitive" } },
+        { legalName: { contains: search, mode: "insensitive" } },
+        { slug: { contains: search, mode: "insensitive" } },
       ],
     };
   }
 
   private recommendCompanyAction(syncStatus: string) {
-    if (syncStatus === 'failed') {
-      return 'Existem falhas de materializacao. Abra os eventos com erro antes de qualquer acao.';
+    if (syncStatus === "failed") {
+      return "Existem falhas de materializacao. Abra os eventos com erro antes de qualquer acao.";
     }
-    if (syncStatus === 'conflict') {
-      return 'Existem conflitos abertos. Classifique e use dry-run antes de arquivar ou reprocessar.';
+    if (syncStatus === "conflict") {
+      return "Existem conflitos abertos. Classifique e use dry-run antes de arquivar ou reprocessar.";
     }
-    if (syncStatus === 'requires_review') {
-      return 'Existem eventos pendentes ou incidentes. Revise a fila operacional.';
+    if (syncStatus === "requires_review") {
+      return "Existem eventos pendentes ou incidentes. Revise a fila operacional.";
     }
-    return 'Nenhuma acao urgente encontrada para sync operacional.';
+    return "Nenhuma acao urgente encontrada para sync operacional.";
   }
 }
 
@@ -1233,7 +1257,7 @@ function openConflictsByCompany(
 ) {
   const map = new Map<string, number>();
   for (const row of rows) {
-    if (row.status === 'OPEN') {
+    if (row.status === "OPEN") {
       map.set(row.companyId, row._count._all);
     }
   }
@@ -1276,15 +1300,15 @@ function classifyCompanySyncStatus(input: {
   incidentCount: number;
 }) {
   if (input.counts.FAILED > 0) {
-    return 'failed';
+    return "failed";
   }
   if (input.openConflictCount > 0 || input.counts.CONFLICT > 0) {
-    return 'conflict';
+    return "conflict";
   }
   if (input.counts.PENDING > 0 || input.incidentCount > 0) {
-    return 'requires_review';
+    return "requires_review";
   }
-  return 'healthy';
+  return "healthy";
 }
 
 function createdAtRange(from: Date | undefined, to: Date | undefined) {

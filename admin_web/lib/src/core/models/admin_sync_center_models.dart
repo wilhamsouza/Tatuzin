@@ -441,6 +441,7 @@ class AdminSyncCenterEvent {
     required this.createdAt,
     required this.updatedAt,
     required this.materializedAt,
+    required this.relatedConflictId,
     required this.classification,
     required this.recommendedAction,
     required this.canReprocess,
@@ -464,6 +465,7 @@ class AdminSyncCenterEvent {
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final DateTime? materializedAt;
+  final String? relatedConflictId;
   final String classification;
   final String recommendedAction;
   final bool canReprocess;
@@ -488,6 +490,7 @@ class AdminSyncCenterEvent {
       createdAt: _readOptionalDateTime(map, 'createdAt'),
       updatedAt: _readOptionalDateTime(map, 'updatedAt'),
       materializedAt: _readOptionalDateTime(map, 'materializedAt'),
+      relatedConflictId: _readOptionalString(map, 'relatedConflictId'),
       classification: _readString(map, 'classification', fallback: 'UNKNOWN'),
       recommendedAction: _readString(
         map,
@@ -788,6 +791,63 @@ String adminSyncCenterActionLabel(String value) {
       return 'Acionar suporte';
     case 'NO_ACTION':
       return 'Sem ação';
+    default:
+      return value;
+  }
+}
+
+String adminSyncCenterEntityLabel(String value) {
+  switch (value) {
+    case 'stockDeduction':
+      return 'Baixa de estoque';
+    case 'cashSession':
+      return 'Sessão de caixa';
+    case 'saleItem':
+      return 'Item da venda';
+    case 'cashMovement':
+      return 'Movimento de caixa';
+    case 'payment':
+      return 'Pagamento';
+    case 'receipt':
+      return 'Recibo';
+    case 'sale':
+      return 'Venda';
+    case 'customer':
+      return 'Cliente';
+    case 'product':
+      return 'Produto';
+    case 'category':
+      return 'Categoria';
+    case 'supplier':
+      return 'Fornecedor';
+    default:
+      return value;
+  }
+}
+
+String adminSyncCenterOperationLabel(String value) {
+  switch (value) {
+    case 'create':
+      return 'Criar';
+    case 'update':
+      return 'Atualizar';
+    case 'delete':
+      return 'Excluir';
+    default:
+      return value;
+  }
+}
+
+String adminSyncCenterFeatureLabel(String value) {
+  switch (value) {
+    case 'pdv':
+      return 'PDV';
+    case 'cash':
+      return 'Caixa';
+    case 'inventory':
+      return 'Estoque';
+    case 'catalog':
+      return 'Catálogo';
     default:
       return value;
   }
