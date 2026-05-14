@@ -41,6 +41,13 @@ describe('app context bootstrap and guards', () => {
     assert.equal((response.data as { code?: string }).code, 'AUTH_REQUIRED');
   });
 
+  it('rejects app snapshot without token', async () => {
+    const response = await requestJson('GET', '/app/snapshot');
+
+    assert.equal(response.status, 401);
+    assert.equal((response.data as { code?: string }).code, 'AUTH_REQUIRED');
+  });
+
   it('rejects bootstrap without clientInstanceId', async () => {
     const fixture = await createFixture();
     const token = signToken({
@@ -97,6 +104,77 @@ describe('app context bootstrap and guards', () => {
     assert.equal(payload.sync.enabled, true);
     assert.equal(payload.sync.pullRequired, false);
     assert.ok(payload.membership.permissions.length > 0);
+  });
+
+  it('returns app snapshot records for the authenticated company only', async () => {
+    const fixture = await createFixture({ deviceStatus: 'ACTIVE' });
+    const otherFixture = await createFixture({ deviceStatus: 'ACTIVE' });
+    const snapshotData = await seedSnapshotData(fixture.companyId, 'main');
+    const otherData = await seedSnapshotData(otherFixture.companyId, 'other');
+
+    const response = await requestJson(
+      'GET',
+      '/app/snapshot?features=categories,products,customers,suppliers',
+      { token: fixture.token },
+    );
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      companyId: string;
+      serverFirstSnapshotVersion: string;
+      features: Record<
+        string,
+        {
+          count: number;
+          items?: Array<Record<string, unknown>>;
+        }
+      >;
+    };
+    assert.equal(payload.companyId, fixture.companyId);
+    assert.notEqual(payload.serverFirstSnapshotVersion, '0');
+
+    assert.equal(payload.features.categories.count, 1);
+    assert.equal(payload.features.products.count, 1);
+    assert.equal(payload.features.customers.count, 1);
+    assert.equal(payload.features.suppliers.count, 1);
+    assert.deepEqual(
+      payload.features.categories.items?.map((item) => item.id),
+      [snapshotData.categoryId],
+    );
+    assert.deepEqual(payload.features.products.items?.map((item) => item.id), [
+      snapshotData.productId,
+    ]);
+    assert.deepEqual(payload.features.customers.items?.map((item) => item.id), [
+      snapshotData.customerId,
+    ]);
+    assert.deepEqual(payload.features.suppliers.items?.map((item) => item.id), [
+      snapshotData.supplierId,
+    ]);
+    assert.ok(
+      !JSON.stringify(payload).includes(otherData.productId),
+      'snapshot must not leak records from another company',
+    );
+    assert.ok(!JSON.stringify(payload).toLowerCase().includes('password'));
+    assert.ok(!JSON.stringify(payload).toLowerCase().includes('token'));
+
+    const product = payload.features.products.items?.[0] as {
+      variants?: Array<{ id: string }>;
+    };
+    assert.equal(product.variants?.[0]?.id, snapshotData.variantId);
+  });
+
+  it('blocks app snapshot when license is expired', async () => {
+    const fixture = await createFixture({
+      deviceStatus: 'ACTIVE',
+      licenseStatus: 'EXPIRED',
+    });
+
+    const response = await requestJson('GET', '/app/snapshot', {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal((response.data as { code?: string }).code, 'LICENSE_EXPIRED');
   });
 
   it('blocks bootstrap for a BLOCKED device', async () => {
@@ -284,6 +362,7 @@ describe('app context bootstrap and guards', () => {
 async function createFixture(options?: {
   role?: 'OWNER' | 'ADMIN' | 'OPERATOR';
   plan?: string;
+  licenseStatus?: 'ACTIVE' | 'TRIAL' | 'EXPIRED' | 'SUSPENDED';
   maxDevices?: number | null;
   syncEnabled?: boolean;
   deviceStatus?: 'PENDING' | 'ACTIVE' | 'BLOCKED' | 'REVOKED';
@@ -315,7 +394,7 @@ async function createFixture(options?: {
     data: {
       companyId: company.id,
       plan: options?.plan ?? 'pro',
-      status: 'ACTIVE',
+      status: options?.licenseStatus ?? 'ACTIVE',
       startsAt: new Date(),
       maxDevices: options?.maxDevices ?? 5,
       syncEnabled: options?.syncEnabled ?? true,
@@ -358,6 +437,77 @@ async function createFixture(options?: {
       email: user.email,
       clientInstanceId,
     }),
+  };
+}
+
+async function seedSnapshotData(companyId: string, suffix: string) {
+  const category = await prisma.category.create({
+    data: {
+      companyId,
+      localUuid: `${runId}-${suffix}-category-local`,
+      name: `Categoria ${suffix}`,
+      description: `Categoria ${suffix}`,
+    },
+  });
+  const customer = await prisma.customer.create({
+    data: {
+      companyId,
+      localUuid: `${runId}-${suffix}-customer-local`,
+      name: `Cliente ${suffix}`,
+      phone: '11999990000',
+      address: 'Rua Teste',
+      notes: 'Cliente de teste',
+    },
+  });
+  const supplier = await prisma.supplier.create({
+    data: {
+      companyId,
+      localUuid: `${runId}-${suffix}-supplier-local`,
+      name: `Fornecedor ${suffix}`,
+      tradeName: `Forn ${suffix}`,
+      phone: '11888880000',
+      email: `${suffix}@supplier.test`,
+      address: 'Rua Fornecedor',
+      document: `${suffix}-doc`,
+      contactPerson: 'Contato',
+      notes: 'Fornecedor de teste',
+    },
+  });
+  const product = await prisma.product.create({
+    data: {
+      companyId,
+      localUuid: `${runId}-${suffix}-product-local`,
+      categoryId: category.id,
+      name: `Produto ${suffix}`,
+      description: 'Produto de teste',
+      productType: 'unidade',
+      niche: 'alimentacao',
+      catalogType: 'simple',
+      unitMeasure: 'un',
+      costPriceCents: 500,
+      manualCostCents: 500,
+      costSource: 'manual',
+      salePriceCents: 1200,
+      stockMil: 10000,
+      variants: {
+        create: {
+          sku: `${suffix.toUpperCase()}-SKU`,
+          colorLabel: 'Unica',
+          sizeLabel: 'P',
+          stockMil: 3000,
+          sortOrder: 0,
+        },
+      },
+    },
+    include: { variants: true },
+  });
+
+  return {
+    categoryId: category.id,
+    customerId: customer.id,
+    supplierId: supplier.id,
+    productId: product.id,
+    variantId: product.variants[0]!.id,
   };
 }
 

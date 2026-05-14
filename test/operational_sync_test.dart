@@ -1,5 +1,6 @@
 import 'package:erp_pdv_app/app/core/database/app_database.dart';
 import 'package:erp_pdv_app/app/core/database/table_names.dart';
+import 'package:erp_pdv_app/app/core/sync/app_snapshot_hydrator.dart';
 import 'package:erp_pdv_app/app/core/sync/app_snapshot_remote_datasource.dart';
 import 'package:erp_pdv_app/app/core/sync/operational_sync_event.dart';
 import 'package:erp_pdv_app/app/core/sync/operational_sync_policy.dart';
@@ -10,7 +11,13 @@ import 'package:erp_pdv_app/app/core/sync/operational_sync_queue_status.dart';
 import 'package:erp_pdv_app/app/core/sync/operational_sync_remote_datasource.dart';
 import 'package:erp_pdv_app/app/core/sync/operational_sync_runner.dart';
 import 'package:erp_pdv_app/app/core/sync/sqlite_operational_sync_queue_repository.dart';
+import 'package:erp_pdv_app/app/core/sync/sync_feature_keys.dart';
 import 'package:erp_pdv_app/app/core/sync/sync_queue_feature_summary.dart';
+import 'package:erp_pdv_app/modules/categorias/data/sqlite_category_repository.dart';
+import 'package:erp_pdv_app/modules/clientes/data/sqlite_client_repository.dart';
+import 'package:erp_pdv_app/modules/dashboard/data/sqlite_operational_dashboard_repository.dart';
+import 'package:erp_pdv_app/modules/fornecedores/data/sqlite_supplier_repository.dart';
+import 'package:erp_pdv_app/modules/produtos/data/sqlite_product_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -443,6 +450,228 @@ void main() {
       expect(queue.snapshotVersion, '42');
       expect(queue.cacheRefreshSignals, 1);
     });
+
+    test(
+      'app limpo hidrata catalogo via snapshot antes de aplicar pull operacional',
+      () async {
+        final appDatabase = _newIsolatedDatabase('initial-hydration');
+        addTearDown(() => _disposeIsolatedDatabase(appDatabase));
+        final db = await appDatabase.database;
+        final queue = SqliteOperationalSyncQueueRepository(appDatabase);
+        final categoryRepository = SqliteCategoryRepository(appDatabase);
+        final productRepository = SqliteProductRepository(
+          appDatabase,
+          categoryRepository: categoryRepository,
+        );
+        final soldAt = DateTime.now().toIso8601String();
+        final runner = OperationalSyncRunner(
+          queueRepository: queue,
+          remoteDataSource: _FakeOperationalSyncRemoteDataSource(
+            pullResponse: OperationalSyncPullResponse(
+              currentServerVersion: '2',
+              nextSinceVersion: '2',
+              hasMore: false,
+              usesProjectionContract: true,
+              events: <OperationalSyncPulledEvent>[
+                _pulledChange(
+                  entity: 'sale',
+                  eventId: 'sale-device-a',
+                  serverVersion: '1',
+                  projection: <String, dynamic>{
+                    'companyId': 'company-1',
+                    'entityServerId': 'sale-server-1',
+                    'id': 'sale-server-1',
+                    'localUuid': 'sale-local-a',
+                    'status': 'active',
+                    'total': <String, dynamic>{
+                      'totalAmountCents': 2400,
+                      'totalCostCents': 900,
+                    },
+                    'receiptNumber': 'R-001',
+                    'soldAt': soldAt,
+                    'createdAt': soldAt,
+                  },
+                ),
+                _pulledChange(
+                  entity: 'saleItem',
+                  eventId: 'sale-item-device-a',
+                  serverVersion: '2',
+                  projection: <String, dynamic>{
+                    'companyId': 'company-1',
+                    'entityServerId': 'sale-item-server-1',
+                    'id': 'sale-item-server-1',
+                    'saleId': 'sale-server-1',
+                    'productId': 'product-server-1',
+                    'description': 'Cafe coado',
+                    'quantityMil': 1000,
+                    'totals': <String, dynamic>{
+                      'unitPriceCents': 2400,
+                      'totalPriceCents': 2400,
+                      'totalCostCents': 900,
+                    },
+                  },
+                ),
+              ],
+            ),
+          ),
+          projectionApplier: SqliteOperationalSyncProjectionApplier(
+            appDatabase: appDatabase,
+            companyRemoteId: 'company-1',
+          ),
+          snapshotHydrator: SqliteAppSnapshotHydrator(
+            categoryRepository: categoryRepository,
+            supplierRepository: SqliteSupplierRepository(appDatabase),
+            clientRepository: SqliteClientRepository(appDatabase),
+            productRepository: productRepository,
+          ),
+          snapshotRemoteDataSource: _FakeAppSnapshotRemoteDataSource(
+            version: '42',
+            features: <String, AppSnapshotFeature>{
+              SyncFeatureKeys.categories: AppSnapshotFeature(
+                feature: SyncFeatureKeys.categories,
+                mode: 'server_first_cache',
+                count: 1,
+                items: <Map<String, dynamic>>[
+                  _categorySnapshotItem(
+                    id: 'category-server-1',
+                    name: 'Bebidas',
+                  ),
+                ],
+              ),
+              SyncFeatureKeys.products: AppSnapshotFeature(
+                feature: SyncFeatureKeys.products,
+                mode: 'server_first_cache',
+                count: 1,
+                items: <Map<String, dynamic>>[
+                  _productSnapshotItem(
+                    id: 'product-server-1',
+                    categoryId: 'category-server-1',
+                  ),
+                ],
+              ),
+            },
+          ),
+          shouldContinue: () => true,
+          onCacheSnapshotChanged: () {},
+        );
+
+        final result = await runner.run(retryOnly: false);
+
+        final products = await db.query(TableNames.produtos);
+        final productSync = await db.query(
+          TableNames.syncRegistros,
+          where: 'feature_key = ? AND remote_id = ?',
+          whereArgs: const <Object?>[
+            SyncFeatureKeys.products,
+            'product-server-1',
+          ],
+        );
+        final sales = await db.query(TableNames.vendas);
+        final saleItems = await db.query(TableNames.itensVenda);
+        final dashboard = await SqliteOperationalDashboardRepository(
+          appDatabase,
+        ).fetchSnapshot();
+
+        expect(result.snapshotFailed, isFalse);
+        expect(result.pullFailed, isFalse);
+        expect(products, hasLength(1));
+        expect(productSync, hasLength(1));
+        expect(sales, hasLength(1));
+        expect(saleItems, hasLength(1));
+        expect(dashboard.soldTodayCents, 2400);
+      },
+    );
+
+    test(
+      'hidratacao de snapshot repetida preserva identidades e variantes',
+      () async {
+        final appDatabase = _newIsolatedDatabase('snapshot-idempotent');
+        addTearDown(() => _disposeIsolatedDatabase(appDatabase));
+        final db = await appDatabase.database;
+        final categoryRepository = SqliteCategoryRepository(appDatabase);
+        final productRepository = SqliteProductRepository(
+          appDatabase,
+          categoryRepository: categoryRepository,
+        );
+        final hydrator = SqliteAppSnapshotHydrator(
+          categoryRepository: categoryRepository,
+          supplierRepository: SqliteSupplierRepository(appDatabase),
+          clientRepository: SqliteClientRepository(appDatabase),
+          productRepository: productRepository,
+        );
+        final snapshot = AppSnapshotResponse(
+          companyId: 'company-1',
+          serverFirstSnapshotVersion: '42',
+          features: <String, AppSnapshotFeature>{
+            SyncFeatureKeys.categories: AppSnapshotFeature(
+              feature: SyncFeatureKeys.categories,
+              mode: 'server_first_cache',
+              count: 1,
+              items: <Map<String, dynamic>>[
+                _categorySnapshotItem(id: 'category-server-1', name: 'Bebidas'),
+              ],
+            ),
+            SyncFeatureKeys.suppliers: AppSnapshotFeature(
+              feature: SyncFeatureKeys.suppliers,
+              mode: 'server_first_cache',
+              count: 1,
+              items: <Map<String, dynamic>>[
+                _supplierSnapshotItem(id: 'supplier-server-1'),
+              ],
+            ),
+            SyncFeatureKeys.customers: AppSnapshotFeature(
+              feature: SyncFeatureKeys.customers,
+              mode: 'server_first_cache',
+              count: 1,
+              items: <Map<String, dynamic>>[
+                _customerSnapshotItem(id: 'customer-server-1'),
+              ],
+            ),
+            SyncFeatureKeys.products: AppSnapshotFeature(
+              feature: SyncFeatureKeys.products,
+              mode: 'server_first_cache',
+              count: 1,
+              items: <Map<String, dynamic>>[
+                _productSnapshotItem(
+                  id: 'product-server-1',
+                  categoryId: 'category-server-1',
+                  variants: <Map<String, dynamic>>[
+                    _productVariantSnapshotItem(id: 'variant-server-1'),
+                  ],
+                ),
+              ],
+            ),
+          },
+        );
+
+        await hydrator.hydrate(snapshot);
+        await hydrator.hydrate(snapshot);
+
+        final categories = await db.query(TableNames.categorias);
+        final suppliers = await db.query(TableNames.fornecedores);
+        final customers = await db.query(TableNames.clientes);
+        final products = await db.query(TableNames.produtos);
+        final variants = await db.query(TableNames.produtoVariantes);
+        final productSync = await db.query(
+          TableNames.syncRegistros,
+          where: 'feature_key = ? AND remote_id = ?',
+          whereArgs: const <Object?>[
+            SyncFeatureKeys.products,
+            'product-server-1',
+          ],
+        );
+
+        expect(categories, hasLength(1));
+        expect(suppliers, hasLength(1));
+        expect(customers, hasLength(1));
+        expect(products, hasLength(1));
+        expect(products.single['estoque_mil'], 12000);
+        expect(productSync, hasLength(1));
+        expect(variants, hasLength(1));
+        expect(variants.single['remote_id'], 'variant-server-1');
+        expect(variants.single['estoque_mil'], 12000);
+      },
+    );
 
     test(
       'pull prefere changes com projection e avanca checkpoint apos aplicar',
@@ -1065,6 +1294,116 @@ OperationalSyncPulledEvent _pulledChange({
   );
 }
 
+Map<String, dynamic> _categorySnapshotItem({
+  required String id,
+  required String name,
+}) {
+  const now = '2026-05-05T08:00:00.000Z';
+  return <String, dynamic>{
+    'id': id,
+    'companyId': 'company-1',
+    'localUuid': id,
+    'name': name,
+    'description': null,
+    'isActive': true,
+    'deletedAt': null,
+    'createdAt': now,
+    'updatedAt': now,
+  };
+}
+
+Map<String, dynamic> _productSnapshotItem({
+  required String id,
+  required String categoryId,
+  List<Map<String, dynamic>> variants = const <Map<String, dynamic>>[],
+}) {
+  const now = '2026-05-05T08:00:00.000Z';
+  return <String, dynamic>{
+    'id': id,
+    'companyId': 'company-1',
+    'localUuid': id,
+    'categoryId': categoryId,
+    'name': 'Cafe coado',
+    'description': null,
+    'barcode': null,
+    'productType': 'unidade',
+    'niche': 'alimentacao',
+    'catalogType': 'simple',
+    'modelName': null,
+    'variantLabel': null,
+    'unitMeasure': 'un',
+    'costPriceCents': 900,
+    'manualCostCents': 900,
+    'costSource': 'manual',
+    'variableCostSnapshotCents': null,
+    'estimatedGrossMarginCents': null,
+    'estimatedGrossMarginPercentBasisPoints': null,
+    'lastCostUpdatedAt': null,
+    'salePriceCents': 2400,
+    'stockMil': 12000,
+    'variants': variants,
+    'modifierGroups': const <Map<String, dynamic>>[],
+    'isActive': true,
+    'deletedAt': null,
+    'createdAt': now,
+    'updatedAt': now,
+  };
+}
+
+Map<String, dynamic> _productVariantSnapshotItem({required String id}) {
+  const now = '2026-05-05T08:00:00.000Z';
+  return <String, dynamic>{
+    'id': id,
+    'sku': 'CAFE-001',
+    'colorLabel': 'Unica',
+    'sizeLabel': 'P',
+    'priceAdditionalCents': 0,
+    'stockMil': 12000,
+    'sortOrder': 0,
+    'isActive': true,
+    'createdAt': now,
+    'updatedAt': now,
+  };
+}
+
+Map<String, dynamic> _supplierSnapshotItem({required String id}) {
+  const now = '2026-05-05T08:00:00.000Z';
+  return <String, dynamic>{
+    'id': id,
+    'companyId': 'company-1',
+    'localUuid': id,
+    'name': 'Fornecedor Cafe',
+    'tradeName': null,
+    'phone': null,
+    'email': null,
+    'address': null,
+    'document': null,
+    'contactPerson': null,
+    'notes': null,
+    'isActive': true,
+    'deletedAt': null,
+    'createdAt': now,
+    'updatedAt': now,
+  };
+}
+
+Map<String, dynamic> _customerSnapshotItem({required String id}) {
+  const now = '2026-05-05T08:00:00.000Z';
+  return <String, dynamic>{
+    'id': id,
+    'companyId': 'company-1',
+    'localUuid': id,
+    'name': 'Cliente Cafe',
+    'phone': null,
+    'address': null,
+    'notes': null,
+    'isActive': true,
+    'deletedAt': null,
+    'createdAt': now,
+    'updatedAt': now,
+  };
+}
+
 class _MemoryOperationalSyncQueueRepository
     implements OperationalSyncQueueRepository {
   _MemoryOperationalSyncQueueRepository({
@@ -1341,10 +1680,12 @@ class _FakeOperationalSyncRemoteDataSource
 class _FakeAppSnapshotRemoteDataSource implements AppSnapshotRemoteDataSource {
   const _FakeAppSnapshotRemoteDataSource({
     required this.version,
+    this.features = const <String, AppSnapshotFeature>{},
     this.fail = false,
   });
 
   final String version;
+  final Map<String, AppSnapshotFeature> features;
   final bool fail;
 
   @override
@@ -1357,7 +1698,7 @@ class _FakeAppSnapshotRemoteDataSource implements AppSnapshotRemoteDataSource {
     return AppSnapshotResponse(
       companyId: 'company-1',
       serverFirstSnapshotVersion: version,
-      features: const <String, AppSnapshotFeature>{},
+      features: this.features,
     );
   }
 }

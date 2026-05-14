@@ -52,35 +52,149 @@ export class AppSnapshotService {
   ) {
     switch (feature) {
       case 'products':
-        return this.aggregateModel(feature, () =>
-          prisma.product.aggregate({
+        return this.buildModelSnapshot(feature, () =>
+          prisma.product.findMany({
             where: { companyId: context.company.id },
-            _max: { updatedAt: true },
-            _count: { _all: true },
+            include: {
+              variants: {
+                orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+              },
+              modifierGroups: {
+                orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+                include: {
+                  options: {
+                    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+                  },
+                },
+              },
+            },
+            orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+          }),
+          (product) => ({
+            id: product.id,
+            companyId: product.companyId,
+            localUuid: product.localUuid,
+            categoryId: product.categoryId,
+            name: product.name,
+            description: product.description,
+            barcode: product.barcode,
+            productType: product.productType,
+            niche: product.niche,
+            catalogType: product.catalogType,
+            modelName: product.modelName,
+            variantLabel: product.variantLabel,
+            unitMeasure: product.unitMeasure,
+            costPriceCents: product.costPriceCents,
+            manualCostCents: product.manualCostCents,
+            costSource: product.costSource,
+            variableCostSnapshotCents: product.variableCostSnapshotCents,
+            estimatedGrossMarginCents: product.estimatedGrossMarginCents,
+            estimatedGrossMarginPercentBasisPoints:
+              product.estimatedGrossMarginPercentBasisPoints,
+            lastCostUpdatedAt:
+              product.lastCostUpdatedAt?.toISOString() ?? null,
+            salePriceCents: product.salePriceCents,
+            stockMil: product.stockMil,
+            isActive: product.isActive,
+            deletedAt: product.deletedAt?.toISOString() ?? null,
+            createdAt: product.createdAt.toISOString(),
+            updatedAt: product.updatedAt.toISOString(),
+            variants: product.variants.map((variant) => ({
+              id: variant.id,
+              sku: variant.sku,
+              colorLabel: variant.colorLabel,
+              sizeLabel: variant.sizeLabel,
+              priceAdditionalCents: variant.priceAdditionalCents,
+              stockMil: variant.stockMil,
+              sortOrder: variant.sortOrder,
+              isActive: variant.isActive,
+              createdAt: variant.createdAt.toISOString(),
+              updatedAt: variant.updatedAt.toISOString(),
+            })),
+            modifierGroups: product.modifierGroups.map((group) => ({
+              id: group.id,
+              name: group.name,
+              isRequired: group.isRequired,
+              minSelections: group.minSelections,
+              maxSelections: group.maxSelections,
+              sortOrder: group.sortOrder,
+              isActive: group.isActive,
+              createdAt: group.createdAt.toISOString(),
+              updatedAt: group.updatedAt.toISOString(),
+              options: group.options.map((option) => ({
+                id: option.id,
+                name: option.name,
+                adjustmentType: option.adjustmentType,
+                priceDeltaCents: option.priceDeltaCents,
+                linkedProductId: option.linkedProductId,
+                sortOrder: option.sortOrder,
+                isActive: option.isActive,
+                createdAt: option.createdAt.toISOString(),
+                updatedAt: option.updatedAt.toISOString(),
+              })),
+            })),
           }),
         );
       case 'categories':
-        return this.aggregateModel(feature, () =>
-          prisma.category.aggregate({
+        return this.buildModelSnapshot(feature, () =>
+          prisma.category.findMany({
             where: { companyId: context.company.id },
-            _max: { updatedAt: true },
-            _count: { _all: true },
+            orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+          }),
+          (category) => ({
+            id: category.id,
+            companyId: category.companyId,
+            localUuid: category.localUuid,
+            name: category.name,
+            description: category.description,
+            isActive: category.isActive,
+            deletedAt: category.deletedAt?.toISOString() ?? null,
+            createdAt: category.createdAt.toISOString(),
+            updatedAt: category.updatedAt.toISOString(),
           }),
         );
       case 'suppliers':
-        return this.aggregateModel(feature, () =>
-          prisma.supplier.aggregate({
+        return this.buildModelSnapshot(feature, () =>
+          prisma.supplier.findMany({
             where: { companyId: context.company.id },
-            _max: { updatedAt: true },
-            _count: { _all: true },
+            orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+          }),
+          (supplier) => ({
+            id: supplier.id,
+            companyId: supplier.companyId,
+            localUuid: supplier.localUuid,
+            name: supplier.name,
+            tradeName: supplier.tradeName,
+            phone: supplier.phone,
+            email: supplier.email,
+            address: supplier.address,
+            document: supplier.document,
+            contactPerson: supplier.contactPerson,
+            notes: supplier.notes,
+            isActive: supplier.isActive,
+            deletedAt: supplier.deletedAt?.toISOString() ?? null,
+            createdAt: supplier.createdAt.toISOString(),
+            updatedAt: supplier.updatedAt.toISOString(),
           }),
         );
       case 'customers':
-        return this.aggregateModel(feature, () =>
-          prisma.customer.aggregate({
+        return this.buildModelSnapshot(feature, () =>
+          prisma.customer.findMany({
             where: { companyId: context.company.id },
-            _max: { updatedAt: true },
-            _count: { _all: true },
+            orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+          }),
+          (customer) => ({
+            id: customer.id,
+            companyId: customer.companyId,
+            localUuid: customer.localUuid,
+            name: customer.name,
+            phone: customer.phone,
+            address: customer.address,
+            notes: customer.notes,
+            isActive: customer.isActive,
+            deletedAt: customer.deletedAt?.toISOString() ?? null,
+            createdAt: customer.createdAt.toISOString(),
+            updatedAt: customer.updatedAt.toISOString(),
           }),
         );
       case 'fiado':
@@ -140,6 +254,29 @@ export class AppSnapshotService {
       mode: 'server_first_cache',
       updatedAt: result._max.updatedAt?.toISOString() ?? null,
       count: result._count._all,
+    };
+  }
+
+  private async buildModelSnapshot<T extends { updatedAt: Date }>(
+    feature: string,
+    load: () => Promise<T[]>,
+    mapItem: (item: T) => Record<string, unknown>,
+  ) {
+    const items = await load();
+    const updatedAt = items.reduce<Date | null>(
+      (latest, item) =>
+        latest == null || item.updatedAt.getTime() > latest.getTime()
+          ? item.updatedAt
+          : latest,
+      null,
+    );
+
+    return {
+      feature,
+      mode: 'server_first_cache',
+      updatedAt: updatedAt?.toISOString() ?? null,
+      count: items.length,
+      items: items.map(mapItem),
     };
   }
 }

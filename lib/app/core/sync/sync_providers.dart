@@ -7,6 +7,7 @@ import '../providers/app_data_refresh_provider.dart';
 import '../session/session_provider.dart';
 import '../../../modules/categorias/presentation/providers/category_providers.dart';
 import '../../../modules/caixa/presentation/providers/cash_providers.dart';
+import '../../../modules/clientes/presentation/providers/client_providers.dart';
 import '../../../modules/compras/presentation/providers/purchase_providers.dart';
 import '../../../modules/fiado/presentation/providers/fiado_providers.dart';
 import '../../../modules/fornecedores/presentation/providers/supplier_providers.dart';
@@ -17,6 +18,7 @@ import '../database/app_database.dart';
 import '../network/network_providers.dart';
 import '../session/auth_token_storage.dart';
 import '../utils/app_logger.dart';
+import 'app_snapshot_hydrator.dart';
 import 'app_snapshot_remote_datasource.dart';
 import 'financial_event_sync_processor.dart';
 import 'financial_events_remote_datasource.dart';
@@ -73,6 +75,15 @@ final appSnapshotRemoteDataSourceProvider =
         tokenStorage: ref.watch(authTokenStorageProvider),
       );
     });
+
+final appSnapshotHydratorProvider = Provider<AppSnapshotHydrator>((ref) {
+  return SqliteAppSnapshotHydrator(
+    categoryRepository: ref.watch(localCategoryRepositoryProvider),
+    supplierRepository: ref.watch(localSupplierRepositoryProvider),
+    clientRepository: ref.watch(localClientRepositoryProvider),
+    productRepository: ref.watch(localProductRepositoryProvider),
+  );
+});
 
 final syncRetryPolicyProvider = Provider<SyncRetryPolicy>((ref) {
   return const SyncRetryPolicy();
@@ -151,6 +162,7 @@ final operationalSyncRunnerProvider = Provider<OperationalSyncRunner>((ref) {
     queueRepository: ref.watch(operationalSyncQueueRepositoryProvider),
     remoteDataSource: ref.watch(operationalSyncRemoteDataSourceProvider),
     projectionApplier: ref.watch(operationalSyncProjectionApplierProvider),
+    snapshotHydrator: ref.watch(appSnapshotHydratorProvider),
     snapshotRemoteDataSource: ref.watch(appSnapshotRemoteDataSourceProvider),
     shouldContinue: () {
       return !isDisposed &&

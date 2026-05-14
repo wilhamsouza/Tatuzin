@@ -41,12 +41,14 @@ class AppSnapshotFeature {
     required this.feature,
     required this.mode,
     required this.count,
+    this.items = const <Map<String, dynamic>>[],
     this.updatedAt,
   });
 
   final String feature;
   final String mode;
   final int count;
+  final List<Map<String, dynamic>> items;
   final DateTime? updatedAt;
 
   factory AppSnapshotFeature.fromJson(Map<String, dynamic> json) {
@@ -54,6 +56,7 @@ class AppSnapshotFeature {
       feature: _stringValue(json['feature']) ?? '',
       mode: _stringValue(json['mode']) ?? 'server_first_cache',
       count: _intValue(json['count']) ?? 0,
+      items: _itemsValue(json['items']),
       updatedAt: DateTime.tryParse(_stringValue(json['updatedAt']) ?? ''),
     );
   }
@@ -83,4 +86,14 @@ int? _intValue(Object? value) {
     return int.tryParse(value);
   }
   return null;
+}
+
+List<Map<String, dynamic>> _itemsValue(Object? value) {
+  if (value is! List) {
+    return const <Map<String, dynamic>>[];
+  }
+  return value
+      .whereType<Map>()
+      .map((item) => Map<String, dynamic>.from(item))
+      .toList(growable: false);
 }

@@ -1,4 +1,5 @@
 import '../utils/app_logger.dart';
+import 'app_snapshot_hydrator.dart';
 import 'app_snapshot_remote_datasource.dart';
 import 'operational_sync_policy.dart';
 import 'operational_sync_projection_applier.dart';
@@ -13,12 +14,14 @@ class OperationalSyncRunner {
     required OperationalSyncRemoteDataSource remoteDataSource,
     OperationalSyncProjectionApplier projectionApplier =
         const NoopOperationalSyncProjectionApplier(),
+    AppSnapshotHydrator snapshotHydrator = const NoopAppSnapshotHydrator(),
     required AppSnapshotRemoteDataSource snapshotRemoteDataSource,
     required bool Function() shouldContinue,
     required void Function() onCacheSnapshotChanged,
   }) : _queueRepository = queueRepository,
        _remoteDataSource = remoteDataSource,
        _projectionApplier = projectionApplier,
+       _snapshotHydrator = snapshotHydrator,
        _snapshotRemoteDataSource = snapshotRemoteDataSource,
        _shouldContinue = shouldContinue,
        _onCacheSnapshotChanged = onCacheSnapshotChanged;
@@ -42,6 +45,7 @@ class OperationalSyncRunner {
   final OperationalSyncQueueRepository _queueRepository;
   final OperationalSyncRemoteDataSource _remoteDataSource;
   final OperationalSyncProjectionApplier _projectionApplier;
+  final AppSnapshotHydrator _snapshotHydrator;
   final AppSnapshotRemoteDataSource _snapshotRemoteDataSource;
   final bool Function() _shouldContinue;
   final void Function() _onCacheSnapshotChanged;
@@ -169,6 +173,48 @@ class OperationalSyncRunner {
     String? lastSnapshotError;
 
     try {
+      final previousSnapshotVersion = await _queueRepository
+          .readSnapshotVersion();
+      final snapshot = await _snapshotRemoteDataSource.fetchSnapshot(
+        features: _serverFirstSnapshotFeatures,
+      );
+      final hydration = await _snapshotHydrator.hydrate(snapshot);
+      await _queueRepository.recordSnapshotSucceeded(
+        serverFirstSnapshotVersion: snapshot.serverFirstSnapshotVersion,
+        completedAt: DateTime.now(),
+      );
+      final snapshotVersionChanged =
+          snapshot.serverFirstSnapshotVersion != previousSnapshotVersion &&
+          snapshot.serverFirstSnapshotVersion != '0';
+      if (snapshotVersionChanged || hydration.appliedRecords > 0) {
+        _onCacheSnapshotChanged();
+        AppLogger.info(
+          '[OperationalSync] server_first_snapshot_applied '
+          'version=${snapshot.serverFirstSnapshotVersion} '
+          'records=${hydration.appliedRecords}',
+        );
+      }
+    } catch (error, stackTrace) {
+      snapshotFailed = true;
+      lastSnapshotError = error.toString();
+      await _queueRepository.recordSnapshotFailed(
+        message: lastSnapshotError,
+        failedAt: DateTime.now(),
+      );
+      AppLogger.error(
+        '[OperationalSync] snapshot_failed_before_pull',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return _RefreshOutcome(
+        pullFailed: pullFailed,
+        snapshotFailed: snapshotFailed,
+        lastPullError: lastPullError,
+        lastSnapshotError: lastSnapshotError,
+      );
+    }
+
+    try {
       final checkpoint = await _queueRepository.readCheckpoint();
       final pullOutcome = await _pullOperationalPages(checkpoint);
       final status = await _remoteDataSource.getStatus();
@@ -197,37 +243,6 @@ class OperationalSyncRunner {
         snapshotFailed: snapshotFailed,
         lastPullError: lastPullError,
         lastSnapshotError: lastSnapshotError,
-      );
-    }
-
-    try {
-      final previousSnapshotVersion = await _queueRepository
-          .readSnapshotVersion();
-      final snapshot = await _snapshotRemoteDataSource.fetchSnapshot(
-        features: _serverFirstSnapshotFeatures,
-      );
-      await _queueRepository.recordSnapshotSucceeded(
-        serverFirstSnapshotVersion: snapshot.serverFirstSnapshotVersion,
-        completedAt: DateTime.now(),
-      );
-      if (snapshot.serverFirstSnapshotVersion != previousSnapshotVersion) {
-        _onCacheSnapshotChanged();
-        AppLogger.info(
-          '[OperationalSync] server_first_snapshot_changed '
-          'version=${snapshot.serverFirstSnapshotVersion}',
-        );
-      }
-    } catch (error, stackTrace) {
-      snapshotFailed = true;
-      lastSnapshotError = error.toString();
-      await _queueRepository.recordSnapshotFailed(
-        message: lastSnapshotError,
-        failedAt: DateTime.now(),
-      );
-      AppLogger.error(
-        '[OperationalSync] snapshot_failed_after_push',
-        error: error,
-        stackTrace: stackTrace,
       );
     }
 
