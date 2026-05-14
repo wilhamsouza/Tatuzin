@@ -492,6 +492,83 @@ void main() {
       );
       expect(await countRows(database, TableNames.vendas), 0);
     });
+
+    test(
+      'venda com desconto grava total liquido no pagamento e no sync operacional',
+      () async {
+        database = await openSaleInventoryTestDatabase();
+        final operationalQueue = _RecordingOperationalSyncQueueRepository();
+        final repository = SqliteSaleRepository.forDatabase(
+          databaseLoader: () async => database,
+          operationalContext: AppOperationalContext(
+            environment: const AppEnvironment.localDefault(),
+            session: AppSession.localDefault(),
+          ),
+          syncMetadataRepository: RecordingSyncMetadataRepository(),
+          syncQueueRepository: RecordingSyncQueueRepository(),
+          operationalSyncQueueRepository: operationalQueue,
+        );
+        await insertSimpleProduct(
+          database,
+          productId: 1,
+          name: 'Bone',
+          stockMil: 5000,
+          salePriceCents: 10000,
+        );
+
+        final sale = await repository.completeCashSale(
+          input: CheckoutInput(
+            items: [
+              buildSimpleCartItem(
+                productId: 1,
+                productName: 'Bone',
+                quantityMil: 1000,
+                availableStockMil: 5000,
+                unitPriceCents: 10000,
+              ),
+            ],
+            saleType: SaleType.cash,
+            paymentMethod: PaymentMethod.cash,
+            discountCents: 1000,
+          ),
+        );
+
+        final saleRows = await database.query(
+          TableNames.vendas,
+          columns: const [
+            'desconto_centavos',
+            'valor_total_centavos',
+            'valor_final_centavos',
+          ],
+          where: 'id = ?',
+          whereArgs: [sale.saleId],
+          limit: 1,
+        );
+        expect(saleRows.single['desconto_centavos'], 1000);
+        expect(saleRows.single['valor_total_centavos'], 10000);
+        expect(saleRows.single['valor_final_centavos'], 9000);
+
+        final paymentRows = await database.query(
+          TableNames.caixaMovimentos,
+          columns: const ['valor_centavos'],
+          where: 'referencia_id = ? AND referencia_tipo = ?',
+          whereArgs: [sale.saleId, 'venda'],
+        );
+        expect(paymentRows.single['valor_centavos'], 9000);
+
+        final saleEvent = operationalQueue.events.firstWhere(
+          (event) => event.entity == 'sale',
+        );
+        expect(saleEvent.payload['subtotalCents'], 10000);
+        expect(saleEvent.payload['discountCents'], 1000);
+        expect(saleEvent.payload['totalCents'], 9000);
+
+        final paymentEvent = operationalQueue.events.firstWhere(
+          (event) => event.entity == 'payment',
+        );
+        expect(paymentEvent.payload['amountCents'], 9000);
+      },
+    );
   });
 }
 

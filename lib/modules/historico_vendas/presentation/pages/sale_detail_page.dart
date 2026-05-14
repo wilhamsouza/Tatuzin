@@ -296,6 +296,13 @@ class _SaleSummaryCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text('Cliente: ${sale.clientName ?? 'Nao informado'}'),
             Text('Data: ${AppFormatters.shortDateTime(sale.soldAt)}'),
+            Text(
+              'Subtotal: ${AppFormatters.currencyFromCents(sale.totalCents)}',
+            ),
+            if (sale.discountCents > 0)
+              Text(
+                'Desconto: ${AppFormatters.currencyFromCents(sale.discountCents)}',
+              ),
             Text('Total: ${AppFormatters.currencyFromCents(sale.finalCents)}'),
             if (sale.creditUsedCents > 0)
               Text(

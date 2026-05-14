@@ -14,9 +14,27 @@ class SaleValidationSupport {
     required CheckoutInput input,
     required SaleType saleType,
   }) {
-    if (input.finalTotalCents <= 0) {
+    if (input.items.isEmpty) {
       throw const ValidationException(
-        'O valor final da venda precisa ser maior que zero.',
+        'Adicione ao menos um item antes de finalizar a venda.',
+      );
+    }
+
+    if (input.discountCents < 0 || input.surchargeCents < 0) {
+      throw const ValidationException(
+        'Descontos e acrescimos precisam ser positivos.',
+      );
+    }
+
+    if (input.discountCents > input.itemsTotalCents) {
+      throw const ValidationException(
+        'O desconto nao pode ser maior que o subtotal da venda.',
+      );
+    }
+
+    if (input.finalTotalCents < 0) {
+      throw const ValidationException(
+        'O valor final da venda nao pode ser negativo.',
       );
     }
 

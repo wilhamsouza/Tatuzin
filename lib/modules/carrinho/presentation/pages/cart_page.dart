@@ -311,6 +311,13 @@ class _CartPageState extends ConsumerState<CartPage> {
                         ? '${cartDeliverySummaryLabel(cart.tipoEntrega)} grátis'
                         : '${cartDeliverySummaryLabel(cart.tipoEntrega)} ${AppFormatters.currencyFromCents(freightCents)}',
                   ),
+                  if (cart.appliedSaleDiscountCents > 0)
+                    _CompactSummaryChip(
+                      icon: Icons.percent_rounded,
+                      label:
+                          'Desconto checkout ${AppFormatters.currencyFromCents(cart.appliedSaleDiscountCents)}',
+                      emphasize: true,
+                    ),
                   if (cart.cupomDescontoCents > 0)
                     _CompactSummaryChip(
                       icon: Icons.sell_outlined,

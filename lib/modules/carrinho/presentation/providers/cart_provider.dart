@@ -1,18 +1,24 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../app/core/errors/app_exceptions.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/utils/app_logger.dart';
 import '../../../estoque/domain/entities/stock_availability.dart';
 import '../../../estoque/domain/entities/stock_reservation.dart';
 import '../../../estoque/presentation/providers/inventory_providers.dart';
+import '../../../funcionarios/domain/employee_models.dart';
+import '../../../produtos/domain/entities/product.dart';
 import '../../domain/entities/cart_enums.dart';
 import '../../domain/entities/cart_item.dart';
-import '../../../produtos/domain/entities/product.dart';
 
 final cartProvider = NotifierProvider<CartController, CartState>(
   CartController.new,
 );
 
 class CartController extends Notifier<CartState> {
+  static const String discountAdjustedNotice =
+      'Desconto ajustado ao subtotal atual.';
+
   @override
   CartState build() {
     return const CartState(items: []);
@@ -44,8 +50,8 @@ class CartController extends Notifier<CartState> {
       if (product.stockMil < 1000) {
         return false;
       }
-      state = state.copyWith(
-        items: [...state.items, CartItem.fromProduct(product)],
+      _replaceState(
+        state.copyWith(items: [...state.items, CartItem.fromProduct(product)]),
       );
       return true;
     }
@@ -59,7 +65,7 @@ class CartController extends Notifier<CartState> {
       quantityMil: current.quantityMil + 1000,
       availableStockMil: product.stockMil,
     );
-    state = state.copyWith(items: items);
+    _replaceState(state.copyWith(items: items));
     return true;
   }
 
@@ -110,11 +116,11 @@ class CartController extends Notifier<CartState> {
         quantityMil: current.quantityMil + 1000,
         availableStockMil: product.stockMil,
       );
-      state = state.copyWith(items: items);
+      _replaceState(state.copyWith(items: items));
       return true;
     }
 
-    state = state.copyWith(items: [...state.items, newItem]);
+    _replaceState(state.copyWith(items: [...state.items, newItem]));
     return true;
   }
 
@@ -131,7 +137,7 @@ class CartController extends Notifier<CartState> {
     }
 
     items[index] = current.copyWith(quantityMil: current.quantityMil + 1000);
-    state = state.copyWith(items: items);
+    _replaceState(state.copyWith(items: items));
     return true;
   }
 
@@ -169,7 +175,7 @@ class CartController extends Notifier<CartState> {
     final availableStockMil = availability.availableQuantityMil;
     if (latest.quantityMil + 1000 > availableStockMil) {
       items[index] = latest.copyWith(availableStockMil: availableStockMil);
-      state = state.copyWith(items: items);
+      _replaceState(state.copyWith(items: items));
       return false;
     }
 
@@ -177,7 +183,7 @@ class CartController extends Notifier<CartState> {
       quantityMil: latest.quantityMil + 1000,
       availableStockMil: availableStockMil,
     );
-    state = state.copyWith(items: items);
+    _replaceState(state.copyWith(items: items));
     return true;
   }
 
@@ -222,7 +228,7 @@ class CartController extends Notifier<CartState> {
           );
         })
         .toList(growable: false);
-    state = state.copyWith(items: items);
+    _replaceState(state.copyWith(items: items));
   }
 
   void decreaseQuantity(String itemId) {
@@ -239,12 +245,14 @@ class CartController extends Notifier<CartState> {
       items[index] = current.copyWith(quantityMil: current.quantityMil - 1000);
     }
 
-    state = state.copyWith(items: items);
+    _replaceState(state.copyWith(items: items));
   }
 
   void removeItem(String itemId) {
-    state = state.copyWith(
-      items: state.items.where((item) => item.id != itemId).toList(),
+    _replaceState(
+      state.copyWith(
+        items: state.items.where((item) => item.id != itemId).toList(),
+      ),
     );
   }
 
@@ -277,45 +285,89 @@ class CartController extends Notifier<CartState> {
       modifiers: current.modifiers,
       notes: _cleanNullable(notes),
     );
-    state = state.copyWith(items: items);
+    _replaceState(state.copyWith(items: items));
   }
 
   void setTipoEntrega(TipoEntrega tipo) {
-    state = state.copyWith(
-      tipoEntrega: tipo,
-      numeroMesa: tipo == TipoEntrega.mesa ? state.numeroMesa : null,
-      cep: tipo == TipoEntrega.delivery ? state.cep : null,
-      freteCents: tipo == TipoEntrega.delivery ? state.freteCents : 0,
+    _replaceState(
+      state.copyWith(
+        tipoEntrega: tipo,
+        numeroMesa: tipo == TipoEntrega.mesa ? state.numeroMesa : null,
+        cep: tipo == TipoEntrega.delivery ? state.cep : null,
+        freteCents: tipo == TipoEntrega.delivery ? state.freteCents : 0,
+      ),
     );
   }
 
   void setNumeroMesa(String numero) {
-    state = state.copyWith(numeroMesa: _cleanNullable(numero));
+    _replaceState(state.copyWith(numeroMesa: _cleanNullable(numero)));
   }
 
   Future<void> setCep(String cep) async {
     final cleanedCep = _cleanDigits(cep);
-    state = state.copyWith(
-      cep: _cleanNullable(cleanedCep),
-      freteCents: cleanedCep.length == 8 ? 500 : 0,
+    _replaceState(
+      state.copyWith(
+        cep: _cleanNullable(cleanedCep),
+        freteCents: cleanedCep.length == 8 ? 500 : 0,
+      ),
     );
   }
 
   void aplicarCupom(String codigo) {
     final normalizedCode = _cleanNullable(codigo)?.toUpperCase();
     if (normalizedCode == 'DESCONTO10') {
-      state = state.copyWith(
-        cupomCodigo: normalizedCode,
-        cupomDescontoCents: 1000,
+      _replaceState(
+        state.copyWith(cupomCodigo: normalizedCode, cupomDescontoCents: 1000),
       );
       return;
     }
 
-    throw Exception('Cupom inválido ou expirado.');
+    throw Exception('Cupom invalido ou expirado.');
   }
 
   void removerCupom() {
-    state = state.copyWith(cupomCodigo: null, cupomDescontoCents: 0);
+    _replaceState(state.copyWith(cupomCodigo: null, cupomDescontoCents: 0));
+  }
+
+  void applySaleDiscount(CartSaleDiscount discount) {
+    _ensureCanManageSaleDiscount();
+    if (state.items.isEmpty) {
+      throw const ValidationException('Carrinho vazio nao permite desconto.');
+    }
+
+    if (discount.isAmount) {
+      if (discount.amountCents < 0) {
+        throw const ValidationException('O desconto nao pode ser negativo.');
+      }
+      if (discount.amountCents > state.subtotalCents) {
+        throw const ValidationException(
+          'O desconto nao pode ser maior que o subtotal.',
+        );
+      }
+    } else {
+      if (discount.percentBasisPoints < 0 ||
+          discount.percentBasisPoints > 10000) {
+        throw const ValidationException(
+          'O percentual de desconto deve ficar entre 0 e 100.',
+        );
+      }
+    }
+
+    _replaceState(
+      state.copyWith(saleDiscount: discount, saleDiscountNotice: null),
+    );
+  }
+
+  void removeSaleDiscount() {
+    _ensureCanManageSaleDiscount();
+    _replaceState(state.copyWith(saleDiscount: null, saleDiscountNotice: null));
+  }
+
+  void clearSaleDiscountNotice() {
+    if (state.saleDiscountNotice == null) {
+      return;
+    }
+    _replaceState(state.copyWith(saleDiscountNotice: null));
   }
 
   void clear() {
@@ -329,5 +381,46 @@ class CartController extends Notifier<CartState> {
 
   String _cleanDigits(String value) {
     return value.replaceAll(RegExp(r'[^0-9]'), '');
+  }
+
+  void _replaceState(CartState nextState) {
+    state = _normalizeState(nextState);
+  }
+
+  void _ensureCanManageSaleDiscount() {
+    final session = ref.read(appSessionProvider);
+    if (!session.canAccessPermission(EmployeePermission.salesDiscount.key)) {
+      throw const ValidationException(
+        'Voce nao tem permissao para aplicar desconto.',
+      );
+    }
+  }
+
+  CartState _normalizeState(CartState nextState) {
+    if (nextState.items.isEmpty) {
+      return const CartState(items: []);
+    }
+
+    final discount = nextState.saleDiscount;
+    if (discount == null) {
+      return nextState.copyWith(saleDiscountNotice: null);
+    }
+
+    final subtotalCents = nextState.items.fold<int>(
+      0,
+      (total, item) => total + item.subtotalCents,
+    );
+    if (subtotalCents <= 0) {
+      return nextState.copyWith(saleDiscount: null, saleDiscountNotice: null);
+    }
+
+    if (discount.isAmount && discount.amountCents > subtotalCents) {
+      return nextState.copyWith(
+        saleDiscount: CartSaleDiscount.amount(amountCents: subtotalCents),
+        saleDiscountNotice: discountAdjustedNotice,
+      );
+    }
+
+    return nextState.copyWith(saleDiscountNotice: null);
   }
 }

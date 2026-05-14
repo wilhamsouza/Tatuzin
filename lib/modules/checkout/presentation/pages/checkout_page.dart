@@ -3,8 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/session/app_session.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/utils/app_logger.dart';
 import '../../../../app/core/utils/money_parser.dart';
+import '../../../../app/core/widgets/app_bottom_sheet_container.dart';
+import '../../../../app/core/widgets/app_input.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
@@ -15,6 +19,7 @@ import '../../../clientes/domain/entities/client.dart';
 import '../../../clientes/presentation/providers/client_providers.dart';
 import '../../../dashboard/presentation/providers/dashboard_providers.dart';
 import '../../../fiado/presentation/providers/fiado_providers.dart';
+import '../../../funcionarios/domain/employee_models.dart';
 import '../../../historico_vendas/presentation/providers/sale_history_providers.dart';
 import '../../../produtos/presentation/providers/product_providers.dart';
 import '../../../vendas/domain/entities/checkout_input.dart';
@@ -57,11 +62,13 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
   @override
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
+    final session = ref.watch(appSessionProvider);
     final checkoutState = ref.watch(checkoutControllerProvider);
     final isSubmitting = checkoutState.isLoading;
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     const sectionPadding = EdgeInsets.fromLTRB(14, 14, 14, 14);
+    final canManageDiscount = _canManageDiscount(session);
     final availableCreditCents = _selectedClient?.creditBalanceCents ?? 0;
     final appliedCreditCents =
         _saleType == SaleType.cash && _selectedClient != null
@@ -82,6 +89,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
             _paymentMethod == PaymentMethod.cash &&
             _selectedClient != null &&
             _leaveChangeAsCredit &&
+            immediateDueCents > 0 &&
             tenderedCents > immediateDueCents
         ? tenderedCents - immediateDueCents
         : 0;
@@ -176,6 +184,22 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                 ),
                 const SizedBox(height: 12),
                 AppSectionCard(
+                  title: 'Desconto',
+                  subtitle:
+                      'Aplique um abatimento no fechamento mantendo o subtotal original dos itens.',
+                  padding: sectionPadding,
+                  child: _CheckoutDiscountSection(
+                    cart: cart,
+                    enabled: !isSubmitting,
+                    canManageDiscount: canManageDiscount,
+                    onManageDiscount: () => _handleDiscountPressed(context),
+                    onRemoveDiscount: cart.hasSaleDiscount
+                        ? () => _handleRemoveDiscount(context)
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                AppSectionCard(
                   title: 'Tipo da venda',
                   subtitle: 'Escolha o tipo de fechamento da venda.',
                   padding: sectionPadding,
@@ -231,7 +255,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                       : 'No fiado, o pagamento fica registrado como fiado.',
                   padding: sectionPadding,
                   child: _saleType == SaleType.cash
-                      ? immediateDueCents == 0 && appliedCreditCents > 0
+                      ? immediateDueCents == 0
                             ? Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(14),
@@ -249,7 +273,9 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: Text(
-                                        'Venda coberta integralmente por haver.',
+                                        appliedCreditCents > 0
+                                            ? 'Venda coberta integralmente por haver.'
+                                            : 'Nenhum recebimento imediato e necessario para concluir esta venda.',
                                         style: theme.textTheme.titleSmall
                                             ?.copyWith(
                                               fontWeight: FontWeight.w700,
@@ -456,7 +482,8 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                   ),
                 ],
                 if (_saleType == SaleType.cash &&
-                    _paymentMethod == PaymentMethod.cash) ...[
+                    _paymentMethod == PaymentMethod.cash &&
+                    immediateDueCents > 0) ...[
                   const SizedBox(height: 12),
                   AppSectionCard(
                     title: 'Recebimento em dinheiro',
@@ -517,16 +544,46 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: _CheckoutSummaryMetric(
-                              label: 'Total',
+                              label: cart.hasSaleDiscount
+                                  ? 'Subtotal'
+                                  : 'Total',
                               value: AppFormatters.currencyFromCents(
-                                cart.totalCents,
+                                cart.hasSaleDiscount
+                                    ? cart.subtotalCents
+                                    : cart.totalCents,
                               ),
                               icon: Icons.payments_outlined,
-                              emphasize: true,
                             ),
                           ),
                         ],
                       ),
+                      if (cart.hasSaleDiscount) ...[
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _CheckoutSummaryMetric(
+                                label: 'Desconto',
+                                value: AppFormatters.currencyFromCents(
+                                  cart.appliedSaleDiscountCents,
+                                ),
+                                icon: Icons.percent_rounded,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _CheckoutSummaryMetric(
+                                label: 'Total',
+                                value: AppFormatters.currencyFromCents(
+                                  cart.totalCents,
+                                ),
+                                icon: Icons.payments_outlined,
+                                emphasize: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                       if (appliedCreditCents > 0) ...[
                         const SizedBox(height: 10),
                         Row(
@@ -780,6 +837,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
             _paymentMethod == PaymentMethod.cash &&
             _selectedClient != null &&
             _leaveChangeAsCredit &&
+            immediateDueCents > 0 &&
             tenderedCents > immediateDueCents
         ? tenderedCents - immediateDueCents
         : 0;
@@ -848,6 +906,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       clientId: _selectedClient?.id,
       dueDate: _dueDate,
       notes: _notesController.text,
+      discountCents: cartState.appliedSaleDiscountCents,
       customerCreditUsedCents: creditToUseCents,
       changeLeftAsCreditCents: changeLeftAsCreditCents,
     );
@@ -886,6 +945,72 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
         return;
       }
     }
+  }
+
+  bool _canManageDiscount(AppSession session) {
+    return session.canAccessPermission(EmployeePermission.salesDiscount.key);
+  }
+
+  Future<void> _handleDiscountPressed(BuildContext context) async {
+    if (!_canManageDiscount(ref.read(appSessionProvider))) {
+      _showMessage(context, 'Voce nao tem permissao para aplicar desconto.');
+      return;
+    }
+
+    final cart = ref.read(cartProvider);
+    if (cart.isEmpty) {
+      _showMessage(context, 'Carrinho vazio nao permite desconto.');
+      return;
+    }
+
+    final result = await showModalBottomSheet<_CheckoutDiscountSheetResult>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _CheckoutDiscountSheet(
+        subtotalCents: cart.subtotalCents,
+        existingDiscount: cart.saleDiscount,
+      ),
+    );
+
+    if (!context.mounted || result == null) {
+      return;
+    }
+
+    final cartNotifier = ref.read(cartProvider.notifier);
+    if (result.removeDiscount) {
+      cartNotifier.removeSaleDiscount();
+      _showMessage(context, 'Desconto removido.');
+      return;
+    }
+
+    final discount = result.discount;
+    if (discount == null) {
+      return;
+    }
+
+    try {
+      cartNotifier.applySaleDiscount(discount);
+      _showMessage(context, 'Desconto aplicado.');
+    } catch (error) {
+      _showMessage(context, error.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  void _handleRemoveDiscount(BuildContext context) {
+    if (!_canManageDiscount(ref.read(appSessionProvider))) {
+      _showMessage(context, 'Voce nao tem permissao para aplicar desconto.');
+      return;
+    }
+
+    ref.read(cartProvider.notifier).removeSaleDiscount();
+    _showMessage(context, 'Desconto removido.');
+  }
+
+  void _showMessage(BuildContext context, String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _setSelectedClient(Client? client) {
@@ -1165,6 +1290,417 @@ class _CheckoutSummaryMetric extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _CheckoutDiscountSection extends StatelessWidget {
+  const _CheckoutDiscountSection({
+    required this.cart,
+    required this.enabled,
+    required this.canManageDiscount,
+    required this.onManageDiscount,
+    required this.onRemoveDiscount,
+  });
+
+  final CartState cart;
+  final bool enabled;
+  final bool canManageDiscount;
+  final VoidCallback onManageDiscount;
+  final VoidCallback? onRemoveDiscount;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final hasConfiguredDiscount = cart.saleDiscount != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (hasConfiguredDiscount) ...[
+          Text(
+            cart.saleDiscount!.isPercent
+                ? 'Modo atual: percentual'
+                : 'Modo atual: valor em reais',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        _CheckoutDiscountSummaryRow(
+          label: 'Subtotal',
+          value: AppFormatters.currencyFromCents(cart.subtotalCents),
+        ),
+        const SizedBox(height: 8),
+        _CheckoutDiscountSummaryRow(
+          label: 'Desconto',
+          value: AppFormatters.currencyFromCents(cart.appliedSaleDiscountCents),
+        ),
+        const SizedBox(height: 8),
+        _CheckoutDiscountSummaryRow(
+          label: 'Total a pagar',
+          value: AppFormatters.currencyFromCents(cart.totalCents),
+          emphasize: true,
+        ),
+        if (cart.saleDiscountNotice != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colorScheme.tertiaryContainer.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              cart.saleDiscountNotice!,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              key: const Key('checkout-discount-manage-button'),
+              onPressed: enabled ? onManageDiscount : null,
+              icon: Icon(
+                hasConfiguredDiscount ? Icons.edit_outlined : Icons.percent,
+              ),
+              label: Text(
+                hasConfiguredDiscount
+                    ? 'Editar desconto'
+                    : 'Adicionar desconto',
+              ),
+            ),
+            if (onRemoveDiscount != null)
+              TextButton.icon(
+                key: const Key('checkout-discount-remove-button'),
+                onPressed: enabled ? onRemoveDiscount : null,
+                icon: const Icon(Icons.delete_outline_rounded),
+                label: const Text('Remover desconto'),
+              ),
+            if (!canManageDiscount)
+              Text(
+                'Permissao exigida: ${EmployeePermission.salesDiscount.label}.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _CheckoutDiscountSummaryRow extends StatelessWidget {
+  const _CheckoutDiscountSummaryRow({
+    required this.label,
+    required this.value,
+    this.emphasize = false,
+  });
+
+  final String label;
+  final String value;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: emphasize
+                  ? colorScheme.onSurface
+                  : colorScheme.onSurfaceVariant,
+              fontWeight: emphasize ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: emphasize ? colorScheme.primary : null,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CheckoutDiscountSheetResult {
+  const _CheckoutDiscountSheetResult.apply(this.discount)
+    : removeDiscount = false;
+
+  const _CheckoutDiscountSheetResult.remove()
+    : discount = null,
+      removeDiscount = true;
+
+  final CartSaleDiscount? discount;
+  final bool removeDiscount;
+}
+
+class _CheckoutDiscountSheet extends StatefulWidget {
+  const _CheckoutDiscountSheet({
+    required this.subtotalCents,
+    required this.existingDiscount,
+  });
+
+  final int subtotalCents;
+  final CartSaleDiscount? existingDiscount;
+
+  @override
+  State<_CheckoutDiscountSheet> createState() => _CheckoutDiscountSheetState();
+}
+
+class _CheckoutDiscountSheetState extends State<_CheckoutDiscountSheet> {
+  late CartSaleDiscountMode _mode;
+  late final TextEditingController _valueController;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    final existing = widget.existingDiscount;
+    _mode = existing?.mode ?? CartSaleDiscountMode.amount;
+    _valueController = TextEditingController(
+      text: existing == null
+          ? ''
+          : existing.isPercent
+          ? _formatPercentBasisPoints(existing.percentBasisPoints)
+          : AppFormatters.currencyInputFromCents(existing.amountCents),
+    );
+    _valueController.addListener(_clearErrorOnChange);
+  }
+
+  @override
+  void dispose() {
+    _valueController
+      ..removeListener(_clearErrorOnChange)
+      ..dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final previewDiscount = _previewDiscountCents();
+    final previewTotal = widget.subtotalCents - previewDiscount;
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: AppBottomSheetContainer(
+        title: 'Desconto',
+        subtitle:
+            'Escolha valor em reais ou percentual antes de concluir a venda.',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  key: const Key('checkout-discount-mode-amount'),
+                  label: const Text('R\$'),
+                  selected: _mode == CartSaleDiscountMode.amount,
+                  onSelected: (_) => _switchMode(CartSaleDiscountMode.amount),
+                ),
+                ChoiceChip(
+                  key: const Key('checkout-discount-mode-percent'),
+                  label: const Text('%'),
+                  selected: _mode == CartSaleDiscountMode.percent,
+                  onSelected: (_) => _switchMode(CartSaleDiscountMode.percent),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            AppInput(
+              key: const Key('checkout-discount-value-field'),
+              controller: _valueController,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              labelText: _mode == CartSaleDiscountMode.amount
+                  ? 'Valor do desconto'
+                  : 'Percentual do desconto',
+              hintText: _mode == CartSaleDiscountMode.amount ? '0,00' : '10',
+              prefixIcon: Icon(
+                _mode == CartSaleDiscountMode.amount
+                    ? Icons.attach_money_rounded
+                    : Icons.percent_rounded,
+              ),
+            ),
+            if (_errorText != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _errorText!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+            const SizedBox(height: 12),
+            _CheckoutDiscountSummaryRow(
+              label: 'Subtotal',
+              value: AppFormatters.currencyFromCents(widget.subtotalCents),
+            ),
+            const SizedBox(height: 8),
+            _CheckoutDiscountSummaryRow(
+              label: 'Desconto',
+              value: AppFormatters.currencyFromCents(previewDiscount),
+            ),
+            const SizedBox(height: 8),
+            _CheckoutDiscountSummaryRow(
+              label: 'Total',
+              value: AppFormatters.currencyFromCents(
+                previewTotal < 0 ? 0 : previewTotal,
+              ),
+              emphasize: true,
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OverflowBar(
+                alignment: MainAxisAlignment.end,
+                spacing: 8,
+                overflowSpacing: 8,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancelar'),
+                  ),
+                  if (widget.existingDiscount != null)
+                    TextButton(
+                      onPressed: () => Navigator.of(
+                        context,
+                      ).pop(const _CheckoutDiscountSheetResult.remove()),
+                      child: const Text('Remover desconto'),
+                    ),
+                  FilledButton(
+                    key: const Key('checkout-discount-apply-button'),
+                    onPressed: _apply,
+                    child: const Text('Aplicar desconto'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _switchMode(CartSaleDiscountMode nextMode) {
+    if (_mode == nextMode) {
+      return;
+    }
+    setState(() {
+      _mode = nextMode;
+      _errorText = null;
+      _valueController.clear();
+    });
+  }
+
+  void _clearErrorOnChange() {
+    if (_errorText == null) {
+      return;
+    }
+    setState(() {
+      _errorText = null;
+    });
+  }
+
+  int _previewDiscountCents() {
+    final discount = _buildDiscount(showErrors: false);
+    if (discount == null) {
+      return 0;
+    }
+    return discount.resolveAppliedCents(widget.subtotalCents);
+  }
+
+  void _apply() {
+    final discount = _buildDiscount(showErrors: true);
+    if (discount == null) {
+      return;
+    }
+    Navigator.of(context).pop(_CheckoutDiscountSheetResult.apply(discount));
+  }
+
+  CartSaleDiscount? _buildDiscount({required bool showErrors}) {
+    if (_mode == CartSaleDiscountMode.amount) {
+      final amountCents = MoneyParser.parseToCents(_valueController.text);
+      if (amountCents < 0) {
+        return _reject(showErrors, 'O desconto nao pode ser negativo.');
+      }
+      if (amountCents > widget.subtotalCents) {
+        return _reject(
+          showErrors,
+          'O desconto nao pode ser maior que o subtotal.',
+        );
+      }
+      return CartSaleDiscount.amount(amountCents: amountCents);
+    }
+
+    final percentBasisPoints = _parsePercentBasisPoints(_valueController.text);
+    if (percentBasisPoints == null) {
+      return _reject(showErrors, 'Informe um percentual valido.');
+    }
+    if (percentBasisPoints < 0 || percentBasisPoints > 10000) {
+      return _reject(
+        showErrors,
+        'O percentual de desconto deve ficar entre 0 e 100.',
+      );
+    }
+    return CartSaleDiscount.percent(percentBasisPoints: percentBasisPoints);
+  }
+
+  CartSaleDiscount? _reject(bool showErrors, String message) {
+    if (showErrors) {
+      setState(() {
+        _errorText = message;
+      });
+    }
+    return null;
+  }
+
+  int? _parsePercentBasisPoints(String rawValue) {
+    final trimmed = rawValue.trim();
+    if (trimmed.isEmpty) {
+      return 0;
+    }
+    final sanitized = trimmed.replaceAll(RegExp(r'[^0-9,.-]'), '');
+    final normalized = sanitized.replaceAll(',', '.');
+    final value = double.tryParse(normalized);
+    if (value == null) {
+      return null;
+    }
+    return (value * 100).round();
+  }
+
+  String _formatPercentBasisPoints(int basisPoints) {
+    final whole = basisPoints ~/ 100;
+    final fraction = basisPoints % 100;
+    if (fraction == 0) {
+      return '$whole';
+    }
+    if (fraction % 10 == 0) {
+      return '$whole,${fraction ~/ 10}';
+    }
+    final paddedFraction = fraction.toString().padLeft(2, '0');
+    return '$whole,$paddedFraction';
   }
 }
 

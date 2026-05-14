@@ -170,6 +170,41 @@ class CartItem {
   }
 }
 
+enum CartSaleDiscountMode { amount, percent }
+
+class CartSaleDiscount {
+  const CartSaleDiscount.amount({required this.amountCents})
+    : mode = CartSaleDiscountMode.amount,
+      percentBasisPoints = 0;
+
+  const CartSaleDiscount.percent({required this.percentBasisPoints})
+    : mode = CartSaleDiscountMode.percent,
+      amountCents = 0;
+
+  final CartSaleDiscountMode mode;
+  final int amountCents;
+  final int percentBasisPoints;
+
+  bool get isAmount => mode == CartSaleDiscountMode.amount;
+  bool get isPercent => mode == CartSaleDiscountMode.percent;
+
+  int resolveAppliedCents(int subtotalCents) {
+    if (subtotalCents <= 0) {
+      return 0;
+    }
+
+    final resolved = switch (mode) {
+      CartSaleDiscountMode.amount => amountCents,
+      CartSaleDiscountMode.percent =>
+        ((subtotalCents * percentBasisPoints) / 10000).round(),
+    };
+    if (resolved <= 0) {
+      return 0;
+    }
+    return resolved > subtotalCents ? subtotalCents : resolved;
+  }
+}
+
 class CartState {
   const CartState({
     required this.items,
@@ -179,6 +214,8 @@ class CartState {
     this.freteCents = 0,
     this.cupomCodigo,
     this.cupomDescontoCents = 0,
+    this.saleDiscount,
+    this.saleDiscountNotice,
   });
 
   final List<CartItem> items;
@@ -188,15 +225,24 @@ class CartState {
   final int freteCents;
   final String? cupomCodigo;
   final int cupomDescontoCents;
+  final CartSaleDiscount? saleDiscount;
+  final String? saleDiscountNotice;
 
   bool get isEmpty => items.isEmpty;
   int get totalItems =>
       items.fold(0, (total, item) => total + item.quantityUnits);
   int get subtotalCents =>
       items.fold(0, (total, item) => total + item.subtotalCents);
-  int get totalCents => subtotalCents;
+  int get appliedSaleDiscountCents =>
+      saleDiscount?.resolveAppliedCents(subtotalCents) ?? 0;
+  bool get hasSaleDiscount => appliedSaleDiscountCents > 0;
+  int get totalCents {
+    final adjustedSubtotal = subtotalCents - appliedSaleDiscountCents;
+    return adjustedSubtotal < 0 ? 0 : adjustedSubtotal;
+  }
+
   int get finalTotalCents {
-    final adjustedTotal = subtotalCents + freteCents - cupomDescontoCents;
+    final adjustedTotal = totalCents + freteCents - cupomDescontoCents;
     return adjustedTotal < 0 ? 0 : adjustedTotal;
   }
 
@@ -208,6 +254,8 @@ class CartState {
     int? freteCents,
     Object? cupomCodigo = _cartStateUnset,
     int? cupomDescontoCents,
+    Object? saleDiscount = _cartStateUnset,
+    Object? saleDiscountNotice = _cartStateUnset,
   }) {
     return CartState(
       items: items ?? this.items,
@@ -221,6 +269,12 @@ class CartState {
           ? this.cupomCodigo
           : cupomCodigo as String?,
       cupomDescontoCents: cupomDescontoCents ?? this.cupomDescontoCents,
+      saleDiscount: identical(saleDiscount, _cartStateUnset)
+          ? this.saleDiscount
+          : saleDiscount as CartSaleDiscount?,
+      saleDiscountNotice: identical(saleDiscountNotice, _cartStateUnset)
+          ? this.saleDiscountNotice
+          : saleDiscountNotice as String?,
     );
   }
 }
