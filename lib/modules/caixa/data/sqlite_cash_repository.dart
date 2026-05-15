@@ -506,6 +506,7 @@ class SqliteCashRepository implements CashRepository {
         movementId: movement.id,
         movementUuid: movement.uuid,
         sessionId: sessionId,
+        sessionUuid: movement.sessionUuid,
         type: input.type.dbValue,
         amountCents: input.type == CashMovementType.sangria
             ? -input.amountCents
@@ -676,6 +677,7 @@ class SqliteCashRepository implements CashRepository {
     required int movementId,
     required String movementUuid,
     required int sessionId,
+    required String sessionUuid,
     required String type,
     required int amountCents,
     required DateTime occurredAt,
@@ -697,6 +699,9 @@ class SqliteCashRepository implements CashRepository {
         payload: <String, dynamic>{
           'localId': movementId,
           'uuid': movementUuid,
+          'cashSessionLocalId': sessionUuid,
+          'cashSessionUuid': sessionUuid,
+          'cashSessionLocalNumericId': sessionId,
           'sessionId': sessionId,
           'type': type,
           'amountCents': amountCents,
@@ -1243,10 +1248,7 @@ class SqliteCashRepository implements CashRepository {
     return null;
   }
 
-  String? _encodeSessionNotes({
-    String? visibleNotes,
-    String? operatorName,
-  }) {
+  String? _encodeSessionNotes({String? visibleNotes, String? operatorName}) {
     final cleanedVisibleNotes = _cleanNullable(visibleNotes);
     final cleanedOperatorName = _cleanNullable(operatorName);
     final lines = <String>[];

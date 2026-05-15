@@ -215,7 +215,8 @@ export class AppSnapshotService {
             companyId: session.companyId,
             localUuid: session.localUuid,
             userId: session.userId,
-            operatorName: session.user?.name ?? null,
+            operatorName:
+              cashSessionOperatorName(session.payload) ?? session.user?.name ?? null,
             status: session.status,
             openedAt: session.openedAt?.toISOString() ?? null,
             closedAt: session.closedAt?.toISOString() ?? null,
@@ -333,4 +334,15 @@ export class AppSnapshotService {
       items: items.map(mapItem),
     };
   }
+}
+
+function cashSessionOperatorName(payload: unknown) {
+  if (payload == null || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null;
+  }
+
+  const value = (payload as Record<string, unknown>).operatorName;
+  return typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : null;
 }

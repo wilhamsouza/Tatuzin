@@ -9,6 +9,7 @@ import {
   localSequenceFor,
   localIdentityFor,
   nonNegativeInt,
+  persistableLocalSequence,
   positiveInt,
 } from "./payload-utils";
 import type {
@@ -183,6 +184,7 @@ export class OperationalOrderMaterializer {
       },
     });
     const localSequence = localSequenceFor(input.event, input.payload);
+    const storedLocalSequence = persistableLocalSequence(localSequence);
 
     if (input.event.operation === "create" && existing != null) {
       return {
@@ -206,9 +208,9 @@ export class OperationalOrderMaterializer {
     if (
       existing != null &&
       ["update", "upsert"].includes(input.event.operation) &&
-      localSequence != null &&
+      storedLocalSequence != null &&
       existing.lastLocalSequence != null &&
-      existing.lastLocalSequence > localSequence
+      existing.lastLocalSequence > storedLocalSequence
     ) {
       return {
         outcome: "conflict",
@@ -258,7 +260,8 @@ export class OperationalOrderMaterializer {
         firstString(input.payload, ["notes", "description"]) ?? existing?.notes,
       closedAt: this.closedAt(input, existing, requestedStatus, now),
       cancelledAt: this.cancelledAt(input, existing, requestedStatus, now),
-      lastLocalSequence: localSequence ?? existing?.lastLocalSequence ?? null,
+      lastLocalSequence:
+        storedLocalSequence ?? existing?.lastLocalSequence ?? null,
     };
 
     if (existing == null) {

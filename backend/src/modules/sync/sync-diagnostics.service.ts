@@ -130,8 +130,11 @@ export class SyncDiagnosticsService {
       return this.classifyStockDeduction(input.companyId, payload);
     }
 
-    if (input.entity === 'cashSession' && input.operation === 'update') {
-      return this.classifyCashSessionUpdate(payload);
+    if (
+      input.entity === 'cashSession' &&
+      ['create', 'update', 'upsert'].includes(input.operation)
+    ) {
+      return this.classifyCashSessionEvent(payload);
     }
 
     if (input.status === 'ACCEPTED' || input.status === 'DUPLICATE') {
@@ -290,25 +293,30 @@ export class SyncDiagnosticsService {
     });
   }
 
-  private classifyCashSessionUpdate(
+  private classifyCashSessionEvent(
     payload: Record<string, unknown>,
   ): SyncDiagnosticResult {
     const uuid = textValue(payload.uuid);
     const status = textValue(payload.status ?? payload.state)?.toLowerCase();
     const openedAt = textValue(payload.openedAt ?? payload.createdAt);
-    const normalizedStatus = normalizeCashStatus(status);
+    const normalizedStatus =
+      status == null ? null : normalizeCashStatus(status);
 
     if (
       uuid != null &&
       openedAt != null &&
-      normalizedStatus === 'open'
+      normalizedStatus != null
     ) {
       return diagnostic({
         classification: 'REPROCESSABLE',
         recommendedAction: 'REPROCESS',
         message:
-          'Atualizacao de sessao aberta tem uuid, status e abertura suficientes para upsert idempotente.',
-        risks: ['Reprocessar pode atualizar saldos esperados da sessao de caixa.'],
+          normalizedStatus === 'closed'
+            ? 'Sessao de caixa fechada possui uuid, status e abertura suficientes para upsert idempotente fora de ordem.'
+            : 'Sessao de caixa aberta possui uuid, status e abertura suficientes para upsert idempotente.',
+        risks: [
+          'Reprocessar pode atualizar saldos esperados e valores de fechamento da sessao de caixa.',
+        ],
       });
     }
 
@@ -316,8 +324,15 @@ export class SyncDiagnosticsService {
       return diagnostic({
         classification: 'UNKNOWN',
         recommendedAction: 'CONTACT_SUPPORT',
-        message: 'Status de sessao de caixa nao reconhecido.',
-        blockers: ['Status invalido para regra automatica.'],
+        message:
+          status == null
+            ? 'Payload de sessao de caixa sem status nao possui dados minimos para regra automatica.'
+            : 'Status de sessao de caixa nao reconhecido.',
+        blockers: [
+          status == null
+            ? 'status open/closed e obrigatorio para reprocessar.'
+            : 'Status invalido para regra automatica.',
+        ],
       });
     }
 
@@ -326,7 +341,7 @@ export class SyncDiagnosticsService {
       recommendedAction: 'CONTACT_SUPPORT',
       message:
         'Payload de sessao de caixa nao possui dados minimos para upsert seguro.',
-      blockers: ['uuid, status open/aberto e openedAt sao obrigatorios para reprocessar.'],
+      blockers: ['uuid, status open/closed e openedAt sao obrigatorios para reprocessar.'],
     });
   }
 }

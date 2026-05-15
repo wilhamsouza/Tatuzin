@@ -147,6 +147,71 @@ void main() {
     });
   });
 
+  group('SqliteCashRepository operational payloads', () {
+    test('abertura e fechamento de caixa enviam payloads completos', () async {
+      final appDatabase = _newIsolatedDatabase('cash-session-payloads');
+      addTearDown(() => _disposeIsolatedDatabase(appDatabase));
+      final repository = SqliteCashRepository(
+        appDatabase,
+        AppOperationalContext(
+          environment: const AppEnvironment.localDefault(),
+          session: AppSession.localDefault(),
+        ),
+      );
+      final queueRepository = SqliteOperationalSyncQueueRepository(appDatabase);
+
+      final opened = await repository.openSession(initialFloatCents: 5000);
+      final closed = await repository.closeSession(countedBalanceCents: 6200);
+      final items = await queueRepository.listPending(
+        limit: 10,
+        retryOnly: false,
+        ignoreRetryBackoff: true,
+      );
+
+      final createEvent = items.firstWhere(
+        (item) =>
+            item.event.entity == 'cashSession' &&
+            item.event.operation == 'create',
+      );
+      expect(createEvent.event.payload['uuid'], opened.uuid);
+      expect(
+        createEvent.event.payload['openedAt'],
+        opened.openedAt.toIso8601String(),
+      );
+      expect(createEvent.event.payload['operatorName'], opened.operatorName);
+      expect(createEvent.event.payload['status'], 'aberto');
+      expect(createEvent.event.payload['initialFloatCents'], 5000);
+
+      final updateEvent = items.firstWhere(
+        (item) =>
+            item.event.entity == 'cashSession' &&
+            item.event.operation == 'update',
+      );
+      expect(updateEvent.event.payload['uuid'], closed.uuid);
+      expect(
+        updateEvent.event.payload['openedAt'],
+        closed.openedAt.toIso8601String(),
+      );
+      expect(
+        updateEvent.event.payload['closedAt'],
+        closed.closedAt?.toIso8601String(),
+      );
+      expect(
+        updateEvent.event.payload['countedBalanceCents'],
+        closed.countedBalanceCents,
+      );
+      expect(
+        updateEvent.event.payload['expectedBalanceCents'],
+        closed.expectedBalanceCents,
+      );
+      expect(
+        updateEvent.event.payload['differenceCents'],
+        closed.differenceCents,
+      );
+      expect(updateEvent.event.payload['status'], 'fechado');
+    });
+  });
+
   group('SqliteOperationalSyncQueueRepository', () {
     test(
       'sale/create reenviado com mesmo eventId continua idempotente',

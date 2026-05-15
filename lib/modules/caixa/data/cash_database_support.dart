@@ -96,6 +96,18 @@ abstract final class CashDatabaseSupport {
     String? description,
     PaymentMethod? paymentMethod,
   }) async {
+    final sessionRows = await db.query(
+      TableNames.caixaSessoes,
+      columns: const ['uuid'],
+      where: 'id = ?',
+      whereArgs: [sessionId],
+      limit: 1,
+    );
+    if (sessionRows.isEmpty) {
+      throw const ValidationException('Sessao de caixa nao encontrada.');
+    }
+
+    final sessionUuid = sessionRows.first['uuid'] as String;
     final uuid = IdGenerator.next();
     final id = await db.insert(TableNames.caixaMovimentos, {
       'uuid': uuid,
@@ -111,15 +123,27 @@ abstract final class CashDatabaseSupport {
       'criado_em': timestamp.toIso8601String(),
     });
 
-    return InsertedCashMovement(id: id, uuid: uuid);
+    return InsertedCashMovement(
+      id: id,
+      uuid: uuid,
+      sessionId: sessionId,
+      sessionUuid: sessionUuid,
+    );
   }
 }
 
 class InsertedCashMovement {
-  const InsertedCashMovement({required this.id, required this.uuid});
+  const InsertedCashMovement({
+    required this.id,
+    required this.uuid,
+    required this.sessionId,
+    required this.sessionUuid,
+  });
 
   final int id;
   final String uuid;
+  final int sessionId;
+  final String sessionUuid;
 }
 
 abstract final class CashSessionMathSupport {
@@ -325,8 +349,7 @@ abstract final class CashSessionMathSupport {
     }
 
     final sessionRow = sessionRows.first;
-    final initialFloatCents =
-        sessionRow['troco_inicial_centavos'] as int? ?? 0;
+    final initialFloatCents = sessionRow['troco_inicial_centavos'] as int? ?? 0;
     final expectedBalance = calculateExpectedBalance(
       initialFloatCents: initialFloatCents,
       cashEntriesCents: cashEntriesCents,

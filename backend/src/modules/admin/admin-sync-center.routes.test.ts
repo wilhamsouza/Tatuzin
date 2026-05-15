@@ -336,6 +336,38 @@ describe("admin sync center routes", () => {
     assert.equal(payload.event.safePayloadPreview.expectedBalanceCents, 130400);
   });
 
+  it("does not classify cashSession payload without status as reprocessable", async () => {
+    const fixture = await createFixture();
+    const occurredAt = new Date();
+    const event = await prisma.syncEvent.create({
+      data: {
+        companyId: fixture.companyId,
+        deviceId: fixture.deviceId,
+        userId: fixture.operatorUserId,
+        eventId: `${runId}-cash-session-missing-status`,
+        feature: "pdv",
+        entity: "cashSession",
+        operation: "update",
+        entityLocalId: `${runId}-cash-session-missing-status`,
+        occurredAt,
+        payload: {
+          uuid: `${runId}-cash-session-missing-status`,
+          openedAt: "2026-05-15T09:00:14.191397",
+          expectedBalanceCents: 130400,
+        },
+        status: "FAILED",
+        rejectionCode: "CASH_SESSION_INVALID_PAYLOAD",
+        rejectionMessage:
+          "Payload de sessao de caixa nao possui os dados minimos para materializacao segura.",
+      },
+    });
+
+    const payload = await getEventDiagnostic(fixture, event.id);
+    assert.equal(payload.classification, "UNKNOWN");
+    assert.equal(payload.recommendedAction, "CONTACT_SUPPORT");
+    assert.equal(payload.canReprocess, false);
+  });
+
   it("sanitizes payloads and blocks sensitive events as dangerous", async () => {
     const fixture = await createFixture();
 

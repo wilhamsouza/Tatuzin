@@ -500,10 +500,7 @@ void main() {
         final repository = createSaleRepository(database);
         await database.update(
           TableNames.caixaSessoes,
-          {
-            'status': 'fechado',
-            'fechada_em': '2026-04-16T13:00:00.000Z',
-          },
+          {'status': 'fechado', 'fechada_em': '2026-04-16T13:00:00.000Z'},
           where: 'id = ?',
           whereArgs: [1],
         );
@@ -631,6 +628,70 @@ void main() {
         );
         expect(cashMovementEvent.payload['amountCents'], 9000);
         expect(cashMovementEvent.payload['paymentMethod'], 'dinheiro');
+      },
+    );
+
+    test(
+      'venda operacional referencia a sessao de caixa pelo uuid no sale e no cashMovement',
+      () async {
+        database = await openSaleInventoryTestDatabase();
+        final operationalQueue = _RecordingOperationalSyncQueueRepository();
+        final repository = SqliteSaleRepository.forDatabase(
+          databaseLoader: () async => database,
+          operationalContext: AppOperationalContext(
+            environment: const AppEnvironment.localDefault(),
+            session: AppSession.localDefault(),
+          ),
+          syncMetadataRepository: RecordingSyncMetadataRepository(),
+          syncQueueRepository: RecordingSyncQueueRepository(),
+          operationalSyncQueueRepository: operationalQueue,
+        );
+        await insertSimpleProduct(
+          database,
+          productId: 1,
+          name: 'Bone',
+          stockMil: 5000,
+          salePriceCents: 10000,
+        );
+
+        await repository.completeCashSale(
+          input: CheckoutInput(
+            items: [
+              buildSimpleCartItem(
+                productId: 1,
+                productName: 'Bone',
+                quantityMil: 1000,
+                availableStockMil: 5000,
+                unitPriceCents: 10000,
+              ),
+            ],
+            saleType: SaleType.cash,
+            paymentMethod: PaymentMethod.cash,
+          ),
+        );
+
+        final saleEvent = operationalQueue.events.firstWhere(
+          (event) => event.entity == 'sale',
+        );
+        expect(
+          saleEvent.payload['cashSessionLocalId'],
+          'test-open-cash-session',
+        );
+        expect(saleEvent.payload['cashSessionUuid'], 'test-open-cash-session');
+        expect(saleEvent.payload['cashSessionLocalNumericId'], 1);
+
+        final cashMovementEvent = operationalQueue.events.firstWhere(
+          (event) => event.entity == 'cashMovement',
+        );
+        expect(
+          cashMovementEvent.payload['cashSessionLocalId'],
+          'test-open-cash-session',
+        );
+        expect(
+          cashMovementEvent.payload['cashSessionUuid'],
+          'test-open-cash-session',
+        );
+        expect(cashMovementEvent.payload['cashSessionLocalNumericId'], 1);
       },
     );
 

@@ -506,6 +506,8 @@ class SqliteSaleRepository implements SaleRepository {
     int? fiadoId;
     int? paymentMovementId;
     String? paymentMovementUuid;
+    int? paymentMovementSessionId;
+    String? paymentMovementSessionUuid;
     if (saleType == SaleType.cash) {
       if (creditUsedCents > 0) {
         await CustomerCreditDatabaseSupport.applyCreditToSale(
@@ -536,6 +538,8 @@ class SqliteSaleRepository implements SaleRepository {
         );
         paymentMovementId = cashMovement.id;
         paymentMovementUuid = cashMovement.uuid;
+        paymentMovementSessionId = cashMovement.sessionId;
+        paymentMovementSessionUuid = cashMovement.sessionUuid;
       }
 
       if (creditGeneratedCents > 0) {
@@ -617,6 +621,8 @@ class SqliteSaleRepository implements SaleRepository {
       stockChanges: stockChanges,
       paymentMovementId: paymentMovementId,
       paymentMovementUuid: paymentMovementUuid,
+      paymentMovementSessionId: paymentMovementSessionId,
+      paymentMovementSessionUuid: paymentMovementSessionUuid,
     );
 
     return CompletedSale(
@@ -645,6 +651,8 @@ class SqliteSaleRepository implements SaleRepository {
     required Iterable<InventoryBalanceMutation> stockChanges,
     required int? paymentMovementId,
     required String? paymentMovementUuid,
+    required int? paymentMovementSessionId,
+    required String? paymentMovementSessionUuid,
   }) async {
     final queue = _operationalSyncQueueRepository;
     if (queue == null) {
@@ -682,6 +690,12 @@ class SqliteSaleRepository implements SaleRepository {
         payload: <String, dynamic>{
           'localId': saleId,
           'uuid': saleUuid,
+          if (paymentMovementSessionUuid != null)
+            'cashSessionLocalId': paymentMovementSessionUuid,
+          if (paymentMovementSessionUuid != null)
+            'cashSessionUuid': paymentMovementSessionUuid,
+          if (paymentMovementSessionId != null)
+            'cashSessionLocalNumericId': paymentMovementSessionId,
           'receiptNumber': receiptNumber,
           'saleType': saleType.dbValue,
           'paymentMethod': input.paymentMethod.dbValue,
@@ -1173,6 +1187,16 @@ class SqliteSaleRepository implements SaleRepository {
     }
 
     final row = rows.first;
+    final sessionRows = await txn.query(
+      TableNames.caixaSessoes,
+      columns: const ['uuid'],
+      where: 'id = ?',
+      whereArgs: [row['sessao_id']],
+      limit: 1,
+    );
+    final sessionUuid = sessionRows.isEmpty
+        ? null
+        : sessionRows.first['uuid'] as String?;
     await queue.enqueue(
       txn,
       event: OperationalSyncEvent(
@@ -1189,16 +1213,18 @@ class SqliteSaleRepository implements SaleRepository {
         payload: <String, dynamic>{
           'localId': movementId,
           'uuid': movementUuid,
+          'cashSessionLocalId': sessionUuid,
+          'cashSessionUuid': sessionUuid,
+          'cashSessionLocalNumericId': row['sessao_id'],
           'sessionId': row['sessao_id'],
           'type': row['tipo_movimento'],
           'referenceType': row['referencia_tipo'],
           'referenceId': row['referencia_id'],
           'amountCents': row['valor_centavos'],
           'description': row['descricao'],
-          'paymentMethod':
-              PaymentMethodNoteCodec.parse(
-                row['descricao'] as String?,
-              )?.dbValue,
+          'paymentMethod': PaymentMethodNoteCodec.parse(
+            row['descricao'] as String?,
+          )?.dbValue,
           'createdAt': row['criado_em'],
         },
       ),

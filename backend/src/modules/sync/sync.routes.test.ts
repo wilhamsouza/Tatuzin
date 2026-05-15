@@ -226,14 +226,22 @@ describe("operational local-first sync routes", () => {
       buildEvent("cash-session-domain-create", "cashSession", {
         feature: "cash",
         entityLocalId,
-        payload: { status: "open", openingBalanceCents: 1200 },
+        payload: {
+          status: "open",
+          openedAt: "2026-05-06T20:41:08.169407Z",
+          openingBalanceCents: 1200,
+        },
       }),
     ]);
     const second = await push(fixture, [
       buildEvent("cash-session-domain-duplicate", "cashSession", {
         feature: "cash",
         entityLocalId,
-        payload: { status: "open", openingBalanceCents: 1200 },
+        payload: {
+          status: "open",
+          openedAt: "2026-05-06T20:41:08.169407Z",
+          openingBalanceCents: 1200,
+        },
       }),
     ]);
 
@@ -254,6 +262,73 @@ describe("operational local-first sync routes", () => {
     assert.equal(duplicateEventsCount, 1);
   });
 
+  it("materializes cashSession/create with app localSequence metadata without generic failure", async () => {
+    const fixture = await createFixture();
+    const entityLocalId = "1778846414191398-2d1accbd";
+
+    const response = await push(fixture, [
+      buildEvent("cash-session-app-sequence-create", "cashSession", {
+        feature: "pdv",
+        entityLocalId,
+        payload: {
+          localId: 3,
+          uuid: entityLocalId,
+          status: "aberto",
+          openedAt: "2026-05-15T09:00:14.191397",
+          closedAt: null,
+          operatorName: "wilham",
+          initialFloatCents: 0,
+          _sync: {
+            eventId: "cash-session-app-sequence-create",
+            entityLocalId,
+            localSequence: 1778846414191398,
+            idempotencyKey: "cash-session-app-sequence-create",
+          },
+        },
+      }),
+    ]);
+
+    assert.equal(response.status, 202);
+    assert.equal(
+      (response.data as { summary: { accepted: number; rejected: number } })
+        .summary.accepted,
+      1,
+    );
+    assert.equal(
+      (response.data as { summary: { accepted: number; rejected: number } })
+        .summary.rejected,
+      0,
+    );
+
+    const [cashSession, failedCount] = await Promise.all([
+      prisma.cashSession.findUniqueOrThrow({
+        where: {
+          companyId_localUuid: {
+            companyId: fixture.companyId,
+            localUuid: entityLocalId,
+          },
+        },
+      }),
+      prisma.syncEvent.count({
+        where: {
+          companyId: fixture.companyId,
+          eventId: "cash-session-app-sequence-create",
+          status: "FAILED",
+        },
+      }),
+    ]);
+
+    assert.equal(cashSession.status, "open");
+    assert.equal(cashSession.localId, "3");
+    assert.equal(cashSession.openingBalanceCents, 0);
+    assert.equal(cashSession.lastLocalSequence, null);
+    assert.equal(
+      (cashSession.payload as Record<string, unknown> | null)?.operatorName,
+      "wilham",
+    );
+    assert.equal(failedCount, 0);
+  });
+
   it("materializes cashSession/update closing cash and blocks reopening", async () => {
     const fixture = await createFixture();
     const entityLocalId = `${runId}-cash-session-close`;
@@ -261,7 +336,11 @@ describe("operational local-first sync routes", () => {
       buildEvent("cash-session-close-create", "cashSession", {
         feature: "cash",
         entityLocalId,
-        payload: { status: "open", openingBalanceCents: 1000 },
+        payload: {
+          status: "open",
+          openedAt: "2026-05-06T20:41:08.169407Z",
+          openingBalanceCents: 1000,
+        },
       }),
     ]);
 
@@ -321,6 +400,7 @@ describe("operational local-first sync routes", () => {
         entityLocalId,
         payload: {
           status: "open",
+          openedAt: "2026-05-06T20:41:08.169407Z",
           openingBalanceCents: 1000,
           _sync: { entityLocalId, localSequence: 1 },
         },
@@ -494,14 +574,114 @@ describe("operational local-first sync routes", () => {
     assert.equal(failedCount, 0);
   });
 
-  it("returns CASH_SESSION_NOT_FOUND for expected missing closed-session updates", async () => {
+  it("upserts a missing closed cashSession update and keeps a later create from reopening it", async () => {
     const fixture = await createFixture();
-    const response = await push(fixture, [
+    const entityLocalId = "1778846414191398-2d1accbd";
+    const updateResponse = await push(fixture, [
       buildEvent("cash-session-missing-close-update", "cashSession", {
         feature: "cash",
         operation: "update",
-        entityLocalId: `${runId}-cash-session-missing-close`,
+        entityLocalId,
         payload: {
+          uuid: entityLocalId,
+          status: "fechado",
+          openedAt: "2026-05-14T12:29:31.566712",
+          closedAt: "2026-05-15T08:59:26.391953",
+          initialFloatCents: 0,
+          expectedBalanceCents: 130400,
+          countedBalanceCents: 130400,
+          differenceCents: 0,
+          operatorName: "wilham",
+          _sync: {
+            eventId: "cash-session-missing-close-update",
+            entityLocalId,
+            localSequence: 1778846414191399,
+            idempotencyKey: "cash-session-missing-close-update",
+          },
+        },
+      }),
+    ]);
+
+    assert.equal(updateResponse.status, 202);
+    assert.equal(
+      (updateResponse.data as { summary: { accepted: number } }).summary
+        .accepted,
+      1,
+    );
+
+    const cashSessionAfterUpdate = await prisma.cashSession.findUniqueOrThrow({
+      where: {
+        companyId_localUuid: {
+          companyId: fixture.companyId,
+          localUuid: entityLocalId,
+        },
+      },
+    });
+    assert.equal(cashSessionAfterUpdate.status, "closed");
+    assert.equal(cashSessionAfterUpdate.openingBalanceCents, 0);
+    assert.equal(cashSessionAfterUpdate.expectedBalanceCents, 130400);
+    assert.equal(cashSessionAfterUpdate.closingBalanceCents, 130400);
+    assert.equal(
+      cashSessionAfterUpdate.openedAt?.toISOString(),
+      "2026-05-14T15:29:31.566Z",
+    );
+    assert.equal(
+      cashSessionAfterUpdate.closedAt?.toISOString(),
+      "2026-05-15T11:59:26.391Z",
+    );
+    assert.equal(
+      (cashSessionAfterUpdate.payload as Record<string, unknown> | null)
+        ?.operatorName,
+      "wilham",
+    );
+
+    const createResponse = await push(fixture, [
+      buildEvent("cash-session-create-after-closed-update", "cashSession", {
+        feature: "cash",
+        entityLocalId,
+        payload: {
+          uuid: entityLocalId,
+          status: "aberto",
+          openedAt: "2026-05-14T12:29:31.566712",
+          initialFloatCents: 0,
+          operatorName: "wilham",
+          _sync: {
+            eventId: "cash-session-create-after-closed-update",
+            entityLocalId,
+            localSequence: 1778846414191400,
+            idempotencyKey: "cash-session-create-after-closed-update",
+          },
+        },
+      }),
+    ]);
+
+    assert.equal(
+      (createResponse.data as { summary: { duplicates: number } }).summary
+        .duplicates,
+      1,
+    );
+    const cashSessionAfterCreate = await prisma.cashSession.findUniqueOrThrow({
+      where: {
+        companyId_localUuid: {
+          companyId: fixture.companyId,
+          localUuid: entityLocalId,
+        },
+      },
+    });
+    assert.equal(cashSessionAfterCreate.status, "closed");
+    assert.equal(cashSessionAfterCreate.closingBalanceCents, 130400);
+  });
+
+  it("rejects missing cashSession opening metadata with a specific payload error", async () => {
+    const fixture = await createFixture();
+    const entityLocalId = `${runId}-cash-session-invalid-payload`;
+    const response = await push(fixture, [
+      buildEvent("cash-session-invalid-payload", "cashSession", {
+        feature: "cash",
+        operation: "update",
+        entityLocalId,
+        payload: {
+          uuid: entityLocalId,
           status: "fechado",
           closedAt: "2026-05-06T22:41:08.169407Z",
           countedBalanceCents: 130400,
@@ -510,15 +690,44 @@ describe("operational local-first sync routes", () => {
     ]);
 
     const payload = response.data as {
-      conflicts: Array<{ code: string }>;
       rejected: Array<{ code: string }>;
     };
-    assert.equal(payload.conflicts[0]?.code, "CASH_SESSION_NOT_FOUND");
-    assert.equal(payload.rejected.length, 0);
+    assert.equal(payload.rejected[0]?.code, "CASH_SESSION_INVALID_PAYLOAD");
     const failedCount = await prisma.syncEvent.count({
       where: {
         companyId: fixture.companyId,
-        eventId: "cash-session-missing-close-update",
+        eventId: "cash-session-invalid-payload",
+        status: "FAILED",
+      },
+    });
+    assert.equal(failedCount, 0);
+  });
+
+  it("rejects cashSession payloads without status with a specific payload error", async () => {
+    const fixture = await createFixture();
+    const entityLocalId = `${runId}-cash-session-missing-status`;
+    const response = await push(fixture, [
+      buildEvent("cash-session-missing-status", "cashSession", {
+        feature: "cash",
+        operation: "update",
+        entityLocalId,
+        payload: {
+          uuid: entityLocalId,
+          openedAt: "2026-05-06T20:41:08.169407Z",
+          countedBalanceCents: 130400,
+        },
+      }),
+    ]);
+
+    const payload = response.data as {
+      rejected: Array<{ code: string; details?: { missingFields?: string[] } }>;
+    };
+    assert.equal(payload.rejected[0]?.code, "CASH_SESSION_INVALID_PAYLOAD");
+    assert.deepEqual(payload.rejected[0]?.details?.missingFields, ["status"]);
+    const failedCount = await prisma.syncEvent.count({
+      where: {
+        companyId: fixture.companyId,
+        eventId: "cash-session-missing-status",
         status: "FAILED",
       },
     });
@@ -553,6 +762,135 @@ describe("operational local-first sync routes", () => {
     assert.equal(failedCount, 0);
   });
 
+  it("returns materialized cashSession data in app snapshot after closing", async () => {
+    const fixture = await createFixture();
+    const entityLocalId = `${runId}-cash-session-snapshot`;
+    await push(fixture, [
+      buildEvent("cash-session-snapshot-create", "cashSession", {
+        feature: "pdv",
+        entityLocalId,
+        payload: {
+          uuid: entityLocalId,
+          status: "aberto",
+          openedAt: "2026-05-15T09:00:14.191397",
+          operatorName: "wilham",
+          initialFloatCents: 0,
+        },
+      }),
+      buildEvent("cash-session-snapshot-close", "cashSession", {
+        feature: "pdv",
+        operation: "update",
+        entityLocalId,
+        payload: {
+          uuid: entityLocalId,
+          status: "fechado",
+          openedAt: "2026-05-15T09:00:14.191397",
+          closedAt: "2026-05-15T10:59:26.391953",
+          operatorName: "wilham",
+          initialFloatCents: 0,
+          expectedBalanceCents: 8000,
+          countedBalanceCents: 8000,
+          differenceCents: 0,
+        },
+      }),
+    ]);
+
+    const response = await requestJson(
+      "GET",
+      "/app/snapshot?features=cash_sessions",
+      { token: fixture.token },
+    );
+
+    assert.equal(response.status, 200);
+    const cashSessions = (
+      response.data as {
+        features: {
+          cash_sessions: {
+            items: Array<Record<string, unknown>>;
+          };
+        };
+      }
+    ).features.cash_sessions.items;
+    assert.equal(cashSessions.length, 1);
+    assert.equal(cashSessions[0]?.localUuid, entityLocalId);
+    assert.equal(cashSessions[0]?.status, "closed");
+    assert.equal(cashSessions[0]?.operatorName, "wilham");
+    assert.equal(cashSessions[0]?.openingBalanceCents, 0);
+    assert.equal(cashSessions[0]?.closingBalanceCents, 8000);
+    assert.equal(cashSessions[0]?.expectedBalanceCents, 8000);
+  });
+
+  it("backfills localId on late cashSession/create after a closed update upsert", async () => {
+    const fixture = await createFixture();
+    const entityLocalId = `${runId}-cash-session-backfill-local-id`;
+
+    const updateResponse = await push(fixture, [
+      buildEvent("cash-session-backfill-update", "cashSession", {
+        feature: "pdv",
+        operation: "update",
+        entityLocalId,
+        payload: {
+          uuid: entityLocalId,
+          status: "fechado",
+          openedAt: "2026-05-14T12:29:31.566712",
+          closedAt: "2026-05-15T08:59:26.391953",
+          countedBalanceCents: 8000,
+          expectedBalanceCents: 8000,
+          differenceCents: 0,
+        },
+      }),
+    ]);
+    assert.equal(updateResponse.status, 202);
+
+    const createResponse = await push(fixture, [
+      buildEvent("cash-session-backfill-create", "cashSession", {
+        feature: "pdv",
+        entityLocalId,
+        payload: {
+          localId: 3,
+          uuid: entityLocalId,
+          status: "aberto",
+          openedAt: "2026-05-14T12:29:31.566712",
+          operatorName: "wilham",
+        },
+      }),
+    ]);
+    assert.equal(
+      (createResponse.data as { summary: { duplicates: number } }).summary
+        .duplicates,
+      1,
+    );
+
+    const cashSession = await prisma.cashSession.findUniqueOrThrow({
+      where: {
+        companyId_localUuid: {
+          companyId: fixture.companyId,
+          localUuid: entityLocalId,
+        },
+      },
+    });
+    assert.equal(cashSession.status, "closed");
+    assert.equal(cashSession.localId, "3");
+
+    const movementResponse = await push(fixture, [
+      buildEvent("cash-session-backfill-movement", "cashMovement", {
+        feature: "pdv",
+        entityLocalId: `${entityLocalId}-movement`,
+        payload: {
+          uuid: `${entityLocalId}-movement`,
+          sessionId: 3,
+          amountCents: -500,
+          type: "sangria",
+        },
+      }),
+    ]);
+
+    const movementPayload = movementResponse.data as {
+      conflicts: Array<{ code: string }>;
+    };
+    assert.equal(movementPayload.conflicts[0]?.code, "CASH_SESSION_CLOSED");
+  });
+
   it("materializes cashMovement/create and keeps it idempotent", async () => {
     const fixture = await createFixture();
     const cashSessionLocalId = `${runId}-movement-cash-session`;
@@ -561,7 +899,10 @@ describe("operational local-first sync routes", () => {
       buildEvent("movement-cash-session-create", "cashSession", {
         feature: "cash",
         entityLocalId: cashSessionLocalId,
-        payload: { status: "open" },
+        payload: {
+          status: "open",
+          openedAt: "2026-05-06T20:41:08.169407Z",
+        },
       }),
     ]);
 
@@ -607,7 +948,10 @@ describe("operational local-first sync routes", () => {
       buildEvent("movement-sync-cash-session-create", "cashSession", {
         feature: "cash",
         entityLocalId: cashSessionLocalId,
-        payload: { status: "open" },
+        payload: {
+          status: "open",
+          openedAt: "2026-05-06T20:41:08.169407Z",
+        },
       }),
     ]);
 
@@ -673,6 +1017,67 @@ describe("operational local-first sync routes", () => {
       where: { companyId: fixture.companyId, localUuid: entityLocalId },
     });
     assert.equal(salesCount, 1);
+  });
+
+  it("links sale/create to the cashSession when the app sends the session uuid", async () => {
+    const fixture = await createFixture();
+    const cashSessionLocalId = `${runId}-sale-cash-session`;
+    const saleLocalId = `${runId}-sale-linked-cash`;
+
+    await push(fixture, [
+      buildEvent("sale-linked-cash-session-create", "cashSession", {
+        feature: "pdv",
+        entityLocalId: cashSessionLocalId,
+        payload: {
+          uuid: cashSessionLocalId,
+          status: "aberto",
+          openedAt: "2026-05-15T09:00:14.191397",
+          operatorName: "wilham",
+          initialFloatCents: 0,
+        },
+      }),
+    ]);
+
+    const response = await push(fixture, [
+      buildEvent("sale-linked-cash-create", "sale", {
+        feature: "pdv",
+        entityLocalId: saleLocalId,
+        payload: {
+          uuid: saleLocalId,
+          status: "finalized",
+          totalCents: 8800,
+          cashSessionLocalId,
+          cashSessionUuid: cashSessionLocalId,
+          soldAt: "2026-05-15T09:05:00.000Z",
+        },
+      }),
+    ]);
+
+    assert.equal(response.status, 202);
+    assert.equal(
+      (response.data as { summary: { accepted: number } }).summary.accepted,
+      1,
+    );
+
+    const [sale, cashSession] = await Promise.all([
+      prisma.sale.findUniqueOrThrow({
+        where: {
+          companyId_localUuid: {
+            companyId: fixture.companyId,
+            localUuid: saleLocalId,
+          },
+        },
+      }),
+      prisma.cashSession.findUniqueOrThrow({
+        where: {
+          companyId_localUuid: {
+            companyId: fixture.companyId,
+            localUuid: cashSessionLocalId,
+          },
+        },
+      }),
+    ]);
+    assert.equal(sale.cashSessionId, cashSession.id);
   });
 
   it("deduplicates sale/create by _sync entityLocalId with different eventIds", async () => {
@@ -1924,6 +2329,7 @@ describe("operational local-first sync routes", () => {
         entityLocalId: cashSessionLocalId,
         payload: {
           status: "open",
+          operatorName: "Operadora A",
           openingBalanceCents: 1000,
           openedAt: new Date().toISOString(),
         },
@@ -1952,6 +2358,7 @@ describe("operational local-first sync routes", () => {
       ["cashSession", "cashMovement"],
     );
     assert.equal(events[0]?.projection?.totals.openingBalanceCents, 1000);
+    assert.equal(events[0]?.projection?.operatorName, "Operadora A");
     assert.equal(events[1]?.projection?.amountCents, 2500);
     assert.equal(
       events[1]?.projection?.cashSessionId,

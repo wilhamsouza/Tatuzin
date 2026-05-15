@@ -1,4 +1,5 @@
 import {
+  asRecord,
   firstDate,
   firstIdentity,
   firstInt,
@@ -9,6 +10,7 @@ import {
   localIdentityFor,
   localSequenceFor,
   normalizeCashSessionStatus,
+  persistableLocalSequence,
 } from './payload-utils';
 import type {
   SyncMaterializerInput,
@@ -45,17 +47,14 @@ export class CashSessionMaterializer {
       },
     });
     const localSequence = localSequenceFor(input.event, input.payload);
-
-    if (input.event.operation === 'create' && existing != null) {
-      return { outcome: 'duplicate', entityServerId: existing.id };
-    }
+    const storedLocalSequence = persistableLocalSequence(localSequence);
 
     if (
       existing != null &&
       ['update', 'upsert'].includes(input.event.operation) &&
-      localSequence != null &&
+      storedLocalSequence != null &&
       existing.lastLocalSequence != null &&
-      existing.lastLocalSequence > localSequence
+      existing.lastLocalSequence > storedLocalSequence
     ) {
       return {
         outcome: 'conflict',
@@ -72,27 +71,44 @@ export class CashSessionMaterializer {
       };
     }
 
-    const requestedStatus = normalizeCashSessionStatus(
-      firstString(input.payload, ['status', 'state']),
-    );
-    if (!['open', 'closed'].includes(requestedStatus)) {
+    const requestedStatusRaw = firstString(input.payload, ['status', 'state']);
+    const requestedStatus =
+      requestedStatusRaw == null
+        ? null
+        : normalizeCashSessionStatus(requestedStatusRaw);
+    if (requestedStatus !== 'open' && requestedStatus !== 'closed') {
       return {
         outcome: 'rejected',
-        code: 'CASH_SESSION_INVALID_STATUS',
-        message: 'Status de sessao de caixa invalido para sync operacional.',
+        code:
+          requestedStatusRaw == null
+            ? 'CASH_SESSION_INVALID_PAYLOAD'
+            : 'CASH_SESSION_INVALID_STATUS',
+        message:
+          requestedStatusRaw == null
+            ? 'Payload de sessao de caixa nao possui os dados minimos para materializacao segura.'
+            : 'Status de sessao de caixa invalido para sync operacional.',
         details: {
           entity: input.event.entity,
           operation: input.event.operation,
           entityLocalId: input.event.entityLocalId,
-          status: firstString(input.payload, ['status', 'state']),
+          status: requestedStatusRaw,
+          ...(requestedStatusRaw == null
+            ? { missingFields: ['status'] }
+            : {}),
         },
       };
+    }
+    const normalizedStatus = requestedStatus as 'open' | 'closed';
+
+    if (input.event.operation === 'create' && existing != null) {
+      await this.backfillDuplicateCreate(input, existing);
+      return { outcome: 'duplicate', entityServerId: existing.id };
     }
 
     if (
       existing != null &&
       existing.status === 'closed' &&
-      isOpenStatus(requestedStatus)
+      isOpenStatus(normalizedStatus)
     ) {
       return {
         outcome: 'conflict',
@@ -102,51 +118,50 @@ export class CashSessionMaterializer {
           cashSessionId: existing.id,
           localUuid,
           currentStatus: existing.status,
-          requestedStatus,
+          requestedStatus: normalizedStatus,
         },
       };
     }
 
-    if (
-      existing == null &&
-      input.event.operation === 'update' &&
-      !this.canCreateMissingOpenSession(input, requestedStatus)
-    ) {
-      return {
-        outcome: 'conflict',
-        code: 'CASH_SESSION_NOT_FOUND',
-        message: 'Sessao de caixa nao encontrada para atualizacao.',
-        payload: {
-          entity: input.event.entity,
-          operation: input.event.operation,
-          entityLocalId: input.event.entityLocalId,
-          localUuid,
-          status: requestedStatus,
-          hasOpenedAt:
-            firstString(input.payload, ['openedAt', 'createdAt']) != null,
-        },
-      };
+    const openedAtField = this.readDateField(input, ['openedAt', 'createdAt']);
+    const closedAtField = this.readDateField(input, [
+      'closedAt',
+      'finishedAt',
+      'updatedAt',
+    ]);
+
+    const invalidPayload = this.invalidPayloadResult({
+      input,
+      existing,
+      localUuid,
+      requestedStatus: normalizedStatus,
+      openedAtField,
+      closedAtField,
+    });
+    if (invalidPayload != null) {
+      return invalidPayload;
     }
 
-    const now = new Date();
-    const openedAt = firstDate(
-      input.payload,
-      ['openedAt', 'createdAt'],
-      existing?.openedAt ?? now,
-    );
-    const closedAt = isClosedStatus(requestedStatus)
-      ? firstDate(
+    const defaultOpenedAt = existing?.openedAt ?? new Date(input.event.occurredAt);
+    const defaultClosedAt = existing?.closedAt ?? new Date(input.event.occurredAt);
+    const openedAt =
+      openedAtField.value ??
+      firstDate(input.payload, ['openedAt', 'createdAt'], defaultOpenedAt);
+    const closedAt = isClosedStatus(normalizedStatus)
+      ? closedAtField.value ??
+        firstDate(
           input.payload,
           ['closedAt', 'finishedAt', 'updatedAt'],
-          existing?.closedAt ?? now,
+          defaultClosedAt,
         )
       : null;
+    const mergedPayload = this.mergePayload(existing?.payload, input.payload);
 
     const data = {
       deviceId: input.context.device.id,
       userId: input.context.user.id,
       localId: firstIdentity(input.payload, ['localId', 'id']),
-      status: requestedStatus,
+      status: normalizedStatus,
       openedAt,
       closedAt,
       openingBalanceCents:
@@ -159,10 +174,12 @@ export class CashSessionMaterializer {
       expectedBalanceCents:
         firstInt(input.payload, ['expectedBalanceCents']) ??
         existing?.expectedBalanceCents,
-      notes: firstString(input.payload, ['notes', 'description']),
-      payload: jsonPayload(input.payload),
+      notes:
+        firstString(input.payload, ['notes', 'description']) ??
+        existing?.notes,
+      payload: jsonPayload(mergedPayload),
       lastLocalSequence:
-        localSequence ?? existing?.lastLocalSequence ?? null,
+        storedLocalSequence ?? existing?.lastLocalSequence ?? null,
     };
 
     if (existing == null) {
@@ -192,14 +209,147 @@ export class CashSessionMaterializer {
     };
   }
 
-  private canCreateMissingOpenSession(
-    input: SyncMaterializerInput,
-    requestedStatus: string,
-  ) {
-    if (!isOpenStatus(requestedStatus)) {
-      return false;
+  private invalidPayloadResult(input: {
+    input: SyncMaterializerInput;
+    existing: {
+      openedAt: Date | null;
+      closedAt: Date | null;
+      payload: unknown;
+    } | null;
+    localUuid: string;
+    requestedStatus: string;
+    openedAtField: DateField;
+    closedAtField: DateField;
+  }) {
+    const missingFields: string[] = [];
+    const invalidFields: string[] = [];
+
+    if (input.openedAtField.invalid) {
+      invalidFields.push('openedAt');
     }
 
-    return firstString(input.payload, ['openedAt', 'createdAt']) != null;
+    if (input.closedAtField.invalid) {
+      invalidFields.push('closedAt');
+    }
+
+    if (input.existing == null && input.openedAtField.value == null) {
+      missingFields.push('openedAt');
+    }
+
+    if (missingFields.length === 0 && invalidFields.length === 0) {
+      return null;
+    }
+
+    return {
+      outcome: 'rejected' as const,
+      code: 'CASH_SESSION_INVALID_PAYLOAD',
+      message:
+        'Payload de sessao de caixa nao possui os dados minimos para materializacao segura.',
+      details: {
+        entity: input.input.event.entity,
+        operation: input.input.event.operation,
+        entityLocalId: input.input.event.entityLocalId,
+        localUuid: input.localUuid,
+        status: input.requestedStatus,
+        missingFields,
+        invalidFields,
+      },
+    };
+  }
+
+  private readDateField(
+    input: SyncMaterializerInput,
+    keys: string[],
+  ): DateField {
+    const raw = firstString(input.payload, keys);
+    if (raw == null) {
+      return { value: null, invalid: false };
+    }
+
+    const value = new Date(raw);
+    if (Number.isNaN(value.getTime())) {
+      return { value: null, invalid: true };
+    }
+
+    return { value, invalid: false };
+  }
+
+  private mergePayload(existingPayload: unknown, payload: Record<string, unknown>) {
+    const merged = {
+      ...asRecord(existingPayload),
+      ...payload,
+    };
+    const operatorName =
+      firstString(payload, ['operatorName']) ??
+      firstString(asRecord(existingPayload), ['operatorName']);
+
+    return operatorName == null
+      ? merged
+      : {
+          ...merged,
+          operatorName,
+        };
+  }
+
+  private async backfillDuplicateCreate(
+    input: SyncMaterializerInput,
+    existing: ExistingCashSession,
+  ) {
+    const localId = firstIdentity(input.payload, ['localId', 'id']);
+    const openedAtField = this.readDateField(input, ['openedAt', 'createdAt']);
+    const mergedPayload = this.mergePayload(existing.payload, input.payload);
+    const notes = firstString(input.payload, ['notes', 'description']);
+
+    const patch: Record<string, unknown> = {};
+
+    if (existing.localId == null && localId != null) {
+      patch.localId = localId;
+    }
+
+    if (existing.openedAt == null && openedAtField.value != null) {
+      patch.openedAt = openedAtField.value;
+    }
+
+    if (existing.deviceId == null && input.context.device.id != null) {
+      patch.deviceId = input.context.device.id;
+    }
+
+    if (existing.userId == null && input.context.user.id != null) {
+      patch.userId = input.context.user.id;
+    }
+
+    if (existing.notes == null && notes != null) {
+      patch.notes = notes;
+    }
+
+    const hasMergedPayloadChanges =
+      JSON.stringify(asRecord(existing.payload)) !== JSON.stringify(mergedPayload);
+    if (hasMergedPayloadChanges) {
+      patch.payload = jsonPayload(mergedPayload);
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return;
+    }
+
+    await input.tx.cashSession.update({
+      where: { id: existing.id },
+      data: patch,
+    });
   }
 }
+
+type DateField = {
+  value: Date | null;
+  invalid: boolean;
+};
+
+type ExistingCashSession = {
+  id: string;
+  deviceId: string | null;
+  userId: string | null;
+  localId: string | null;
+  openedAt: Date | null;
+  notes: string | null;
+  payload: unknown;
+};

@@ -21,6 +21,9 @@ export type SyncPayloadMetadata = {
   idempotencyKey: string | null;
 };
 
+const MIN_PERSISTABLE_INT = -2147483648;
+const MAX_PERSISTABLE_INT = 2147483647;
+
 export function syncMetadataFor(
   event: SyncPushEventInput,
   payload: Record<string, unknown>,
@@ -57,6 +60,16 @@ export function localSequenceFor(
   payload: Record<string, unknown>,
 ) {
   return syncMetadataFor(event, payload).localSequence;
+}
+
+export function persistableLocalSequence(value: number | null | undefined) {
+  if (value == null || !Number.isSafeInteger(value)) {
+    return null;
+  }
+
+  return value >= MIN_PERSISTABLE_INT && value <= MAX_PERSISTABLE_INT
+    ? value
+    : null;
 }
 
 export function domainIdentityFor(

@@ -6,7 +6,9 @@ import { AppError } from "../../shared/http/app-error";
 import type { AppContext } from "../app/app-context.types";
 import {
   asRecord as asPayloadRecord,
+  firstString,
   localSequenceFor,
+  persistableLocalSequence,
   syncMetadataFor,
 } from "./materializers/payload-utils";
 import { SyncMaterializerService } from "./materializers/sync-materializer.service";
@@ -775,6 +777,7 @@ export class SyncEventService {
 
     const metadata = syncMetadataFor(event, event.payload);
     const localSequence = metadata.localSequence;
+    const storedLocalSequence = persistableLocalSequence(localSequence);
     const entityLocalId = metadata.entityLocalId;
     if (localSequence == null || entityLocalId == null) {
       return null;
@@ -786,7 +789,7 @@ export class SyncEventService {
       event.entity,
       entityLocalId,
     );
-    if (domainLastLocalSequence != null) {
+    if (domainLastLocalSequence != null && storedLocalSequence != null) {
       return null;
     }
 
@@ -1001,6 +1004,7 @@ export class SyncEventService {
       select: {
         id: true,
         localUuid: true,
+        payload: true,
         status: true,
         openedAt: true,
         closedAt: true,
@@ -1009,16 +1013,27 @@ export class SyncEventService {
         expectedBalanceCents: true,
         createdAt: true,
         updatedAt: true,
+        user: {
+          select: {
+            name: true,
+          },
+        },
       },
     });
     if (cashSession == null) {
       return null;
     }
 
+    const operatorName =
+      firstString(asPayloadRecord(cashSession.payload), ["operatorName"]) ??
+      cashSession.user?.name ??
+      null;
+
     return {
       entityServerId: cashSession.id,
       id: cashSession.id,
       localUuid: cashSession.localUuid,
+      operatorName,
       status: cashSession.status,
       openedAt: cashSession.openedAt?.toISOString() ?? null,
       closedAt: cashSession.closedAt?.toISOString() ?? null,
