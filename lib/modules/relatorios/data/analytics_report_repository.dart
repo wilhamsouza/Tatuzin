@@ -163,6 +163,16 @@ class AnalyticsReportRepository implements ReportRepository {
               financial.cashNetCents + financial.fiadoPaymentsAmountCents,
           costOfGoodsSoldCents: financial.salesCostCents,
           realizedProfitCents: financial.salesProfitCents,
+          isRealizedProfitAvailable:
+              financial.salesAmountCents <= 0 ||
+              financial.salesCostCents > 0 ||
+              financial.salesProfitCents != financial.salesAmountCents,
+          realizedProfitUnavailableReason:
+              financial.salesAmountCents > 0 &&
+                  financial.salesCostCents <= 0 &&
+                  financial.salesProfitCents == financial.salesAmountCents
+              ? 'Custo nao informado'
+              : null,
           salesCount: salesCount,
           totalDiscountCents: 0,
           totalSurchargeCents: 0,
@@ -359,6 +369,8 @@ class AnalyticsReportRepository implements ReportRepository {
       totalReceivedCents: overview.totalReceivedCents,
       costOfGoodsSoldCents: overview.costOfGoodsSoldCents,
       realizedProfitCents: overview.realizedProfitCents,
+      isRealizedProfitAvailable: overview.isRealizedProfitAvailable,
+      realizedProfitUnavailableReason: overview.realizedProfitUnavailableReason,
       salesCount: overview.salesCount,
       pendingFiadoCents: overview.pendingFiadoCents,
       pendingFiadoCount: overview.pendingFiadoCount,

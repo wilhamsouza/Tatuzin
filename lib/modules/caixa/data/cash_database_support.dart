@@ -29,11 +29,19 @@ abstract final class CashDatabaseSupport {
   }
 
   static Future<int> requireOpenSessionId(DatabaseExecutor db) async {
+    return requireOpenSessionIdWithMessage(
+      db,
+      message: 'Abra o caixa antes de registrar movimentacoes manuais.',
+    );
+  }
+
+  static Future<int> requireOpenSessionIdWithMessage(
+    DatabaseExecutor db, {
+    required String message,
+  }) async {
     final row = await getOpenSessionRow(db);
     if (row == null) {
-      throw const ValidationException(
-        'Abra o caixa antes de registrar movimentacoes manuais.',
-      );
+      throw ValidationException(message);
     }
 
     return row['id'] as int;
@@ -206,5 +214,147 @@ abstract final class CashSessionMathSupport {
         fiadoReceiptsCashCents +
         suppliesCents -
         withdrawalsCents;
+  }
+
+  static Future<void> rebuildSessionTotals(
+    DatabaseExecutor db, {
+    required int sessionId,
+  }) async {
+    final sessionRows = await db.query(
+      TableNames.caixaSessoes,
+      columns: ['troco_inicial_centavos', 'saldo_contado_centavos'],
+      where: 'id = ?',
+      whereArgs: [sessionId],
+      limit: 1,
+    );
+    if (sessionRows.isEmpty) {
+      throw const ValidationException('Sessao de caixa nao encontrada.');
+    }
+
+    final movementRows = await db.query(
+      TableNames.caixaMovimentos,
+      columns: [
+        'tipo_movimento',
+        'referencia_tipo',
+        'valor_centavos',
+        'descricao',
+      ],
+      where: 'sessao_id = ?',
+      whereArgs: [sessionId],
+    );
+
+    var cashEntriesCents = 0;
+    var suppliesCents = 0;
+    var withdrawalsCents = 0;
+    var legacySalesCents = 0;
+    var legacyFiadoReceiptsCents = 0;
+    var fiadoReceiptsCashCents = 0;
+    var fiadoReceiptsPixCents = 0;
+    var fiadoReceiptsCardCents = 0;
+
+    for (final row in movementRows) {
+      final type = row['tipo_movimento'] as String? ?? '';
+      final referenceType = row['referencia_tipo'] as String?;
+      final amountCents = row['valor_centavos'] as int? ?? 0;
+      final paymentMethod = PaymentMethodNoteCodec.parse(
+        row['descricao'] as String?,
+      );
+
+      switch (type) {
+        case 'venda':
+          legacySalesCents += amountCents;
+          if (paymentMethod == PaymentMethod.cash) {
+            cashEntriesCents += amountCents;
+          }
+          break;
+        case 'recebimento_fiado':
+          legacyFiadoReceiptsCents += amountCents;
+          switch (paymentMethod) {
+            case PaymentMethod.cash:
+              fiadoReceiptsCashCents += amountCents;
+              break;
+            case PaymentMethod.pix:
+              fiadoReceiptsPixCents += amountCents;
+              break;
+            case PaymentMethod.card:
+              fiadoReceiptsCardCents += amountCents;
+              break;
+            case PaymentMethod.fiado:
+            case null:
+              break;
+          }
+          break;
+        case 'cancelamento':
+          if (referenceType == 'venda') {
+            legacySalesCents += amountCents;
+            if (paymentMethod == PaymentMethod.cash) {
+              cashEntriesCents += amountCents;
+            }
+          } else if (referenceType == 'fiado') {
+            legacyFiadoReceiptsCents += amountCents;
+            switch (paymentMethod) {
+              case PaymentMethod.cash:
+                fiadoReceiptsCashCents += amountCents;
+                break;
+              case PaymentMethod.pix:
+                fiadoReceiptsPixCents += amountCents;
+                break;
+              case PaymentMethod.card:
+                fiadoReceiptsCardCents += amountCents;
+                break;
+              case PaymentMethod.fiado:
+              case null:
+                break;
+            }
+          }
+          break;
+        case 'suprimento':
+          suppliesCents += amountCents;
+          break;
+        case 'sangria':
+          withdrawalsCents += amountCents.abs();
+          break;
+        case 'ajuste':
+          if (amountCents >= 0) {
+            suppliesCents += amountCents;
+          } else {
+            withdrawalsCents += amountCents.abs();
+          }
+          break;
+      }
+    }
+
+    final sessionRow = sessionRows.first;
+    final initialFloatCents =
+        sessionRow['troco_inicial_centavos'] as int? ?? 0;
+    final expectedBalance = calculateExpectedBalance(
+      initialFloatCents: initialFloatCents,
+      cashEntriesCents: cashEntriesCents,
+      fiadoReceiptsCashCents: fiadoReceiptsCashCents,
+      suppliesCents: suppliesCents,
+      withdrawalsCents: withdrawalsCents,
+    );
+    final countedBalanceCents = sessionRow['saldo_contado_centavos'] as int?;
+
+    await db.update(
+      TableNames.caixaSessoes,
+      {
+        'total_entradas_dinheiro_centavos': cashEntriesCents,
+        'total_suprimentos_centavos': suppliesCents,
+        'total_sangrias_centavos': withdrawalsCents,
+        'total_vendas_centavos': legacySalesCents,
+        'total_recebimentos_fiado_centavos': legacyFiadoReceiptsCents,
+        'total_recebimentos_fiado_dinheiro_centavos': fiadoReceiptsCashCents,
+        'total_recebimentos_fiado_pix_centavos': fiadoReceiptsPixCents,
+        'total_recebimentos_fiado_cartao_centavos': fiadoReceiptsCardCents,
+        'saldo_esperado_centavos': expectedBalance,
+        'saldo_final_centavos': countedBalanceCents ?? expectedBalance,
+        'diferenca_centavos': countedBalanceCents == null
+            ? null
+            : countedBalanceCents - expectedBalance,
+      },
+      where: 'id = ?',
+      whereArgs: [sessionId],
+    );
   }
 }

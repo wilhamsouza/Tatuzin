@@ -24,15 +24,15 @@ extension ReportDataSourceStrategyX on ReportDataSourceStrategy {
 
 ReportDataSourceStrategy reportStrategyForPage(ReportPageKey page) {
   switch (page) {
-    case ReportPageKey.customers:
-      return ReportDataSourceStrategy.crmManagementServerFirst;
     case ReportPageKey.overview:
     case ReportPageKey.sales:
+    case ReportPageKey.cash:
+    case ReportPageKey.profitability:
+      return ReportDataSourceStrategy.pdvOperationalLocalFirst;
+    case ReportPageKey.customers:
+      return ReportDataSourceStrategy.crmManagementServerFirst;
     case ReportPageKey.inventory:
     case ReportPageKey.purchases:
-    case ReportPageKey.profitability:
       return ReportDataSourceStrategy.erpManagementServerFirst;
-    case ReportPageKey.cash:
-      return ReportDataSourceStrategy.pdvOperationalLocalFirst;
   }
 }

@@ -66,6 +66,23 @@ class AppSession {
     return effectivePermissions.contains(permission);
   }
 
+  bool canAccessPermission(String permission) {
+    final employeeSnapshot = employee;
+    if (employeeSnapshot != null) {
+      if (employeeSnapshot.isDisabled) {
+        return false;
+      }
+      if (employeeSnapshot.role.trim().toUpperCase() == 'OWNER') {
+        return true;
+      }
+      return employeeSnapshot.hasPermission(permission);
+    }
+    if (isCompanyOwner) {
+      return true;
+    }
+    return hasEffectivePermission(permission);
+  }
+
   bool get isCompanyOwner => membership?.isOwner ?? false;
 
   bool get hasClientInstanceId {

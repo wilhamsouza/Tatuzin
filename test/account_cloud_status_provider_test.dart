@@ -1,4 +1,5 @@
 import 'package:erp_pdv_app/app/core/session/app_session.dart';
+import 'package:erp_pdv_app/app/core/sync/sync_queue_feature_summary.dart';
 import 'package:erp_pdv_app/app/core/session/app_user.dart';
 import 'package:erp_pdv_app/app/core/session/company_context.dart';
 import 'package:erp_pdv_app/app/core/session/session_provider.dart';
@@ -215,6 +216,100 @@ void main() {
       expect(snapshot.conflictCount, 1);
     },
   );
+
+  test('destaca o modulo quando ha uma unica falha operacional', () async {
+    final container = ProviderContainer(
+      overrides: [
+        backendConnectionStatusProvider.overrideWith(
+          (ref) async => BackendConnectionStatus(
+            isConfigured: true,
+            isReachable: true,
+            companyLookupSucceeded: true,
+            endpointLabel: 'API',
+            message: 'online',
+            checkedAt: DateTime(2026, 4, 21, 9),
+          ),
+        ),
+        syncHealthOverviewProvider.overrideWith(
+          (ref) => SyncHealthOverview(
+            totalPending: 0,
+            totalProcessing: 0,
+            totalActiveProcessing: 0,
+            totalStaleProcessing: 0,
+            totalSynced: 2,
+            totalErrors: 1,
+            totalBlocked: 0,
+            totalConflicts: 0,
+            totalAttempts: 3,
+            lastProcessedAt: DateTime(2026, 4, 21, 8, 20),
+            lastErrorAt: DateTime(2026, 4, 21, 8, 30),
+            nextRetryAt: DateTime(2026, 4, 21, 9, 30),
+          ),
+        ),
+        syncQueueFeatureSummariesProvider.overrideWith((ref) async {
+          return [
+            SyncQueueFeatureSummary(
+              featureKey: 'sales',
+              displayName: 'Vendas',
+              totalTracked: 1,
+              pendingCount: 0,
+              processingCount: 0,
+              activeProcessingCount: 0,
+              staleProcessingCount: 0,
+              syncedCount: 0,
+              errorCount: 1,
+              blockedCount: 0,
+              conflictCount: 0,
+              totalAttemptCount: 3,
+              lastProcessedAt: DateTime(2026, 4, 21, 8, 20),
+              nextRetryAt: DateTime(2026, 4, 21, 9, 30),
+              lastError: 'Falha inesperada ao materializar evento operacional.',
+              lastErrorType: null,
+              lastErrorAt: DateTime(2026, 4, 21, 8, 30),
+            ),
+          ];
+        }),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container
+        .read(appSessionProvider.notifier)
+        .setAuthenticatedSession(
+          scope: SessionScope.authenticatedRemote,
+          user: const AppUser(
+            localId: 1,
+            remoteId: 'user-1',
+            displayName: 'Operador',
+            email: 'operador@tatuzin.app',
+            roleLabel: 'Operador',
+            kind: AppUserKind.remoteAuthenticated,
+          ),
+          company: const CompanyContext(
+            localId: 1,
+            remoteId: 'company-1',
+            displayName: 'Tatuzin',
+            legalName: 'Tatuzin LTDA',
+            documentNumber: '123',
+            licensePlan: 'pro',
+            licenseStatus: 'active',
+            syncEnabled: true,
+          ),
+          isOfflineFallback: false,
+          clientInstanceId: 'device-1',
+        );
+
+    await container.read(backendConnectionStatusProvider.future);
+    await container.read(syncQueueFeatureSummariesProvider.future);
+    final snapshot = container.read(accountCloudStatusProvider);
+
+    expect(snapshot.statusLabel, 'Erro de sincronizacao');
+    expect(
+      snapshot.statusMessage,
+      contains('Ha 1 venda com falha de sincronizacao'),
+    );
+    expect(snapshot.statusMessage, contains('Ultimo erro em Vendas'));
+  });
 
   test(
     'shows server data stale when push ok but pull or snapshot failed',

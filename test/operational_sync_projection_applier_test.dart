@@ -53,6 +53,172 @@ void main() {
     expect(sales.single['valor_final_centavos'], 2400);
   });
 
+  test(
+    'device B preserva subtotal, desconto e tipo da venda quando o payload operacional traz esses dados',
+    () async {
+      final appDatabase = _newIsolatedDatabase('sale-discount');
+      addTearDown(() => _disposeIsolatedDatabase(appDatabase));
+      final db = await appDatabase.database;
+      final applier = SqliteOperationalSyncProjectionApplier(
+        appDatabase: appDatabase,
+        companyRemoteId: 'company-1',
+      );
+
+      await applier.apply(
+        _change(
+          entity: 'sale',
+          eventId: 'sale-discount-device-a',
+          serverVersion: '11',
+          entityServerId: 'sale-server-2',
+          payload: <String, dynamic>{
+            'saleType': 'fiado',
+            'paymentMethod': 'fiado',
+            'subtotalCents': 10000,
+            'discountCents': 1000,
+            'totalCents': 9000,
+          },
+          projection: <String, dynamic>{
+            'companyId': 'company-1',
+            'entityServerId': 'sale-server-2',
+            'id': 'sale-server-2',
+            'localUuid': 'sale-local-b',
+            'status': 'active',
+            'total': <String, dynamic>{
+              'totalAmountCents': 9000,
+              'totalCostCents': 2500,
+            },
+            'receiptNumber': 'R-002',
+            'soldAt': '2026-05-05T10:05:00.000Z',
+            'createdAt': '2026-05-05T10:05:00.000Z',
+          },
+        ),
+      );
+
+      final sales = await db.query(TableNames.vendas);
+      expect(sales, hasLength(1));
+      expect(sales.single['tipo_venda'], 'fiado');
+      expect(sales.single['forma_pagamento'], 'fiado');
+      expect(sales.single['desconto_centavos'], 1000);
+      expect(sales.single['valor_total_centavos'], 10000);
+      expect(sales.single['valor_final_centavos'], 9000);
+    },
+  );
+
+  test(
+    'device B preserva o recebido imediato real quando o payload operacional traz immediateReceivedCents',
+    () async {
+      final appDatabase = _newIsolatedDatabase('sale-immediate-received');
+      addTearDown(() => _disposeIsolatedDatabase(appDatabase));
+      final db = await appDatabase.database;
+      final applier = SqliteOperationalSyncProjectionApplier(
+        appDatabase: appDatabase,
+        companyRemoteId: 'company-1',
+      );
+
+      await applier.apply(
+        _change(
+          entity: 'sale',
+          eventId: 'sale-immediate-device-a',
+          serverVersion: '12',
+          entityServerId: 'sale-server-3',
+          payload: <String, dynamic>{
+            'saleType': 'vista',
+            'paymentMethod': 'dinheiro',
+            'subtotalCents': 10000,
+            'discountCents': 3000,
+            'creditGeneratedCents': 3000,
+            'immediateReceivedCents': 10000,
+            'totalCents': 7000,
+          },
+          projection: <String, dynamic>{
+            'companyId': 'company-1',
+            'entityServerId': 'sale-server-3',
+            'id': 'sale-server-3',
+            'localUuid': 'sale-local-c',
+            'status': 'active',
+            'total': <String, dynamic>{'totalAmountCents': 7000},
+            'receiptNumber': 'R-003',
+            'soldAt': '2026-05-05T10:10:00.000Z',
+            'createdAt': '2026-05-05T10:10:00.000Z',
+          },
+        ),
+      );
+
+      final sales = await db.query(TableNames.vendas);
+      expect(sales, hasLength(1));
+      expect(sales.single['valor_final_centavos'], 7000);
+      expect(sales.single['valor_recebido_imediato_centavos'], 10000);
+      expect(sales.single['haver_gerado_centavos'], 3000);
+    },
+  );
+
+  test(
+    'payment remoto atualiza o recebido imediato da venda mesmo sem sessao aberta localmente',
+    () async {
+      final appDatabase = _newIsolatedDatabase('payment-without-session');
+      addTearDown(() => _disposeIsolatedDatabase(appDatabase));
+      final db = await appDatabase.database;
+      final applier = SqliteOperationalSyncProjectionApplier(
+        appDatabase: appDatabase,
+        companyRemoteId: 'company-1',
+      );
+
+      await applier.apply(
+        _change(
+          entity: 'sale',
+          eventId: 'sale-before-payment',
+          serverVersion: '13',
+          entityServerId: 'sale-server-4',
+          payload: <String, dynamic>{
+            'saleType': 'vista',
+            'paymentMethod': 'pix',
+            'immediateReceivedCents': 0,
+            'totalCents': 7000,
+          },
+          projection: <String, dynamic>{
+            'companyId': 'company-1',
+            'entityServerId': 'sale-server-4',
+            'id': 'sale-server-4',
+            'localUuid': 'sale-local-d',
+            'status': 'active',
+            'total': <String, dynamic>{'totalAmountCents': 7000},
+            'receiptNumber': 'R-004',
+            'soldAt': '2026-05-05T10:15:00.000Z',
+            'createdAt': '2026-05-05T10:15:00.000Z',
+          },
+        ),
+      );
+
+      await applier.apply(
+        _change(
+          entity: 'payment',
+          eventId: 'payment-without-open-session',
+          serverVersion: '14',
+          entityServerId: 'payment-server-1',
+          payload: <String, dynamic>{'paymentMethod': 'pix', 'amountCents': 7000},
+          projection: <String, dynamic>{
+            'companyId': 'company-1',
+            'entityServerId': 'payment-server-1',
+            'id': 'payment-server-1',
+            'saleId': 'sale-server-4',
+            'amountCents': 7000,
+            'paymentMethod': 'pix',
+            'createdAt': '2026-05-05T10:16:00.000Z',
+          },
+        ),
+      );
+
+      final sales = await db.query(TableNames.vendas);
+      final paymentRows = await db.query(
+        TableNames.caixaMovimentos,
+        where: 'uuid = ?',
+        whereArgs: const ['payment:payment-server-1'],
+      );
+      expect(sales.single['valor_recebido_imediato_centavos'], 7000);
+      expect(paymentRows, isEmpty);
+    },
+  );
+
   test('device B aplica operationalOrder criada por device A', () async {
     final appDatabase = _newIsolatedDatabase('order');
     addTearDown(() => _disposeIsolatedDatabase(appDatabase));
@@ -164,6 +330,46 @@ void main() {
     expect(movements.single['valor_centavos'], 1500);
   });
 
+  test('cashMovement sem cashSessionId remoto nao derruba a materializacao', () async {
+    final appDatabase = _newIsolatedDatabase('cash-null-session');
+    addTearDown(() => _disposeIsolatedDatabase(appDatabase));
+    final db = await appDatabase.database;
+    final applier = SqliteOperationalSyncProjectionApplier(
+      appDatabase: appDatabase,
+    );
+
+    await applier.apply(
+      _change(
+        entity: 'cashMovement',
+        eventId: 'cash-movement-without-session',
+        serverVersion: '32',
+        entityServerId: 'cash-movement-server-2',
+        projection: <String, dynamic>{
+          'entityServerId': 'cash-movement-server-2',
+          'id': 'cash-movement-server-2',
+          'cashSessionId': null,
+          'type': 'venda',
+          'amountCents': 2200,
+          'reason': 'Movimento antigo sem sessao',
+          'createdAt': '2026-05-05T09:20:00.000Z',
+        },
+      ),
+    );
+
+    final movements = await db.query(TableNames.caixaMovimentos);
+    final syncRows = await db.query(
+      TableNames.syncRegistros,
+      where: 'feature_key = ? AND remote_id = ?',
+      whereArgs: const <Object?>[
+        SyncFeatureKeys.cashEvents,
+        'cash-movement-server-2',
+      ],
+    );
+    expect(movements, isEmpty);
+    expect(syncRows, hasLength(1));
+    expect(syncRows.single['local_id'], isNull);
+  });
+
   test('stockDeduction altera estoque local e e idempotente', () async {
     final appDatabase = _newIsolatedDatabase('stock-deduction');
     addTearDown(() => _disposeIsolatedDatabase(appDatabase));
@@ -226,6 +432,7 @@ OperationalSyncPulledEvent _change({
   required String serverVersion,
   required String entityServerId,
   required Map<String, dynamic> projection,
+  Map<String, dynamic> payload = const <String, dynamic>{},
 }) {
   return OperationalSyncPulledEvent(
     eventId: eventId,
@@ -235,7 +442,7 @@ OperationalSyncPulledEvent _change({
     entityLocalId: '$eventId-local',
     entityServerId: entityServerId,
     occurredAt: DateTime(2026, 5, 5, 10),
-    payload: <String, dynamic>{},
+    payload: payload,
     serverVersion: serverVersion,
     materializedAt: DateTime(2026, 5, 5, 10, 1),
     projection: projection,

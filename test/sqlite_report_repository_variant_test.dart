@@ -166,6 +166,7 @@ Future<void> _createSchema(Database db) async {
       acrescimo_centavos INTEGER NOT NULL DEFAULT 0,
       valor_total_centavos INTEGER NOT NULL DEFAULT 0,
       valor_final_centavos INTEGER NOT NULL,
+      valor_recebido_imediato_centavos INTEGER NOT NULL DEFAULT 0,
       data_venda TEXT NOT NULL,
       cancelada_em TEXT
     )
@@ -261,7 +262,8 @@ Future<void> _createSchema(Database db) async {
       fiado_id INTEGER,
       tipo_lancamento TEXT,
       valor_centavos INTEGER,
-      data_lancamento TEXT
+      data_lancamento TEXT,
+      observacao TEXT
     )
   ''');
 

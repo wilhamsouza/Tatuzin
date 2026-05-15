@@ -494,6 +494,58 @@ void main() {
     });
 
     test(
+      'venda a vista com caixa fechado e bloqueada antes de gerar movimento',
+      () async {
+        database = await openSaleInventoryTestDatabase();
+        final repository = createSaleRepository(database);
+        await database.update(
+          TableNames.caixaSessoes,
+          {
+            'status': 'fechado',
+            'fechada_em': '2026-04-16T13:00:00.000Z',
+          },
+          where: 'id = ?',
+          whereArgs: [1],
+        );
+        await insertSimpleProduct(
+          database,
+          productId: 1,
+          name: 'Bone',
+          stockMil: 5000,
+          salePriceCents: 10000,
+        );
+
+        await expectLater(
+          repository.completeCashSale(
+            input: CheckoutInput(
+              items: [
+                buildSimpleCartItem(
+                  productId: 1,
+                  productName: 'Bone',
+                  quantityMil: 1000,
+                  availableStockMil: 5000,
+                  unitPriceCents: 10000,
+                ),
+              ],
+              saleType: SaleType.cash,
+              paymentMethod: PaymentMethod.cash,
+            ),
+          ),
+          throwsA(
+            isA<ValidationException>().having(
+              (error) => error.message,
+              'message',
+              'Abra o caixa antes de registrar venda em dinheiro.',
+            ),
+          ),
+        );
+
+        expect(await countRows(database, TableNames.vendas), 0);
+        expect(await countRows(database, TableNames.caixaMovimentos), 0);
+      },
+    );
+
+    test(
       'venda com desconto grava total liquido no pagamento e no sync operacional',
       () async {
         database = await openSaleInventoryTestDatabase();
@@ -567,6 +619,75 @@ void main() {
           (event) => event.entity == 'payment',
         );
         expect(paymentEvent.payload['amountCents'], 9000);
+
+        final saleItemEvent = operationalQueue.events.firstWhere(
+          (event) => event.entity == 'saleItem',
+        );
+        expect(saleItemEvent.payload['unitCostCents'], 4000);
+        expect(saleItemEvent.payload['totalCostCents'], 4000);
+
+        final cashMovementEvent = operationalQueue.events.firstWhere(
+          (event) => event.entity == 'cashMovement',
+        );
+        expect(cashMovementEvent.payload['amountCents'], 9000);
+        expect(cashMovementEvent.payload['paymentMethod'], 'dinheiro');
+      },
+    );
+
+    test(
+      'sale/create operacional inclui o recebido imediato real quando o troco vira haver',
+      () async {
+        database = await openSaleInventoryTestDatabase();
+        final operationalQueue = _RecordingOperationalSyncQueueRepository();
+        final repository = SqliteSaleRepository.forDatabase(
+          databaseLoader: () async => database,
+          operationalContext: AppOperationalContext(
+            environment: const AppEnvironment.localDefault(),
+            session: AppSession.localDefault(),
+          ),
+          syncMetadataRepository: RecordingSyncMetadataRepository(),
+          syncQueueRepository: RecordingSyncQueueRepository(),
+          operationalSyncQueueRepository: operationalQueue,
+        );
+        await insertClient(database, customerId: 7);
+        await insertSimpleProduct(
+          database,
+          productId: 1,
+          name: 'Bone',
+          stockMil: 5000,
+          salePriceCents: 10000,
+        );
+
+        await repository.completeCashSale(
+          input: CheckoutInput(
+            items: [
+              buildSimpleCartItem(
+                productId: 1,
+                productName: 'Bone',
+                quantityMil: 1000,
+                availableStockMil: 5000,
+                unitPriceCents: 10000,
+              ),
+            ],
+            saleType: SaleType.cash,
+            paymentMethod: PaymentMethod.cash,
+            clientId: 7,
+            discountCents: 3000,
+            changeLeftAsCreditCents: 3000,
+          ),
+        );
+
+        final saleEvent = operationalQueue.events.firstWhere(
+          (event) => event.entity == 'sale',
+        );
+        final paymentEvent = operationalQueue.events.firstWhere(
+          (event) => event.entity == 'payment',
+        );
+
+        expect(saleEvent.payload['totalCents'], 7000);
+        expect(saleEvent.payload['immediateReceivedCents'], 10000);
+        expect(saleEvent.payload['creditGeneratedCents'], 3000);
+        expect(paymentEvent.payload['amountCents'], 10000);
       },
     );
   });

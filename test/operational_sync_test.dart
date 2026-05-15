@@ -14,10 +14,14 @@ import 'package:erp_pdv_app/app/core/sync/sqlite_operational_sync_queue_reposito
 import 'package:erp_pdv_app/app/core/sync/sync_feature_keys.dart';
 import 'package:erp_pdv_app/app/core/sync/sync_queue_feature_summary.dart';
 import 'package:erp_pdv_app/modules/categorias/data/sqlite_category_repository.dart';
+import 'package:erp_pdv_app/modules/caixa/data/sqlite_cash_repository.dart';
 import 'package:erp_pdv_app/modules/clientes/data/sqlite_client_repository.dart';
+import 'package:erp_pdv_app/app/core/app_context/app_operational_context.dart';
+import 'package:erp_pdv_app/app/core/config/app_environment.dart';
 import 'package:erp_pdv_app/modules/dashboard/data/sqlite_operational_dashboard_repository.dart';
 import 'package:erp_pdv_app/modules/fornecedores/data/sqlite_supplier_repository.dart';
 import 'package:erp_pdv_app/modules/produtos/data/sqlite_product_repository.dart';
+import 'package:erp_pdv_app/app/core/session/app_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -523,6 +527,13 @@ void main() {
             supplierRepository: SqliteSupplierRepository(appDatabase),
             clientRepository: SqliteClientRepository(appDatabase),
             productRepository: productRepository,
+            cashRepository: SqliteCashRepository(
+              appDatabase,
+              AppOperationalContext(
+                environment: const AppEnvironment.localDefault(),
+                session: AppSession.localDefault(),
+              ),
+            ),
           ),
           snapshotRemoteDataSource: _FakeAppSnapshotRemoteDataSource(
             version: '42',
@@ -593,11 +604,25 @@ void main() {
           appDatabase,
           categoryRepository: categoryRepository,
         );
+        final cashRepository = SqliteCashRepository(
+          appDatabase,
+          AppOperationalContext(
+            environment: const AppEnvironment.localDefault(),
+            session: AppSession.localDefault(),
+          ),
+        );
         final hydrator = SqliteAppSnapshotHydrator(
           categoryRepository: categoryRepository,
           supplierRepository: SqliteSupplierRepository(appDatabase),
           clientRepository: SqliteClientRepository(appDatabase),
           productRepository: productRepository,
+          cashRepository: SqliteCashRepository(
+            appDatabase,
+            AppOperationalContext(
+              environment: const AppEnvironment.localDefault(),
+              session: AppSession.localDefault(),
+            ),
+          ),
         );
         final snapshot = AppSnapshotResponse(
           companyId: 'company-1',
@@ -641,6 +666,25 @@ void main() {
                 ),
               ],
             ),
+            SyncFeatureKeys.cashSessions: AppSnapshotFeature(
+              feature: SyncFeatureKeys.cashSessions,
+              mode: 'server_first_cache',
+              count: 1,
+              items: <Map<String, dynamic>>[
+                _cashSessionSnapshotItem(id: 'cash-session-server-1'),
+              ],
+            ),
+            SyncFeatureKeys.cashMovements: AppSnapshotFeature(
+              feature: SyncFeatureKeys.cashMovements,
+              mode: 'server_first_cache',
+              count: 1,
+              items: <Map<String, dynamic>>[
+                _cashMovementSnapshotItem(
+                  id: 'cash-movement-server-1',
+                  cashSessionId: 'cash-session-server-1',
+                ),
+              ],
+            ),
           },
         );
 
@@ -652,6 +696,12 @@ void main() {
         final customers = await db.query(TableNames.clientes);
         final products = await db.query(TableNames.produtos);
         final variants = await db.query(TableNames.produtoVariantes);
+        final cashSessions = await db.query(TableNames.caixaSessoes);
+        final cashMovements = await db.query(TableNames.caixaMovimentos);
+        final hydratedSessions = await cashRepository.listSessions();
+        final hydratedDetail = await cashRepository.fetchSessionDetail(
+          hydratedSessions.single.id,
+        );
         final productSync = await db.query(
           TableNames.syncRegistros,
           where: 'feature_key = ? AND remote_id = ?',
@@ -666,6 +716,22 @@ void main() {
         expect(customers, hasLength(1));
         expect(products, hasLength(1));
         expect(products.single['estoque_mil'], 12000);
+        expect(cashSessions, hasLength(1));
+        expect(cashSessions.single['saldo_final_centavos'], 8200);
+        expect(hydratedSessions.single.operatorName, 'Operadora remota');
+        expect(hydratedSessions.single.notes, 'Sessao restaurada');
+        expect(cashMovements, hasLength(1));
+        expect(cashMovements.single['valor_centavos'], 3200);
+        expect(cashMovements.single['referencia_tipo'], 'venda');
+        expect(cashMovements.single['referencia_id'], 'sale-server-1');
+        expect(
+          hydratedDetail.movements.single.referenceLabel,
+          'VENDA #sale-server-1',
+        );
+        expect(
+          hydratedDetail.movements.single.movement.referenceId,
+          'sale-server-1',
+        );
         expect(productSync, hasLength(1));
         expect(variants, hasLength(1));
         expect(variants.single['remote_id'], 'variant-server-1');
@@ -1401,6 +1467,44 @@ Map<String, dynamic> _customerSnapshotItem({required String id}) {
     'deletedAt': null,
     'createdAt': now,
     'updatedAt': now,
+  };
+}
+
+Map<String, dynamic> _cashSessionSnapshotItem({required String id}) {
+  return <String, dynamic>{
+    'id': id,
+    'companyId': 'company-1',
+    'localUuid': id,
+    'operatorName': 'Operadora remota',
+    'status': 'closed',
+    'openedAt': '2026-05-05T08:00:00.000Z',
+    'closedAt': '2026-05-05T18:00:00.000Z',
+    'openingBalanceCents': 5000,
+    'closingBalanceCents': 8200,
+    'expectedBalanceCents': 8200,
+    'notes': 'Sessao restaurada',
+    'createdAt': '2026-05-05T08:00:00.000Z',
+    'updatedAt': '2026-05-05T18:00:00.000Z',
+  };
+}
+
+Map<String, dynamic> _cashMovementSnapshotItem({
+  required String id,
+  required String cashSessionId,
+}) {
+  return <String, dynamic>{
+    'id': id,
+    'companyId': 'company-1',
+    'cashSessionId': cashSessionId,
+    'localUuid': id,
+    'eventType': 'venda',
+    'amountCents': 3200,
+    'paymentMethod': 'dinheiro',
+    'referenceType': 'venda',
+    'referenceId': 'sale-server-1',
+    'notes': 'Venda restaurada',
+    'createdAt': '2026-05-05T12:00:00.000Z',
+    'updatedAt': '2026-05-05T12:00:00.000Z',
   };
 }
 

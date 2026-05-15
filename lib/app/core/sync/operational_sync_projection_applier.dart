@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:sqflite/sqflite.dart';
 
 import '../app_context/record_identity.dart';
@@ -11,6 +13,7 @@ import 'sync_feature_keys.dart';
 import 'sync_status.dart';
 
 const operationalSyncPartialDataMessage = 'Dados parcialmente atualizados';
+const _cashSessionMetadataPrefix = '__cash_session_meta__:';
 
 abstract interface class OperationalSyncProjectionApplier {
   Future<void> apply(OperationalSyncPulledEvent change);
@@ -105,6 +108,9 @@ class SqliteOperationalSyncProjectionApplier
         openedAt;
     final totals = _map(projection['totals']);
     final status = _cashSessionStatus(_string(projection['status']));
+    final operatorName =
+        _string(projection['operatorName']) ??
+        _string(change.payload['operatorName']);
 
     final localId = await _upsertByRemoteOrUuid(
       db,
@@ -135,7 +141,11 @@ class SqliteOperationalSyncProjectionApplier
             _int(totals['expectedBalanceCents']) ??
             0,
         'status': status,
-        'observacao': null,
+        'observacao': _encodeSessionNotes(
+          visibleNotes:
+              _string(projection['notes']) ?? _string(change.payload['notes']),
+          operatorName: operatorName,
+        ),
       },
       updatedAt: updatedAt,
     );
@@ -158,13 +168,26 @@ class SqliteOperationalSyncProjectionApplier
     final remoteId = _requiredRemoteId(change, projection);
     final localUuid = _localUuid(change, projection, 'cash-movement:$remoteId');
     final sessionRemoteId = _string(projection['cashSessionId']);
-    final sessionId = sessionRemoteId == null
-        ? await _findCurrentCashSessionId(db)
-        : await _findLocalIdByRemote(
-            db,
-            _featureForEntity('cashSession'),
-            sessionRemoteId,
-          );
+    if (sessionRemoteId == null) {
+      AppLogger.warn(
+        '[OperationalSync] cash movement without remote session; preserving sync metadata only | remote_id=$remoteId',
+      );
+      final createdAt = _iso(projection['createdAt']) ?? change.occurredAtIso;
+      await _markRemoteOnlySynced(
+        db,
+        featureKey: _featureForEntity('cashMovement'),
+        remoteId: remoteId,
+        localUuid: localUuid,
+        createdAtIso: createdAt,
+        updatedAtIso: createdAt,
+      );
+      return;
+    }
+    final sessionId = await _findLocalIdByRemote(
+      db,
+      _featureForEntity('cashSession'),
+      sessionRemoteId,
+    );
     if (sessionId == null) {
       throw StateError(
         'Sessao de caixa remota ainda nao existe localmente para movimento.',
@@ -172,6 +195,16 @@ class SqliteOperationalSyncProjectionApplier
     }
 
     final createdAt = _iso(projection['createdAt']) ?? change.occurredAtIso;
+    final paymentMethod =
+        _string(projection['paymentMethod']) ??
+        _string(change.payload['paymentMethod']);
+    final description = _encodePaymentTaggedDescription(
+      _string(projection['reason']) ??
+          _string(projection['notes']) ??
+          _string(change.payload['description']) ??
+          _string(change.payload['notes']),
+      paymentMethod: paymentMethod,
+    );
     final localId = await _upsertByRemoteOrUuid(
       db,
       featureKey: _featureForEntity('cashMovement'),
@@ -182,10 +215,14 @@ class SqliteOperationalSyncProjectionApplier
         'uuid': localUuid,
         'sessao_id': sessionId,
         'tipo_movimento': _cashMovementType(_string(projection['type'])),
-        'referencia_tipo': null,
-        'referencia_id': null,
+        'referencia_tipo':
+            _string(projection['referenceType']) ??
+            _string(change.payload['referenceType']),
+        'referencia_id':
+            _string(projection['referenceId']) ??
+            _string(change.payload['referenceId']),
         'valor_centavos': _int(projection['amountCents']) ?? 0,
-        'descricao': _string(projection['reason']),
+        'descricao': description,
         'criado_em': createdAt,
       },
       updatedAt: createdAt,
@@ -329,8 +366,71 @@ class SqliteOperationalSyncProjectionApplier
     final totals = _map(projection['total']);
     final soldAt = _iso(projection['soldAt']) ?? change.occurredAtIso;
     final createdAt = _iso(projection['createdAt']) ?? soldAt;
-    final amountCents =
-        _int(totals['totalAmountCents']) ?? _int(projection['totalCents']) ?? 0;
+    final existingLocalId =
+        await _findLocalIdByRemote(db, _featureForEntity('sale'), remoteId) ??
+        await _findIdByUuid(db, TableNames.vendas, localUuid);
+    final existingRows = existingLocalId == null
+        ? const <Map<String, Object?>>[]
+        : await db.query(
+            TableNames.vendas,
+            columns: const [
+              'valor_recebido_imediato_centavos',
+              'haver_utilizado_centavos',
+              'haver_gerado_centavos',
+            ],
+            where: 'id = ?',
+            whereArgs: [existingLocalId],
+            limit: 1,
+          );
+    final existingRow = existingRows.isEmpty ? null : existingRows.first;
+    final finalAmountCents =
+        _int(totals['totalAmountCents']) ??
+        _int(projection['totalCents']) ??
+        _int(change.payload['finalCents']) ??
+        _int(change.payload['totalCents']) ??
+        _int(change.payload['amountCents']) ??
+        0;
+    final subtotalCents =
+        _int(totals['subtotalCents']) ??
+        _int(projection['subtotalCents']) ??
+        _int(change.payload['subtotalCents']) ??
+        _int(change.payload['itemsTotalCents']) ??
+        finalAmountCents;
+    final discountCents =
+        _int(totals['discountCents']) ??
+        _int(projection['discountCents']) ??
+        _int(change.payload['discountCents']) ??
+        0;
+    final surchargeCents =
+        _int(totals['surchargeCents']) ??
+        _int(projection['surchargeCents']) ??
+        _int(change.payload['surchargeCents']) ??
+        0;
+    final saleType = _saleType(
+      _string(projection['saleType']) ??
+          _string(change.payload['saleType']) ??
+          _string(change.payload['paymentType']),
+    );
+    final paymentMethod = _paymentMethod(
+      _string(projection['paymentMethod']) ??
+          _string(change.payload['paymentMethod']),
+    );
+    final creditUsedCents =
+        _int(projection['creditUsedCents']) ??
+        _int(change.payload['creditUsedCents']) ??
+        _int(change.payload['customerCreditUsedCents']) ??
+        _int(existingRow?['haver_utilizado_centavos']) ??
+        0;
+    final creditGeneratedCents =
+        _int(projection['creditGeneratedCents']) ??
+        _int(change.payload['creditGeneratedCents']) ??
+        _int(change.payload['changeLeftAsCreditCents']) ??
+        _int(existingRow?['haver_gerado_centavos']) ??
+        0;
+    final immediateReceivedCents =
+        _explicitImmediateReceivedCents(change, projection) ??
+        _int(existingRow?['valor_recebido_imediato_centavos']) ??
+        0;
     final localId = await _upsertByRemoteOrUuid(
       db,
       featureKey: _featureForEntity('sale'),
@@ -340,18 +440,16 @@ class SqliteOperationalSyncProjectionApplier
       values: <String, Object?>{
         'uuid': localUuid,
         'cliente_id': null,
-        'tipo_venda': _saleType(_string(change.payload['paymentType'])),
-        'forma_pagamento': _paymentMethod(
-          _string(change.payload['paymentMethod']),
-        ),
+        'tipo_venda': saleType,
+        'forma_pagamento': paymentMethod,
         'status': _saleStatus(_string(projection['status'])),
-        'desconto_centavos': 0,
-        'acrescimo_centavos': 0,
-        'valor_total_centavos': amountCents,
-        'valor_final_centavos': amountCents,
-        'haver_utilizado_centavos': 0,
-        'haver_gerado_centavos': 0,
-        'valor_recebido_imediato_centavos': amountCents,
+        'desconto_centavos': discountCents,
+        'acrescimo_centavos': surchargeCents,
+        'valor_total_centavos': subtotalCents,
+        'valor_final_centavos': finalAmountCents,
+        'haver_utilizado_centavos': creditUsedCents,
+        'haver_gerado_centavos': creditGeneratedCents,
+        'valor_recebido_imediato_centavos': immediateReceivedCents,
         'numero_cupom':
             _string(projection['receiptNumber']) ??
             _string(change.payload['receiptNumber']) ??
@@ -451,6 +549,23 @@ class SqliteOperationalSyncProjectionApplier
             _featureForEntity('sale'),
             saleRemoteId,
           );
+    final amountCents =
+        _int(projection['amountCents']) ??
+        _int(change.payload['amountCents']) ??
+        0;
+    final paymentMethod =
+        _string(projection['method']) ??
+        _string(projection['paymentMethod']) ??
+        _string(change.payload['paymentMethod']) ??
+        _string(change.payload['paymentType']);
+    if (saleId != null) {
+      await db.update(
+        TableNames.vendas,
+        {'valor_recebido_imediato_centavos': amountCents},
+        where: 'id = ?',
+        whereArgs: [saleId],
+      );
+    }
     final sessionId = await _findCurrentCashSessionId(db);
     final createdAt = _iso(projection['createdAt']) ?? change.occurredAtIso;
     if (sessionId == null) {
@@ -479,8 +594,15 @@ class SqliteOperationalSyncProjectionApplier
         'tipo_movimento': saleId == null ? 'recebimento_fiado' : 'venda',
         'referencia_tipo': saleId == null ? null : 'venda',
         'referencia_id': saleId,
-        'valor_centavos': _int(projection['amountCents']) ?? 0,
-        'descricao': _string(projection['method']),
+        'valor_centavos': amountCents,
+        'descricao': _encodePaymentTaggedDescription(
+          _string(change.payload['description']) ??
+              _string(projection['notes']) ??
+              _string(projection['method']) ??
+              _string(projection['paymentMethod']) ??
+              'Pagamento recebido',
+          paymentMethod: paymentMethod,
+        ),
         'criado_em': createdAt,
       },
       updatedAt: createdAt,
@@ -1033,6 +1155,54 @@ class SqliteOperationalSyncProjectionApplier
       'fiado' => 'fiado',
       _ => 'dinheiro',
     };
+  }
+
+  int? _explicitImmediateReceivedCents(
+    OperationalSyncPulledEvent change,
+    Map<String, dynamic> projection,
+  ) {
+    return _int(projection['immediateReceivedCents']) ??
+        _int(projection['receivedCents']) ??
+        _int(projection['amountReceivedCents']) ??
+        _int(change.payload['immediateReceivedCents']) ??
+        _int(change.payload['receivedCents']) ??
+        _int(change.payload['amountReceivedCents']);
+  }
+
+  String? _encodePaymentTaggedDescription(
+    String? description, {
+    required String? paymentMethod,
+  }) {
+    final cleanedDescription = _clean(description);
+    final cleanedPaymentMethod = _clean(paymentMethod);
+    if (cleanedDescription == null && cleanedPaymentMethod == null) {
+      return null;
+    }
+    if (cleanedPaymentMethod == null) {
+      return cleanedDescription;
+    }
+    return '[pm:$cleanedPaymentMethod] ${cleanedDescription ?? ''}'.trim();
+  }
+
+  String? _encodeSessionNotes({
+    String? visibleNotes,
+    String? operatorName,
+  }) {
+    final cleanedVisibleNotes = _clean(visibleNotes);
+    final cleanedOperatorName = _clean(operatorName);
+    final lines = <String>[];
+    if (cleanedVisibleNotes != null) {
+      lines.add(cleanedVisibleNotes);
+    }
+    if (cleanedOperatorName != null) {
+      lines.add(
+        '$_cashSessionMetadataPrefix${jsonEncode(<String, String>{'operatorName': cleanedOperatorName})}',
+      );
+    }
+    if (lines.isEmpty) {
+      return null;
+    }
+    return lines.join('\n');
   }
 
   String _stockReservationStatus(String? status) {

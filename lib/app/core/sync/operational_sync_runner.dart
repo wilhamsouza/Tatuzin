@@ -36,6 +36,8 @@ class OperationalSyncRunner {
     'categories',
     'suppliers',
     'customers',
+    'cash_sessions',
+    'cash_movements',
     'fiado',
     'costs',
     'settings',

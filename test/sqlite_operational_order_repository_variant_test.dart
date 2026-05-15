@@ -34,7 +34,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'support/sale_inventory_test_support.dart'
-    show createSaleRepository, loadProductStock, loadVariantStock;
+    show
+        createSaleRepository,
+        ensureOpenCashSession,
+        loadProductStock,
+        loadVariantStock;
 import 'test_tenant_session.dart';
 
 void main() {
@@ -600,6 +604,7 @@ Future<_RepositoryFixture> _openRepositoryFixture() async {
       'remote:order-variant-${DateTime.now().microsecondsSinceEpoch}';
   final appDatabase = AppDatabase.forIsolationKey(isolationKey);
   final database = await appDatabase.database;
+  await ensureOpenCashSession(database);
   return _RepositoryFixture(
     isolationKey: isolationKey,
     appDatabase: appDatabase,

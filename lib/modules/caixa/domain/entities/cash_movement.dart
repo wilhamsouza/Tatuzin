@@ -20,7 +20,7 @@ class CashMovement {
   final int sessionId;
   final CashMovementType type;
   final String? referenceType;
-  final int? referenceId;
+  final String? referenceId;
   final int amountCents;
   final String? description;
   final DateTime createdAt;

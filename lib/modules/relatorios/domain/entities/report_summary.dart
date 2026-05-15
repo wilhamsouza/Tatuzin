@@ -12,6 +12,8 @@ class ReportSummary {
     required this.totalReceivedCents,
     required this.costOfGoodsSoldCents,
     required this.realizedProfitCents,
+    this.isRealizedProfitAvailable = true,
+    this.realizedProfitUnavailableReason,
     required this.salesCount,
     required this.pendingFiadoCents,
     required this.pendingFiadoCount,
@@ -37,6 +39,8 @@ class ReportSummary {
   final int totalReceivedCents;
   final int costOfGoodsSoldCents;
   final int realizedProfitCents;
+  final bool isRealizedProfitAvailable;
+  final String? realizedProfitUnavailableReason;
   final int salesCount;
   final int pendingFiadoCents;
   final int pendingFiadoCount;

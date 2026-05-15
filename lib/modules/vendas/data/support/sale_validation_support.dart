@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../../../app/core/database/table_names.dart';
 import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/utils/app_logger.dart';
+import '../../../caixa/data/cash_database_support.dart';
 import '../../../carrinho/domain/entities/cart_item.dart';
 import '../../domain/entities/checkout_input.dart';
 import '../../domain/entities/sale_enums.dart';
@@ -157,6 +158,23 @@ class SaleValidationSupport {
         'Pedido de venda #$orderId ainda nao foi entregue e nao pode ser faturado.',
       );
     }
+  }
+
+  static Future<void> ensureImmediateReceiptHasOpenCashSession(
+    DatabaseExecutor txn, {
+    required CheckoutInput input,
+    required SaleType saleType,
+  }) async {
+    if (saleType != SaleType.cash || input.immediateReceivedCents <= 0) {
+      return;
+    }
+
+    await CashDatabaseSupport.requireOpenSessionIdWithMessage(
+      txn,
+      message: input.paymentMethod == PaymentMethod.cash
+          ? 'Abra o caixa antes de registrar venda em dinheiro.'
+          : 'Abra o caixa antes de concluir uma venda com recebimento imediato.',
+    );
   }
 
   static String? cleanNullable(String? value) {

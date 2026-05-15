@@ -50,6 +50,19 @@ class SqliteReportRepository implements ReportRepository {
     )
   ''';
 
+  static const String _netSoldAmountExpression = '''
+    CASE
+      WHEN COALESCE(v.valor_total_centavos, 0) <= 0 THEN $_soldAmountExpression
+      ELSE CAST(
+        ROUND(
+          ($_soldAmountExpression * CAST(v.valor_final_centavos AS REAL)) /
+          CAST(v.valor_total_centavos AS REAL),
+          0
+        ) AS INTEGER
+      )
+    END
+  ''';
+
   @override
   Future<ReportSummary> fetchSummary({
     required ReportPeriod period,
@@ -73,6 +86,8 @@ class SqliteReportRepository implements ReportRepository {
       totalReceivedCents: overview.totalReceivedCents,
       costOfGoodsSoldCents: overview.costOfGoodsSoldCents,
       realizedProfitCents: overview.realizedProfitCents,
+      isRealizedProfitAvailable: overview.isRealizedProfitAvailable,
+      realizedProfitUnavailableReason: overview.realizedProfitUnavailableReason,
       salesCount: overview.salesCount,
       pendingFiadoCents: overview.pendingFiadoCents,
       pendingFiadoCount: overview.pendingFiadoCount,
@@ -103,7 +118,7 @@ class SqliteReportRepository implements ReportRepository {
       database,
       filter: filter,
     );
-    final realizedProfitCents = await _fetchRealizedProfit(
+    final realizedProfit = await _fetchRealizedProfit(
       database,
       filter: filter,
     );
@@ -129,7 +144,9 @@ class SqliteReportRepository implements ReportRepository {
       netSalesCents: salesAggregate.netSalesCents,
       totalReceivedCents: receivedTotals.totalReceivedCents,
       costOfGoodsSoldCents: costOfGoodsSoldCents,
-      realizedProfitCents: realizedProfitCents,
+      realizedProfitCents: realizedProfit.profitCents,
+      isRealizedProfitAvailable: realizedProfit.isAvailable,
+      realizedProfitUnavailableReason: realizedProfit.unavailableReason,
       salesCount: salesAggregate.salesCount,
       totalDiscountCents: salesAggregate.totalDiscountCents,
       totalSurchargeCents: salesAggregate.totalSurchargeCents,
@@ -209,7 +226,7 @@ class SqliteReportRepository implements ReportRepository {
         COALESCE(iv.nome_produto_snapshot, p.nome, 'Produto') AS product_name,
         COALESCE(iv.unidade_medida_snapshot, p.unidade_medida, 'un') AS unit_measure,
         COALESCE(SUM(iv.quantidade_mil), 0) AS quantity_total_mil,
-        COALESCE(SUM($_soldAmountExpression), 0) AS sold_amount_cents,
+        COALESCE(SUM($_netSoldAmountExpression), 0) AS sold_amount_cents,
         COALESCE(SUM($_costAmountExpression), 0) AS total_cost_cents
       FROM ${TableNames.itensVenda} iv
       INNER JOIN ${TableNames.vendas} v ON v.id = iv.venda_id
@@ -309,7 +326,7 @@ class SqliteReportRepository implements ReportRepository {
             )
           ) AS size_label,
           COALESCE(SUM(iv.quantidade_mil), 0) AS sold_quantity_mil,
-          COALESCE(SUM($_soldAmountExpression), 0) AS gross_revenue_cents
+          COALESCE(SUM($_netSoldAmountExpression), 0) AS gross_revenue_cents
         FROM ${TableNames.itensVenda} iv
         INNER JOIN ${TableNames.vendas} v ON v.id = iv.venda_id
         LEFT JOIN ${TableNames.produtos} p ON p.id = iv.produto_id
@@ -746,7 +763,7 @@ class SqliteReportRepository implements ReportRepository {
     return _toInt(rows.first['total_cost_cents']);
   }
 
-  Future<int> _fetchRealizedProfit(
+  Future<_ProfitAggregate> _fetchRealizedProfit(
     DatabaseExecutor database, {
     required ReportFilter filter,
   }) async {
@@ -801,7 +818,7 @@ class SqliteReportRepository implements ReportRepository {
     }
 
     final cashRows = await database.rawQuery('''
-      SELECT COALESCE(SUM($_soldAmountExpression - $_costAmountExpression), 0) AS lucro
+      SELECT COALESCE(SUM($_netSoldAmountExpression - $_costAmountExpression), 0) AS lucro
       FROM ${TableNames.itensVenda} iv
       INNER JOIN ${TableNames.vendas} v ON v.id = iv.venda_id
       LEFT JOIN ${TableNames.produtos} p ON p.id = iv.produto_id
@@ -854,20 +871,25 @@ class SqliteReportRepository implements ReportRepository {
       column: 'lanc.data_lancamento',
       filter: filter,
     );
+    _appendFiadoPaymentMethodFilter(
+      paymentWhere,
+      paymentArguments,
+      filter: filter,
+    );
 
     final fiadoRows = await database.rawQuery(
       '''
       WITH fiado_margens AS (
         SELECT
           f.id AS fiado_id,
-          v.valor_final_centavos AS valor_final_centavos,
-          COALESCE(SUM($_soldAmountExpression - $_costAmountExpression), 0) AS margem_total_centavos
+          COALESCE(SUM($_netSoldAmountExpression), 0) AS receita_liquida_centavos,
+          COALESCE(SUM($_netSoldAmountExpression - $_costAmountExpression), 0) AS margem_total_centavos
         FROM ${TableNames.fiado} f
         INNER JOIN ${TableNames.vendas} v ON v.id = f.venda_id
         INNER JOIN ${TableNames.itensVenda} iv ON iv.venda_id = v.id
         LEFT JOIN ${TableNames.produtos} p ON p.id = iv.produto_id
         $fiadoSalesWhere
-        GROUP BY f.id, v.valor_final_centavos
+        GROUP BY f.id
       ),
       pagamentos_periodo AS (
         SELECT
@@ -881,11 +903,11 @@ class SqliteReportRepository implements ReportRepository {
         COALESCE(
           SUM(
             CASE
-              WHEN margem.valor_final_centavos <= 0 THEN 0
+              WHEN margem.receita_liquida_centavos <= 0 THEN 0
               ELSE CAST(
                 ROUND(
                   (margem.margem_total_centavos * pagamentos.valor_pago_centavos) /
-                  CAST(margem.valor_final_centavos AS REAL),
+                  CAST(margem.receita_liquida_centavos AS REAL),
                   0
                 ) AS INTEGER
               )
@@ -900,7 +922,18 @@ class SqliteReportRepository implements ReportRepository {
       [...fiadoArguments, ...paymentArguments],
     );
 
-    return _toInt(cashRows.first['lucro']) + _toInt(fiadoRows.first['lucro']);
+    final hasUnknownCost = await _hasUnknownProfitCost(database, filter: filter);
+    if (hasUnknownCost) {
+      return const _ProfitAggregate(
+        profitCents: 0,
+        isAvailable: false,
+        unavailableReason: 'Custo nao informado',
+      );
+    }
+
+    return _ProfitAggregate(
+      profitCents: _toInt(cashRows.first['lucro']) + _toInt(fiadoRows.first['lucro']),
+    );
   }
 
   Future<_PendingFiadoAggregate> _fetchPendingFiado(
@@ -917,6 +950,141 @@ class SqliteReportRepository implements ReportRepository {
       count: _toInt(rows.first['quantidade']),
       totalOpenCents: _toInt(rows.first['total_aberto']),
     );
+  }
+
+  Future<bool> _hasUnknownProfitCost(
+    DatabaseExecutor database, {
+    required ReportFilter filter,
+  }) async {
+    final cashArguments = <Object?>[];
+    final cashWhere = StringBuffer('''
+      WHERE v.status = 'ativa'
+        AND v.tipo_venda = 'vista'
+        AND COALESCE(iv.custo_unitario_centavos, 0) <= 0
+        AND $_netSoldAmountExpression > 0
+    ''');
+    ReportSqlFiltersSupport.appendDateRange(
+      cashWhere,
+      cashArguments,
+      column: 'v.data_venda',
+      filter: filter,
+    );
+    ReportSqlFiltersSupport.appendOptionalEquality(
+      cashWhere,
+      cashArguments,
+      column: 'v.cliente_id',
+      value: filter.customerId,
+    );
+    if (filter.paymentMethod != null) {
+      ReportSqlFiltersSupport.appendOptionalEquality(
+        cashWhere,
+        cashArguments,
+        column: 'v.forma_pagamento',
+        value: filter.paymentMethod!.dbValue,
+      );
+    }
+    if (filter.productId != null) {
+      ReportSqlFiltersSupport.appendOptionalEquality(
+        cashWhere,
+        cashArguments,
+        column: 'iv.produto_id',
+        value: filter.productId,
+      );
+    }
+    if (filter.variantId != null) {
+      ReportSqlFiltersSupport.appendOptionalEquality(
+        cashWhere,
+        cashArguments,
+        column: 'iv.produto_variante_id',
+        value: filter.variantId,
+      );
+    }
+    if (filter.categoryId != null) {
+      ReportSqlFiltersSupport.appendOptionalEquality(
+        cashWhere,
+        cashArguments,
+        column: 'p.categoria_id',
+        value: filter.categoryId,
+      );
+    }
+
+    final cashRows = await database.rawQuery(
+      '''
+      SELECT 1
+      FROM ${TableNames.itensVenda} iv
+      INNER JOIN ${TableNames.vendas} v ON v.id = iv.venda_id
+      LEFT JOIN ${TableNames.produtos} p ON p.id = iv.produto_id
+      $cashWhere
+      LIMIT 1
+    ''',
+      cashArguments,
+    );
+    if (cashRows.isNotEmpty) {
+      return true;
+    }
+
+    final fiadoArguments = <Object?>[];
+    final fiadoWhere = StringBuffer('''
+      WHERE lanc.tipo_lancamento = 'pagamento'
+        AND COALESCE(iv.custo_unitario_centavos, 0) <= 0
+        AND $_netSoldAmountExpression > 0
+    ''');
+    ReportSqlFiltersSupport.appendDateRange(
+      fiadoWhere,
+      fiadoArguments,
+      column: 'lanc.data_lancamento',
+      filter: filter,
+    );
+    ReportSqlFiltersSupport.appendOptionalEquality(
+      fiadoWhere,
+      fiadoArguments,
+      column: 'f.cliente_id',
+      value: filter.customerId,
+    );
+    _appendFiadoPaymentMethodFilter(
+      fiadoWhere,
+      fiadoArguments,
+      filter: filter,
+    );
+    if (filter.productId != null) {
+      ReportSqlFiltersSupport.appendOptionalEquality(
+        fiadoWhere,
+        fiadoArguments,
+        column: 'iv.produto_id',
+        value: filter.productId,
+      );
+    }
+    if (filter.variantId != null) {
+      ReportSqlFiltersSupport.appendOptionalEquality(
+        fiadoWhere,
+        fiadoArguments,
+        column: 'iv.produto_variante_id',
+        value: filter.variantId,
+      );
+    }
+    if (filter.categoryId != null) {
+      ReportSqlFiltersSupport.appendOptionalEquality(
+        fiadoWhere,
+        fiadoArguments,
+        column: 'p.categoria_id',
+        value: filter.categoryId,
+      );
+    }
+
+    final fiadoRows = await database.rawQuery(
+      '''
+      SELECT 1
+      FROM ${TableNames.fiadoLancamentos} lanc
+      INNER JOIN ${TableNames.fiado} f ON f.id = lanc.fiado_id
+      INNER JOIN ${TableNames.vendas} v ON v.id = f.venda_id
+      INNER JOIN ${TableNames.itensVenda} iv ON iv.venda_id = v.id
+      LEFT JOIN ${TableNames.produtos} p ON p.id = iv.produto_id
+      $fiadoWhere
+      LIMIT 1
+    ''',
+      fiadoArguments,
+    );
+    return fiadoRows.isNotEmpty;
   }
 
   Future<_CountAndAmount> _fetchCancelledSales(
@@ -1059,44 +1227,89 @@ class SqliteReportRepository implements ReportRepository {
     DatabaseExecutor database, {
     required ReportFilter filter,
   }) async {
-    final arguments = <Object?>[];
-    final buffer = StringBuffer('''
+    final saleArguments = <Object?>[];
+    final saleBuffer = StringBuffer('''
       SELECT
-        COALESCE(SUM(CASE WHEN mov.tipo_movimento = 'venda' THEN mov.valor_centavos ELSE 0 END), 0) AS vendas_recebidas,
-        COALESCE(SUM(CASE WHEN mov.tipo_movimento = 'recebimento_fiado' THEN mov.valor_centavos ELSE 0 END), 0) AS fiado_recebido,
-        COALESCE(SUM(mov.valor_centavos), 0) AS total_recebido
-      FROM ${TableNames.caixaMovimentos} mov
-      LEFT JOIN ${TableNames.vendas} sale
-        ON mov.referencia_tipo = 'venda'
-        AND sale.id = mov.referencia_id
-      WHERE mov.tipo_movimento IN ('venda', 'recebimento_fiado', 'cancelamento')
+        COALESCE(SUM(v.valor_recebido_imediato_centavos), 0) AS vendas_recebidas
+      FROM ${TableNames.vendas} v
+      WHERE v.status = 'ativa'
+        AND v.tipo_venda = 'vista'
+        AND v.valor_recebido_imediato_centavos > 0
     ''');
     ReportSqlFiltersSupport.appendDateRange(
-      buffer,
-      arguments,
-      column: 'mov.criado_em',
+      saleBuffer,
+      saleArguments,
+      column: 'v.data_venda',
       filter: filter,
     );
-    if (filter.customerId != null) {
-      buffer.write('''
-        AND (
-          sale.cliente_id = ?
-          OR EXISTS (
-            SELECT 1
-            FROM ${TableNames.fiadoLancamentos} lanc
-            WHERE lanc.caixa_movimento_id = mov.id
-              AND lanc.cliente_id = ?
-          )
-        )
-      ''');
-      arguments.add(filter.customerId);
-      arguments.add(filter.customerId);
+    ReportSqlFiltersSupport.appendOptionalEquality(
+      saleBuffer,
+      saleArguments,
+      column: 'v.cliente_id',
+      value: filter.customerId,
+    );
+    if (filter.paymentMethod != null) {
+      ReportSqlFiltersSupport.appendOptionalEquality(
+        saleBuffer,
+        saleArguments,
+        column: 'v.forma_pagamento',
+        value: filter.paymentMethod!.dbValue,
+      );
     }
-    final rows = await database.rawQuery(buffer.toString(), arguments);
+    _appendSalesExistsClause(
+      saleBuffer,
+      saleArguments,
+      filter: filter,
+      saleAlias: 'v',
+    );
+
+    final fiadoArguments = <Object?>[];
+    final fiadoBuffer = StringBuffer('''
+      SELECT
+        COALESCE(SUM(lanc.valor_centavos), 0) AS fiado_recebido
+      FROM ${TableNames.fiadoLancamentos} lanc
+      INNER JOIN ${TableNames.fiado} f ON f.id = lanc.fiado_id
+      INNER JOIN ${TableNames.vendas} v ON v.id = f.venda_id
+      WHERE lanc.tipo_lancamento = 'pagamento'
+    ''');
+    ReportSqlFiltersSupport.appendDateRange(
+      fiadoBuffer,
+      fiadoArguments,
+      column: 'lanc.data_lancamento',
+      filter: filter,
+    );
+    ReportSqlFiltersSupport.appendOptionalEquality(
+      fiadoBuffer,
+      fiadoArguments,
+      column: 'lanc.cliente_id',
+      value: filter.customerId,
+    );
+    _appendFiadoPaymentMethodFilter(
+      fiadoBuffer,
+      fiadoArguments,
+      filter: filter,
+    );
+    _appendSalesExistsClause(
+      fiadoBuffer,
+      fiadoArguments,
+      filter: filter,
+      saleAlias: 'v',
+    );
+
+    final saleRows = await database.rawQuery(
+      saleBuffer.toString(),
+      saleArguments,
+    );
+    final fiadoRows = await database.rawQuery(
+      fiadoBuffer.toString(),
+      fiadoArguments,
+    );
+    final cashSalesReceivedCents = _toInt(saleRows.first['vendas_recebidas']);
+    final fiadoReceiptsCents = _toInt(fiadoRows.first['fiado_recebido']);
     return _ReceivedTotalsAggregate(
-      cashSalesReceivedCents: _toInt(rows.first['vendas_recebidas']),
-      fiadoReceiptsCents: _toInt(rows.first['fiado_recebido']),
-      totalReceivedCents: _toInt(rows.first['total_recebido']),
+      cashSalesReceivedCents: cashSalesReceivedCents,
+      fiadoReceiptsCents: fiadoReceiptsCents,
+      totalReceivedCents: cashSalesReceivedCents + fiadoReceiptsCents,
     );
   }
 
@@ -1194,60 +1407,110 @@ class SqliteReportRepository implements ReportRepository {
     DatabaseExecutor database, {
     required ReportFilter filter,
   }) async {
-    final arguments = <Object?>[];
-    final buffer = StringBuffer('''
+    final paymentSummaryMap = <PaymentMethod, _PaymentAccumulator>{};
+
+    final saleArguments = <Object?>[];
+    final saleBuffer = StringBuffer('''
       SELECT
-        mov.valor_centavos,
-        mov.descricao,
-        sale.forma_pagamento AS sale_payment_method
-      FROM ${TableNames.caixaMovimentos} mov
-      LEFT JOIN ${TableNames.vendas} sale
-        ON mov.referencia_tipo = 'venda'
-        AND sale.id = mov.referencia_id
-      WHERE mov.tipo_movimento IN ('venda', 'recebimento_fiado')
-        AND mov.valor_centavos > 0
+        v.forma_pagamento AS payment_method,
+        v.valor_recebido_imediato_centavos AS amount_cents
+      FROM ${TableNames.vendas} v
+      WHERE v.status = 'ativa'
+        AND v.tipo_venda = 'vista'
+        AND v.valor_recebido_imediato_centavos > 0
     ''');
     ReportSqlFiltersSupport.appendDateRange(
-      buffer,
-      arguments,
-      column: 'mov.criado_em',
+      saleBuffer,
+      saleArguments,
+      column: 'v.data_venda',
       filter: filter,
     );
-    if (filter.customerId != null) {
-      buffer.write('''
-        AND (
-          sale.cliente_id = ?
-          OR EXISTS (
-            SELECT 1
-            FROM ${TableNames.fiadoLancamentos} lanc
-            WHERE lanc.caixa_movimento_id = mov.id
-              AND lanc.cliente_id = ?
-          )
-        )
-      ''');
-      arguments.add(filter.customerId);
-      arguments.add(filter.customerId);
+    ReportSqlFiltersSupport.appendOptionalEquality(
+      saleBuffer,
+      saleArguments,
+      column: 'v.cliente_id',
+      value: filter.customerId,
+    );
+    if (filter.paymentMethod != null) {
+      ReportSqlFiltersSupport.appendOptionalEquality(
+        saleBuffer,
+        saleArguments,
+        column: 'v.forma_pagamento',
+        value: filter.paymentMethod!.dbValue,
+      );
     }
-    buffer.write(' ORDER BY mov.criado_em DESC, mov.id DESC');
-    final rows = await database.rawQuery(buffer.toString(), arguments);
+    _appendSalesExistsClause(
+      saleBuffer,
+      saleArguments,
+      filter: filter,
+      saleAlias: 'v',
+    );
+    final saleRows = await database.rawQuery(
+      saleBuffer.toString(),
+      saleArguments,
+    );
 
-    final paymentSummaryMap = <PaymentMethod, _PaymentAccumulator>{};
-    for (final row in rows) {
-      final paymentMethod =
-          PaymentMethodNoteCodec.parse(row['descricao'] as String?) ??
-          _paymentMethodFromDb(row['sale_payment_method'] as String?);
+    for (final row in saleRows) {
+      final paymentMethod = _paymentMethodFromDb(row['payment_method'] as String?);
       if (paymentMethod == null) {
-        continue;
-      }
-      if (filter.paymentMethod != null &&
-          filter.paymentMethod != paymentMethod) {
         continue;
       }
       final current = paymentSummaryMap.putIfAbsent(
         paymentMethod,
         _PaymentAccumulator.new,
       );
-      current.receivedCents += _toInt(row['valor_centavos']);
+      current.receivedCents += _toInt(row['amount_cents']);
+      current.operationsCount += 1;
+    }
+
+    final fiadoArguments = <Object?>[];
+    final fiadoBuffer = StringBuffer('''
+      SELECT
+        lanc.valor_centavos AS amount_cents,
+        lanc.observacao AS notes
+      FROM ${TableNames.fiadoLancamentos} lanc
+      INNER JOIN ${TableNames.fiado} f ON f.id = lanc.fiado_id
+      INNER JOIN ${TableNames.vendas} v ON v.id = f.venda_id
+      WHERE lanc.tipo_lancamento = 'pagamento'
+    ''');
+    ReportSqlFiltersSupport.appendDateRange(
+      fiadoBuffer,
+      fiadoArguments,
+      column: 'lanc.data_lancamento',
+      filter: filter,
+    );
+    ReportSqlFiltersSupport.appendOptionalEquality(
+      fiadoBuffer,
+      fiadoArguments,
+      column: 'lanc.cliente_id',
+      value: filter.customerId,
+    );
+    _appendFiadoPaymentMethodFilter(
+      fiadoBuffer,
+      fiadoArguments,
+      filter: filter,
+    );
+    _appendSalesExistsClause(
+      fiadoBuffer,
+      fiadoArguments,
+      filter: filter,
+      saleAlias: 'v',
+    );
+    final fiadoRows = await database.rawQuery(
+      fiadoBuffer.toString(),
+      fiadoArguments,
+    );
+
+    for (final row in fiadoRows) {
+      final paymentMethod = PaymentMethodNoteCodec.parse(row['notes'] as String?);
+      if (paymentMethod == null) {
+        continue;
+      }
+      final current = paymentSummaryMap.putIfAbsent(
+        paymentMethod,
+        _PaymentAccumulator.new,
+      );
+      current.receivedCents += _toInt(row['amount_cents']);
       current.operationsCount += 1;
     }
 
@@ -2077,6 +2340,19 @@ class SqliteReportRepository implements ReportRepository {
     buffer.write(')');
   }
 
+  void _appendFiadoPaymentMethodFilter(
+    StringBuffer buffer,
+    List<Object?> arguments, {
+    required ReportFilter filter,
+    String notesColumn = 'lanc.observacao',
+  }) {
+    if (filter.paymentMethod == null) {
+      return;
+    }
+    buffer.write(' AND $notesColumn LIKE ?');
+    arguments.add('[pm:${filter.paymentMethod!.dbValue}]%');
+  }
+
   String _buildProfitabilityBaseSql(ReportGrouping grouping) {
     switch (grouping) {
       case ReportGrouping.variant:
@@ -2106,15 +2382,15 @@ class SqliteReportRepository implements ReportRepository {
               )
             ) AS description,
             COALESCE(SUM(iv.quantidade_mil), 0) AS quantity_mil,
-            COALESCE(SUM($_soldAmountExpression), 0) AS revenue_cents,
+            COALESCE(SUM($_netSoldAmountExpression), 0) AS revenue_cents,
             COALESCE(SUM($_costAmountExpression), 0) AS cost_cents,
-            COALESCE(SUM($_soldAmountExpression - $_costAmountExpression), 0) AS profit_cents,
+            COALESCE(SUM($_netSoldAmountExpression - $_costAmountExpression), 0) AS profit_cents,
             CASE
-              WHEN COALESCE(SUM($_soldAmountExpression), 0) <= 0 THEN 0
+              WHEN COALESCE(SUM($_netSoldAmountExpression), 0) <= 0 THEN 0
               ELSE CAST(
                 ROUND(
-                  COALESCE(SUM($_soldAmountExpression - $_costAmountExpression), 0) * 10000.0 /
-                  COALESCE(SUM($_soldAmountExpression), 1),
+                  COALESCE(SUM($_netSoldAmountExpression - $_costAmountExpression), 0) * 10000.0 /
+                  COALESCE(SUM($_netSoldAmountExpression), 1),
                   0
                 ) AS INTEGER
               )
@@ -2135,15 +2411,15 @@ class SqliteReportRepository implements ReportRepository {
             COALESCE(cat.nome, 'Sem categoria') AS label,
             NULL AS description,
             COALESCE(SUM(iv.quantidade_mil), 0) AS quantity_mil,
-            COALESCE(SUM($_soldAmountExpression), 0) AS revenue_cents,
+            COALESCE(SUM($_netSoldAmountExpression), 0) AS revenue_cents,
             COALESCE(SUM($_costAmountExpression), 0) AS cost_cents,
-            COALESCE(SUM($_soldAmountExpression - $_costAmountExpression), 0) AS profit_cents,
+            COALESCE(SUM($_netSoldAmountExpression - $_costAmountExpression), 0) AS profit_cents,
             CASE
-              WHEN COALESCE(SUM($_soldAmountExpression), 0) <= 0 THEN 0
+              WHEN COALESCE(SUM($_netSoldAmountExpression), 0) <= 0 THEN 0
               ELSE CAST(
                 ROUND(
-                  COALESCE(SUM($_soldAmountExpression - $_costAmountExpression), 0) * 10000.0 /
-                  COALESCE(SUM($_soldAmountExpression), 1),
+                  COALESCE(SUM($_netSoldAmountExpression - $_costAmountExpression), 0) * 10000.0 /
+                  COALESCE(SUM($_netSoldAmountExpression), 1),
                   0
                 ) AS INTEGER
               )
@@ -2173,15 +2449,15 @@ class SqliteReportRepository implements ReportRepository {
             ) AS label,
             MAX(COALESCE(iv.unidade_medida_snapshot, p.unidade_medida, 'un')) AS description,
             COALESCE(SUM(iv.quantidade_mil), 0) AS quantity_mil,
-            COALESCE(SUM($_soldAmountExpression), 0) AS revenue_cents,
+            COALESCE(SUM($_netSoldAmountExpression), 0) AS revenue_cents,
             COALESCE(SUM($_costAmountExpression), 0) AS cost_cents,
-            COALESCE(SUM($_soldAmountExpression - $_costAmountExpression), 0) AS profit_cents,
+            COALESCE(SUM($_netSoldAmountExpression - $_costAmountExpression), 0) AS profit_cents,
             CASE
-              WHEN COALESCE(SUM($_soldAmountExpression), 0) <= 0 THEN 0
+              WHEN COALESCE(SUM($_netSoldAmountExpression), 0) <= 0 THEN 0
               ELSE CAST(
                 ROUND(
-                  COALESCE(SUM($_soldAmountExpression - $_costAmountExpression), 0) * 10000.0 /
-                  COALESCE(SUM($_soldAmountExpression), 1),
+                  COALESCE(SUM($_netSoldAmountExpression - $_costAmountExpression), 0) * 10000.0 /
+                  COALESCE(SUM($_netSoldAmountExpression), 1),
                   0
                 ) AS INTEGER
               )
@@ -2495,6 +2771,18 @@ class _CountAndAmount {
 
   final int count;
   final int totalCents;
+}
+
+class _ProfitAggregate {
+  const _ProfitAggregate({
+    required this.profitCents,
+    this.isAvailable = true,
+    this.unavailableReason,
+  });
+
+  final int profitCents;
+  final bool isAvailable;
+  final String? unavailableReason;
 }
 
 class _PurchaseTotalsAggregate {

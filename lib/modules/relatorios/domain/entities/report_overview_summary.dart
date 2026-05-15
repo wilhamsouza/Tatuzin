@@ -10,6 +10,8 @@ class ReportOverviewSummary {
     required this.totalReceivedCents,
     required this.costOfGoodsSoldCents,
     required this.realizedProfitCents,
+    this.isRealizedProfitAvailable = true,
+    this.realizedProfitUnavailableReason,
     required this.salesCount,
     required this.totalDiscountCents,
     required this.totalSurchargeCents,
@@ -35,6 +37,8 @@ class ReportOverviewSummary {
   final int totalReceivedCents;
   final int costOfGoodsSoldCents;
   final int realizedProfitCents;
+  final bool isRealizedProfitAvailable;
+  final String? realizedProfitUnavailableReason;
   final int salesCount;
   final int totalDiscountCents;
   final int totalSurchargeCents;

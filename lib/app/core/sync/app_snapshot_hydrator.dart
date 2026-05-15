@@ -1,5 +1,8 @@
 import '../../../modules/categorias/data/models/remote_category_record.dart';
 import '../../../modules/categorias/data/sqlite_category_repository.dart';
+import '../../../modules/caixa/data/models/remote_cash_movement_record.dart';
+import '../../../modules/caixa/data/models/remote_cash_session_record.dart';
+import '../../../modules/caixa/data/sqlite_cash_repository.dart';
 import '../../../modules/clientes/data/models/remote_customer_record.dart';
 import '../../../modules/clientes/data/sqlite_client_repository.dart';
 import '../../../modules/fornecedores/data/models/remote_supplier_record.dart';
@@ -30,15 +33,18 @@ class SqliteAppSnapshotHydrator implements AppSnapshotHydrator {
     required SqliteSupplierRepository supplierRepository,
     required SqliteClientRepository clientRepository,
     required SqliteProductRepository productRepository,
+    required SqliteCashRepository cashRepository,
   }) : _categoryRepository = categoryRepository,
        _supplierRepository = supplierRepository,
        _clientRepository = clientRepository,
-       _productRepository = productRepository;
+       _productRepository = productRepository,
+       _cashRepository = cashRepository;
 
   final SqliteCategoryRepository _categoryRepository;
   final SqliteSupplierRepository _supplierRepository;
   final SqliteClientRepository _clientRepository;
   final SqliteProductRepository _productRepository;
+  final SqliteCashRepository _cashRepository;
 
   @override
   Future<AppSnapshotHydrationResult> hydrate(
@@ -70,6 +76,20 @@ class SqliteAppSnapshotHydrator implements AppSnapshotHydrator {
     for (final item in _items(snapshot, SyncFeatureKeys.products)) {
       await _productRepository.upsertFromRemote(
         RemoteProductRecord.fromJson(item),
+      );
+      appliedRecords++;
+    }
+
+    for (final item in _items(snapshot, SyncFeatureKeys.cashSessions)) {
+      await _cashRepository.upsertSessionFromRemote(
+        RemoteCashSessionRecord.fromJson(item),
+      );
+      appliedRecords++;
+    }
+
+    for (final item in _items(snapshot, SyncFeatureKeys.cashMovements)) {
+      await _cashRepository.upsertMovementFromRemote(
+        RemoteCashMovementRecord.fromJson(item),
       );
       appliedRecords++;
     }

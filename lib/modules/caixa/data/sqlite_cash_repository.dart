@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:sqflite/sqflite.dart';
 
 import '../../../app/core/app_context/app_operational_context.dart';
@@ -24,6 +26,8 @@ import '../domain/entities/cash_session_detail.dart';
 import '../domain/repositories/cash_repository.dart';
 import 'cash_database_support.dart';
 import 'models/cash_event_sync_payload.dart';
+import 'models/remote_cash_movement_record.dart';
+import 'models/remote_cash_session_record.dart';
 
 class SqliteCashRepository implements CashRepository {
   SqliteCashRepository(this._appDatabase, this._operationalContext)
@@ -34,6 +38,8 @@ class SqliteCashRepository implements CashRepository {
       _syncQueueRepository = SqliteSyncQueueRepository(_appDatabase);
 
   static const String cashEventFeatureKey = SyncFeatureKeys.cashEvents;
+  static const String cashSessionFeatureKey = SyncFeatureKeys.cashSessions;
+  static const String _sessionMetadataPrefix = '__cash_session_meta__:';
   static const String _autoOpenedNote =
       'Sessão aberta automaticamente para registrar movimento financeiro.';
 
@@ -77,6 +83,174 @@ class SqliteCashRepository implements CashRepository {
     final database = await _appDatabase.database;
     final rows = await _loadSessionRows(database);
     return rows.map(_mapSession).toList();
+  }
+
+  Future<void> upsertSessionFromRemote(RemoteCashSessionRecord remote) async {
+    final database = await _appDatabase.database;
+    await database.transaction((txn) async {
+      final metadataByRemoteId = await _syncMetadataRepository.findByRemoteId(
+        txn,
+        featureKey: cashSessionFeatureKey,
+        remoteId: remote.remoteId,
+      );
+      final metadataByLocalUuid = await _syncMetadataRepository.findByLocalUuid(
+        txn,
+        featureKey: cashSessionFeatureKey,
+        localUuid: remote.localUuid,
+      );
+      final metadata = metadataByRemoteId ?? metadataByLocalUuid;
+
+      Map<String, Object?>? existing;
+      if (metadata?.identity.localId != null) {
+        existing = await _findSessionRowById(txn, metadata!.identity.localId!);
+      }
+      existing ??= await _findSessionRowByUuid(txn, remote.localUuid);
+
+      late final int localId;
+      final values = <String, Object?>{
+        'uuid': remote.localUuid,
+        'usuario_id': null,
+        'aberta_em': remote.openedAt.toIso8601String(),
+        'fechada_em': remote.closedAt?.toIso8601String(),
+        'troco_inicial_centavos': remote.initialFloatCents,
+        'aguardando_confirmacao_troco_inicial': 0,
+        'total_entradas_dinheiro_centavos': 0,
+        'total_suprimentos_centavos': 0,
+        'total_sangrias_centavos': 0,
+        'total_vendas_centavos': 0,
+        'total_recebimentos_fiado_centavos': 0,
+        'total_recebimentos_fiado_dinheiro_centavos': 0,
+        'total_recebimentos_fiado_pix_centavos': 0,
+        'total_recebimentos_fiado_cartao_centavos': 0,
+        'saldo_esperado_centavos':
+            remote.expectedBalanceCents ?? remote.initialFloatCents,
+        'saldo_contado_centavos': remote.countedBalanceCents,
+        'diferenca_centavos':
+            remote.countedBalanceCents == null ||
+                remote.expectedBalanceCents == null
+            ? null
+            : remote.countedBalanceCents! - remote.expectedBalanceCents!,
+        'saldo_final_centavos':
+            remote.expectedBalanceCents ?? remote.initialFloatCents,
+        'status': remote.status == 'closed'
+            ? CashSessionStatus.closed.dbValue
+            : CashSessionStatus.open.dbValue,
+        'observacao': _encodeSessionNotes(
+          visibleNotes: remote.notes,
+          operatorName: remote.operatorName,
+        ),
+      };
+
+      if (existing == null) {
+        localId = await txn.insert(TableNames.caixaSessoes, values);
+      } else {
+        localId = existing['id'] as int;
+        await txn.update(
+          TableNames.caixaSessoes,
+          values,
+          where: 'id = ?',
+          whereArgs: [localId],
+        );
+      }
+
+      await _syncMetadataRepository.markSynced(
+        txn,
+        featureKey: cashSessionFeatureKey,
+        localId: localId,
+        localUuid: remote.localUuid,
+        remoteId: remote.remoteId,
+        origin: existing == null ? RecordOrigin.remote : RecordOrigin.merged,
+        createdAt: remote.createdAt,
+        updatedAt: remote.updatedAt,
+        syncedAt: DateTime.now(),
+      );
+    });
+  }
+
+  Future<void> upsertMovementFromRemote(RemoteCashMovementRecord remote) async {
+    if (remote.remoteCashSessionId == null ||
+        remote.remoteCashSessionId!.trim().isEmpty) {
+      return;
+    }
+
+    final database = await _appDatabase.database;
+    await database.transaction((txn) async {
+      final sessionMetadata = await _syncMetadataRepository.findByRemoteId(
+        txn,
+        featureKey: cashSessionFeatureKey,
+        remoteId: remote.remoteCashSessionId!,
+      );
+      final sessionId = sessionMetadata?.identity.localId;
+      if (sessionId == null) {
+        return;
+      }
+
+      final metadataByRemoteId = await _syncMetadataRepository.findByRemoteId(
+        txn,
+        featureKey: cashEventFeatureKey,
+        remoteId: remote.remoteId,
+      );
+      final metadataByLocalUuid = await _syncMetadataRepository.findByLocalUuid(
+        txn,
+        featureKey: cashEventFeatureKey,
+        localUuid: remote.localUuid,
+      );
+      final metadata = metadataByRemoteId ?? metadataByLocalUuid;
+
+      Map<String, Object?>? existing;
+      if (metadata?.identity.localId != null) {
+        existing = await _findMovementRowById(txn, metadata!.identity.localId!);
+      }
+      existing ??= await _findMovementRowByUuid(txn, remote.localUuid);
+
+      late final int localId;
+      final referenceId = await _resolveRemoteMovementReferenceId(
+        txn,
+        referenceType: remote.referenceType,
+        referenceId: remote.referenceId,
+      );
+      final values = <String, Object?>{
+        'uuid': remote.localUuid,
+        'sessao_id': sessionId,
+        'tipo_movimento': CashMovementTypeX.fromDb(remote.type).dbValue,
+        'referencia_tipo': remote.referenceType,
+        'referencia_id': referenceId,
+        'valor_centavos': remote.amountCents,
+        'descricao': PaymentMethodNoteCodec.withPaymentMethod(
+          remote.notes ?? '',
+          paymentMethod: remote.paymentMethod,
+        ),
+        'criado_em': remote.createdAt.toIso8601String(),
+      };
+
+      if (existing == null) {
+        localId = await txn.insert(TableNames.caixaMovimentos, values);
+      } else {
+        localId = existing['id'] as int;
+        await txn.update(
+          TableNames.caixaMovimentos,
+          values,
+          where: 'id = ?',
+          whereArgs: [localId],
+        );
+      }
+
+      await CashSessionMathSupport.rebuildSessionTotals(
+        txn,
+        sessionId: sessionId,
+      );
+      await _syncMetadataRepository.markSynced(
+        txn,
+        featureKey: cashEventFeatureKey,
+        localId: localId,
+        localUuid: remote.localUuid,
+        remoteId: remote.remoteId,
+        origin: existing == null ? RecordOrigin.remote : RecordOrigin.merged,
+        createdAt: remote.createdAt,
+        updatedAt: remote.updatedAt,
+        syncedAt: DateTime.now(),
+      );
+    });
   }
 
   @override
@@ -394,7 +568,7 @@ class SqliteCashRepository implements CashRepository {
       amountCents: row['valor_centavos'] as int,
       paymentMethod: PaymentMethodNoteCodec.parse(description),
       referenceType: referenceType,
-      referenceLocalId: row['referencia_id'] as int?,
+      referenceLocalId: _intFromDb(row['referencia_id']),
       referenceRemoteId: referenceType == 'venda'
           ? row['sale_remote_id'] as String?
           : referenceType == 'fiado'
@@ -538,6 +712,58 @@ class SqliteCashRepository implements CashRepository {
     return row == null ? null : row['id'] as int;
   }
 
+  Future<Map<String, Object?>?> _findSessionRowById(
+    DatabaseExecutor db,
+    int sessionId,
+  ) async {
+    final rows = await db.query(
+      TableNames.caixaSessoes,
+      where: 'id = ?',
+      whereArgs: [sessionId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<Map<String, Object?>?> _findSessionRowByUuid(
+    DatabaseExecutor db,
+    String uuid,
+  ) async {
+    final rows = await db.query(
+      TableNames.caixaSessoes,
+      where: 'uuid = ?',
+      whereArgs: [uuid],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<Map<String, Object?>?> _findMovementRowById(
+    DatabaseExecutor db,
+    int movementId,
+  ) async {
+    final rows = await db.query(
+      TableNames.caixaMovimentos,
+      where: 'id = ?',
+      whereArgs: [movementId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<Map<String, Object?>?> _findMovementRowByUuid(
+    DatabaseExecutor db,
+    String uuid,
+  ) async {
+    final rows = await db.query(
+      TableNames.caixaMovimentos,
+      where: 'uuid = ?',
+      whereArgs: [uuid],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
   Future<List<Map<String, Object?>>> _loadSessionRows(
     DatabaseExecutor db,
   ) async {
@@ -573,14 +799,7 @@ class SqliteCashRepository implements CashRepository {
     return '''
       SELECT
         sess.*,
-        COALESCE(
-          NULLIF(TRIM(usr.nome), ''),
-          CASE
-            WHEN sess.usuario_id = ${_operationalContext.currentLocalUserId ?? -1}
-            THEN '${_escapeSql(_operationalContext.session.user.displayName)}'
-            ELSE 'Operador local'
-          END
-        ) AS operador_nome
+        usr.nome AS usuario_nome
       FROM ${TableNames.caixaSessoes} sess
       LEFT JOIN ${TableNames.usuarios} usr ON usr.id = sess.usuario_id
     ''';
@@ -594,11 +813,13 @@ class SqliteCashRepository implements CashRepository {
       '''
       SELECT
         mov.*,
+        sale_sync.remote_id AS sale_remote_id,
         sale.numero_cupom AS sale_receipt_number,
         sale.tipo_venda AS sale_type,
         sale.forma_pagamento AS sale_payment_method,
         sale.status AS sale_status,
         direct_client.nome AS sale_client_name,
+        fiado_payment_sync.remote_id AS fiado_payment_remote_id,
         fiado.venda_id AS fiado_sale_id,
         fiado_sale.numero_cupom AS fiado_receipt_number,
         fiado_sale.tipo_venda AS fiado_sale_type,
@@ -606,14 +827,28 @@ class SqliteCashRepository implements CashRepository {
         fiado_sale.status AS fiado_sale_status,
         fiado_client.nome AS fiado_client_name
       FROM ${TableNames.caixaMovimentos} mov
+      LEFT JOIN ${TableNames.syncRegistros} sale_sync
+        ON mov.referencia_tipo = 'venda'
+        AND sale_sync.feature_key = '${SyncFeatureKeys.sales}'
+        AND sale_sync.remote_id = CAST(mov.referencia_id AS TEXT)
       LEFT JOIN ${TableNames.vendas} sale
         ON mov.referencia_tipo = 'venda'
-        AND sale.id = mov.referencia_id
+        AND (sale.id = mov.referencia_id OR sale.id = sale_sync.local_id)
       LEFT JOIN ${TableNames.clientes} direct_client
         ON direct_client.id = sale.cliente_id
+      LEFT JOIN ${TableNames.syncRegistros} fiado_payment_sync
+        ON mov.referencia_tipo = 'fiado'
+        AND fiado_payment_sync.feature_key = '${SyncFeatureKeys.fiadoPayments}'
+        AND fiado_payment_sync.remote_id = CAST(mov.referencia_id AS TEXT)
+      LEFT JOIN ${TableNames.fiadoLancamentos} fiado_payment
+        ON mov.referencia_tipo = 'fiado'
+        AND (
+          fiado_payment.id = mov.referencia_id
+          OR fiado_payment.id = fiado_payment_sync.local_id
+        )
       LEFT JOIN ${TableNames.fiado} fiado
         ON mov.referencia_tipo = 'fiado'
-        AND fiado.id = mov.referencia_id
+        AND fiado.id = fiado_payment.fiado_id
       LEFT JOIN ${TableNames.vendas} fiado_sale
         ON fiado_sale.id = fiado.venda_id
       LEFT JOIN ${TableNames.clientes} fiado_client
@@ -707,13 +942,18 @@ class SqliteCashRepository implements CashRepository {
   }
 
   CashSession _mapSession(Map<String, Object?> row) {
+    final notesPayload = _decodeSessionNotes(row['observacao'] as String?);
+    final userName = _cleanNullable(row['usuario_nome'] as String?);
+    final fallbackOperatorName =
+        row['usuario_id'] == _operationalContext.currentLocalUserId
+        ? _operationalContext.session.user.displayName
+        : 'Operador local';
     return CashSession(
       id: row['id'] as int,
       uuid: row['uuid'] as String,
       userId: row['usuario_id'] as int?,
       operatorName:
-          row['operador_nome'] as String? ??
-          _operationalContext.session.user.displayName,
+          userName ?? notesPayload.operatorName ?? fallbackOperatorName,
       openedAt: DateTime.parse(row['aberta_em'] as String),
       closedAt: row['fechada_em'] == null
           ? null
@@ -742,7 +982,7 @@ class SqliteCashRepository implements CashRepository {
       countedBalanceCents: row['saldo_contado_centavos'] as int?,
       differenceCents: row['diferenca_centavos'] as int?,
       status: CashSessionStatusX.fromDb(row['status'] as String),
-      notes: row['observacao'] as String?,
+      notes: notesPayload.visibleNotes,
     );
   }
 
@@ -754,7 +994,7 @@ class SqliteCashRepository implements CashRepository {
       sessionId: row['sessao_id'] as int,
       type: CashMovementTypeX.fromDb(row['tipo_movimento'] as String),
       referenceType: row['referencia_tipo'] as String?,
-      referenceId: row['referencia_id'] as int?,
+      referenceId: _stringFromDb(row['referencia_id']),
       amountCents: row['valor_centavos'] as int,
       description: PaymentMethodNoteCodec.clean(description),
       createdAt: DateTime.parse(row['criado_em'] as String),
@@ -870,7 +1110,7 @@ class SqliteCashRepository implements CashRepository {
 
   String? _buildReferenceLabel({
     required String? referenceType,
-    required int? referenceId,
+    required String? referenceId,
     required String? receiptNumber,
   }) {
     if (referenceType == null) {
@@ -904,9 +1144,10 @@ class SqliteCashRepository implements CashRepository {
   }
 
   String? _removeAutomaticOpeningNote(String? current) {
-    final cleanedCurrent = _cleanNullable(current);
+    final notesPayload = _decodeSessionNotes(current);
+    final cleanedCurrent = _cleanNullable(notesPayload.visibleNotes);
     if (cleanedCurrent == null) {
-      return null;
+      return _encodeSessionNotes(operatorName: notesPayload.operatorName);
     }
 
     final lines = cleanedCurrent
@@ -915,23 +1156,36 @@ class SqliteCashRepository implements CashRepository {
         .where((line) => line.isNotEmpty && line != _autoOpenedNote)
         .toList(growable: false);
     if (lines.isEmpty) {
-      return null;
+      return _encodeSessionNotes(operatorName: notesPayload.operatorName);
     }
-    return lines.join('\n');
+    return _encodeSessionNotes(
+      visibleNotes: lines.join('\n'),
+      operatorName: notesPayload.operatorName,
+    );
   }
 
   String? _mergeNotes(String? current, String? appended) {
-    final cleanedCurrent = _cleanNullable(current);
+    final notesPayload = _decodeSessionNotes(current);
+    final cleanedCurrent = _cleanNullable(notesPayload.visibleNotes);
     final cleanedAppended = _cleanNullable(appended);
 
     if (cleanedCurrent == null) {
-      return cleanedAppended;
+      return _encodeSessionNotes(
+        visibleNotes: cleanedAppended,
+        operatorName: notesPayload.operatorName,
+      );
     }
     if (cleanedAppended == null) {
-      return cleanedCurrent;
+      return _encodeSessionNotes(
+        visibleNotes: cleanedCurrent,
+        operatorName: notesPayload.operatorName,
+      );
     }
 
-    return '$cleanedCurrent\n$cleanedAppended';
+    return _encodeSessionNotes(
+      visibleNotes: '$cleanedCurrent\n$cleanedAppended',
+      operatorName: notesPayload.operatorName,
+    );
   }
 
   String? _cleanNullable(String? value) {
@@ -939,7 +1193,116 @@ class SqliteCashRepository implements CashRepository {
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 
-  String _escapeSql(String value) {
-    return value.replaceAll("'", "''");
+  Future<Object?> _resolveRemoteMovementReferenceId(
+    DatabaseExecutor txn, {
+    required String? referenceType,
+    required String? referenceId,
+  }) async {
+    final cleanedReferenceId = _cleanNullable(referenceId);
+    if (cleanedReferenceId == null) {
+      return null;
+    }
+
+    final featureKey = switch (referenceType) {
+      'venda' => SyncFeatureKeys.sales,
+      'fiado' => SyncFeatureKeys.fiadoPayments,
+      _ => null,
+    };
+    if (featureKey == null) {
+      return int.tryParse(cleanedReferenceId) ?? cleanedReferenceId;
+    }
+
+    final metadata = await _syncMetadataRepository.findByRemoteId(
+      txn,
+      featureKey: featureKey,
+      remoteId: cleanedReferenceId,
+    );
+    return metadata?.identity.localId ??
+        int.tryParse(cleanedReferenceId) ??
+        cleanedReferenceId;
   }
+
+  String? _stringFromDb(Object? value) {
+    if (value == null) {
+      return null;
+    }
+    final text = value.toString().trim();
+    return text.isEmpty ? null : text;
+  }
+
+  int? _intFromDb(Object? value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value.trim());
+    }
+    return null;
+  }
+
+  String? _encodeSessionNotes({
+    String? visibleNotes,
+    String? operatorName,
+  }) {
+    final cleanedVisibleNotes = _cleanNullable(visibleNotes);
+    final cleanedOperatorName = _cleanNullable(operatorName);
+    final lines = <String>[];
+    if (cleanedVisibleNotes != null) {
+      lines.add(cleanedVisibleNotes);
+    }
+    if (cleanedOperatorName != null) {
+      lines.add(
+        '$_sessionMetadataPrefix${jsonEncode(<String, String>{'operatorName': cleanedOperatorName})}',
+      );
+    }
+    if (lines.isEmpty) {
+      return null;
+    }
+    return lines.join('\n');
+  }
+
+  _SessionNotesPayload _decodeSessionNotes(String? raw) {
+    final cleanedRaw = _cleanNullable(raw);
+    if (cleanedRaw == null) {
+      return const _SessionNotesPayload();
+    }
+
+    final visibleLines = <String>[];
+    String? operatorName;
+    for (final line in cleanedRaw.split('\n')) {
+      final trimmedLine = line.trim();
+      if (trimmedLine.startsWith(_sessionMetadataPrefix)) {
+        final encodedMetadata = trimmedLine.substring(
+          _sessionMetadataPrefix.length,
+        );
+        try {
+          final decoded = jsonDecode(encodedMetadata);
+          if (decoded is Map<String, dynamic>) {
+            operatorName = _cleanNullable(decoded['operatorName'] as String?);
+          }
+        } catch (_) {
+          visibleLines.add(trimmedLine);
+        }
+        continue;
+      }
+      if (trimmedLine.isNotEmpty) {
+        visibleLines.add(trimmedLine);
+      }
+    }
+
+    return _SessionNotesPayload(
+      visibleNotes: visibleLines.isEmpty ? null : visibleLines.join('\n'),
+      operatorName: operatorName,
+    );
+  }
+}
+
+class _SessionNotesPayload {
+  const _SessionNotesPayload({this.visibleNotes, this.operatorName});
+
+  final String? visibleNotes;
+  final String? operatorName;
 }

@@ -13,7 +13,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'support/sale_inventory_test_support.dart'
-    show createSaleRepository, loadProductStock, loadVariantStock;
+    show
+        createSaleRepository,
+        ensureOpenCashSession,
+        loadProductStock,
+        loadVariantStock;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -257,6 +261,7 @@ Future<_BillingReservationFixture> _openFixture() async {
       'remote:order-billing-reservation-${DateTime.now().microsecondsSinceEpoch}';
   final appDatabase = AppDatabase.forIsolationKey(isolationKey);
   final database = await appDatabase.database;
+  await ensureOpenCashSession(database);
   return _BillingReservationFixture(
     isolationKey: isolationKey,
     appDatabase: appDatabase,

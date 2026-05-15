@@ -24,7 +24,7 @@ import '../domain/repositories/fiado_repository.dart';
 import 'models/fiado_payment_sync_payload.dart';
 
 class SqliteFiadoRepository implements FiadoRepository {
-  SqliteFiadoRepository(this._appDatabase, this._operationalContext)
+  SqliteFiadoRepository(this._appDatabase, AppOperationalContext _)
     : _syncMetadataRepository = SqliteSyncMetadataRepository(_appDatabase),
       _syncQueueRepository = SqliteSyncQueueRepository(_appDatabase);
 
@@ -33,7 +33,6 @@ class SqliteFiadoRepository implements FiadoRepository {
       SyncFeatureKeys.financialEvents;
 
   final AppDatabase _appDatabase;
-  final AppOperationalContext _operationalContext;
   final SqliteSyncMetadataRepository _syncMetadataRepository;
   final SqliteSyncQueueRepository _syncQueueRepository;
 
@@ -142,11 +141,11 @@ class SqliteFiadoRepository implements FiadoRepository {
           ? 'quitado'
           : (remainingCents == originalCents ? 'pendente' : 'parcial');
 
-      final sessionId = await CashDatabaseSupport.ensureOpenSession(
-        txn,
-        timestamp: now,
-        userId: _operationalContext.currentLocalUserId,
-      );
+      final sessionId =
+          await CashDatabaseSupport.requireOpenSessionIdWithMessage(
+            txn,
+            message: 'Abra o caixa antes de registrar recebimento de fiado.',
+          );
       await CashSessionMathSupport.applySessionDeltas(
         txn,
         sessionId: sessionId,

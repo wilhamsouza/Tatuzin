@@ -82,6 +82,7 @@ final appSnapshotHydratorProvider = Provider<AppSnapshotHydrator>((ref) {
     supplierRepository: ref.watch(localSupplierRepositoryProvider),
     clientRepository: ref.watch(localClientRepositoryProvider),
     productRepository: ref.watch(localProductRepositoryProvider),
+    cashRepository: ref.watch(localCashRepositoryProvider),
   );
 });
 

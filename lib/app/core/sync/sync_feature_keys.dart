@@ -12,6 +12,7 @@ abstract final class SyncFeatureKeys {
   static const saleCancellations = 'sale_cancellations';
   static const fiadoPayments = 'fiado_payments';
   static const cashEvents = 'cash_events';
+  static const cashSessions = 'cash_sessions';
   static const fiado = 'fiado';
   static const cashMovements = 'cash_movements';
 }
@@ -31,6 +32,7 @@ String syncFeatureDisplayName(String featureKey) {
     SyncFeatureKeys.saleCancellations => 'Cancelamentos de venda',
     SyncFeatureKeys.fiadoPayments => 'Pagamentos de fiado',
     SyncFeatureKeys.cashEvents => 'Eventos de caixa',
+    SyncFeatureKeys.cashSessions => 'Sessoes de caixa',
     SyncFeatureKeys.fiado => 'Fiado',
     SyncFeatureKeys.cashMovements => 'Movimentos de caixa',
     _ => featureKey,

@@ -109,12 +109,20 @@ describe('app context bootstrap and guards', () => {
   it('returns app snapshot records for the authenticated company only', async () => {
     const fixture = await createFixture({ deviceStatus: 'ACTIVE' });
     const otherFixture = await createFixture({ deviceStatus: 'ACTIVE' });
-    const snapshotData = await seedSnapshotData(fixture.companyId, 'main');
-    const otherData = await seedSnapshotData(otherFixture.companyId, 'other');
+    const snapshotData = await seedSnapshotData(
+      fixture.companyId,
+      fixture.userId,
+      'main',
+    );
+    const otherData = await seedSnapshotData(
+      otherFixture.companyId,
+      otherFixture.userId,
+      'other',
+    );
 
     const response = await requestJson(
       'GET',
-      '/app/snapshot?features=categories,products,customers,suppliers',
+      '/app/snapshot?features=categories,products,customers,suppliers,cash_sessions,cash_movements',
       { token: fixture.token },
     );
 
@@ -137,6 +145,8 @@ describe('app context bootstrap and guards', () => {
     assert.equal(payload.features.products.count, 1);
     assert.equal(payload.features.customers.count, 1);
     assert.equal(payload.features.suppliers.count, 1);
+    assert.equal(payload.features.cash_sessions.count, 1);
+    assert.equal(payload.features.cash_movements.count, 1);
     assert.deepEqual(
       payload.features.categories.items?.map((item) => item.id),
       [snapshotData.categoryId],
@@ -150,6 +160,24 @@ describe('app context bootstrap and guards', () => {
     assert.deepEqual(payload.features.suppliers.items?.map((item) => item.id), [
       snapshotData.supplierId,
     ]);
+    assert.deepEqual(
+      payload.features.cash_sessions.items?.map((item) => item.id),
+      [snapshotData.cashSessionId],
+    );
+    assert.deepEqual(
+      payload.features.cash_movements.items?.map((item) => item.id),
+      [snapshotData.cashMovementId],
+    );
+    const cashSession = payload.features.cash_sessions.items?.[0] as {
+      operatorName?: string | null;
+    };
+    const cashMovement = payload.features.cash_movements.items?.[0] as {
+      referenceType?: string | null;
+      referenceId?: string | null;
+    };
+    assert.equal(cashSession.operatorName, 'App Context User');
+    assert.equal(cashMovement.referenceType, 'venda');
+    assert.equal(cashMovement.referenceId, snapshotData.cashMovementReferenceId);
     assert.ok(
       !JSON.stringify(payload).includes(otherData.productId),
       'snapshot must not leak records from another company',
@@ -440,7 +468,11 @@ async function createFixture(options?: {
   };
 }
 
-async function seedSnapshotData(companyId: string, suffix: string) {
+async function seedSnapshotData(
+  companyId: string,
+  userId: string,
+  suffix: string,
+) {
   const category = await prisma.category.create({
     data: {
       companyId,
@@ -501,6 +533,34 @@ async function seedSnapshotData(companyId: string, suffix: string) {
     },
     include: { variants: true },
   });
+  const cashSession = await prisma.cashSession.create({
+    data: {
+      companyId,
+      userId,
+      localUuid: `${runId}-${suffix}-cash-session-local`,
+      status: 'closed',
+      openedAt: new Date('2026-05-10T12:00:00.000Z'),
+      closedAt: new Date('2026-05-10T18:00:00.000Z'),
+      openingBalanceCents: 5000,
+      expectedBalanceCents: 8200,
+      closingBalanceCents: 8200,
+      notes: `Sessao ${suffix}`,
+    },
+  });
+  const cashMovement = await prisma.cashEvent.create({
+    data: {
+      companyId,
+      cashSessionId: cashSession.id,
+      localUuid: `${runId}-${suffix}-cash-movement-local`,
+      eventType: 'venda',
+      amountCents: 3200,
+      paymentMethod: 'dinheiro',
+      referenceType: 'venda',
+      referenceId: `${runId}-${suffix}-sale-ref`,
+      notes: `Venda ${suffix}`,
+      createdAt: new Date('2026-05-10T13:00:00.000Z'),
+    },
+  });
 
   return {
     categoryId: category.id,
@@ -508,6 +568,9 @@ async function seedSnapshotData(companyId: string, suffix: string) {
     supplierId: supplier.id,
     productId: product.id,
     variantId: product.variants[0]!.id,
+    cashSessionId: cashSession.id,
+    cashMovementId: cashMovement.id,
+    cashMovementReferenceId: cashMovement.referenceId!,
   };
 }
 

@@ -6,6 +6,8 @@ const SERVER_FIRST_SNAPSHOT_FEATURES = [
   'categories',
   'suppliers',
   'customers',
+  'cash_sessions',
+  'cash_movements',
   'fiado',
   'costs',
   'settings',
@@ -195,6 +197,58 @@ export class AppSnapshotService {
             deletedAt: customer.deletedAt?.toISOString() ?? null,
             createdAt: customer.createdAt.toISOString(),
             updatedAt: customer.updatedAt.toISOString(),
+          }),
+        );
+      case 'cash_sessions':
+        return this.buildModelSnapshot(feature, () =>
+          prisma.cashSession.findMany({
+            where: { companyId: context.company.id },
+            include: {
+              user: {
+                select: { name: true },
+              },
+            },
+            orderBy: [{ updatedAt: 'desc' }, { openedAt: 'desc' }],
+          }),
+          (session) => ({
+            id: session.id,
+            companyId: session.companyId,
+            localUuid: session.localUuid,
+            userId: session.userId,
+            operatorName: session.user?.name ?? null,
+            status: session.status,
+            openedAt: session.openedAt?.toISOString() ?? null,
+            closedAt: session.closedAt?.toISOString() ?? null,
+            openingBalanceCents: session.openingBalanceCents,
+            closingBalanceCents: session.closingBalanceCents,
+            expectedBalanceCents: session.expectedBalanceCents,
+            notes: session.notes,
+            createdAt: session.createdAt.toISOString(),
+            updatedAt: session.updatedAt.toISOString(),
+          }),
+        );
+      case 'cash_movements':
+        return this.buildModelSnapshot(feature, () =>
+          prisma.cashEvent.findMany({
+            where: {
+              companyId: context.company.id,
+              cashSessionId: { not: null },
+            },
+            orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+          }),
+          (movement) => ({
+            id: movement.id,
+            companyId: movement.companyId,
+            cashSessionId: movement.cashSessionId,
+            localUuid: movement.localUuid,
+            eventType: movement.eventType,
+            amountCents: movement.amountCents,
+            paymentMethod: movement.paymentMethod,
+            referenceType: movement.referenceType,
+            referenceId: movement.referenceId,
+            notes: movement.notes,
+            createdAt: movement.createdAt.toISOString(),
+            updatedAt: movement.updatedAt.toISOString(),
           }),
         );
       case 'fiado':

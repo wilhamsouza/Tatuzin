@@ -96,6 +96,43 @@ Future<void> insertClient(
   });
 }
 
+Future<void> ensureOpenCashSession(DatabaseExecutor db) async {
+  final existingRows = await db.query(
+    TableNames.caixaSessoes,
+    columns: const ['id'],
+    where: 'status = ?',
+    whereArgs: const ['aberto'],
+    limit: 1,
+  );
+  if (existingRows.isNotEmpty) {
+    return;
+  }
+
+  await db.insert(TableNames.caixaSessoes, {
+    'id': 1,
+    'uuid': 'test-open-cash-session',
+    'usuario_id': null,
+    'aberta_em': _fixedNowIso,
+    'fechada_em': null,
+    'troco_inicial_centavos': 0,
+    'aguardando_confirmacao_troco_inicial': 0,
+    'total_entradas_dinheiro_centavos': 0,
+    'total_suprimentos_centavos': 0,
+    'total_sangrias_centavos': 0,
+    'total_vendas_centavos': 0,
+    'total_recebimentos_fiado_centavos': 0,
+    'total_recebimentos_fiado_dinheiro_centavos': 0,
+    'total_recebimentos_fiado_pix_centavos': 0,
+    'total_recebimentos_fiado_cartao_centavos': 0,
+    'saldo_esperado_centavos': 0,
+    'saldo_contado_centavos': null,
+    'diferenca_centavos': null,
+    'saldo_final_centavos': 0,
+    'status': 'aberto',
+    'observacao': 'Sessao de teste aberta',
+  });
+}
+
 Future<void> insertSimpleProduct(
   Database db, {
   required int productId,
@@ -698,6 +735,30 @@ Future<void> _createSchema(
       criado_em TEXT NOT NULL
     )
   ''');
+
+  await db.insert(TableNames.caixaSessoes, {
+    'id': 1,
+    'uuid': 'test-open-cash-session',
+    'usuario_id': null,
+    'aberta_em': _fixedNowIso,
+    'fechada_em': null,
+    'troco_inicial_centavos': 0,
+    'aguardando_confirmacao_troco_inicial': 0,
+    'total_entradas_dinheiro_centavos': 0,
+    'total_suprimentos_centavos': 0,
+    'total_sangrias_centavos': 0,
+    'total_vendas_centavos': 0,
+    'total_recebimentos_fiado_centavos': 0,
+    'total_recebimentos_fiado_dinheiro_centavos': 0,
+    'total_recebimentos_fiado_pix_centavos': 0,
+    'total_recebimentos_fiado_cartao_centavos': 0,
+    'saldo_esperado_centavos': 0,
+    'saldo_contado_centavos': null,
+    'diferenca_centavos': null,
+    'saldo_final_centavos': 0,
+    'status': 'aberto',
+    'observacao': 'Sessao de teste aberta',
+  });
 
   await db.execute('''
     CREATE TABLE ${TableNames.fiado} (

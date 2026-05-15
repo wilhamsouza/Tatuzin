@@ -14,6 +14,7 @@ import '../../../app/core/sync/sync_feature_keys.dart';
 import '../../../app/core/sync/sync_queue_operation.dart';
 import '../../../app/core/utils/app_logger.dart';
 import '../../../app/core/utils/id_generator.dart';
+import '../../../app/core/utils/payment_method_note_codec.dart';
 import '../../clientes/data/customer_credit_database_support.dart';
 import '../../clientes/domain/entities/customer_credit_transaction.dart';
 import '../../estoque/data/support/inventory_balance_support.dart';
@@ -439,6 +440,11 @@ class SqliteSaleRepository implements SaleRepository {
         orderId: input.operationalOrderId!,
       );
     }
+    await SaleValidationSupport.ensureImmediateReceiptHasOpenCashSession(
+      txn,
+      input: input,
+      saleType: saleType,
+    );
 
     final productSnapshots =
         await SaleItemPersistenceSupport.loadProductSnapshots(txn, input.items);
@@ -687,6 +693,9 @@ class SqliteSaleRepository implements SaleRepository {
           'surchargeCents': input.surchargeCents,
           'totalCents': finalCents,
           'finalCents': finalCents,
+          'creditUsedCents': input.customerCreditUsedCents,
+          'creditGeneratedCents': input.changeLeftAsCreditCents,
+          'immediateReceivedCents': input.immediateReceivedCents,
           'soldAt': occurredAt.toIso8601String(),
           'notes': SaleValidationSupport.cleanNullable(input.notes),
         },
@@ -745,6 +754,8 @@ class SqliteSaleRepository implements SaleRepository {
             'quantityMil': row['quantidade_mil'],
             'unitPriceCents': row['valor_unitario_centavos'],
             'subtotalCents': row['subtotal_centavos'],
+            'unitCostCents': row['custo_unitario_centavos'],
+            'totalCostCents': row['custo_total_centavos'],
             'unitMeasureSnapshot': row['unidade_medida_snapshot'],
             'productTypeSnapshot': row['tipo_produto_snapshot'],
           },
@@ -1184,6 +1195,10 @@ class SqliteSaleRepository implements SaleRepository {
           'referenceId': row['referencia_id'],
           'amountCents': row['valor_centavos'],
           'description': row['descricao'],
+          'paymentMethod':
+              PaymentMethodNoteCodec.parse(
+                row['descricao'] as String?,
+              )?.dbValue,
           'createdAt': row['criado_em'],
         },
       ),

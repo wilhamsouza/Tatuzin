@@ -23,11 +23,19 @@ import 'package:erp_pdv_app/modules/relatorios/presentation/providers/report_pro
 import 'test_tenant_session.dart';
 
 void main() {
-  group('relatorios gerenciais server-first', () {
-    test('classifica relatorios gerenciais e operacional por estrategia', () {
+  group('relatorios com estrategias mistas', () {
+    test('classifica relatorios conforme a fonte operacional correta', () {
       expect(
         reportStrategyForPage(ReportPageKey.sales),
-        ReportDataSourceStrategy.erpManagementServerFirst,
+        ReportDataSourceStrategy.pdvOperationalLocalFirst,
+      );
+      expect(
+        reportStrategyForPage(ReportPageKey.overview),
+        ReportDataSourceStrategy.pdvOperationalLocalFirst,
+      );
+      expect(
+        reportStrategyForPage(ReportPageKey.profitability),
+        ReportDataSourceStrategy.pdvOperationalLocalFirst,
       );
       expect(
         reportStrategyForPage(ReportPageKey.customers),
@@ -138,58 +146,50 @@ void main() {
       },
     );
 
-    test(
-      'usuario comum nao chama endpoint admin e usa fallback sinalizado',
-      () async {
-        final remote = FakeAnalyticsRemoteDatasource();
-        final local = FakeReportRepository();
-        final container = ProviderContainer(
-          overrides: [
-            ...testTenantBootstrapOverrides(),
-            pdvOperationalReportRepositoryProvider.overrideWithValue(local),
-            reportRemoteDatasourceProvider.overrideWithValue(remote),
-          ],
-        );
-        addTearDown(container.dispose);
-        setTestTenantSession(container);
+    test('top products provider usa o repositorio operacional local', () async {
+      final remote = FakeAnalyticsRemoteDatasource();
+      final local = FakeReportRepository();
+      final container = ProviderContainer(
+        overrides: [
+          ...testTenantBootstrapOverrides(),
+          pdvOperationalReportRepositoryProvider.overrideWithValue(local),
+          reportRemoteDatasourceProvider.overrideWithValue(remote),
+        ],
+      );
+      addTearDown(container.dispose);
+      setTestTenantSession(container);
 
-        final result = await container.read(
-          topProductsReportResultProvider.future,
-        );
-        final notice = result.notice;
+      final result = await container.read(
+        topProductsReportResultProvider.future,
+      );
+      final notice = result.notice;
 
-        expect(remote.salesByProductCalls, 0);
-        expect(local.topProductsCalls, 1);
-        expect(notice, isNotNull);
-        expect(notice!.message, contains('Endpoint tenant indisponivel'));
-      },
-    );
+      expect(remote.salesByProductCalls, 0);
+      expect(local.topProductsCalls, 1);
+      expect(notice, isNull);
+    });
 
-    test(
-      'provider de variantes retorna notice sem modificar StateProvider no build',
-      () async {
-        final remote = FakeAnalyticsRemoteDatasource();
-        final local = FakeReportRepository();
-        final container = ProviderContainer(
-          overrides: [
-            ...testTenantBootstrapOverrides(),
-            pdvOperationalReportRepositoryProvider.overrideWithValue(local),
-            reportRemoteDatasourceProvider.overrideWithValue(remote),
-          ],
-        );
-        addTearDown(container.dispose);
-        setTestTenantSession(container);
+    test('provider de variantes usa dados locais sem notice remoto', () async {
+      final remote = FakeAnalyticsRemoteDatasource();
+      final local = FakeReportRepository();
+      final container = ProviderContainer(
+        overrides: [
+          ...testTenantBootstrapOverrides(),
+          pdvOperationalReportRepositoryProvider.overrideWithValue(local),
+          reportRemoteDatasourceProvider.overrideWithValue(remote),
+        ],
+      );
+      addTearDown(container.dispose);
+      setTestTenantSession(container);
 
-        final variants = await container.read(topVariantsReportProvider.future);
-        final notice = container.read(
-          reportPageDataOriginNoticeProvider(ReportPageKey.sales),
-        );
+      final variants = await container.read(topVariantsReportProvider.future);
+      final notice = container.read(
+        reportPageDataOriginNoticeProvider(ReportPageKey.sales),
+      );
 
-        expect(variants, isEmpty);
-        expect(notice, isNotNull);
-        expect(notice!.message, contains('Endpoint gerencial ausente'));
-      },
-    );
+      expect(variants, isEmpty);
+      expect(notice, isNull);
+    });
   });
 }
 

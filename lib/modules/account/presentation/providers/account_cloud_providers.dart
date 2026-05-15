@@ -8,6 +8,7 @@ import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/sync/auto_sync_coordinator.dart';
 import '../../../../app/core/sync/sync_display_state.dart';
 import '../../../../app/core/sync/sync_providers.dart';
+import '../../../../app/core/sync/sync_queue_feature_summary.dart';
 import '../../../../app/core/sync/sync_queue_item.dart';
 import '../../../../app/core/sync/sync_queue_operation.dart';
 import '../../../../app/core/sync/sync_queue_status.dart';
@@ -45,6 +46,10 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
   final hasRecentSync = syncOverview.lastProcessedAt != null;
   final pendingCount = syncOverview.totalPendingForDisplay;
   final syncingNowCount = syncOverview.totalActiveProcessing;
+  List<SyncQueueFeatureSummary> loadAttentionSummaries() {
+    return ref.watch(syncQueueFeatureSummariesProvider).valueOrNull ??
+        const <SyncQueueFeatureSummary>[];
+  }
 
   if (!authStatus.isRemoteAuthenticated || session.isLocalDefault) {
     return AccountCloudStatusSnapshot(
@@ -218,10 +223,12 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
 
   switch (syncOverview.displayState) {
     case SyncDisplayState.conflict:
+      final syncSummaries = loadAttentionSummaries();
       return AccountCloudStatusSnapshot(
         statusLabel: 'Com conflito',
         statusMessage: _buildAttentionMessage(
           syncOverview,
+          syncSummaries: syncSummaries,
           autoSyncSnapshot: autoSyncSnapshot,
         ),
         tone: AppStatusTone.warning,
@@ -246,10 +253,12 @@ final accountCloudStatusProvider = Provider<AccountCloudStatusSnapshot>((ref) {
         ),
       );
     case SyncDisplayState.error:
+      final syncSummaries = loadAttentionSummaries();
       return AccountCloudStatusSnapshot(
         statusLabel: 'Erro de sincronizacao',
         statusMessage: _buildAttentionMessage(
           syncOverview,
+          syncSummaries: syncSummaries,
           autoSyncSnapshot: autoSyncSnapshot,
         ),
         tone: AppStatusTone.warning,
@@ -453,14 +462,28 @@ String _buildPendingMessage(
 
 String _buildAttentionMessage(
   SyncHealthOverview syncOverview, {
+  required List<SyncQueueFeatureSummary> syncSummaries,
   required AutoSyncCoordinatorSnapshot autoSyncSnapshot,
 }) {
   final parts = <String>[];
+  final primaryAttentionSummary = _primaryAttentionSummary(syncSummaries);
 
   if (syncOverview.totalErrors > 0) {
+    final singleErrorLabel =
+        syncOverview.totalErrors == 1 && primaryAttentionSummary != null
+        ? _singleFailureLabel(primaryAttentionSummary.featureKey)
+        : null;
     parts.add(
-      _countLabel(syncOverview.totalErrors, 'item com erro', 'itens com erro'),
+      singleErrorLabel == null
+          ? '${_countLabel(syncOverview.totalErrors, 'operacao com falha de sincronizacao', 'operacoes com falha de sincronizacao')}. Os dados locais estao preservados'
+          : 'Ha 1 $singleErrorLabel com falha de sincronizacao. Os dados locais estao preservados',
     );
+    final lastError = _cleanSyncError(primaryAttentionSummary?.lastError);
+    if (lastError != null) {
+      parts.add(
+        'Ultimo erro em ${primaryAttentionSummary!.displayName}: $lastError',
+      );
+    }
   }
 
   if (syncOverview.totalBlocked > 0) {
@@ -501,6 +524,58 @@ String _buildAttentionMessage(
   }
 
   return 'Sua conta esta conectada, mas a nuvem precisa de atencao: ${parts.join(', ')}.';
+}
+
+SyncQueueFeatureSummary? _primaryAttentionSummary(
+  List<SyncQueueFeatureSummary> summaries,
+) {
+  SyncQueueFeatureSummary? match;
+  for (final summary in summaries) {
+    if (!summary.hasAttention) {
+      continue;
+    }
+    if (match == null) {
+      match = summary;
+      continue;
+    }
+    final currentAt =
+        summary.lastErrorAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final bestAt = match.lastErrorAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    if (currentAt.isAfter(bestAt)) {
+      match = summary;
+    }
+  }
+  return match;
+}
+
+String _singleFailureLabel(String featureKey) {
+  switch (featureKey) {
+    case 'sales':
+      return 'venda';
+    case 'cash_events':
+    case 'cash_movements':
+      return 'movimento de caixa';
+    case 'cash_sessions':
+      return 'sessao de caixa';
+    case 'fiado_payments':
+      return 'recebimento de fiado';
+    case 'financial_events':
+      return 'evento financeiro';
+    case 'products':
+      return 'produto';
+    case 'customers':
+      return 'cliente';
+    default:
+      return 'operacao';
+  }
+}
+
+String? _cleanSyncError(String? message) {
+  final trimmed = message?.trim();
+  if (trimmed == null || trimmed.isEmpty) {
+    return null;
+  }
+  return trimmed.replaceAll(RegExp(r'\s+'), ' ');
 }
 
 String _countLabel(int count, String singular, String plural) {

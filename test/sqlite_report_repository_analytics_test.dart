@@ -48,7 +48,12 @@ void main() {
     expect(defaultOverview.salesCount, 3);
     expect(defaultOverview.netSalesCents, 26000);
     expect(defaultOverview.grossSalesCents, 29000);
+    expect(defaultOverview.totalReceivedCents, 23000);
+    expect(defaultOverview.cashSalesReceivedCents, 17000);
+    expect(defaultOverview.fiadoReceiptsCents, 6000);
     expect(defaultOverview.totalDiscountCents, 3000);
+    expect(defaultOverview.pendingFiadoCents, 3000);
+    expect(defaultOverview.pendingFiadoCount, 1);
     expect(defaultOverview.cancelledSalesCount, 1);
     expect(defaultOverview.cancelledSalesCents, 5000);
 
@@ -75,10 +80,10 @@ void main() {
 
     expect(products, hasLength(2));
     expect(products.first.productName, 'Camiseta Basic');
-    expect(products.first.soldAmountCents, 17000);
+    expect(products.first.soldAmountCents, 15333);
     expect(products.first.totalCostCents, 9500);
     expect(products.last.productName, 'Moletom Urban');
-    expect(products.last.soldAmountCents, 9000);
+    expect(products.last.soldAmountCents, 8100);
   });
 
   test(
@@ -88,10 +93,74 @@ void main() {
 
       expect(rows, isNotEmpty);
       expect(rows.first.label, 'Camiseta Basic');
-      expect(rows.first.revenueCents, 17000);
+      expect(rows.first.revenueCents, 15333);
       expect(rows.first.costCents, 9500);
-      expect(rows.first.profitCents, 7500);
-      expect(rows.first.marginBasisPoints, 4412);
+      expect(rows.first.profitCents, 5833);
+      expect(rows.first.marginBasisPoints, 3804);
+    },
+  );
+
+  test(
+    'lucro fica indisponivel quando ha custo desconhecido em venda do periodo',
+    () async {
+      await database.update(
+        TableNames.itensVenda,
+        {'custo_unitario_centavos': 0, 'custo_total_centavos': 0},
+        where: 'id = ?',
+        whereArgs: [1],
+      );
+
+      final overview = await repository.fetchOverview(filter: dailyFilter);
+
+      expect(overview.isRealizedProfitAvailable, isFalse);
+      expect(overview.realizedProfitUnavailableReason, 'Custo nao informado');
+    },
+  );
+
+  test(
+    'filtro por forma de pagamento respeita o mesmo universo em recebido e lucro realizado',
+    () async {
+      final cashOverview = await repository.fetchOverview(
+        filter: dailyFilter.copyWith(paymentMethod: PaymentMethod.cash),
+      );
+      final pixOverview = await repository.fetchOverview(
+        filter: dailyFilter.copyWith(paymentMethod: PaymentMethod.pix),
+      );
+
+      expect(cashOverview.totalReceivedCents, 6000);
+      expect(cashOverview.fiadoReceiptsCents, 6000);
+      expect(cashOverview.cashSalesReceivedCents, 0);
+      expect(cashOverview.realizedProfitCents, 3037);
+
+      expect(pixOverview.totalReceivedCents, 10000);
+      expect(pixOverview.fiadoReceiptsCents, 0);
+      expect(pixOverview.cashSalesReceivedCents, 10000);
+      expect(pixOverview.realizedProfitCents, 2333);
+    },
+  );
+
+  test(
+    'custo desconhecido em fiado respeita o filtro de forma de pagamento',
+    () async {
+      await database.update(
+        TableNames.itensVenda,
+        {'custo_unitario_centavos': 0, 'custo_total_centavos': 0},
+        where: 'venda_id = ?',
+        whereArgs: [2],
+      );
+
+      final cashOverview = await repository.fetchOverview(
+        filter: dailyFilter.copyWith(paymentMethod: PaymentMethod.cash),
+      );
+      final pixOverview = await repository.fetchOverview(
+        filter: dailyFilter.copyWith(paymentMethod: PaymentMethod.pix),
+      );
+
+      expect(cashOverview.isRealizedProfitAvailable, isFalse);
+      expect(cashOverview.realizedProfitUnavailableReason, 'Custo nao informado');
+      expect(pixOverview.isRealizedProfitAvailable, isTrue);
+      expect(pixOverview.realizedProfitUnavailableReason, isNull);
+      expect(pixOverview.realizedProfitCents, 2333);
     },
   );
 
@@ -171,6 +240,7 @@ Future<void> _createSchema(Database db) async {
       acrescimo_centavos INTEGER,
       valor_total_centavos INTEGER,
       valor_final_centavos INTEGER,
+      valor_recebido_imediato_centavos INTEGER,
       data_venda TEXT,
       cancelada_em TEXT
     )
@@ -245,6 +315,7 @@ Future<void> _createSchema(Database db) async {
       tipo_lancamento TEXT,
       valor_centavos INTEGER,
       data_lancamento TEXT,
+      observacao TEXT,
       caixa_movimento_id INTEGER
     )
   ''');
@@ -483,6 +554,7 @@ Future<void> _seedAnalyticsScenario(Database database) async {
     'acrescimo_centavos': 0,
     'valor_total_centavos': 12000,
     'valor_final_centavos': 10000,
+    'valor_recebido_imediato_centavos': 10000,
     'data_venda': day,
     'cancelada_em': null,
   });
@@ -496,6 +568,7 @@ Future<void> _seedAnalyticsScenario(Database database) async {
     'acrescimo_centavos': 0,
     'valor_total_centavos': 10000,
     'valor_final_centavos': 9000,
+    'valor_recebido_imediato_centavos': 0,
     'data_venda': day,
     'cancelada_em': null,
   });
@@ -509,6 +582,7 @@ Future<void> _seedAnalyticsScenario(Database database) async {
     'acrescimo_centavos': 0,
     'valor_total_centavos': 5000,
     'valor_final_centavos': 5000,
+    'valor_recebido_imediato_centavos': 5000,
     'data_venda': day,
     'cancelada_em': later,
   });
@@ -522,6 +596,7 @@ Future<void> _seedAnalyticsScenario(Database database) async {
     'acrescimo_centavos': 0,
     'valor_total_centavos': 7000,
     'valor_final_centavos': 7000,
+    'valor_recebido_imediato_centavos': 7000,
     'data_venda': day,
     'cancelada_em': null,
   });
@@ -535,6 +610,7 @@ Future<void> _seedAnalyticsScenario(Database database) async {
     'acrescimo_centavos': 0,
     'valor_total_centavos': 2000,
     'valor_final_centavos': 2000,
+    'valor_recebido_imediato_centavos': 2000,
     'data_venda': previousDay,
     'cancelada_em': null,
   });
@@ -686,6 +762,10 @@ Future<void> _seedAnalyticsScenario(Database database) async {
     'tipo_lancamento': 'pagamento',
     'valor_centavos': 6000,
     'data_lancamento': later,
+    'observacao': PaymentMethodNoteCodec.withPaymentMethod(
+      'Recebimento parcial',
+      paymentMethod: PaymentMethod.cash,
+    ),
     'caixa_movimento_id': 2,
   });
 

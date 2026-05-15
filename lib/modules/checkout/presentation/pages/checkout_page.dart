@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/session/app_session.dart';
 import '../../../../app/core/session/session_provider.dart';
@@ -873,6 +874,22 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       return;
     }
 
+    if (saleType == SaleType.cash && immediateDueCents > 0) {
+      final currentCashSession = await ref.read(currentCashSessionProvider.future);
+      if (currentCashSession == null) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              _paymentMethod == PaymentMethod.cash
+                  ? 'Abra o caixa antes de registrar venda em dinheiro.'
+                  : 'Abra o caixa antes de concluir uma venda com recebimento imediato.',
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
     CartItem? unsyncedItem;
     for (final item in cartState.items) {
       if (!item.hasOperationalRemoteIdentity) {
@@ -940,10 +957,11 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
         pathParameters: {'saleId': '${sale.saleId}'},
         extra: true,
       );
-    } catch (_) {
+    } catch (error) {
       if (!context.mounted) {
         return;
       }
+      _showMessage(context, _errorMessage(error));
     }
   }
 
@@ -1011,6 +1029,13 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _errorMessage(Object error) {
+    if (error is ValidationException || error is StockConflictException) {
+      return error.toString().replaceFirst('Exception: ', '');
+    }
+    return 'Nao foi possivel concluir a venda agora.';
   }
 
   void _setSelectedClient(Client? client) {

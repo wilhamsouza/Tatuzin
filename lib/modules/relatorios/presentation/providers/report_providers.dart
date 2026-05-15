@@ -71,7 +71,7 @@ final erpManagementReportRepositoryProvider =
     });
 
 final reportRepositoryProvider = Provider<ReportRepository>((ref) {
-  return ref.watch(erpManagementReportRepositoryProvider);
+  return ref.watch(pdvOperationalReportRepositoryProvider);
 });
 
 final reportDataSourceStrategyProvider =
@@ -93,8 +93,7 @@ final reportPageDataOriginNoticeProvider =
       return switch (page) {
         ReportPageKey.overview =>
           noticeOf(reportOverviewResultProvider) ??
-              noticeOf(topProductsReportResultProvider) ??
-              noticeOf(inventoryHealthReportResultProvider),
+              noticeOf(topProductsReportResultProvider),
         ReportPageKey.sales =>
           noticeOf(salesTrendResultProvider) ??
               noticeOf(topProductsReportResultProvider) ??
@@ -167,9 +166,11 @@ final reportOverviewResultProvider =
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
         'reportOverviewResultProvider',
-        () => ref
-            .watch(erpManagementReportRepositoryProvider)
-            .fetchOverviewResult(filter: filter),
+        () async => ReportResult<ReportOverviewSummary>(
+          data: await ref
+              .watch(pdvOperationalReportRepositoryProvider)
+              .fetchOverview(filter: filter),
+        ),
         timeout: localProviderTimeout,
       );
     });
@@ -191,9 +192,11 @@ final reportPreviousOverviewResultProvider =
       final filter = ref.watch(reportPreviousFilterProvider);
       return runProviderGuarded(
         'reportPreviousOverviewResultProvider',
-        () => ref
-            .watch(erpManagementReportRepositoryProvider)
-            .fetchOverviewResult(filter: filter),
+        () async => ReportResult<ReportOverviewSummary>(
+          data: await ref
+              .watch(pdvOperationalReportRepositoryProvider)
+              .fetchOverview(filter: filter),
+        ),
         timeout: localProviderTimeout,
       );
     });
@@ -212,9 +215,11 @@ final salesTrendResultProvider =
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
         'salesTrendResultProvider',
-        () => ref
-            .watch(erpManagementReportRepositoryProvider)
-            .fetchSalesTrendResult(filter: filter),
+        () async => ReportResult<List<ReportSalesTrendPoint>>(
+          data: await ref
+              .watch(pdvOperationalReportRepositoryProvider)
+              .fetchSalesTrend(filter: filter),
+        ),
         timeout: localProviderTimeout,
       );
     });
@@ -233,9 +238,11 @@ final topProductsReportResultProvider =
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
         'topProductsReportResultProvider',
-        () => ref
-            .watch(erpManagementReportRepositoryProvider)
-            .fetchTopProductsResult(filter: filter),
+        () async => ReportResult<List<ReportSoldProductSummary>>(
+          data: await ref
+              .watch(pdvOperationalReportRepositoryProvider)
+              .fetchTopProducts(filter: filter),
+        ),
         timeout: localProviderTimeout,
       );
     });
@@ -253,9 +260,11 @@ final topVariantsReportResultProvider =
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
         'topVariantsReportResultProvider',
-        () => ref
-            .watch(erpManagementReportRepositoryProvider)
-            .fetchTopVariantsResult(filter: filter),
+        () async => ReportResult<List<ReportVariantSummary>>(
+          data: await ref
+              .watch(pdvOperationalReportRepositoryProvider)
+              .fetchTopVariants(filter: filter),
+        ),
         timeout: localProviderTimeout,
       );
     });
@@ -277,9 +286,11 @@ final profitabilityReportResultProvider =
       final filter = ref.watch(reportFilterProvider);
       return runProviderGuarded(
         'profitabilityReportResultProvider',
-        () => ref
-            .watch(erpManagementReportRepositoryProvider)
-            .fetchProfitabilityResult(filter: filter),
+        () async => ReportResult<List<ReportProfitabilityRow>>(
+          data: await ref
+              .watch(pdvOperationalReportRepositoryProvider)
+              .fetchProfitability(filter: filter),
+        ),
         timeout: localProviderTimeout,
       );
     });
@@ -304,9 +315,11 @@ final profitabilityCategoryReportResultProvider =
       );
       return runProviderGuarded(
         'profitabilityCategoryReportResultProvider',
-        () => ref
-            .watch(erpManagementReportRepositoryProvider)
-            .fetchProfitabilityResult(filter: filter, limit: 10),
+        () async => ReportResult<List<ReportProfitabilityRow>>(
+          data: await ref
+              .watch(pdvOperationalReportRepositoryProvider)
+              .fetchProfitability(filter: filter, limit: 10),
+        ),
         timeout: localProviderTimeout,
       );
     });

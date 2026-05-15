@@ -16,10 +16,11 @@ class SaleCashEffectsSupport {
     required String receiptNumber,
     required PaymentMethod paymentMethod,
   }) async {
-    final sessionId = await CashDatabaseSupport.ensureOpenSession(
+    final sessionId = await CashDatabaseSupport.requireOpenSessionIdWithMessage(
       txn,
-      timestamp: timestamp,
-      userId: userId,
+      message: paymentMethod == PaymentMethod.cash
+          ? 'Abra o caixa antes de registrar venda em dinheiro.'
+          : 'Abra o caixa antes de concluir uma venda com recebimento imediato.',
     );
     await CashSessionMathSupport.applySessionDeltas(
       txn,
@@ -51,12 +52,10 @@ class SaleCashEffectsSupport {
     required String reason,
     required PaymentMethod paymentMethod,
   }) async {
-    final sessionId = await CashDatabaseSupport.ensureOpenSession(
+    final sessionId = await CashDatabaseSupport.requireOpenSessionIdWithMessage(
       txn,
-      timestamp: timestamp,
-      userId: userId,
-      notes:
-          'Sessao aberta automaticamente para registrar cancelamento de venda.',
+      message:
+          'Abra o caixa antes de cancelar uma venda com estorno financeiro.',
     );
     await CashSessionMathSupport.applySessionDeltas(
       txn,
@@ -89,11 +88,10 @@ class SaleCashEffectsSupport {
     required String reason,
     required PaymentMethod paymentMethod,
   }) async {
-    final sessionId = await CashDatabaseSupport.ensureOpenSession(
+    final sessionId = await CashDatabaseSupport.requireOpenSessionIdWithMessage(
       txn,
-      timestamp: timestamp,
-      userId: userId,
-      notes: 'Sessao aberta automaticamente para registrar devolucao de venda.',
+      message:
+          'Abra o caixa antes de registrar uma devolucao com estorno financeiro.',
     );
     await CashSessionMathSupport.applySessionDeltas(
       txn,
@@ -125,11 +123,9 @@ class SaleCashEffectsSupport {
     required String receiptNumber,
     required String reason,
   }) async {
-    final sessionId = await CashDatabaseSupport.ensureOpenSession(
+    final sessionId = await CashDatabaseSupport.requireOpenSessionIdWithMessage(
       txn,
-      timestamp: timestamp,
-      userId: userId,
-      notes: 'Sessão aberta automaticamente para registrar estorno de fiado.',
+      message: 'Abra o caixa antes de estornar recebimentos de fiado no PDV.',
     );
     await CashSessionMathSupport.applySessionDeltas(
       txn,
