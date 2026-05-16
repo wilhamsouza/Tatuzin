@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -257,6 +259,99 @@ class _ProductsPageState extends ConsumerState<ProductsPage> {
   }
 }
 
+class _ProductTileLeading extends StatelessWidget {
+  const _ProductTileLeading({
+    required this.product,
+    required this.stockLow,
+    required this.stockLowColor,
+    required this.stockLowSurface,
+    required this.brandColor,
+    required this.brandSurface,
+  });
+
+  final Product product;
+  final bool stockLow;
+  final Color stockLowColor;
+  final Color stockLowSurface;
+  final Color brandColor;
+  final Color brandSurface;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(context.appLayout.radiusMd);
+    if (product.hasPhoto) {
+      return ClipRRect(
+        key: ValueKey('product-list-thumbnail-${product.id}'),
+        borderRadius: radius,
+        child: SizedBox(
+          width: 56,
+          height: 56,
+          child: Image.file(
+            File(product.primaryPhotoPath!),
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) =>
+                _ProductTileIconFallback(
+                  productId: product.id,
+                  stockLow: stockLow,
+                  stockLowColor: stockLowColor,
+                  stockLowSurface: stockLowSurface,
+                  brandColor: brandColor,
+                  brandSurface: brandSurface,
+                ),
+          ),
+        ),
+      );
+    }
+
+    return _ProductTileIconFallback(
+      productId: product.id,
+      stockLow: stockLow,
+      stockLowColor: stockLowColor,
+      stockLowSurface: stockLowSurface,
+      brandColor: brandColor,
+      brandSurface: brandSurface,
+    );
+  }
+}
+
+class _ProductTileIconFallback extends StatelessWidget {
+  const _ProductTileIconFallback({
+    required this.productId,
+    required this.stockLow,
+    required this.stockLowColor,
+    required this.stockLowSurface,
+    required this.brandColor,
+    required this.brandSurface,
+  });
+
+  final int productId;
+  final bool stockLow;
+  final Color stockLowColor;
+  final Color stockLowSurface;
+  final Color brandColor;
+  final Color brandSurface;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      key: ValueKey('product-list-thumbnail-fallback-$productId'),
+      decoration: BoxDecoration(
+        color: stockLow ? stockLowSurface : brandSurface,
+        borderRadius: BorderRadius.circular(context.appLayout.radiusMd),
+      ),
+      child: SizedBox(
+        width: 56,
+        height: 56,
+        child: Icon(
+          stockLow ? Icons.inventory_2_outlined : Icons.sell_outlined,
+          size: context.appLayout.iconLg,
+          color: stockLow ? stockLowColor : brandColor,
+        ),
+      ),
+    );
+  }
+}
+
 class _ProductTile extends ConsumerWidget {
   const _ProductTile({required this.product});
 
@@ -283,19 +378,13 @@ class _ProductTile extends ConsumerWidget {
     return AppListTileCard(
       title: product.displayName,
       subtitle: detailLine.join(' • '),
-      leading: DecoratedBox(
-        decoration: BoxDecoration(
-          color: stockLow ? tokens.stockLow.surface : tokens.brand.surface,
-          borderRadius: BorderRadius.circular(context.appLayout.radiusMd),
-        ),
-        child: Padding(
-          padding: EdgeInsets.all(context.appLayout.space4),
-          child: Icon(
-            stockLow ? Icons.inventory_2_outlined : Icons.sell_outlined,
-            size: context.appLayout.iconLg,
-            color: stockLow ? tokens.stockLow.onSurface : tokens.brand.base,
-          ),
-        ),
+      leading: _ProductTileLeading(
+        product: product,
+        stockLow: stockLow,
+        stockLowColor: tokens.stockLow.onSurface,
+        stockLowSurface: tokens.stockLow.surface,
+        brandColor: tokens.brand.base,
+        brandSurface: tokens.brand.surface,
       ),
       trailing: Column(
         crossAxisAlignment: CrossAxisAlignment.end,

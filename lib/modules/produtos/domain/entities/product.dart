@@ -387,6 +387,7 @@ class ProductVariantInput {
   const ProductVariantInput({
     this.remoteId,
     required this.sku,
+    this.displayName,
     required this.colorLabel,
     required this.sizeLabel,
     this.priceAdditionalCents = 0,
@@ -397,6 +398,7 @@ class ProductVariantInput {
 
   final String? remoteId;
   final String sku;
+  final String? displayName;
   final String colorLabel;
   final String sizeLabel;
   final int priceAdditionalCents;

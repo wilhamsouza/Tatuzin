@@ -105,6 +105,17 @@ export const productUpsertSchema = z
       return;
     }
 
+    if (hasVariants) {
+      if (!value.variants.some((variant) => variant.isActive)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['variants'],
+          message: 'At least one active variant is required.',
+        });
+      }
+      return;
+    }
+
     if (!value.modelName) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -118,14 +129,6 @@ export const productUpsertSchema = z
         code: z.ZodIssueCode.custom,
         path: ['variantLabel'],
         message: 'Variant label is required for variant products.',
-      });
-    }
-
-    if (hasVariants && !value.variants.some((variant) => variant.isActive)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['variants'],
-        message: 'At least one active variant is required.',
       });
     }
   });

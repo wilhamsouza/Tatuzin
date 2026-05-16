@@ -64,6 +64,9 @@ class _FashionGridSectionState extends State<FashionGridSection> {
       color,
       skuSeed: widget.skuSeed,
     );
+    final displayNameController = TextEditingController(
+      text: current.resolvedDisplayName,
+    );
     final skuController = TextEditingController(text: current.sku);
     final stockController = TextEditingController(text: current.stockLabel);
     final priceController = TextEditingController(
@@ -95,6 +98,16 @@ class _FashionGridSectionState extends State<FashionGridSection> {
                     const SizedBox(height: 6),
                     Text('$size / $color'),
                     const SizedBox(height: 16),
+                    TextField(
+                      key: const ValueKey('fashion-variant-display-name-field'),
+                      controller: displayNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nome/apelido da variante',
+                        hintText: 'Ex.: M / preto',
+                      ),
+                      textCapitalization: TextCapitalization.words,
+                    ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: skuController,
                       decoration: const InputDecoration(
@@ -153,6 +166,14 @@ class _FashionGridSectionState extends State<FashionGridSection> {
                                   stockMil: parseStockMilLabel(
                                     stockController.text,
                                   ),
+                                  displayName:
+                                      _cleanNullable(
+                                        displayNameController.text,
+                                      ) ??
+                                      FashionGridDraft.buildDefaultDisplayName(
+                                        size,
+                                        color,
+                                      ),
                                   sku: skuController.text.trim().isEmpty
                                       ? FashionGridDraft.buildDefaultSku(
                                           widget.skuSeed,
@@ -182,15 +203,26 @@ class _FashionGridSectionState extends State<FashionGridSection> {
       },
     );
 
-    skuController.dispose();
-    stockController.dispose();
-    priceController.dispose();
+    _disposeAfterSheetClose([
+      displayNameController,
+      skuController,
+      stockController,
+      priceController,
+    ]);
 
     if (result == null) {
       return;
     }
 
     widget.onChanged(widget.draft.upsertVariant(result));
+  }
+
+  void _disposeAfterSheetClose(List<TextEditingController> controllers) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final controller in controllers) {
+        controller.dispose();
+      }
+    });
   }
 
   @override
@@ -364,12 +396,15 @@ class _DimensionEditor extends StatelessWidget {
               label: Text(buttonLabel),
             );
 
-            if (constraints.maxWidth < 620) {
+            if (!constraints.hasBoundedWidth || constraints.maxWidth < 620) {
               return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   input,
                   const SizedBox(height: 10),
-                  SizedBox(width: double.infinity, child: button),
+                  constraints.hasBoundedWidth
+                      ? SizedBox(width: double.infinity, child: button)
+                      : Align(alignment: Alignment.centerLeft, child: button),
                 ],
               );
             }
@@ -379,7 +414,7 @@ class _DimensionEditor extends StatelessWidget {
               children: [
                 Expanded(child: input),
                 const SizedBox(width: 12),
-                button,
+                SizedBox(width: 220, child: button),
               ],
             );
           },
@@ -514,6 +549,7 @@ class _FashionGradeMatrix extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.all(8),
                         child: _FashionGradeCell(
+                          key: ValueKey('fashion-grid-cell-$size-$color'),
                           entry: resolveCell(size, color),
                           onTap: () => onTapCell(size, color),
                         ),
@@ -561,7 +597,11 @@ class _MatrixHeaderCell extends StatelessWidget {
 }
 
 class _FashionGradeCell extends StatelessWidget {
-  const _FashionGradeCell({required this.entry, required this.onTap});
+  const _FashionGradeCell({
+    super.key,
+    required this.entry,
+    required this.onTap,
+  });
 
   final FashionGridVariantDraft entry;
   final VoidCallback onTap;
@@ -606,10 +646,19 @@ class _FashionGradeCell extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                entry.sku,
+                entry.resolvedDisplayName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                entry.sku,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
@@ -630,4 +679,9 @@ class _FashionGradeCell extends StatelessWidget {
       ),
     );
   }
+}
+
+String? _cleanNullable(String value) {
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
 }

@@ -51,10 +51,17 @@ class ProductsRepositoryImpl
   Future<int> create(ProductInput input) async {
     if (_shouldUseErpRemoteWrite) {
       try {
+        final remoteDraft = await _remoteProductFromInput(input);
         final remote = await _remoteDatasource
-            .create(await _remoteProductFromInput(input))
+            .create(remoteDraft)
             .timeout(const Duration(seconds: 15));
-        return _cacheAndResolveRemoteProduct(remote);
+        final localId = await _cacheAndResolveRemoteProduct(
+          _mergeLocalVariantDisplayNames(remote, remoteDraft),
+        );
+        if (input.photos.isNotEmpty) {
+          await _localRepository.replaceLocalPhotos(localId, input.photos);
+        }
+        return localId;
       } catch (error, stackTrace) {
         AppLogger.error(
           'Produtos ERP server-first falhou ao criar na API.',
@@ -236,28 +243,31 @@ class ProductsRepositoryImpl
       final product = await _localRepository
           .findById(id, includeDeleted: true)
           .timeout(const Duration(seconds: 8));
-      if (product?.remoteId == null) {
+      if (product == null) {
         throw const ValidationException(
-          'Produto ainda nao possui vinculo remoto para atualizacao server-first.',
+          'Produto local nao foi encontrado para atualizacao.',
         );
       }
 
       try {
-        final remote = await _remoteDatasource
-            .update(
-              product!.remoteId!,
-              await _remoteProductFromInput(
-                input,
-                localUuid: product.uuid,
-                remoteId: product.remoteId!,
-                createdAt: product.createdAt,
-              ),
-            )
-            .timeout(const Duration(seconds: 15));
+        final remoteDraft = await _remoteProductFromInput(
+          input,
+          localUuid: product.uuid,
+          remoteId: product.remoteId ?? '',
+          createdAt: product.createdAt,
+        );
+        final remote = product.remoteId == null
+            ? await _remoteDatasource
+                  .create(remoteDraft)
+                  .timeout(const Duration(seconds: 15))
+            : await _remoteDatasource
+                  .update(product.remoteId!, remoteDraft)
+                  .timeout(const Duration(seconds: 15));
         await _localRepository.applyPushResult(
           product: product,
-          remote: remote,
+          remote: _mergeLocalVariantDisplayNames(remote, remoteDraft),
         );
+        await _localRepository.replaceLocalPhotos(id, input.photos);
         return;
       } catch (error, stackTrace) {
         AppLogger.error(
@@ -529,6 +539,26 @@ class ProductsRepositoryImpl
     DateTime? createdAt,
   }) async {
     final now = DateTime.now();
+    String? cleanNullable(String? value) {
+      final trimmed = value?.trim();
+      return trimmed == null || trimmed.isEmpty ? null : trimmed;
+    }
+
+    final hasVariants = input.variants.isNotEmpty;
+    final isVariantCatalog =
+        ProductCatalogTypes.normalize(input.catalogType) ==
+            ProductCatalogTypes.variant ||
+        hasVariants;
+    final resolvedModelName = isVariantCatalog
+        ? cleanNullable(input.modelName) ?? input.name.trim()
+        : null;
+    final resolvedVariantLabel = isVariantCatalog
+        ? cleanNullable(input.variantLabel) ??
+              (ProductNiches.normalize(input.niche) == ProductNiches.fashion &&
+                      hasVariants
+                  ? 'Tamanho/Cor'
+                  : null)
+        : null;
     return RemoteProductRecord(
       remoteId: remoteId,
       localUuid: localUuid ?? IdGenerator.next(),
@@ -539,8 +569,8 @@ class ProductsRepositoryImpl
       productType: input.productType,
       niche: input.niche,
       catalogType: input.catalogType,
-      modelName: input.modelName,
-      variantLabel: input.variantLabel,
+      modelName: resolvedModelName,
+      variantLabel: resolvedVariantLabel,
       unitMeasure: input.unitMeasure,
       costCents: input.costCents,
       manualCostCents: input.costCents,
@@ -555,6 +585,7 @@ class ProductsRepositoryImpl
           .map(
             (variant) => RemoteProductVariantRecord(
               sku: variant.sku,
+              displayName: variant.displayName,
               colorLabel: variant.colorLabel,
               sizeLabel: variant.sizeLabel,
               priceAdditionalCents: variant.priceAdditionalCents,
@@ -588,6 +619,42 @@ class ProductsRepositoryImpl
       createdAt: createdAt ?? now,
       updatedAt: now,
       deletedAt: input.isActive ? null : now,
+    );
+  }
+
+  RemoteProductRecord _mergeLocalVariantDisplayNames(
+    RemoteProductRecord remote,
+    RemoteProductRecord localDraft,
+  ) {
+    if (remote.variants.isEmpty || localDraft.variants.isEmpty) {
+      return remote;
+    }
+
+    String keyFor(RemoteProductVariantRecord variant) {
+      return [
+        variant.sku.trim().toUpperCase(),
+        variant.sizeLabel.trim().toLowerCase(),
+        variant.colorLabel.trim().toLowerCase(),
+      ].join('|');
+    }
+
+    final draftByKey = <String, RemoteProductVariantRecord>{
+      for (final variant in localDraft.variants) keyFor(variant): variant,
+    };
+    return remote.copyWith(
+      variants: remote.variants
+          .map((variant) {
+            if (variant.displayName?.trim().isNotEmpty ?? false) {
+              return variant;
+            }
+            final draft = draftByKey[keyFor(variant)];
+            final displayName = draft?.displayName?.trim();
+            if (displayName == null || displayName.isEmpty) {
+              return variant;
+            }
+            return variant.copyWith(displayName: displayName);
+          })
+          .toList(growable: false),
     );
   }
 

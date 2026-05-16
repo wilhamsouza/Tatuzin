@@ -103,7 +103,7 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           final horizontalPadding = constraints.maxWidth >= 900
               ? layout.pagePadding + 2
               : layout.pagePaddingCompact;
-          final tileHeight = constraints.maxWidth >= 900 ? 206.0 : 188.0;
+          final tileHeight = constraints.maxWidth >= 900 ? 276.0 : 260.0;
           final maxTileWidth = constraints.maxWidth >= 1200
               ? 216.0
               : constraints.maxWidth >= 720
@@ -643,29 +643,8 @@ class _ProductTile extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (product.hasPhoto) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: SizedBox(
-                    height: 56,
-                    width: double.infinity,
-                    child: Image.file(
-                      File(product.primaryPhotoPath!),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerLow,
-                        ),
-                        child: Icon(
-                          Icons.image_not_supported_outlined,
-                          color: colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-              ],
+              _ProductTileMedia(product: product),
+              const SizedBox(height: 8),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -969,6 +948,55 @@ class _ProductTile extends ConsumerWidget {
           modifiers: customization.modifiers,
           notes: customization.notes,
         );
+  }
+}
+
+class _ProductTileMedia extends StatelessWidget {
+  const _ProductTileMedia({required this.product});
+
+  final Product product;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerLow,
+            border: Border.all(color: colorScheme.outlineVariant),
+          ),
+          child: product.hasPhoto
+              ? Image.file(
+                  File(product.primaryPhotoPath!),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) =>
+                      _ProductTileMediaFallback(colorScheme: colorScheme),
+                )
+              : _ProductTileMediaFallback(colorScheme: colorScheme),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductTileMediaFallback extends StatelessWidget {
+  const _ProductTileMediaFallback({required this.colorScheme});
+
+  final ColorScheme colorScheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Icon(
+        Icons.inventory_2_outlined,
+        size: 24,
+        color: colorScheme.onSurfaceVariant,
+      ),
+    );
   }
 }
 

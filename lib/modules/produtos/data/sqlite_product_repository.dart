@@ -62,8 +62,8 @@ class SqliteProductRepository implements ProductRepository {
         'tipo_produto': input.productType,
         'nicho': _normalizeNiche(input.niche),
         'catalog_type': _normalizeCatalogType(input.catalogType),
-        'model_name': _cleanNullable(input.modelName),
-        'variant_label': _cleanNullable(input.variantLabel),
+        'model_name': _resolveCatalogModelName(input),
+        'variant_label': _resolveCatalogVariantLabel(input),
         'unidade_medida': input.unitMeasure.trim().isEmpty
             ? 'un'
             : input.unitMeasure.trim(),
@@ -233,8 +233,8 @@ class SqliteProductRepository implements ProductRepository {
           'codigo_barras': _cleanNullable(input.barcode),
           'nicho': _normalizeNiche(input.niche),
           'catalog_type': _normalizeCatalogType(input.catalogType),
-          'model_name': _cleanNullable(input.modelName),
-          'variant_label': _cleanNullable(input.variantLabel),
+          'model_name': _resolveCatalogModelName(input),
+          'variant_label': _resolveCatalogVariantLabel(input),
           'unidade_medida': input.unitMeasure.trim().isEmpty
               ? 'un'
               : input.unitMeasure.trim(),
@@ -350,6 +350,31 @@ class SqliteProductRepository implements ProductRepository {
       productId: productId,
     );
     return rows.map(_mapProductRecipeItem).toList(growable: false);
+  }
+
+  Future<void> replaceLocalPhotos(
+    int productId,
+    List<ProductPhotoInput> photos,
+  ) async {
+    final database = await _appDatabase.database;
+    await database.transaction((txn) async {
+      final existing = await _findRowById(txn, productId);
+      if (existing == null) {
+        return;
+      }
+
+      await txn.update(
+        TableNames.produtos,
+        {'foto_path': _resolvePrimaryPhotoPath(photos)},
+        where: 'id = ?',
+        whereArgs: [productId],
+      );
+      await _replaceProductPhotos(
+        txn: txn,
+        productId: productId,
+        photos: photos,
+      );
+    });
   }
 
   Future<void> seedPendingRecipeSyncIfNeeded() async {
@@ -556,7 +581,7 @@ class SqliteProductRepository implements ProductRepository {
           await txn.update(
             TableNames.produtos,
             {
-              'nome': remote.displayName,
+              'nome': remote.name,
               'descricao': remote.description,
               'categoria_id': mappedCategoryId,
               'codigo_barras': remote.barcode,
@@ -581,7 +606,7 @@ class SqliteProductRepository implements ProductRepository {
           createdAt = remote.createdAt;
           localId = await txn.insert(TableNames.produtos, {
             'uuid': localUuid,
-            'nome': remote.displayName,
+            'nome': remote.name,
             'descricao': remote.description,
             'categoria_id': mappedCategoryId,
             'foto_path': null,
@@ -673,7 +698,7 @@ class SqliteProductRepository implements ProductRepository {
       await txn.update(
         TableNames.produtos,
         {
-          'nome': remote.displayName,
+          'nome': remote.name,
           'descricao': remote.description,
           'categoria_id': mappedCategoryId,
           'codigo_barras': remote.barcode,
@@ -1456,6 +1481,7 @@ class SqliteProductRepository implements ProductRepository {
           (variant) => ProductVariantInput(
             remoteId: variant.remoteId,
             sku: variant.sku,
+            displayName: variant.displayName,
             colorLabel: variant.colorLabel,
             sizeLabel: variant.sizeLabel,
             priceAdditionalCents: variant.priceAdditionalCents,
@@ -1497,7 +1523,9 @@ class SqliteProductRepository implements ProductRepository {
       catalogType: remote.catalogType,
       modelName: remote.modelName,
       variantLabel: remote.variantLabel,
-      variantAttributes: const <ProductVariantAttributeInput>[],
+      variantAttributes: _buildRemoteVariantDisplayNameAttributes(
+        remote.variants,
+      ),
       modifierGroups: modifierGroups,
       unitMeasure: remote.unitMeasure,
       costCents: remote.costCents,
@@ -1505,6 +1533,43 @@ class SqliteProductRepository implements ProductRepository {
       stockMil: _resolveRemoteStockMil(remote),
       isActive: remote.isActive,
     );
+  }
+
+  List<ProductVariantAttributeInput> _buildRemoteVariantDisplayNameAttributes(
+    Iterable<RemoteProductVariantRecord> variants,
+  ) {
+    final attributes = <ProductVariantAttributeInput>[];
+    for (final variant in variants) {
+      final displayName = _cleanNullable(variant.displayName);
+      final sizeLabel = _cleanNullable(variant.sizeLabel);
+      final colorLabel = _cleanNullable(variant.colorLabel);
+      if (displayName == null || sizeLabel == null || colorLabel == null) {
+        continue;
+      }
+      attributes.add(
+        ProductVariantAttributeInput(
+          key: _buildVariantDisplayNameAttributeKey(sizeLabel, colorLabel),
+          value: displayName,
+        ),
+      );
+    }
+    return attributes;
+  }
+
+  String _buildVariantDisplayNameAttributeKey(
+    String sizeLabel,
+    String colorLabel,
+  ) {
+    return 'fashion_variant_display_name:${_normalizeAttributeToken(sizeLabel)}:${_normalizeAttributeToken(colorLabel)}';
+  }
+
+  String _normalizeAttributeToken(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'-+'), '-')
+        .replaceAll(RegExp(r'^-|-$'), '');
   }
 
   Future<void> _persistLocalCatalogStructure({
@@ -1553,7 +1618,7 @@ class SqliteProductRepository implements ProductRepository {
       return input.baseProductId;
     }
 
-    final modelName = _cleanNullable(input.modelName);
+    final modelName = _resolveCatalogModelName(input);
     final explicitBaseName = _cleanNullable(modelName ?? input.name);
     if (explicitBaseName == null) {
       return null;
@@ -1562,8 +1627,12 @@ class SqliteProductRepository implements ProductRepository {
     final existing = await txn.query(
       TableNames.produtosBase,
       columns: const ['id'],
-      where: 'nome = ? AND categoria_id IS ?',
-      whereArgs: [explicitBaseName, input.categoryId],
+      where: input.categoryId == null
+          ? 'nome = ? AND categoria_id IS NULL'
+          : 'nome = ? AND categoria_id = ?',
+      whereArgs: input.categoryId == null
+          ? [explicitBaseName]
+          : [explicitBaseName, input.categoryId],
       orderBy: 'id ASC',
       limit: 1,
     );
@@ -1661,8 +1730,8 @@ class SqliteProductRepository implements ProductRepository {
       addAttribute(attribute.key, attribute.value);
     }
 
-    addAttribute('model', input.modelName);
-    addAttribute('variant', input.variantLabel);
+    addAttribute('model', _resolveCatalogModelName(input));
+    addAttribute('variant', _resolveCatalogVariantLabel(input));
 
     return normalized;
   }
@@ -2114,6 +2183,33 @@ class SqliteProductRepository implements ProductRepository {
 
   String _normalizeNiche(String? value) {
     return ProductNiches.normalize(value);
+  }
+
+  String? _resolveCatalogModelName(ProductInput input) {
+    final hasVariants = input.variants.isNotEmpty;
+    final isVariantCatalog =
+        _normalizeCatalogType(input.catalogType) ==
+            ProductCatalogTypes.variant ||
+        hasVariants;
+    if (!isVariantCatalog) {
+      return null;
+    }
+    return _cleanNullable(input.modelName) ?? input.name.trim();
+  }
+
+  String? _resolveCatalogVariantLabel(ProductInput input) {
+    final hasVariants = input.variants.isNotEmpty;
+    final isVariantCatalog =
+        _normalizeCatalogType(input.catalogType) ==
+            ProductCatalogTypes.variant ||
+        hasVariants;
+    if (!isVariantCatalog) {
+      return null;
+    }
+    return _cleanNullable(input.variantLabel) ??
+        (_normalizeNiche(input.niche) == ProductNiches.fashion && hasVariants
+            ? 'Tamanho/Cor'
+            : null);
   }
 
   Future<void> _replaceProductPhotos({

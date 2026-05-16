@@ -172,6 +172,7 @@ class FashionGridVariantDraft {
     required this.colorLabel,
     required this.stockMil,
     required this.sku,
+    this.displayName,
     this.priceAdditionalCents = 0,
     this.isActive = true,
   });
@@ -180,8 +181,13 @@ class FashionGridVariantDraft {
   final String colorLabel;
   final int stockMil;
   final String sku;
+  final String? displayName;
   final int priceAdditionalCents;
   final bool isActive;
+
+  String get resolvedDisplayName =>
+      FashionGridDraft._cleanNullable(displayName) ??
+      FashionGridDraft.buildDefaultDisplayName(sizeLabel, colorLabel);
 
   String get stockLabel => AppFormatters.quantityFromMil(stockMil);
 
@@ -193,6 +199,7 @@ class FashionGridVariantDraft {
     String? colorLabel,
     int? stockMil,
     String? sku,
+    String? displayName,
     int? priceAdditionalCents,
     bool? isActive,
   }) {
@@ -201,6 +208,7 @@ class FashionGridVariantDraft {
       colorLabel: colorLabel ?? this.colorLabel,
       stockMil: stockMil ?? this.stockMil,
       sku: sku ?? this.sku,
+      displayName: displayName ?? this.displayName,
       priceAdditionalCents: priceAdditionalCents ?? this.priceAdditionalCents,
       isActive: isActive ?? this.isActive,
     );
@@ -219,6 +227,9 @@ class FashionGridVariantDraft {
 }
 
 class FashionGridDraft {
+  static const variantDisplayNameAttributePrefix =
+      'fashion_variant_display_name';
+
   const FashionGridDraft({
     this.sizes = const <String>[],
     this.colors = const <String>[],
@@ -276,19 +287,19 @@ class FashionGridDraft {
   }
 
   FashionGridDraft addSize(String size) {
-    final trimmed = size.trim();
-    if (trimmed.isEmpty || sizes.contains(trimmed)) {
+    final nextSizes = _appendDimensionValues(sizes, size);
+    if (nextSizes == sizes) {
       return this;
     }
-    return copyWith(sizes: <String>[...sizes, trimmed]);
+    return copyWith(sizes: nextSizes);
   }
 
   FashionGridDraft addColor(String color) {
-    final trimmed = color.trim();
-    if (trimmed.isEmpty || colors.contains(trimmed)) {
+    final nextColors = _appendDimensionValues(colors, color);
+    if (nextColors == colors) {
       return this;
     }
-    return copyWith(colors: <String>[...colors, trimmed]);
+    return copyWith(colors: nextColors);
   }
 
   FashionGridDraft removeSize(String size) {
@@ -368,6 +379,7 @@ class FashionGridDraft {
             sku:
                 _cleanNullable(cell.sku) ??
                 buildDefaultSku(skuSeed, size, color),
+            displayName: cell.resolvedDisplayName,
             colorLabel: color.trim(),
             sizeLabel: size.trim(),
             priceAdditionalCents: cell.priceAdditionalCents,
@@ -399,11 +411,16 @@ class FashionGridDraft {
   factory FashionGridDraft.fromExisting({
     String? gridHint,
     Iterable<ProductVariant> variants = const <ProductVariant>[],
+    Iterable<ProductVariantAttribute> variantAttributes =
+        const <ProductVariantAttribute>[],
   }) {
     final parsed = _parseGridHint(gridHint);
     final sizes = <String>[...parsed.sizes];
     final colors = <String>[...parsed.colors];
     final drafts = <FashionGridVariantDraft>[];
+    final displayNameByCellKey = _displayNameAttributesByCellKey(
+      variantAttributes,
+    );
 
     for (final variant in variants) {
       final size = variant.sizeLabel.trim();
@@ -414,7 +431,12 @@ class FashionGridDraft {
       if (color.isNotEmpty && !colors.contains(color)) {
         colors.add(color);
       }
-      drafts.add(FashionGridVariantDraft.fromProduct(variant));
+      drafts.add(
+        FashionGridVariantDraft.fromProduct(variant).copyWith(
+          displayName:
+              displayNameByCellKey[buildDisplayNameAttributeKey(size, color)],
+        ),
+      );
     }
 
     return FashionGridDraft(sizes: sizes, colors: colors, variants: drafts);
@@ -427,6 +449,26 @@ class FashionGridDraft {
     final normalizedSize = _normalizeSkuToken(size);
     final normalizedColor = _normalizeSkuToken(color);
     return '$fallbackBase-$normalizedSize-$normalizedColor';
+  }
+
+  static String buildDefaultDisplayName(String size, String color) {
+    final labels = <String>[
+      if (size.trim().isNotEmpty) size.trim(),
+      if (color.trim().isNotEmpty) color.trim(),
+    ];
+    return labels.join(' / ');
+  }
+
+  static String buildDisplayNameAttributeKey(String size, String color) {
+    final normalizedSize = _normalizeAttributeToken(size);
+    final normalizedColor = _normalizeAttributeToken(color);
+    return '$variantDisplayNameAttributePrefix:$normalizedSize:$normalizedColor';
+  }
+
+  static bool isDisplayNameAttributeKey(String key) {
+    return key.trim().toLowerCase().startsWith(
+      '$variantDisplayNameAttributePrefix:',
+    );
   }
 
   static _ParsedFashionGridHint _parseGridHint(String? raw) {
@@ -475,9 +517,56 @@ class FashionGridDraft {
         .replaceAll(RegExp(r'^-|-$'), '');
   }
 
+  static String _normalizeAttributeToken(String raw) {
+    return raw
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'-+'), '-')
+        .replaceAll(RegExp(r'^-|-$'), '');
+  }
+
+  static Map<String, String> _displayNameAttributesByCellKey(
+    Iterable<ProductVariantAttribute> attributes,
+  ) {
+    final values = <String, String>{};
+    for (final attribute in attributes) {
+      final key = attribute.key.trim().toLowerCase();
+      final value = _cleanNullable(attribute.value);
+      if (value == null || !isDisplayNameAttributeKey(key)) {
+        continue;
+      }
+      values[key] = value;
+    }
+    return values;
+  }
+
   static String? _cleanNullable(String? value) {
     final trimmed = value?.trim();
     return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
+  static List<String> _appendDimensionValues(List<String> current, String raw) {
+    final values = raw
+        .split(RegExp(r'[,;/]+'))
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
+    if (values.isEmpty) {
+      return current;
+    }
+
+    final normalized = current
+        .map((value) => value.trim().toLowerCase())
+        .toSet();
+    final updated = <String>[...current];
+    for (final value in values) {
+      final key = value.toLowerCase();
+      if (normalized.add(key)) {
+        updated.add(value);
+      }
+    }
+    return updated.length == current.length ? current : updated;
   }
 }
 

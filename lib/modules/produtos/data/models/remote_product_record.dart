@@ -155,6 +155,39 @@ class RemoteProductRecord {
   final DateTime updatedAt;
   final DateTime? deletedAt;
 
+  RemoteProductRecord copyWith({List<RemoteProductVariantRecord>? variants}) {
+    return RemoteProductRecord(
+      remoteId: remoteId,
+      localUuid: localUuid,
+      remoteCategoryId: remoteCategoryId,
+      name: name,
+      description: description,
+      barcode: barcode,
+      productType: productType,
+      niche: niche,
+      catalogType: catalogType,
+      modelName: modelName,
+      variantLabel: variantLabel,
+      unitMeasure: unitMeasure,
+      costCents: costCents,
+      manualCostCents: manualCostCents,
+      costSource: costSource,
+      variableCostSnapshotCents: variableCostSnapshotCents,
+      estimatedGrossMarginCents: estimatedGrossMarginCents,
+      estimatedGrossMarginPercentBasisPoints:
+          estimatedGrossMarginPercentBasisPoints,
+      lastCostUpdatedAt: lastCostUpdatedAt,
+      salePriceCents: salePriceCents,
+      stockMil: stockMil,
+      variants: variants ?? this.variants,
+      modifierGroups: modifierGroups,
+      isActive: isActive,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      deletedAt: deletedAt,
+    );
+  }
+
   RemoteProductRecord copyWithInactive() {
     final now = DateTime.now();
     return RemoteProductRecord(
@@ -241,6 +274,7 @@ class RemoteProductVariantRecord {
   const RemoteProductVariantRecord({
     this.remoteId,
     required this.sku,
+    this.displayName,
     required this.colorLabel,
     required this.sizeLabel,
     required this.priceAdditionalCents,
@@ -255,6 +289,9 @@ class RemoteProductVariantRecord {
           _readOptionalString(json['id']) ??
           _readOptionalString(json['remoteId']),
       sku: json['sku'] as String? ?? '',
+      displayName:
+          _readOptionalString(json['displayName']) ??
+          _readOptionalString(json['label']),
       colorLabel: json['colorLabel'] as String? ?? '',
       sizeLabel: json['sizeLabel'] as String? ?? '',
       priceAdditionalCents: json['priceAdditionalCents'] as int? ?? 0,
@@ -279,12 +316,27 @@ class RemoteProductVariantRecord {
 
   final String? remoteId;
   final String sku;
+  final String? displayName;
   final String colorLabel;
   final String sizeLabel;
   final int priceAdditionalCents;
   final int stockMil;
   final int sortOrder;
   final bool isActive;
+
+  RemoteProductVariantRecord copyWith({String? displayName}) {
+    return RemoteProductVariantRecord(
+      remoteId: remoteId,
+      sku: sku,
+      displayName: displayName ?? this.displayName,
+      colorLabel: colorLabel,
+      sizeLabel: sizeLabel,
+      priceAdditionalCents: priceAdditionalCents,
+      stockMil: stockMil,
+      sortOrder: sortOrder,
+      isActive: isActive,
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return <String, dynamic>{

@@ -182,6 +182,8 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     _fashionGridDraft = FashionGridDraft.fromExisting(
       gridHint: _findVariantAttributeValue(product, 'fashion_size_grid_hint'),
       variants: product?.variants ?? const <ProductVariant>[],
+      variantAttributes:
+          product?.variantAttributes ?? const <ProductVariantAttribute>[],
     );
 
     // ── Auto-open sections based on existing data when editing ──
@@ -205,12 +207,12 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   }
 
   bool _hasNicheDetails(Product product) {
-    return product.variantAttributes.any(
-      (attr) =>
-          attr.key.startsWith('food_') ||
-          attr.key.startsWith('fashion_') ||
-          (attr.key != 'model' && attr.key != 'variant'),
-    );
+    return product.variantAttributes.any((attr) {
+      final key = attr.key;
+      return key != 'model' &&
+          key != 'variant' &&
+          !FashionGridDraft.isDisplayNameAttributeKey(key);
+    });
   }
 
   @override
@@ -316,6 +318,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
             'fashion_size_grid_hint',
           ),
           variants: productVariants,
+          variantAttributes: product.variantAttributes,
         );
 
         // Auto-open sections if data was loaded
@@ -604,7 +607,10 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     try {
       final pickedFile = await _imagePicker.pickImage(
         source: source,
-        imageQuality: 88,
+        imageQuality: 72,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        requestFullMetadata: false,
       );
       if (pickedFile == null) {
         return;
@@ -730,11 +736,20 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
 
     try {
       final repository = ref.read(productRepositoryProvider);
-      final modelName = _cleanNullable(_modelNameController.text);
-      final variantLabel = _cleanNullable(_variantLabelController.text);
+      final resolvedName = _nameController.text.trim();
+      final manualModelName = _cleanNullable(_modelNameController.text);
+      final manualVariantLabel = _cleanNullable(_variantLabelController.text);
       final variants = _isFashionNiche
           ? _fashionGridDraft.toVariantInputs(skuSeed: _variantSkuSeed)
           : const <ProductVariantInput>[];
+      final hasVariantPayload = _isVariantCatalog || variants.isNotEmpty;
+      final modelName = hasVariantPayload
+          ? manualModelName ?? resolvedName
+          : null;
+      final variantLabel = hasVariantPayload
+          ? manualVariantLabel ??
+                (_isFashionNiche && variants.isNotEmpty ? 'Tamanho/Cor' : null)
+          : null;
       final variantAttributes = _buildVariantAttributes(
         modelName: modelName,
         variantLabel: variantLabel,
@@ -742,7 +757,6 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       final modifierGroups = _showModifiers
           ? _buildFoodModifierGroupsInput()
           : null;
-      final resolvedName = _nameController.text.trim();
 
       final input = ProductInput(
         name: resolvedName,
@@ -753,8 +767,8 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         variants: variants,
         niche: _selectedNiche,
         catalogType: _selectedCatalogType,
-        modelName: _isVariantCatalog ? modelName : null,
-        variantLabel: _isVariantCatalog ? variantLabel : null,
+        modelName: modelName,
+        variantLabel: variantLabel,
         baseProductId: _isVariantCatalog ? _selectedBaseProductId : null,
         variantAttributes: variantAttributes,
         modifierGroups: modifierGroups,
@@ -847,6 +861,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       if (_isVariantCatalog && variantLabel != null)
         ProductVariantAttributeInput(key: 'variant', value: variantLabel),
       ..._buildNicheAttributes(),
+      ..._buildVariantDisplayNameAttributes(),
     ];
 
     for (final rawLine in _extraAttributesController.text.split('\n')) {
@@ -866,6 +881,32 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
       attributes.add(ProductVariantAttributeInput(key: key, value: value));
     }
 
+    return attributes;
+  }
+
+  List<ProductVariantAttributeInput> _buildVariantDisplayNameAttributes() {
+    if (!_isFashionNiche || !_fashionGridDraft.hasDimensions) {
+      return const <ProductVariantAttributeInput>[];
+    }
+
+    final attributes = <ProductVariantAttributeInput>[];
+    for (final variant in _fashionGridDraft.toVariantInputs(
+      skuSeed: _variantSkuSeed,
+    )) {
+      final displayName = _cleanNullable(variant.displayName);
+      if (displayName == null) {
+        continue;
+      }
+      attributes.add(
+        ProductVariantAttributeInput(
+          key: FashionGridDraft.buildDisplayNameAttributeKey(
+            variant.sizeLabel,
+            variant.colorLabel,
+          ),
+          value: displayName,
+        ),
+      );
+    }
     return attributes;
   }
 
@@ -972,7 +1013,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     if (error is ValidationException) {
       return error.message;
     }
-    return 'Falha ao salvar produto: $error';
+    return '${_saveActionSubjectPrefix(capitalize: true)}: $error';
   }
 
   String _friendlyProductValidationMessage(String message) {
@@ -980,28 +1021,55 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     if (normalized.contains('categoryid') ||
         normalized.contains('category id') ||
         normalized.contains('category')) {
-      return 'Nao foi possivel criar o produto. Informe a categoria do produto.';
+      return '${_saveActionSubjectPrefix(capitalize: true)}. Informe a categoria do produto.';
+    }
+    if (normalized.contains('at least one active variant') ||
+        (normalized.contains('variants') && normalized.contains('active'))) {
+      return '${_saveActionSubjectPrefix(capitalize: true)}. Ative pelo menos uma variante na grade.';
+    }
+    if (normalized.contains('modelname') ||
+        normalized.contains('model name') ||
+        normalized.contains('variantlabel') ||
+        normalized.contains('variant label') ||
+        normalized.contains('variants.') ||
+        normalized.contains('variant.') ||
+        normalized.contains('sku') ||
+        normalized.contains('colorlabel') ||
+        normalized.contains('color label') ||
+        normalized.contains('sizelabel') ||
+        normalized.contains('size label')) {
+      return '${_saveActionSubjectPrefix(capitalize: true)}. Verifique a configuracao da grade de moda.';
     }
     if (normalized.contains('name')) {
-      return 'Nao foi possivel criar o produto. Informe o nome do produto.';
+      return '${_saveActionSubjectPrefix(capitalize: true)}. Informe o nome do produto.';
     }
     if (normalized.contains('unitmeasure')) {
-      return 'Nao foi possivel criar o produto. Verifique a unidade de medida.';
+      return '${_saveActionSubjectPrefix(capitalize: true)}. Verifique a unidade de medida.';
     }
     if (normalized.contains('salepricecents')) {
-      return 'Nao foi possivel criar o produto. Verifique o preco de venda.';
+      return '${_saveActionSubjectPrefix(capitalize: true)}. Verifique o preco de venda.';
     }
     if (normalized.contains('costpricecents') ||
         normalized.contains('manualcostcents')) {
-      return 'Nao foi possivel criar o produto. Verifique o custo informado.';
+      return '${_saveActionSubjectPrefix(capitalize: true)}. Verifique o custo informado.';
     }
     if (normalized.contains('stockmil')) {
-      return 'Nao foi possivel criar o produto. Verifique o estoque inicial.';
+      return '${_saveActionSubjectPrefix(capitalize: true)}. Verifique o estoque informado.';
     }
     if (normalized.contains('lastcostupdatedat')) {
-      return 'Nao foi possivel criar o produto. O app ajustou o formato da data de custo; tente novamente.';
+      return '${_saveActionSubjectPrefix(capitalize: true)}. O app ajustou o formato da data de custo; tente novamente.';
     }
-    return 'Nao foi possivel criar o produto. Verifique nome, categoria, unidade, preco e estoque.';
+    return '${_saveActionSubjectPrefix(capitalize: true)}. Verifique nome, categoria, unidade, preco e estoque.';
+  }
+
+  String _saveActionSubjectPrefix({bool capitalize = false}) {
+    final prefix = _isEditing
+        ? 'nao foi possivel salvar as alteracoes do produto'
+        : 'nao foi possivel criar o produto';
+    if (!capitalize) {
+      return prefix;
+    }
+    return '${prefix[0].toUpperCase()}${prefix.substring(1)}';
   }
 }
 
