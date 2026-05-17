@@ -7,7 +7,6 @@ import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_list_tile_card.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
-import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
@@ -31,6 +30,7 @@ class _InventoryMovementsPageState
   InventoryMovementType? _selectedType;
   DateTime? _fromDate = DateTime.now().subtract(const Duration(days: 30));
   DateTime? _toDate;
+  bool _filtersExpanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -48,13 +48,19 @@ class _InventoryMovementsPageState
     final selectedItemKey = _selectedItem == null
         ? null
         : items.any(
-            (item) => _selectionKey(item) == _selectionKey(_selectedItem!),
+            (item) =>
+                _inventoryItemSelectionKey(item) ==
+                _inventoryItemSelectionKey(_selectedItem!),
           )
-        ? _selectionKey(_selectedItem!)
+        ? _inventoryItemSelectionKey(_selectedItem!)
         : null;
+    final canPop = Navigator.of(context).canPop();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Movimentacoes de estoque')),
+      appBar: AppBar(
+        leading: canPop ? const BackButton() : null,
+        title: const Text('Movimentações de estoque'),
+      ),
       drawer: const AppMainDrawer(),
       body: Column(
         children: [
@@ -66,12 +72,11 @@ class _InventoryMovementsPageState
               layout.space4,
             ),
             child: const AppPageHeader(
-              title: 'Extrato de movimentacoes',
+              title: 'Extrato de movimentações',
               subtitle:
-                  'Consulte o historico cronologico de compras, vendas, cancelamentos, devolucoes, inventarios e ajustes.',
+                  'Histórico de compras, vendas, devoluções, inventários e ajustes.',
               badgeLabel: 'Rastreabilidade',
               badgeIcon: Icons.history_rounded,
-              emphasized: true,
             ),
           ),
           Padding(
@@ -85,7 +90,7 @@ class _InventoryMovementsPageState
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => context.pushNamed(AppRouteNames.inventory),
+                    onPressed: () => context.goNamed(AppRouteNames.inventory),
                     icon: const Icon(Icons.inventory_2_outlined),
                     label: const Text('Estoque atual'),
                   ),
@@ -107,137 +112,62 @@ class _InventoryMovementsPageState
               layout.pagePadding,
               0,
               layout.pagePadding,
-              layout.space5,
+              layout.space4,
             ),
-            child: AppSectionCard(
-              title: 'Filtros',
-              subtitle:
-                  'Refine por periodo, tipo de movimento e produto ou variante.',
-              child: Column(
-                children: [
-                  DropdownButtonFormField<String?>(
-                    initialValue: selectedItemKey,
-                    items: [
-                      const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('Todos os itens'),
-                      ),
-                      for (final item in items)
-                        DropdownMenuItem<String?>(
-                          value: _selectionKey(item),
-                          child: Text(
-                            item.selectorLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                    ],
-                    decoration: const InputDecoration(
-                      labelText: 'Produto ou variante',
-                    ),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedItem = _resolveSelectedItem(items, value);
-                      });
-                    },
-                  ),
-                  SizedBox(height: layout.space4),
-                  DropdownButtonFormField<InventoryMovementType?>(
-                    initialValue: _selectedType,
-                    items: [
-                      const DropdownMenuItem<InventoryMovementType?>(
-                        value: null,
-                        child: Text('Todos os tipos'),
-                      ),
-                      for (final type in InventoryMovementType.values)
-                        DropdownMenuItem<InventoryMovementType?>(
-                          value: type,
-                          child: Text(type.label),
-                        ),
-                    ],
-                    decoration: const InputDecoration(labelText: 'Tipo'),
-                    onChanged: (value) {
-                      setState(() => _selectedType = value);
-                    },
-                  ),
-                  SizedBox(height: layout.space4),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _pickDate(
-                            context,
-                            initialValue: _fromDate,
-                            onSelected: (value) => setState(() {
-                              _fromDate = value == null
-                                  ? null
-                                  : DateTime(
-                                      value.year,
-                                      value.month,
-                                      value.day,
-                                    );
-                            }),
-                          ),
-                          icon: const Icon(Icons.event_available_outlined),
-                          label: Text(
-                            _fromDate == null
-                                ? 'Inicio'
-                                : AppFormatters.shortDate(_fromDate!),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: layout.space4),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _pickDate(
-                            context,
-                            initialValue: _toDate,
-                            onSelected: (value) => setState(() {
-                              _toDate = value == null
-                                  ? null
-                                  : DateTime(
-                                      value.year,
-                                      value.month,
-                                      value.day,
-                                      23,
-                                      59,
-                                      59,
-                                    );
-                            }),
-                          ),
-                          icon: const Icon(Icons.event_outlined),
-                          label: Text(
-                            _toDate == null
-                                ? 'Fim'
-                                : AppFormatters.shortDate(_toDate!),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_selectedItem != null ||
-                      _selectedType != null ||
-                      _fromDate != null ||
-                      _toDate != null) ...[
-                    SizedBox(height: layout.space3),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _selectedItem = null;
-                            _selectedType = null;
-                            _fromDate = null;
-                            _toDate = null;
-                          });
-                        },
-                        icon: const Icon(Icons.restart_alt_rounded),
-                        label: const Text('Limpar filtros'),
-                      ),
-                    ),
-                  ],
-                ],
+            child: _MovementFiltersCard(
+              expanded: _filtersExpanded,
+              selectedItemKey: selectedItemKey,
+              items: items,
+              selectedType: _selectedType,
+              fromDate: _fromDate,
+              toDate: _toDate,
+              activeLabels: _activeFilterLabels(),
+              onToggleExpanded: () {
+                setState(() => _filtersExpanded = !_filtersExpanded);
+              },
+              onItemChanged: (value) {
+                setState(() {
+                  _selectedItem = _resolveSelectedItem(items, value);
+                });
+              },
+              onTypeChanged: (value) {
+                setState(() => _selectedType = value);
+              },
+              onPickFromDate: () => _pickDate(
+                context,
+                initialValue: _fromDate,
+                onSelected: (value) => setState(() {
+                  _fromDate = value == null
+                      ? null
+                      : DateTime(value.year, value.month, value.day);
+                }),
               ),
+              onPickToDate: () => _pickDate(
+                context,
+                initialValue: _toDate,
+                onSelected: (value) => setState(() {
+                  _toDate = value == null
+                      ? null
+                      : DateTime(
+                          value.year,
+                          value.month,
+                          value.day,
+                          23,
+                          59,
+                          59,
+                        );
+                }),
+              ),
+              onClear: _hasActiveFilters()
+                  ? () {
+                      setState(() {
+                        _selectedItem = null;
+                        _selectedType = null;
+                        _fromDate = null;
+                        _toDate = null;
+                      });
+                    }
+                  : null,
             ),
           ),
           Expanded(
@@ -247,9 +177,9 @@ class _InventoryMovementsPageState
                   return Padding(
                     padding: EdgeInsets.all(layout.pagePadding),
                     child: const AppStateCard(
-                      title: 'Sem movimentacoes para o filtro',
+                      title: 'Sem movimentações para o filtro',
                       message:
-                          'Nao ha movimentos registrados no periodo ou filtro selecionado.',
+                          'Não há movimentos registrados no período ou filtro selecionado.',
                     ),
                   );
                 }
@@ -279,7 +209,7 @@ class _InventoryMovementsPageState
                 padding: EdgeInsets.all(layout.pagePadding),
                 child: const AppStateCard(
                   title: 'Carregando extrato',
-                  message: 'Buscando os ultimos movimentos do estoque.',
+                  message: 'Buscando os últimos movimentos do estoque.',
                   tone: AppStateTone.loading,
                   compact: true,
                 ),
@@ -287,7 +217,7 @@ class _InventoryMovementsPageState
               error: (error, _) => Padding(
                 padding: EdgeInsets.all(layout.pagePadding),
                 child: AppStateCard(
-                  title: 'Falha ao carregar movimentacoes',
+                  title: 'Falha ao carregar movimentações',
                   message: '$error',
                   tone: AppStateTone.error,
                   compact: true,
@@ -303,10 +233,6 @@ class _InventoryMovementsPageState
     );
   }
 
-  String _selectionKey(InventoryItem item) {
-    return '${item.productId}:${item.productVariantId ?? 0}';
-  }
-
   InventoryItem? _resolveSelectedItem(
     List<InventoryItem> items,
     String? value,
@@ -315,11 +241,27 @@ class _InventoryMovementsPageState
       return null;
     }
     for (final item in items) {
-      if (_selectionKey(item) == value) {
+      if (_inventoryItemSelectionKey(item) == value) {
         return item;
       }
     }
     return null;
+  }
+
+  bool _hasActiveFilters() {
+    return _selectedItem != null ||
+        _selectedType != null ||
+        _fromDate != null ||
+        _toDate != null;
+  }
+
+  List<String> _activeFilterLabels() {
+    return [
+      if (_selectedItem != null) _selectedItem!.displayName,
+      if (_selectedType != null) _selectedType!.label,
+      if (_fromDate != null) 'Desde ${AppFormatters.shortDate(_fromDate!)}',
+      if (_toDate != null) 'Até ${AppFormatters.shortDate(_toDate!)}',
+    ];
   }
 
   Future<void> _pickDate(
@@ -338,6 +280,180 @@ class _InventoryMovementsPageState
       return;
     }
     onSelected(picked);
+  }
+}
+
+String _inventoryItemSelectionKey(InventoryItem item) {
+  return '${item.productId}:${item.productVariantId ?? 0}';
+}
+
+class _MovementFiltersCard extends StatelessWidget {
+  const _MovementFiltersCard({
+    required this.expanded,
+    required this.selectedItemKey,
+    required this.items,
+    required this.selectedType,
+    required this.fromDate,
+    required this.toDate,
+    required this.activeLabels,
+    required this.onToggleExpanded,
+    required this.onItemChanged,
+    required this.onTypeChanged,
+    required this.onPickFromDate,
+    required this.onPickToDate,
+    required this.onClear,
+  });
+
+  final bool expanded;
+  final String? selectedItemKey;
+  final List<InventoryItem> items;
+  final InventoryMovementType? selectedType;
+  final DateTime? fromDate;
+  final DateTime? toDate;
+  final List<String> activeLabels;
+  final VoidCallback onToggleExpanded;
+  final ValueChanged<String?> onItemChanged;
+  final ValueChanged<InventoryMovementType?> onTypeChanged;
+  final VoidCallback onPickFromDate;
+  final VoidCallback onPickToDate;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = context.appLayout;
+    return AppCard(
+      padding: EdgeInsets.all(layout.compactCardPadding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.filter_list_rounded,
+                size: layout.iconMd,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              SizedBox(width: layout.space3),
+              Expanded(
+                child: Text(
+                  activeLabels.isEmpty
+                      ? 'Filtros'
+                      : 'Filtros (${activeLabels.length})',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: onToggleExpanded,
+                icon: Icon(
+                  expanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                ),
+                label: Text(expanded ? 'Ocultar' : 'Editar'),
+              ),
+            ],
+          ),
+          if (activeLabels.isNotEmpty) ...[
+            SizedBox(height: layout.space3),
+            Wrap(
+              spacing: layout.space2,
+              runSpacing: layout.space2,
+              children: [
+                for (final label in activeLabels)
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 220),
+                    child: AppStatusBadge(
+                      label: label,
+                      tone: AppStatusTone.info,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          if (expanded) ...[
+            SizedBox(height: layout.space4),
+            DropdownButtonFormField<String?>(
+              initialValue: selectedItemKey,
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Todos os itens'),
+                ),
+                for (final item in items)
+                  DropdownMenuItem<String?>(
+                    value: _inventoryItemSelectionKey(item),
+                    child: Text(
+                      item.selectorLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+              decoration: const InputDecoration(
+                labelText: 'Produto ou variante',
+              ),
+              onChanged: onItemChanged,
+            ),
+            SizedBox(height: layout.space3),
+            DropdownButtonFormField<InventoryMovementType?>(
+              initialValue: selectedType,
+              items: [
+                const DropdownMenuItem<InventoryMovementType?>(
+                  value: null,
+                  child: Text('Todos os tipos'),
+                ),
+                for (final type in InventoryMovementType.values)
+                  DropdownMenuItem<InventoryMovementType?>(
+                    value: type,
+                    child: Text(type.label),
+                  ),
+              ],
+              decoration: const InputDecoration(labelText: 'Tipo'),
+              onChanged: onTypeChanged,
+            ),
+            SizedBox(height: layout.space3),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onPickFromDate,
+                    icon: const Icon(Icons.event_available_outlined),
+                    label: Text(
+                      fromDate == null
+                          ? 'Início'
+                          : AppFormatters.shortDate(fromDate!),
+                    ),
+                  ),
+                ),
+                SizedBox(width: layout.space3),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onPickToDate,
+                    icon: const Icon(Icons.event_outlined),
+                    label: Text(
+                      toDate == null ? 'Fim' : AppFormatters.shortDate(toDate!),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (onClear != null) ...[
+              SizedBox(height: layout.space2),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: onClear,
+                  icon: const Icon(Icons.restart_alt_rounded),
+                  label: const Text('Limpar filtros'),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
   }
 }
 

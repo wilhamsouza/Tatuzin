@@ -84,7 +84,7 @@ class _InventoryAdjustmentPageState
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => context.pushNamed(AppRouteNames.inventory),
+                    onPressed: () => context.goNamed(AppRouteNames.inventory),
                     icon: const Icon(Icons.inventory_2_outlined),
                     label: const Text('Estoque atual'),
                   ),

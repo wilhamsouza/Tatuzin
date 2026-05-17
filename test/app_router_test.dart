@@ -19,6 +19,7 @@ import 'package:erp_pdv_app/modules/dashboard/presentation/pages/dashboard_page.
 import 'package:erp_pdv_app/modules/dashboard/presentation/providers/dashboard_providers.dart';
 import 'package:erp_pdv_app/modules/estoque/domain/entities/inventory_item.dart';
 import 'package:erp_pdv_app/modules/estoque/presentation/providers/inventory_providers.dart';
+import 'package:erp_pdv_app/modules/produtos/presentation/providers/product_providers.dart';
 import 'package:erp_pdv_app/modules/system/presentation/providers/system_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -52,6 +53,29 @@ void main() {
         AppRoutePaths.products,
       );
       expect(
+        router.namedLocation(AppRouteNames.inventory),
+        AppRoutePaths.inventory,
+      );
+      expect(
+        router.namedLocation(AppRouteNames.inventoryCounts),
+        AppRoutePaths.inventoryCounts,
+      );
+      expect(
+        router.namedLocation(
+          AppRouteNames.inventoryCountSessionDetail,
+          pathParameters: {'sessionId': '12'},
+        ),
+        '/estoque/inventarios/12',
+      );
+      expect(
+        router.namedLocation(AppRouteNames.inventoryMovements),
+        AppRoutePaths.inventoryMovements,
+      );
+      expect(
+        router.namedLocation(AppRouteNames.inventoryAdjustment),
+        AppRoutePaths.inventoryAdjustment,
+      );
+      expect(
         router.namedLocation(AppRouteNames.clients),
         AppRoutePaths.clients,
       );
@@ -67,7 +91,10 @@ void main() {
         router.namedLocation(AppRouteNames.subscription),
         AppRoutePaths.subscription,
       );
-      expect(router.namedLocation(AppRouteNames.company), AppRoutePaths.company);
+      expect(
+        router.namedLocation(AppRouteNames.company),
+        AppRoutePaths.company,
+      );
       expect(
         router.namedLocation(AppRouteNames.settings),
         AppRoutePaths.settings,
@@ -110,6 +137,28 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Rota indisponivel'), findsOneWidget);
+  });
+
+  testWidgets('/produtos e /estoque abrem o hub na aba correta', (
+    tester,
+  ) async {
+    await _pumpApp(tester, authenticated: true);
+
+    final router = GoRouter.of(tester.element(find.byType(DashboardPage)));
+    router.go(AppRoutePaths.products);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Produtos'), findsWidgets);
+    expect(find.text('Novo produto'), findsWidgets);
+    expect(find.text('Movimentações'), findsNothing);
+
+    router.go(AppRoutePaths.inventory);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Produtos'), findsWidgets);
+    expect(find.text('Novo ajuste'), findsWidgets);
+    expect(find.text('Movimentações'), findsOneWidget);
+    expect(find.text('Ajuste'), findsNothing);
   });
 
   testWidgets('rota protegida sem sessao redireciona para login', (
@@ -196,6 +245,8 @@ List<Override> _baseOverrides() {
     inventoryItemOptionsProvider.overrideWith(
       (ref) async => const <InventoryItem>[],
     ),
+    inventoryItemsProvider.overrideWith((ref) async => const <InventoryItem>[]),
+    productListProvider.overrideWith((ref) async => []),
     backendConnectionStatusProvider.overrideWith(
       (ref) async => BackendConnectionStatus(
         isConfigured: true,

@@ -6,7 +6,7 @@ import '../../../modules/estoque/presentation/pages/inventory_adjustment_page.da
 import '../../../modules/estoque/presentation/pages/inventory_count_page.dart';
 import '../../../modules/estoque/presentation/pages/inventory_count_session_detail_page.dart';
 import '../../../modules/estoque/presentation/pages/inventory_movements_page.dart';
-import '../../../modules/estoque/presentation/pages/inventory_page.dart';
+import '../../../modules/produtos/presentation/pages/products_page.dart';
 import '../route_names.dart';
 import '../route_param_parsers.dart';
 
@@ -15,7 +15,8 @@ List<RouteBase> buildInventoryRoutes() {
     GoRoute(
       path: AppRoutePaths.inventory,
       name: AppRouteNames.inventory,
-      builder: (context, state) => const InventoryPage(),
+      builder: (context, state) =>
+          const ProductsPage(initialTab: ProductHubTab.inventory),
     ),
     GoRoute(
       path: AppRoutePaths.inventoryCounts,

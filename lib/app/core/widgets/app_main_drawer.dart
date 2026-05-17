@@ -235,25 +235,15 @@ class AppMainDrawer extends ConsumerWidget {
                       _DrawerItem(
                         label: 'Produtos',
                         icon: Icons.inventory_2_rounded,
-                        isSelected: selected(AppRoutePaths.products),
+                        isSelected:
+                            selected(AppRoutePaths.products) ||
+                            (selected(AppRoutePaths.inventory) &&
+                                !selected(AppRoutePaths.inventoryCounts)),
                         onTap: () => _navigateTo(
                           context,
                           currentPath: currentPath,
                           path: AppRoutePaths.products,
                           routeName: AppRouteNames.products,
-                        ),
-                      ),
-                      _DrawerItem(
-                        label: 'Estoque do produto',
-                        icon: Icons.inventory_rounded,
-                        isSelected:
-                            selected(AppRoutePaths.inventory) &&
-                            !selected(AppRoutePaths.inventoryCounts),
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.inventory,
-                          routeName: AppRouteNames.inventory,
                         ),
                       ),
                       if (can(FeatureKey.inventoryAdvanced))
