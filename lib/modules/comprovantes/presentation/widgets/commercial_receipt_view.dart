@@ -50,50 +50,84 @@ class CommercialReceiptView extends StatelessWidget {
           const SizedBox(height: 16),
         ],
         Container(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(28),
-            gradient: const LinearGradient(
-              colors: [Color(0xFF6C4CF1), Color(0xFF8B5CF6)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+            color: theme.colorScheme.primaryContainer.withValues(alpha: 0.42),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: theme.colorScheme.primary.withValues(alpha: 0.16),
             ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AppStatusBadge(
-                label: receipt.statusLabel,
-                tone: _toneForReceipt(receipt),
-                icon: Icons.receipt_long_rounded,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surface,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Icon(
+                        Icons.receipt_long_rounded,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          receipt.businessName,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          receipt.title,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  AppStatusBadge(
+                    label: receipt.statusLabel,
+                    tone: _toneForReceipt(receipt),
+                  ),
+                ],
               ),
               const SizedBox(height: 14),
-              Text(
-                receipt.businessName,
-                style: theme.textTheme.titleLarge?.copyWith(
-                  color: Colors.white,
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface.withValues(alpha: 0.78),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                receipt.title,
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Documento ${receipt.identifier}',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.88),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                AppFormatters.shortDateTime(receipt.issuedAt),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.82),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  child: Column(
+                    children: [
+                      _ReceiptInfoRow(
+                        label: 'Documento',
+                        value: receipt.identifier,
+                      ),
+                      const SizedBox(height: 8),
+                      _ReceiptInfoRow(
+                        label: 'Emissao',
+                        value: AppFormatters.shortDateTime(receipt.issuedAt),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],

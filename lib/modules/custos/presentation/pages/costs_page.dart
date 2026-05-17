@@ -116,7 +116,7 @@ class _CostsPageState extends ConsumerState<CostsPage> {
         child: ListView(
           padding: EdgeInsets.fromLTRB(
             layout.pagePadding,
-            layout.space5,
+            layout.space4,
             layout.pagePadding,
             120,
           ),
@@ -129,7 +129,7 @@ class _CostsPageState extends ConsumerState<CostsPage> {
               badgeIcon: Icons.account_balance_rounded,
               emphasized: true,
             ),
-            SizedBox(height: layout.sectionGap),
+            SizedBox(height: layout.space4),
             _FilterSection(
               selectedView: _viewFilter,
               selectedType: _typeFilter,
@@ -144,7 +144,7 @@ class _CostsPageState extends ConsumerState<CostsPage> {
                 });
               },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             overviewAsync.when(
               data: (overview) => _SummaryGrid(
                 overview: overview,
@@ -170,7 +170,7 @@ class _CostsPageState extends ConsumerState<CostsPage> {
                 ),
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             _SectionHeader(
               title: _mainSectionTitle(_viewFilter, _typeFilter),
               subtitle: _mainSectionSubtitle(_viewFilter, _typeFilter),
@@ -295,31 +295,38 @@ class _FilterSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final filter in _CostViewFilter.values)
-              ChoiceChip(
-                label: Text(filter.label),
-                selected: selectedView == filter,
-                onSelected: (_) => onViewChanged(filter),
-              ),
-          ],
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final filter in _CostViewFilter.values) ...[
+                ChoiceChip(
+                  label: Text(filter.label),
+                  selected: selectedView == filter,
+                  onSelected: (_) => onViewChanged(filter),
+                ),
+                const SizedBox(width: 8),
+              ],
+            ],
+          ),
         ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final filter in _CostTypeFilter.values)
-              ChoiceChip(
-                label: Text(filter.label),
-                selected: selectedType == filter,
-                onSelected: (_) => onTypeChanged(filter),
-              ),
-          ],
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final filter in _CostTypeFilter.values) ...[
+                ChoiceChip(
+                  label: Text(filter.label),
+                  selected: selectedType == filter,
+                  onSelected: (_) => onTypeChanged(filter),
+                ),
+                const SizedBox(width: 8),
+              ],
+            ],
+          ),
         ),
       ],
     );
@@ -397,15 +404,15 @@ class _SummaryGrid extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth < 340 ? 1 : 2;
+        final columns = constraints.maxWidth < 360 ? 1 : 2;
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            mainAxisExtent: 150,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            mainAxisExtent: 96,
           ),
           itemCount: cards.length,
           itemBuilder: (context, index) => _SummaryCard(data: cards[index]),
@@ -445,9 +452,9 @@ class _SummaryCard extends StatelessWidget {
     return AppCard(
       onTap: data.onTap,
       borderRadius: 18,
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           DecoratedBox(
             decoration: BoxDecoration(
@@ -459,22 +466,39 @@ class _SummaryCard extends StatelessWidget {
               child: Icon(data.icon, color: data.accentColor, size: 18),
             ),
           ),
-          const Spacer(),
-          Text(
-            data.title,
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w700,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  data.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  data.value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  data.supporting,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            data.value,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(data.supporting, style: theme.textTheme.bodySmall),
         ],
       ),
     );

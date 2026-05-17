@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_feedback.dart';
 import '../../../../app/core/widgets/app_list_tile_card.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
-import '../../../../app/core/widgets/app_metric_card.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
@@ -44,14 +44,14 @@ class _InventoryCountPageState extends ConsumerState<InventoryCountPage> {
           Padding(
             padding: EdgeInsets.fromLTRB(
               layout.pagePadding,
-              layout.space5,
-              layout.pagePadding,
               layout.space4,
+              layout.pagePadding,
+              layout.space3,
             ),
             child: const AppPageHeader(
               title: 'Inventário físico',
               subtitle:
-                  'Abra sessoes de contagem, confira divergencias e aplique os ajustes em lote com trilha de auditoria.',
+                  'Conte produtos, revise divergências e aplique ajustes com auditoria.',
               badgeLabel: 'Contagem',
               badgeIcon: Icons.fact_check_rounded,
               emphasized: true,
@@ -62,13 +62,13 @@ class _InventoryCountPageState extends ConsumerState<InventoryCountPage> {
               layout.pagePadding,
               0,
               layout.pagePadding,
-              layout.space4,
+              layout.space3,
             ),
             child: Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => context.pushNamed(AppRouteNames.inventory),
+                    onPressed: () => context.goNamed(AppRouteNames.inventory),
                     icon: const Icon(Icons.inventory_2_outlined),
                     label: const Text('Estoque atual'),
                   ),
@@ -84,24 +84,21 @@ class _InventoryCountPageState extends ConsumerState<InventoryCountPage> {
               ],
             ),
           ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              layout.pagePadding,
-              0,
-              layout.pagePadding,
-              layout.space4,
-            ),
-            child: Wrap(
-              spacing: layout.space3,
-              runSpacing: layout.space3,
-              children: [
-                for (final filter in _InventoryCountStatusFilter.values)
-                  ChoiceChip(
-                    label: Text(filter.label),
-                    selected: _selectedFilter == filter,
-                    onSelected: (_) => setState(() => _selectedFilter = filter),
-                  ),
-              ],
+          SizedBox(
+            height: 44,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: EdgeInsets.symmetric(horizontal: layout.pagePadding),
+              itemCount: _InventoryCountStatusFilter.values.length,
+              separatorBuilder: (_, __) => SizedBox(width: layout.space3),
+              itemBuilder: (context, index) {
+                final filter = _InventoryCountStatusFilter.values[index];
+                return ChoiceChip(
+                  label: Text(filter.label),
+                  selected: _selectedFilter == filter,
+                  onSelected: (_) => setState(() => _selectedFilter = filter),
+                );
+              },
             ),
           ),
           Expanded(
@@ -124,7 +121,7 @@ class _InventoryCountPageState extends ConsumerState<InventoryCountPage> {
                     ),
                     children: [
                       _InventoryCountOverviewPanel(sessions: sessions),
-                      SizedBox(height: layout.space5),
+                      SizedBox(height: layout.space4),
                       if (filteredSessions.isEmpty)
                         const AppStateCard(
                           title: 'Nenhuma sessao encontrada',
@@ -251,40 +248,88 @@ class _InventoryCountOverviewPanel extends StatelessWidget {
         .length;
 
     return Wrap(
-      spacing: layout.space4,
-      runSpacing: layout.space4,
+      spacing: layout.space3,
+      runSpacing: layout.space3,
       children: [
-        SizedBox(
-          width: 190,
-          child: AppMetricCard(
-            label: 'Em andamento',
-            value: '$openCount',
-            icon: Icons.playlist_add_check_circle_rounded,
-            caption: 'Sessoes abertas ou em contagem',
-            accentColor: context.appColors.warning.base,
-          ),
+        _InventoryCountMetricTile(
+          label: 'Em andamento',
+          value: '$openCount',
+          icon: Icons.playlist_add_check_circle_rounded,
+          accentColor: context.appColors.warning.base,
         ),
-        SizedBox(
-          width: 190,
-          child: AppMetricCard(
-            label: 'Revisadas',
-            value: '$reviewedCount',
-            icon: Icons.rule_folder_outlined,
-            caption: 'Prontas para aplicar',
-            accentColor: context.appColors.brand.base,
-          ),
+        _InventoryCountMetricTile(
+          label: 'Revisadas',
+          value: '$reviewedCount',
+          icon: Icons.rule_folder_outlined,
+          accentColor: context.appColors.brand.base,
         ),
-        SizedBox(
-          width: 190,
-          child: AppMetricCard(
-            label: 'Aplicadas',
-            value: '$appliedCount',
-            icon: Icons.check_circle_outline_rounded,
-            caption: 'Ja refletidas no saldo',
-            accentColor: context.appColors.success.base,
-          ),
+        _InventoryCountMetricTile(
+          label: 'Aplicadas',
+          value: '$appliedCount',
+          icon: Icons.check_circle_outline_rounded,
+          accentColor: context.appColors.success.base,
         ),
       ],
+    );
+  }
+}
+
+class _InventoryCountMetricTile extends StatelessWidget {
+  const _InventoryCountMetricTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.accentColor,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color accentColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = context.appLayout;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 112, maxWidth: 178),
+      child: AppCard(
+        padding: EdgeInsets.all(layout.compactCardPadding - 1),
+        borderRadius: layout.radiusLg,
+        color: accentColor.withValues(alpha: 0.08),
+        borderColor: accentColor.withValues(alpha: 0.12),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: accentColor, size: 18),
+            SizedBox(width: layout.space3),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

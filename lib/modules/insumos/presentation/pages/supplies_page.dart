@@ -3,11 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_feedback.dart';
 import '../../../../app/core/widgets/app_list_tile_card.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
-import '../../../../app/core/widgets/app_quick_action_card.dart';
 import '../../../../app/core/widgets/app_search_field.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
@@ -44,33 +44,38 @@ class _SuppliesPageState extends ConsumerState<SuppliesPage> {
   Widget build(BuildContext context) {
     final suppliesAsync = ref.watch(supplyInventoryOverviewProvider);
     final layout = context.appLayout;
+    final hasSupplies = suppliesAsync.valueOrNull?.isNotEmpty ?? false;
 
     return Scaffold(
       appBar: AppBar(titleSpacing: 0, title: const _SuppliesAppBarTitle()),
       drawer: const AppMainDrawer(),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final created = await context.pushNamed(AppRouteNames.supplyForm);
-          if (created == true) {
-            ref.invalidate(supplyInventoryOverviewProvider);
-          }
-        },
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Novo insumo'),
-      ),
+      floatingActionButton: hasSupplies
+          ? FloatingActionButton.extended(
+              onPressed: () async {
+                final created = await context.pushNamed(
+                  AppRouteNames.supplyForm,
+                );
+                if (created == true) {
+                  ref.invalidate(supplyInventoryOverviewProvider);
+                }
+              },
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Novo insumo'),
+            )
+          : null,
       body: Column(
         children: [
           Padding(
             padding: EdgeInsets.fromLTRB(
               layout.pagePadding,
-              layout.space5,
-              layout.pagePadding,
               layout.space4,
+              layout.pagePadding,
+              layout.space3,
             ),
             child: const AppPageHeader(
               title: 'Insumos',
               subtitle:
-                  'Cadastre materia-prima, embalagem e itens de composicao sem misturar com despesas operacionais.',
+                  'Cadastre matéria-prima, embalagens e itens de composição.',
               badgeLabel: 'Composicao',
               badgeIcon: Icons.scale_rounded,
               emphasized: true,
@@ -81,28 +86,45 @@ class _SuppliesPageState extends ConsumerState<SuppliesPage> {
               layout.pagePadding,
               0,
               layout.pagePadding,
-              layout.space4,
+              layout.space3,
             ),
-            child: Column(
-              children: [
-                AppQuickActionCard(
-                  title: 'Movimentacoes operacionais',
-                  subtitle:
-                      'Consulte entradas, saidas, ajustes e estornos do ledger local.',
-                  icon: Icons.inventory_2_outlined,
-                  onTap: () => context.pushNamed(AppRouteNames.supplyInventory),
-                ),
-                SizedBox(height: layout.space4),
-                AppQuickActionCard(
-                  title: 'Sugestao de recompra',
-                  subtitle:
-                      'Veja rapidamente os insumos ativos abaixo do minimo.',
-                  icon: Icons.shopping_bag_outlined,
-                  onTap: () =>
-                      context.pushNamed(AppRouteNames.reorderSuggestions),
-                  palette: context.appColors.warning,
-                ),
-              ],
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isNarrow = constraints.maxWidth < 420;
+                final cards = [
+                  _CompactSupplyActionCard(
+                    title: 'Movimentações',
+                    subtitle: 'Entradas, saídas e ajustes',
+                    icon: Icons.inventory_2_outlined,
+                    onTap: () =>
+                        context.pushNamed(AppRouteNames.supplyInventory),
+                  ),
+                  _CompactSupplyActionCard(
+                    title: 'Recompra',
+                    subtitle: 'Insumos abaixo do mínimo',
+                    icon: Icons.shopping_bag_outlined,
+                    onTap: () =>
+                        context.pushNamed(AppRouteNames.reorderSuggestions),
+                    palette: context.appColors.warning,
+                  ),
+                ];
+                if (isNarrow) {
+                  return Column(
+                    children: [
+                      cards[0],
+                      SizedBox(height: layout.space3),
+                      cards[1],
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: cards[0]),
+                    SizedBox(width: layout.space3),
+                    Expanded(child: cards[1]),
+                  ],
+                );
+              },
             ),
           ),
           Padding(
@@ -110,7 +132,7 @@ class _SuppliesPageState extends ConsumerState<SuppliesPage> {
               layout.pagePadding,
               0,
               layout.pagePadding,
-              layout.space5,
+              layout.space4,
             ),
             child: AppSearchField(
               controller: _searchController,
@@ -221,6 +243,68 @@ class _SuppliesAppBarTitle extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _CompactSupplyActionCard extends StatelessWidget {
+  const _CompactSupplyActionCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onTap,
+    this.palette,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback onTap;
+  final AppTonePalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = context.appLayout;
+    final resolvedPalette = palette ?? context.appColors.brand;
+    return AppCard(
+      onTap: onTap,
+      padding: EdgeInsets.all(layout.compactCardPadding),
+      color: resolvedPalette.surface,
+      borderColor: resolvedPalette.border,
+      child: Row(
+        children: [
+          Icon(icon, color: resolvedPalette.base, size: 20),
+          SizedBox(width: layout.space3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: resolvedPalette.onSurface.withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: resolvedPalette.onSurface.withValues(alpha: 0.72),
+          ),
+        ],
+      ),
     );
   }
 }

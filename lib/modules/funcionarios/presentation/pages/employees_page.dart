@@ -59,9 +59,9 @@ class _EmployeesPageState extends ConsumerState<EmployeesPage> {
           Padding(
             padding: EdgeInsets.fromLTRB(
               layout.pagePadding,
-              layout.space5,
-              layout.pagePadding,
               layout.space4,
+              layout.pagePadding,
+              layout.space3,
             ),
             child: const AppPageHeader(
               title: 'Funcionários',
@@ -130,7 +130,7 @@ class _EmployeesContent extends ConsumerWidget {
             layout.pagePadding,
             0,
             layout.pagePadding,
-            layout.space4,
+            layout.space3,
           ),
           child: AppInput(
             controller: searchController,
@@ -147,7 +147,7 @@ class _EmployeesContent extends ConsumerWidget {
             layout.pagePadding,
             0,
             layout.pagePadding,
-            layout.space4,
+            layout.space3,
           ),
           child: _EmployeeFilters(),
         ),
@@ -157,7 +157,7 @@ class _EmployeesContent extends ConsumerWidget {
               layout.pagePadding,
               0,
               layout.pagePadding,
-              layout.space4,
+              layout.space3,
             ),
             child: _EmployeeSummary(page: page),
           ),
@@ -248,41 +248,46 @@ class _EmployeeFilters extends ConsumerWidget {
     final status = ref.watch(employeeStatusFilterProvider);
     final role = ref.watch(employeeRoleFilterProvider);
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        ChoiceChip(
-          label: const Text('Todos'),
-          selected: status == null && role == null,
-          onSelected: (_) {
-            ref.read(employeeStatusFilterProvider.notifier).state = null;
-            ref.read(employeeRoleFilterProvider.notifier).state = null;
-            ref.read(employeesPageNumberProvider.notifier).state = 1;
-          },
-        ),
-        for (final item in EmployeeStatus.editableStatuses)
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
           ChoiceChip(
-            label: Text(item.label),
-            selected: status == item,
+            label: const Text('Todos'),
+            selected: status == null && role == null,
             onSelected: (_) {
-              ref.read(employeeStatusFilterProvider.notifier).state =
-                  status == item ? null : item;
+              ref.read(employeeStatusFilterProvider.notifier).state = null;
+              ref.read(employeeRoleFilterProvider.notifier).state = null;
               ref.read(employeesPageNumberProvider.notifier).state = 1;
             },
           ),
-        for (final item in EmployeeRole.editableRoles.take(3))
-          ChoiceChip(
-            label: Text(item.label),
-            selected: role == item,
-            onSelected: (_) {
-              ref.read(employeeRoleFilterProvider.notifier).state = role == item
-                  ? null
-                  : item;
-              ref.read(employeesPageNumberProvider.notifier).state = 1;
-            },
-          ),
-      ],
+          const SizedBox(width: 8),
+          for (final item in EmployeeStatus.editableStatuses) ...[
+            ChoiceChip(
+              label: Text(item.label),
+              selected: status == item,
+              onSelected: (_) {
+                ref.read(employeeStatusFilterProvider.notifier).state =
+                    status == item ? null : item;
+                ref.read(employeesPageNumberProvider.notifier).state = 1;
+              },
+            ),
+            const SizedBox(width: 8),
+          ],
+          for (final item in EmployeeRole.editableRoles.take(3)) ...[
+            ChoiceChip(
+              label: Text(item.label),
+              selected: role == item,
+              onSelected: (_) {
+                ref.read(employeeRoleFilterProvider.notifier).state =
+                    role == item ? null : item;
+                ref.read(employeesPageNumberProvider.notifier).state = 1;
+              },
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -306,7 +311,7 @@ class _EmployeeSummary extends StatelessWidget {
         .length;
 
     return AppCard(
-      padding: EdgeInsets.all(layout.cardPadding),
+      padding: EdgeInsets.all(layout.compactCardPadding),
       child: Row(
         children: [
           Expanded(
@@ -373,6 +378,7 @@ class _EmployeeTile extends ConsumerWidget {
     final isBusy = ref.watch(employeeActionControllerProvider).isLoading;
 
     return AppCard(
+      padding: EdgeInsets.all(layout.compactCardPadding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -380,13 +386,14 @@ class _EmployeeTile extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               CircleAvatar(
+                radius: 18,
                 child: Icon(
                   employee.isOwner
                       ? Icons.workspace_premium_outlined
                       : Icons.person_outline_rounded,
                 ),
               ),
-              SizedBox(width: layout.space4),
+              SizedBox(width: layout.space3),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -440,10 +447,10 @@ class _EmployeeTile extends ConsumerWidget {
                 ),
             ],
           ),
-          SizedBox(height: layout.space4),
+          SizedBox(height: layout.space3),
           Wrap(
             spacing: 8,
-            runSpacing: 8,
+            runSpacing: 6,
             children: [
               AppStatusBadge(
                 label: employee.role.label,

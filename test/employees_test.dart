@@ -274,7 +274,7 @@ void main() {
     expect(find.text('Protegido'), findsOneWidget);
     expect(find.text('Caixa Principal'), findsOneWidget);
     expect(find.text('Desativado'), findsOneWidget);
-    expect(find.byType(PopupMenuButton<String>), findsOneWidget);
+    expect(find.byType(PopupMenuButton<String>), findsWidgets);
 
     await tester.scrollUntilVisible(
       find.text('Vendedor antigo'),
@@ -282,7 +282,7 @@ void main() {
       scrollable: find.byType(Scrollable).last,
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.tap(find.byType(PopupMenuButton<String>).last);
     await tester.pumpAndSettle();
 
     expect(find.text('Habilitar'), findsOneWidget);

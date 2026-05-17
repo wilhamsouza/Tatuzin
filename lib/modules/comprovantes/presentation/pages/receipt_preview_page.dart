@@ -50,11 +50,10 @@ class ReceiptPreviewPage extends ConsumerWidget {
           return Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
                 child: AppSectionCard(
-                  title: 'Ações do comprovante',
-                  subtitle:
-                      'Visualize, salve em PDF ou compartilhe o comprovante comercial (separado do comprovante do pedido).',
+                  title: 'Comprovante comercial',
+                  subtitle: 'Compartilhe ou salve este recibo em PDF.',
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -64,7 +63,7 @@ class ReceiptPreviewPage extends ConsumerWidget {
                           icon: const Icon(Icons.storefront_rounded),
                           label: const Text('Voltar para vendas'),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 8),
                       ],
                       ReceiptActionBar(request: request, showViewAction: false),
                     ],

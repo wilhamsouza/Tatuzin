@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/widgets/app_input.dart';
+import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
@@ -52,7 +53,22 @@ class _SalesHistoryPageState extends ConsumerState<SalesHistoryPage> {
     final canClearSearch = _searchController.text.trim().isNotEmpty;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Histórico de vendas')),
+      drawer: const AppMainDrawer(),
+      appBar: AppBar(
+        title: const Text('Histórico de vendas'),
+        leading: Builder(
+          builder: (context) {
+            if (Navigator.of(context).canPop()) {
+              return const BackButton();
+            }
+            return IconButton(
+              tooltip: 'Abrir menu',
+              icon: const Icon(Icons.menu_rounded),
+              onPressed: () => Scaffold.of(context).openDrawer(),
+            );
+          },
+        ),
+      ),
       body: Column(
         children: [
           Padding(
@@ -409,7 +425,7 @@ class _SaleHistoryTile extends StatelessWidget {
           pathParameters: {'saleId': '${sale.id}'},
         ),
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -463,10 +479,10 @@ class _SaleHistoryTile extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
-                runSpacing: 6,
+                runSpacing: 4,
                 children: [
                   AppStatusBadge(
                     label: sale.saleType.label,
@@ -483,10 +499,10 @@ class _SaleHistoryTile extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: 6,
+                runSpacing: 6,
                 children: [
                   TextButton(
                     onPressed: () => context.pushNamed(

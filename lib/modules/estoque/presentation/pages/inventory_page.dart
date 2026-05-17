@@ -55,14 +55,13 @@ class _InventoryPageState extends ConsumerState<InventoryPage> {
           Padding(
             padding: EdgeInsets.fromLTRB(
               layout.pagePadding,
-              layout.space5,
-              layout.pagePadding,
               layout.space4,
+              layout.pagePadding,
+              layout.space3,
             ),
             child: const AppPageHeader(
               title: 'Estoque atual',
-              subtitle:
-                  'Acompanhe o saldo operacional dos produtos acabados sem alterar a semântica atual do cadastro.',
+              subtitle: 'Confira saldos, custos e produtos abaixo do mínimo.',
               badgeLabel: 'Produtos',
               badgeIcon: Icons.inventory_2_rounded,
               emphasized: true,
@@ -73,7 +72,7 @@ class _InventoryPageState extends ConsumerState<InventoryPage> {
               layout.pagePadding,
               0,
               layout.pagePadding,
-              layout.space4,
+              layout.space3,
             ),
             child: Row(
               children: [
@@ -97,75 +96,57 @@ class _InventoryPageState extends ConsumerState<InventoryPage> {
               ],
             ),
           ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              layout.pagePadding,
-              0,
-              layout.pagePadding,
-              layout.space4,
-            ),
-            child: Wrap(
-              spacing: layout.space3,
-              runSpacing: layout.space3,
-              children: [
-                for (final filter in InventoryListFilter.values)
-                  ChoiceChip(
-                    label: Text(filter.label),
-                    selected: selectedFilter == filter,
-                    onSelected: (_) =>
-                        ref.read(inventoryFilterProvider.notifier).state =
-                            filter,
-                  ),
-              ],
+          SizedBox(
+            height: 44,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: EdgeInsets.symmetric(horizontal: layout.pagePadding),
+              itemCount: InventoryListFilter.values.length,
+              separatorBuilder: (_, __) => SizedBox(width: layout.space3),
+              itemBuilder: (context, index) {
+                final filter = InventoryListFilter.values[index];
+                return ChoiceChip(
+                  label: Text(filter.label),
+                  selected: selectedFilter == filter,
+                  onSelected: (_) =>
+                      ref.read(inventoryFilterProvider.notifier).state = filter,
+                );
+              },
             ),
           ),
           Padding(
             padding: EdgeInsets.fromLTRB(
               layout.pagePadding,
-              0,
+              layout.space2,
               layout.pagePadding,
-              layout.space5,
+              layout.space4,
             ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final buttonWidth = constraints.maxWidth < 360
-                    ? constraints.maxWidth
-                    : (constraints.maxWidth - layout.space4) / 2;
-                return Wrap(
-                  spacing: layout.space4,
-                  runSpacing: layout.space3,
-                  children: [
-                    SizedBox(
-                      width: buttonWidth,
-                      child: OutlinedButton.icon(
-                        onPressed: () =>
-                            context.pushNamed(AppRouteNames.inventoryMovements),
-                        icon: const Icon(Icons.history_rounded),
-                        label: const Text('Ver movimentações'),
-                      ),
-                    ),
-                    SizedBox(
-                      width: buttonWidth,
-                      child: FilledButton.tonalIcon(
-                        onPressed: () => context.pushNamed(
-                          AppRouteNames.inventoryAdjustment,
-                        ),
-                        icon: const Icon(Icons.tune_rounded),
-                        label: const Text('Novo ajuste'),
-                      ),
-                    ),
-                    SizedBox(
-                      width: buttonWidth,
-                      child: OutlinedButton.icon(
-                        onPressed: () =>
-                            context.pushNamed(AppRouteNames.inventoryCounts),
-                        icon: const Icon(Icons.fact_check_rounded),
-                        label: const Text('Inventário físico'),
-                      ),
-                    ),
-                  ],
-                );
-              },
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        context.pushNamed(AppRouteNames.inventoryMovements),
+                    icon: const Icon(Icons.history_rounded),
+                    label: const Text('Movimentações'),
+                  ),
+                  SizedBox(width: layout.space3),
+                  FilledButton.tonalIcon(
+                    onPressed: () =>
+                        context.pushNamed(AppRouteNames.inventoryAdjustment),
+                    icon: const Icon(Icons.tune_rounded),
+                    label: const Text('Novo ajuste'),
+                  ),
+                  SizedBox(width: layout.space3),
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        context.pushNamed(AppRouteNames.inventoryCounts),
+                    icon: const Icon(Icons.fact_check_rounded),
+                    label: const Text('Inventário físico'),
+                  ),
+                ],
+              ),
             ),
           ),
           Expanded(
@@ -186,7 +167,7 @@ class _InventoryPageState extends ConsumerState<InventoryPage> {
                     ),
                     children: [
                       _InventorySummaryPanel(summary: summary),
-                      SizedBox(height: layout.space5),
+                      SizedBox(height: layout.space4),
                       if (items.isEmpty)
                         const AppStateCard(
                           title: 'Nenhum item encontrado',
@@ -206,7 +187,7 @@ class _InventoryPageState extends ConsumerState<InventoryPage> {
                 padding: EdgeInsets.all(layout.pagePadding),
                 child: const AppStateCard(
                   title: 'Carregando estoque',
-              message: 'Buscando o saldo atual de produtos e variações.',
+                  message: 'Buscando o saldo atual de produtos e variações.',
                   tone: AppStateTone.loading,
                   compact: true,
                 ),
