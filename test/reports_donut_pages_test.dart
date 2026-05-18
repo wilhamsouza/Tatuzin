@@ -40,7 +40,9 @@ void main() {
     endExclusive: DateTime(2026, 5, 1),
   );
 
-  testWidgets('ReportsPage renders executive donuts', (tester) async {
+  testWidgets('ReportsPage renders executive hub KPIs and shortcuts', (
+    tester,
+  ) async {
     await _pumpPage(
       tester,
       const ReportsPage(),
@@ -58,10 +60,16 @@ void main() {
       ],
     );
 
-    expect(find.text('Recebimentos por forma'), findsOneWidget);
+    for (final kpi in [
+      'Vendas brutas',
+      'Recebido',
+      'Lucro liquido',
+      'Fiado aberto',
+    ]) {
+      expect(find.text(kpi), findsOneWidget);
+    }
     for (final category in [
       'Vendas',
-      'Produtos',
       'Caixa',
       'Estoque',
       'Clientes',
@@ -70,8 +78,8 @@ void main() {
     ]) {
       expect(find.text(category), findsWidgets);
     }
-    expect(find.text('Saúde do estoque'), findsOneWidget);
-    expect(find.text('Exportar'), findsNothing);
+    expect(find.text('Ver analise detalhada de vendas'), findsOneWidget);
+    expect(find.byTooltip('Exportar'), findsNothing);
   });
 
   testWidgets('SalesReportsPage renders the payment donut', (tester) async {
@@ -91,7 +99,11 @@ void main() {
     );
 
     expect(find.byType(ReportDonutChartCard), findsOneWidget);
-    expect(find.text('Exportar'), findsOneWidget);
+    expect(find.text('Resumo'), findsOneWidget);
+    expect(find.text('Por produto'), findsOneWidget);
+    expect(find.text('Por cliente'), findsOneWidget);
+    expect(find.text('Por periodo'), findsOneWidget);
+    expect(find.byTooltip('Exportar'), findsOneWidget);
   });
 
   testWidgets('CashReportsPage renders the entry origin donut', (tester) async {
@@ -104,7 +116,7 @@ void main() {
     );
 
     expect(find.text('Entradas por origem'), findsOneWidget);
-    expect(find.text('Exportar'), findsOneWidget);
+    expect(find.byTooltip('Exportar'), findsOneWidget);
   });
 
   testWidgets('InventoryReportsPage renders the stock health donut', (
@@ -121,7 +133,7 @@ void main() {
     );
 
     expect(find.text('Saude do estoque'), findsNWidgets(2));
-    expect(find.text('Exportar'), findsOneWidget);
+    expect(find.byTooltip('Exportar'), findsOneWidget);
   });
 
   testWidgets('ProfitabilityReportsPage renders the category donut', (
@@ -141,7 +153,7 @@ void main() {
     );
 
     expect(find.text('Lucro por categoria'), findsOneWidget);
-    expect(find.text('Exportar'), findsOneWidget);
+    expect(find.byTooltip('Exportar'), findsOneWidget);
   });
 
   testWidgets('CustomerReportsPage renders export controls', (tester) async {
@@ -156,7 +168,7 @@ void main() {
     );
 
     expect(find.text('Clientes do periodo'), findsOneWidget);
-    expect(find.text('Exportar'), findsOneWidget);
+    expect(find.byTooltip('Exportar'), findsOneWidget);
   });
 
   testWidgets('PurchaseReportsPage renders export controls', (tester) async {
@@ -171,7 +183,7 @@ void main() {
     );
 
     expect(find.text('Compras do periodo'), findsOneWidget);
-    expect(find.text('Exportar'), findsOneWidget);
+    expect(find.byTooltip('Exportar'), findsOneWidget);
   });
 }
 

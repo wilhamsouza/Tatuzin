@@ -1,8 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../domain/entities/report_sold_product_summary.dart';
+import 'report_empty_state.dart';
 
 class ProductSalesSummaryWidget extends StatefulWidget {
   const ProductSalesSummaryWidget({
@@ -24,23 +28,23 @@ class _ProductSalesSummaryWidgetState extends State<ProductSalesSummaryWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final visibleProducts = _showAll
         ? widget.soldProducts
         : widget.soldProducts.take(5).toList(growable: false);
+    final leaderAmount = widget.soldProducts.fold<int>(
+      0,
+      (leader, product) => math.max(leader, product.soldAmountCents),
+    );
 
     return AppSectionCard(
-      title: 'Produtos mais vendidos',
+      title: 'Top produtos',
       subtitle:
-          'Itens com maior giro no periodo selecionado. Toque em um item para abrir o detalhe.',
+          'Ranking por valor vendido no período. Toque em um item para aprofundar.',
       padding: const EdgeInsets.all(14),
       child: widget.soldProducts.isEmpty
-          ? Text(
-              'Nenhum produto vendido no periodo.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
+          ? const ReportEmptyState(
+              title: 'Ainda não há vendas neste período.',
+              message: 'Tente alterar o período ou limpar os filtros.',
             )
           : Column(
               children: [
@@ -50,6 +54,8 @@ class _ProductSalesSummaryWidgetState extends State<ProductSalesSummaryWidget> {
                   index++
                 ) ...[
                   _ProductSalesRow(
+                    rank: index + 1,
+                    leaderAmountCents: leaderAmount,
                     summary: visibleProducts[index],
                     onTap: widget.onProductTap == null
                         ? null
@@ -81,109 +87,218 @@ class _ProductSalesSummaryWidgetState extends State<ProductSalesSummaryWidget> {
 }
 
 class _ProductSalesRow extends StatelessWidget {
-  const _ProductSalesRow({required this.summary, this.onTap});
+  const _ProductSalesRow({
+    required this.rank,
+    required this.leaderAmountCents,
+    required this.summary,
+    this.onTap,
+  });
 
+  final int rank;
+  final int leaderAmountCents;
   final ReportSoldProductSummary summary;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final tokens = context.appColors;
     final costHigherThanSales =
         summary.totalCostCents > summary.soldAmountCents;
+    final progress = leaderAmountCents <= 0
+        ? 0.0
+        : (summary.soldAmountCents / leaderAmountCents).clamp(0.0, 1.0);
 
     return Tooltip(
       message: onTap == null
           ? 'Produto em destaque'
-          : 'Toque para abrir este produto no relatorio de vendas',
+          : 'Toque para abrir este produto no relatório de vendas',
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer.withValues(alpha: 0.72),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.inventory_2_outlined,
-                  size: 18,
-                  color: colorScheme.primary,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      summary.productName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
+        borderRadius: BorderRadius.circular(context.appLayout.radiusMd),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 340;
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _RankBadge(rank: rank),
+                      const SizedBox(width: 10),
+                      Expanded(child: _ProductText(summary: summary)),
+                      if (!compact) ...[
+                        const SizedBox(width: 10),
+                        _ProductAmount(summary: summary),
+                      ],
+                    ],
+                  ),
+                  if (compact) ...[
+                    const SizedBox(height: 6),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 42),
+                      child: _ProductAmount(summary: summary, compact: true),
+                    ),
+                  ],
+                  if (leaderAmountCents > 0) ...[
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 42),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(
+                          context.appLayout.radiusPill,
+                        ),
+                        child: LinearProgressIndicator(
+                          key: ValueKey('product_ranking_progress_$rank'),
+                          minHeight: 5,
+                          value: progress,
+                          backgroundColor: tokens.disabled.surface,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            tokens.sales.base,
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${AppFormatters.quantityFromMil(summary.quantityMil)} ${summary.unitMeasure} | Venda ${AppFormatters.currencyFromCents(summary.soldAmountCents)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    if (costHigherThanSales) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        'Custo acima do valor vendido no periodo.',
+                  ],
+                  if (costHigherThanSales) ...[
+                    const SizedBox(height: 5),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 42),
+                      child: Text(
+                        'Custo acima do valor vendido no período.',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.error,
+                          color: theme.colorScheme.error,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 118),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      AppFormatters.currencyFromCents(summary.totalCostCents),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      onTap == null ? 'Custo' : 'Abrir detalhe',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
                     ),
                   ],
-                ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
+    );
+  }
+}
+
+class _RankBadge extends StatelessWidget {
+  const _RankBadge({required this.rank});
+
+  final int rank;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.appColors;
+
+    return Container(
+      width: 32,
+      height: 32,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: tokens.sales.surface,
+        borderRadius: BorderRadius.circular(context.appLayout.radiusSm),
+        border: Border.all(color: tokens.sales.border),
+      ),
+      child: Text(
+        '#$rank',
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: tokens.sales.onSurface,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductText extends StatelessWidget {
+  const _ProductText({required this.summary});
+
+  final ReportSoldProductSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final quantity = summary.quantityMil > 0
+        ? '${AppFormatters.quantityFromMil(summary.quantityMil)} ${summary.unitMeasure.trim()} vendidos'
+              .trim()
+        : 'Quantidade não informada';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          summary.productName.trim().isEmpty
+              ? 'Produto sem nome'
+              : summary.productName.trim(),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          quantity,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProductAmount extends StatelessWidget {
+  const _ProductAmount({required this.summary, this.compact = false});
+
+  final ReportSoldProductSummary summary;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final content = Column(
+      crossAxisAlignment: compact
+          ? CrossAxisAlignment.start
+          : CrossAxisAlignment.end,
+      children: [
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: compact ? Alignment.centerLeft : Alignment.centerRight,
+          child: Text(
+            AppFormatters.currencyFromCents(summary.soldAmountCents),
+            maxLines: 1,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          'Valor vendido',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+
+    if (compact) {
+      return content;
+    }
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 118),
+      child: content,
     );
   }
 }

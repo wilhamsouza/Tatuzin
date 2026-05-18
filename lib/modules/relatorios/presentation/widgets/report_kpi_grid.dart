@@ -10,6 +10,7 @@ class ReportKpiItem {
     required this.icon,
     this.accentColor,
     this.onTap,
+    this.delta,
   });
 
   final String label;
@@ -18,6 +19,7 @@ class ReportKpiItem {
   final IconData icon;
   final Color? accentColor;
   final VoidCallback? onTap;
+  final AppMetricDelta? delta;
 }
 
 class ReportKpiGrid extends StatelessWidget {
@@ -27,34 +29,48 @@ class ReportKpiGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    final crossAxisCount = width >= 1100
-        ? 4
-        : width >= 760
-        ? 3
-        : 2;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final useSingleColumn = width < 390;
+        final crossAxisCount = useSingleColumn
+            ? 1
+            : width >= 1100
+            ? 4
+            : width >= 760
+            ? 3
+            : 2;
 
-    final itemHeight = width >= 760 ? 154.0 : 166.0;
+        final itemHeight = useSingleColumn
+            ? 132.0
+            : width >= 760
+            ? 176.0
+            : 190.0;
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: items.length,
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        mainAxisExtent: itemHeight,
-      ),
-      itemBuilder: (context, index) {
-        final item = items[index];
-        return AppMetricCard(
-          label: item.label,
-          value: item.value,
-          caption: item.caption,
-          icon: item.icon,
-          accentColor: item.accentColor,
-          onTap: item.onTap,
+        return GridView.builder(
+          key: const ValueKey('report_kpi_grid'),
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: items.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            mainAxisExtent: itemHeight,
+          ),
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return AppMetricCard(
+              label: item.label,
+              value: item.value,
+              caption: item.caption,
+              icon: item.icon,
+              accentColor: item.accentColor,
+              onTap: item.onTap,
+              horizontal: useSingleColumn,
+              delta: item.delta,
+            );
+          },
         );
       },
     );

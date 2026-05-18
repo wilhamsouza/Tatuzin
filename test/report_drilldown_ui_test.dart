@@ -83,18 +83,128 @@ void main() {
 
     await _pumpRouterFlow(tester, container: container, router: router);
 
-    await tester.tap(find.text('Vendas líquidas'));
+    await tester.tap(find.text('Vendas brutas'));
     await tester.pumpAndSettle();
 
     expect(find.text('Relatorio de vendas'), findsOneWidget);
-    expect(find.text('Drill-down ativo'), findsOneWidget);
+    expect(find.textContaining('Drill:'), findsOneWidget);
     expect(
       container
           .read(reportPageSessionProvider)
           .drilldownFor(ReportPageKey.sales)
           ?.sourceLabel,
-      'KPI Vendas líquidas',
+      'KPI Vendas brutas',
     );
+  });
+
+  testWidgets('hub shortcut with unavailable route shows safe feedback', (
+    tester,
+  ) async {
+    _prepareSurface(tester);
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          name: AppRouteNames.reports,
+          path: '/',
+          builder: (context, state) => const ReportsPage(),
+        ),
+      ],
+    );
+    final container = _buildContainer(
+      extraOverrides: [
+        authControllerProvider.overrideWith(_TestAuthController.new),
+        authStatusProvider.overrideWith((ref) => _authStatus()),
+        accountCloudStatusProvider.overrideWith((ref) => _cloudStatus()),
+        internalMobileSurfaceAccessProvider.overrideWith(
+          (ref) => const InternalMobileSurfaceAccess(
+            canOpenTechnicalSystem: false,
+            canOpenAdminCloud: false,
+          ),
+        ),
+        appRouterProvider.overrideWith((ref) => router),
+        reportOverviewProvider.overrideWith((ref) async => _overview(filter)),
+        reportPreviousOverviewProvider.overrideWith(
+          (ref) async => _overview(filter, netSalesCents: 90000),
+        ),
+        topProductsReportProvider.overrideWith(
+          (ref) async => const <ReportSoldProductSummary>[],
+        ),
+        inventoryHealthReportProvider.overrideWith(
+          (ref) async => _inventorySummary(filter),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await _pumpRouterFlow(tester, container: container, router: router);
+    await tester.dragUntilVisible(
+      find.text('Estoque'),
+      find.byType(ListView),
+      const Offset(0, -500),
+    );
+
+    await tester.tap(find.text('Estoque').last);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ReportsPage), findsOneWidget);
+    expect(
+      find.textContaining('Nao foi possivel abrir este relatorio'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('hub CTA opens sales reports page', (tester) async {
+    _prepareSurface(tester);
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          name: AppRouteNames.reports,
+          path: '/',
+          builder: (context, state) => const ReportsPage(),
+        ),
+        GoRoute(
+          name: AppRouteNames.salesReports,
+          path: '/sales',
+          builder: (context, state) => const SalesReportsPage(),
+        ),
+      ],
+    );
+    final container = _buildContainer(
+      extraOverrides: [
+        authControllerProvider.overrideWith(_TestAuthController.new),
+        authStatusProvider.overrideWith((ref) => _authStatus()),
+        accountCloudStatusProvider.overrideWith((ref) => _cloudStatus()),
+        internalMobileSurfaceAccessProvider.overrideWith(
+          (ref) => const InternalMobileSurfaceAccess(
+            canOpenTechnicalSystem: false,
+            canOpenAdminCloud: false,
+          ),
+        ),
+        appRouterProvider.overrideWith((ref) => router),
+        reportOverviewProvider.overrideWith((ref) async => _overview(filter)),
+        salesTrendProvider.overrideWith((ref) async => _salesTrend()),
+        topProductsReportProvider.overrideWith(
+          (ref) async => const <ReportSoldProductSummary>[],
+        ),
+        topVariantsReportProvider.overrideWith(
+          (ref) async => const <ReportVariantSummary>[],
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await _pumpRouterFlow(tester, container: container, router: router);
+    await tester.dragUntilVisible(
+      find.text('Ver analise detalhada de vendas'),
+      find.byType(ListView),
+      const Offset(0, -500),
+    );
+
+    await tester.tap(find.text('Abrir'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Relatorio de vendas'), findsOneWidget);
   });
 
   testWidgets('sales drill-down can be cleared back to the previous view', (
@@ -137,17 +247,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('Por produto'));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.text('Cafe Especial').first);
     await tester.pumpAndSettle();
 
     expect(container.read(reportFilterProvider).productId, 1);
-    expect(find.text('Drill-down ativo'), findsOneWidget);
+    expect(find.textContaining('Drill:'), findsOneWidget);
 
-    await tester.tap(find.text('Voltar ao recorte anterior'));
+    await tester.tap(find.text('Limpar'));
     await tester.pumpAndSettle();
 
     expect(container.read(reportFilterProvider).productId, isNull);
-    expect(find.text('Drill-down ativo'), findsNothing);
+    expect(find.textContaining('Drill:'), findsNothing);
   });
 }
 

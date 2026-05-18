@@ -26,7 +26,7 @@ void main() {
       _wrap(container, const ReportFilterToolbar(page: ReportPageKey.sales)),
     );
 
-    await tester.tap(find.text('Ajustar filtros'));
+    await tester.tap(find.byTooltip('Ajustar filtros'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Todas as formas'));
@@ -90,6 +90,8 @@ void main() {
         _wrap(container, const ReportFilterToolbar(page: ReportPageKey.sales)),
       );
 
+      await tester.tap(_moreOptionsButton());
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Limpar filtros'));
       await tester.pumpAndSettle();
 
@@ -115,6 +117,8 @@ void main() {
       ),
     );
 
+    await tester.tap(_moreOptionsButton());
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Por categoria'));
     await tester.pumpAndSettle();
 
@@ -176,7 +180,7 @@ void main() {
       container.read(reportFilterProvider).paymentMethod,
       PaymentMethod.pix,
     );
-    expect(find.text('Forma: Pix'), findsOneWidget);
+    expect(find.text('1 filtro'), findsOneWidget);
   });
 }
 
@@ -224,4 +228,10 @@ void _prepareSurface(WidgetTester tester) {
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+Finder _moreOptionsButton() {
+  return find.byWidgetPredicate(
+    (widget) => widget is PopupMenuButton && widget.tooltip == 'Mais opcoes',
+  );
 }

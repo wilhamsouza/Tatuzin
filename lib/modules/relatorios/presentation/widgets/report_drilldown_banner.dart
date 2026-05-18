@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../data/support/report_filter_preset_support.dart';
 import '../providers/report_providers.dart';
-import 'report_context_badge.dart';
 
 class ReportDrilldownBanner extends ConsumerWidget {
   const ReportDrilldownBanner({super.key, required this.page});
@@ -24,48 +23,45 @@ class ReportDrilldownBanner extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return Container(
+      constraints: const BoxConstraints(minHeight: 44),
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: colors.brand.base.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(context.appLayout.radiusLg),
-        border: Border.all(color: colors.brand.base.withValues(alpha: 0.18)),
+        color: colors.info.surface,
+        borderRadius: BorderRadius.circular(context.appLayout.radiusMd),
+        border: Border.all(color: colors.info.border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text(
-                'Drill-down ativo',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              ReportContextBadge(label: drilldown.bannerLabel),
-              if (drilldown.isFocusOnly)
-                const ReportContextBadge(
-                  label: 'Mesmo recorte base',
-                  icon: Icons.filter_center_focus_rounded,
-                ),
-            ],
+          Icon(
+            drilldown.isFocusOnly
+                ? Icons.filter_center_focus_rounded
+                : Icons.travel_explore_rounded,
+            size: 18,
+            color: colors.info.base,
           ),
-          const SizedBox(height: 6),
-          Text(
-            drilldown.message,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Drill: ${drilldown.bannerLabel}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: colors.info.onSurface,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          TextButton.icon(
+          const SizedBox(width: 8),
+          TextButton(
             onPressed: () =>
                 ref.read(reportFilterProvider.notifier).clearDrilldown(page),
-            icon: const Icon(Icons.undo_rounded),
-            label: const Text('Voltar ao recorte anterior'),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(64, 36),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('Limpar'),
           ),
         ],
       ),
