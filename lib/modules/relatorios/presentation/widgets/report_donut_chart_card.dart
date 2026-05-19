@@ -62,8 +62,8 @@ class _ReportDonutChartCardState extends State<ReportDonutChartCard> {
               builder: (context, constraints) {
                 final isCompact = constraints.maxWidth < 720;
                 final spacing = isCompact
-                    ? context.appLayout.space6
-                    : context.appLayout.space7;
+                    ? context.appLayout.space5
+                    : context.appLayout.space6;
                 final chart = _buildChart(context, isCompact: isCompact);
                 final legend = _buildLegend(context);
 
@@ -101,13 +101,13 @@ class _ReportDonutChartCardState extends State<ReportDonutChartCard> {
             constraints.maxWidth.isFinite && constraints.maxWidth > 0
             ? constraints.maxWidth
             : 220.0;
-        final maxChartSize = math.min(maxWidth, isCompact ? 208.0 : 224.0);
-        final minChartSize = math.min(maxChartSize, isCompact ? 164.0 : 180.0);
-        final targetSize = maxWidth * (isCompact ? 0.58 : 0.8);
+        final maxChartSize = math.min(maxWidth, 170.0);
+        final minChartSize = math.min(maxChartSize, 132.0);
+        final targetSize = maxWidth * 0.55;
         final safeSize = targetSize.clamp(minChartSize, maxChartSize);
         final radius = safeSize * 0.36;
         final centerSpace = safeSize * 0.25;
-        final centerLabelSize = centerSpace * 1.72;
+        final centerLabelSize = centerSpace * 1.9;
         final activeRadiusDelta = (safeSize * 0.04).clamp(4.0, 8.0);
         final activeSlice = _activeIndex == null
             ? null
@@ -133,13 +133,10 @@ class _ReportDonutChartCardState extends State<ReportDonutChartCard> {
                       touchCallback: (event, response) {
                         final touched = response?.touchedSection;
                         if (!event.isInterestedForInteractions ||
-                            touched == null) {
-                          if (_activeIndex != null || _tooltipOffset != null) {
-                            setState(() {
-                              _activeIndex = null;
-                              _tooltipOffset = null;
-                            });
-                          }
+                            touched == null ||
+                            touched.touchedSection == null ||
+                            !_isValidSliceIndex(touched.touchedSectionIndex)) {
+                          _clearTouchState();
                           return;
                         }
                         setState(() {
@@ -185,6 +182,20 @@ class _ReportDonutChartCardState extends State<ReportDonutChartCard> {
         );
       },
     );
+  }
+
+  bool _isValidSliceIndex(int index) {
+    return index >= 0 && index < widget.slices.length;
+  }
+
+  void _clearTouchState() {
+    if (_activeIndex == null && _tooltipOffset == null) {
+      return;
+    }
+    setState(() {
+      _activeIndex = null;
+      _tooltipOffset = null;
+    });
   }
 
   PieChartSectionData _buildSection(

@@ -1,6 +1,7 @@
 import 'package:erp_pdv_app/app/theme/app_theme.dart';
 import 'package:erp_pdv_app/modules/relatorios/presentation/widgets/report_donut_chart_card.dart';
 import 'package:erp_pdv_app/modules/relatorios/domain/entities/report_donut_slice.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -77,5 +78,73 @@ void main() {
     expect(find.text('R\$ 300,00'), findsOneWidget);
     expect(find.text('60%'), findsOneWidget);
     expect(find.text('Pix lidera os recebimentos.'), findsOneWidget);
+  });
+
+  testWidgets('ignores center taps on the inventory health donut', (
+    tester,
+  ) async {
+    await pumpCard(
+      tester,
+      const ReportDonutChartCard(
+        title: 'Saude do estoque',
+        slices: <ReportDonutSlice>[
+          ReportDonutSlice(
+            label: 'Saudavel',
+            value: 8,
+            percentage: 80,
+            color: Color(0xFF166534),
+            formattedValue: '8 item(ns)',
+          ),
+          ReportDonutSlice(
+            label: 'Abaixo do minimo',
+            value: 2,
+            percentage: 20,
+            color: Color(0xFFF59E0B),
+            formattedValue: '2 item(ns)',
+          ),
+        ],
+        totalLabel: 'Itens monitorados',
+        totalValue: '10',
+      ),
+      surfaceSize: const Size(900, 1200),
+    );
+
+    expect(find.text('Itens monitorados'), findsOneWidget);
+
+    await tester.tapAt(tester.getCenter(find.byType(PieChart)));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('keeps the donut compact on wide and narrow widths', (
+    tester,
+  ) async {
+    const card = ReportDonutChartCard(
+      title: 'Saude do estoque',
+      slices: <ReportDonutSlice>[
+        ReportDonutSlice(
+          label: 'Saudavel',
+          value: 10,
+          percentage: 100,
+          color: Color(0xFF166534),
+          formattedValue: '10 item(ns)',
+        ),
+      ],
+      totalLabel: 'Itens monitorados',
+      totalValue: '10',
+    );
+
+    await pumpCard(tester, card, surfaceSize: const Size(900, 1200));
+    final wideChartSize = tester.getSize(find.byType(PieChart));
+    expect(wideChartSize.width, lessThanOrEqualTo(170));
+    expect(wideChartSize.height, lessThanOrEqualTo(170));
+    expect(tester.takeException(), isNull);
+
+    await pumpCard(tester, card, surfaceSize: const Size(320, 1000));
+    final narrowChartSize = tester.getSize(find.byType(PieChart));
+    expect(narrowChartSize.width, lessThanOrEqualTo(170));
+    expect(narrowChartSize.height, lessThanOrEqualTo(170));
+    expect(tester.takeException(), isNull);
   });
 }
