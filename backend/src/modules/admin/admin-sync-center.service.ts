@@ -1065,7 +1065,21 @@ export class AdminSyncCenterService {
     const [company, license] = await Promise.all([
       tx.company.findUniqueOrThrow({
         where: { id: event.companyId },
-        select: { id: true, name: true },
+        select: {
+          id: true,
+          name: true,
+          legalName: true,
+          documentNumber: true,
+          receiptDisplayName: true,
+          receiptDocument: true,
+          receiptPhone: true,
+          receiptAddress: true,
+          receiptFooterMessage: true,
+          showDocumentOnReceipt: true,
+          showPhoneOnReceipt: true,
+          showAddressOnReceipt: true,
+          showFooterMessageOnReceipt: true,
+        },
       }),
       tx.license.findUnique({
         where: { companyId: event.companyId },
@@ -1077,6 +1091,17 @@ export class AdminSyncCenterService {
       company: {
         id: company.id,
         name: company.name,
+        legalName: company.legalName,
+        documentNumber: company.documentNumber,
+        receiptDisplayName: company.receiptDisplayName,
+        receiptDocument: company.receiptDocument,
+        receiptPhone: company.receiptPhone,
+        receiptAddress: company.receiptAddress,
+        receiptFooterMessage: company.receiptFooterMessage,
+        showDocumentOnReceipt: company.showDocumentOnReceipt,
+        showPhoneOnReceipt: company.showPhoneOnReceipt,
+        showAddressOnReceipt: company.showAddressOnReceipt,
+        showFooterMessageOnReceipt: company.showFooterMessageOnReceipt,
         setupCompleted: true,
       },
       membership: {
