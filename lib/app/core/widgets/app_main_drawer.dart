@@ -28,7 +28,7 @@ class AppMainDrawer extends ConsumerWidget {
     final internalAccess = ref.watch(internalMobileSurfaceAccessProvider);
     final currentPath = GoRouterState.of(context).uri.path;
     final accountModeLabel = accountCloud.accountModeLabel;
-    final cloudLabel = accountCloud.statusLabel;
+    final cloudLabel = accountCloud.commercialBadgeLabel;
 
     bool selected(String path) {
       if (path == AppRoutePaths.dashboard) {
@@ -379,9 +379,14 @@ class AppMainDrawer extends ConsumerWidget {
                     label: 'SISTEMA',
                     children: [
                       _DrawerItem(
-                        label: 'Minha conta',
+                        label: 'Conta',
                         icon: Icons.person_outline_rounded,
                         isSelected: selected(AppRoutePaths.accountCloud),
+                        statusBadge: AppStatusBadge(
+                          label: accountCloud.commercialBadgeLabel,
+                          tone: accountCloud.commercialTone,
+                          icon: accountCloud.commercialStatusIcon,
+                        ),
                         onTap: () => _navigateTo(
                           context,
                           currentPath: currentPath,
@@ -401,17 +406,6 @@ class AppMainDrawer extends ConsumerWidget {
                         ),
                       ),
                       _DrawerItem(
-                        label: 'Assinatura e planos',
-                        icon: Icons.workspace_premium_outlined,
-                        isSelected: selected(AppRoutePaths.subscription),
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.subscription,
-                          routeName: AppRouteNames.subscription,
-                        ),
-                      ),
-                      _DrawerItem(
                         label: 'Configurações',
                         icon: Icons.settings_rounded,
                         isSelected: selected(AppRoutePaths.settings),
@@ -420,17 +414,6 @@ class AppMainDrawer extends ConsumerWidget {
                           currentPath: currentPath,
                           path: AppRoutePaths.settings,
                           routeName: AppRouteNames.settings,
-                        ),
-                      ),
-                      _DrawerItem(
-                        label: 'Backup',
-                        icon: Icons.cloud_upload_outlined,
-                        isSelected: selected(AppRoutePaths.backup),
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.backup,
-                          routeName: AppRouteNames.backup,
                         ),
                       ),
                     ],
@@ -700,12 +683,14 @@ class _DrawerItem extends StatelessWidget {
     required this.icon,
     required this.isSelected,
     required this.onTap,
+    this.statusBadge,
   });
 
   final String label;
   final IconData icon;
   final bool isSelected;
   final VoidCallback onTap;
+  final Widget? statusBadge;
 
   @override
   Widget build(BuildContext context) {
@@ -749,13 +734,15 @@ class _DrawerItem extends StatelessWidget {
             fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
           ),
         ),
-        trailing: isSelected
-            ? Icon(
-                Icons.chevron_right_rounded,
-                color: colorScheme.primary,
-                size: layout.iconMd,
-              )
-            : null,
+        trailing:
+            statusBadge ??
+            (isSelected
+                ? Icon(
+                    Icons.chevron_right_rounded,
+                    color: colorScheme.primary,
+                    size: layout.iconMd,
+                  )
+                : null),
         onTap: onTap,
       ),
     );

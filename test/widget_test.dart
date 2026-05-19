@@ -17,6 +17,8 @@ import 'package:erp_pdv_app/modules/dashboard/presentation/providers/dashboard_p
 import 'package:erp_pdv_app/modules/estoque/domain/entities/inventory_count_session.dart';
 import 'package:erp_pdv_app/modules/estoque/domain/entities/inventory_item.dart';
 import 'package:erp_pdv_app/modules/estoque/presentation/providers/inventory_providers.dart';
+import 'package:erp_pdv_app/modules/produtos/domain/entities/product.dart';
+import 'package:erp_pdv_app/modules/produtos/presentation/providers/product_providers.dart';
 import 'package:erp_pdv_app/modules/system/presentation/providers/system_providers.dart';
 import 'package:erp_pdv_app/app/routes/route_names.dart';
 import 'package:flutter/material.dart';
@@ -51,13 +53,13 @@ void main() {
     );
 
     await tester.scrollUntilVisible(
-      find.text('Estoque do produto'),
+      find.text('Produtos'),
       120,
       scrollable: drawerScrollable,
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Estoque do produto'), findsOneWidget);
+    expect(find.text('Produtos'), findsOneWidget);
 
     await tester.scrollUntilVisible(
       find.text('Configurações'),
@@ -66,7 +68,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('Conta'), findsOneWidget);
+    expect(find.text('Empresa'), findsOneWidget);
     expect(find.text('Configurações'), findsOneWidget);
+    expect(find.text('Backup'), findsNothing);
+    expect(find.text('Assinatura e planos'), findsNothing);
     expect(find.text('Sistema'), findsNothing);
     expect(find.text('Admin cloud'), findsNothing);
 
@@ -78,40 +84,32 @@ void main() {
     ).goNamed(AppRouteNames.accountCloud);
     await tester.pumpAndSettle();
 
-    expect(find.text('Conta e nuvem'), findsAtLeastNWidgets(1));
-    expect(find.text('Sua conta'), findsOneWidget);
+    expect(find.text('Conta'), findsAtLeastNWidgets(1));
+    expect(find.text('Sessão atual'), findsOneWidget);
 
     final accountScrollable = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(
-      find.text('Sua empresa'),
+      find.text('Assinatura'),
       200,
       scrollable: accountScrollable,
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Sua empresa'), findsOneWidget);
-    expect(find.text('Conta conectada'), findsWidgets);
+    expect(find.text('Assinatura'), findsOneWidget);
 
     await tester.scrollUntilVisible(
       find.text('Nuvem'),
       200,
       scrollable: accountScrollable,
     );
-    await tester.scrollUntilVisible(
-      find.text('Ajuda e suporte'),
-      200,
-      scrollable: accountScrollable,
-    );
     await tester.pumpAndSettle();
 
     expect(find.text('Nuvem'), findsOneWidget);
-    expect(find.text('Sessão'), findsOneWidget);
-    expect(find.text('Ajuda e suporte'), findsOneWidget);
     expect(find.text('Ferramentas internas'), findsNothing);
     expect(find.text('Painel cloud interno'), findsNothing);
   });
 
-  testWidgets('abre a tela de estoque pelo drawer', (tester) async {
+  testWidgets('abre a tela de produtos pelo drawer', (tester) async {
     tester.view.physicalSize = const Size(360, 640);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -123,6 +121,7 @@ void main() {
         inventoryItemsProvider.overrideWith(
           (ref) async => const <InventoryItem>[],
         ),
+        productListProvider.overrideWith((ref) async => const <Product>[]),
       ],
     );
 
@@ -137,20 +136,18 @@ void main() {
     );
 
     await tester.scrollUntilVisible(
-      find.text('Estoque do produto'),
+      find.text('Produtos'),
       120,
       scrollable: drawerScrollable,
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Estoque do produto'));
+    await tester.tap(find.text('Produtos'));
     await tester.pumpAndSettle();
 
     expect(find.byType(Drawer), findsNothing);
-    expect(find.text('Estoque atual'), findsOneWidget);
-    expect(find.text('Ver movimentações'), findsOneWidget);
-    expect(find.text('Novo ajuste'), findsOneWidget);
-    expect(find.text('Inventário físico'), findsOneWidget);
+    expect(find.text('Produtos'), findsWidgets);
+    expect(find.text('Novo produto'), findsAtLeastNWidgets(1));
     expect(tester.takeException(), isNull);
   });
 
@@ -323,13 +320,10 @@ void main() {
     );
 
     await tester.scrollUntilVisible(
-      find.text('Estoque do produto'),
+      find.text('Inventário físico'),
       120,
       scrollable: drawerScrollable,
     );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Estoque do produto'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Inventário físico'));

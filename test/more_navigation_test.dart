@@ -25,7 +25,7 @@ void main() {
         _destinationRoute(
           AppRoutePaths.accountCloud,
           AppRouteNames.accountCloud,
-          'Minha conta destino',
+          'Conta destino',
         ),
         _destinationRoute(
           AppRoutePaths.company,
@@ -66,12 +66,13 @@ void main() {
     }
 
     final destinations = <String, String>{
-      'Minha conta': 'Minha conta destino',
+      'Conta': 'Conta destino',
       'Empresa': 'Empresa destino',
-      'Backup': 'Backup destino',
       'Configurações': 'Configurações destino',
-      'Assinatura e planos': 'Assinatura e planos destino',
     };
+
+    expect(find.text('Backup'), findsNothing);
+    expect(find.text('Assinatura e planos'), findsNothing);
 
     for (final entry in destinations.entries) {
       router.go(AppRoutePaths.more);

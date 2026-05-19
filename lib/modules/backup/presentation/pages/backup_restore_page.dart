@@ -3,10 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/session/auth_provider.dart';
+import '../../../../app/core/sync/sync_batch_result.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
+import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
+import '../../../account/presentation/providers/account_cloud_providers.dart';
+import '../../../system/presentation/providers/system_providers.dart';
 import '../../domain/entities/backup_file_info.dart';
 import '../../domain/entities/backup_validation_result.dart';
 import '../providers/backup_providers.dart';
@@ -19,27 +24,38 @@ class BackupRestorePage extends ConsumerWidget {
     final actionState = ref.watch(backupActionControllerProvider);
     final lastBackup = ref.watch(lastGeneratedBackupProvider);
     final restoreCandidate = ref.watch(selectedRestoreCandidateProvider);
+    final authStatus = ref.watch(authStatusProvider);
+    final accountCloud = ref.watch(accountCloudStatusProvider);
+    final syncActionState = ref.watch(catalogSyncControllerProvider);
     final isBusy = actionState.isLoading;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Backup e restauração')),
+      appBar: AppBar(title: const Text('Nuvem e backup')),
       drawer: const AppMainDrawer(),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
-          const AppPageHeader(
-            title: 'Backup e restaura\u00e7\u00e3o',
-            subtitle:
-                'Proteja a base local e restaure dados com uma experi\u00eancia mais clara e segura.',
-            badgeLabel: 'Prote\u00e7\u00e3o local de dados',
-            badgeIcon: Icons.shield_outlined,
+          AppPageHeader(
+            title: 'Nuvem e backup',
+            subtitle: 'Status dos dados e proteção local.',
+            badgeLabel: accountCloud.commercialStatusLabel,
+            badgeIcon: accountCloud.commercialStatusIcon,
             emphasized: true,
+          ),
+          const SizedBox(height: 16),
+          _CloudDetailCard(
+            accountCloud: accountCloud,
+            isRemoteAuthenticated: authStatus.isRemoteAuthenticated,
+            isSyncing: syncActionState.isLoading,
+            onSync: syncActionState.isLoading
+                ? null
+                : () => _syncNow(context, ref),
           ),
           const SizedBox(height: 16),
           AppSectionCard(
             title: 'Fazer backup',
             subtitle:
-                'Gera um arquivo reutilizavel da base local atual sem alterar o banco em uso.',
+                'Gera um arquivo reutilizavel da base local atual sem alterar os dados em uso.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -176,6 +192,27 @@ class BackupRestorePage extends ConsumerWidget {
     }
   }
 
+  Future<void> _syncNow(BuildContext context, WidgetRef ref) async {
+    try {
+      final result = await ref
+          .read(catalogSyncControllerProvider.notifier)
+          .syncAll();
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_syncResultMessage(result))));
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível sincronizar agora: $error')),
+      );
+    }
+  }
+
   Future<void> _selectRestoreCandidate(
     BuildContext context,
     WidgetRef ref,
@@ -216,7 +253,7 @@ class BackupRestorePage extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Restauracao concluida com sucesso. Backup de seguranca criado em ${result.safetyBackup.fileName}.',
+            'Restauração concluída com sucesso. Backup de segurança criado em ${result.safetyBackup.fileName}.',
           ),
         ),
       );
@@ -236,13 +273,13 @@ class BackupRestorePage extends ConsumerWidget {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text('Confirmar restauracao'),
+              title: const Text('Confirmar restauração'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'A restauracao substituira os dados atuais do aplicativo pela base do backup selecionado.',
+                    'A restauração substituirá os dados atuais do aplicativo pela base do backup selecionado.',
                   ),
                   const SizedBox(height: 12),
                   const Text(
@@ -277,6 +314,67 @@ class BackupRestorePage extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+}
+
+class _CloudDetailCard extends StatelessWidget {
+  const _CloudDetailCard({
+    required this.accountCloud,
+    required this.isRemoteAuthenticated,
+    required this.isSyncing,
+    required this.onSync,
+  });
+
+  final AccountCloudStatusSnapshot accountCloud;
+  final bool isRemoteAuthenticated;
+  final bool isSyncing;
+  final VoidCallback? onSync;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return AppSectionCard(
+      title: 'Nuvem',
+      subtitle: 'Resumo dos dados deste dispositivo.',
+      trailing: AppStatusBadge(
+        label: accountCloud.commercialStatusLabel,
+        tone: accountCloud.commercialTone,
+        icon: accountCloud.commercialStatusIcon,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            accountCloud.commercialStatusMessage,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            accountCloud.lastSyncedAt == null
+                ? 'Última sincronização: ainda não concluída'
+                : 'Última sincronização: ${AppFormatters.shortDateTime(accountCloud.lastSyncedAt!)}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (accountCloud.pendingCount > 0) ...[
+            const SizedBox(height: 6),
+            Text('Aguardando envio: ${accountCloud.pendingCount}'),
+          ],
+          if (isRemoteAuthenticated) ...[
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              onPressed: onSync,
+              icon: const Icon(Icons.sync_rounded),
+              label: Text(isSyncing ? 'Sincronizando...' : 'Sincronizar'),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -346,4 +444,15 @@ String _formatFileSize(int bytes) {
     return '${(bytes / 1024).toStringAsFixed(1)} KB';
   }
   return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+}
+
+String _syncResultMessage(SyncBatchResult result) {
+  final hasAttention =
+      result.failedCount > 0 ||
+      result.blockedCount > 0 ||
+      result.conflictCount > 0;
+  if (!hasAttention) {
+    return 'Nuvem atualizada. Enviados: ${result.syncedCount}.';
+  }
+  return 'A nuvem precisa de atenção. Seus dados continuam salvos neste aparelho.';
 }

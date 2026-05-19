@@ -2,20 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../app/core/entitlements/plan_entitlements.dart';
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/session/app_session.dart';
 import '../../../../app/core/session/auth_provider.dart';
 import '../../../../app/core/session/session_feedback.dart';
 import '../../../../app/core/session/session_provider.dart';
-import '../../../../app/core/sync/sync_display_state.dart';
 import '../../../../app/core/sync/sync_batch_result.dart';
 import '../../../../app/core/sync/sync_providers.dart';
-import '../../../../app/core/sync/sync_queue_feature_summary.dart';
 import '../../../../app/core/widgets/app_button.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
+import '../../../billing/domain/billing_models.dart';
+import '../../../billing/presentation/providers/billing_providers.dart';
 import '../../../system/presentation/providers/system_providers.dart';
 import '../providers/account_cloud_providers.dart';
 
@@ -24,438 +26,59 @@ class AccountCloudPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final authState = ref.watch(authControllerProvider);
     final authStatus = ref.watch(authStatusProvider);
+    final session = ref.watch(appSessionProvider);
     final company = ref.watch(currentCompanyContextProvider);
     final accountCloud = ref.watch(accountCloudStatusProvider);
-    final autoSyncSnapshot = ref.watch(autoSyncSnapshotProvider);
     final syncActionState = ref.watch(catalogSyncControllerProvider);
-    final syncSummariesAsync = authStatus.isRemoteAuthenticated
-        ? ref.watch(syncQueueFeatureSummariesProvider)
+    final billingStatusAsync = authStatus.isRemoteAuthenticated
+        ? ref.watch(billingStatusProvider)
         : null;
-    final hasSyncAttention =
-        authStatus.isRemoteAuthenticated &&
-        (accountCloud.errorCount > 0 ||
-            accountCloud.blockedCount > 0 ||
-            accountCloud.conflictCount > 0);
-    final syncIssuesAsync = hasSyncAttention
-        ? ref.watch(accountCloudAttentionItemsProvider)
-        : null;
-    final internalAccess = ref.watch(internalMobileSurfaceAccessProvider);
+    final billingStatus =
+        billingStatusAsync?.valueOrNull ?? _fallbackBillingStatus(session);
+    final canManageSubscription =
+        billingStatus.canManageBilling || session.isCompanyOwner;
 
     return Scaffold(
-      appBar: AppBar(titleSpacing: 0, title: const _AccountCloudAppBarTitle()),
+      appBar: AppBar(titleSpacing: 0, title: const _AccountAppBarTitle()),
       drawer: const AppMainDrawer(),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
         children: [
           AppPageHeader(
-            title: 'Conta e nuvem',
-            subtitle:
-                'Veja sua conta, sua empresa e como a nuvem está ajudando o seu negócio sem entrar em detalhes técnicos.',
-            badgeLabel: accountCloud.statusLabel,
-            badgeIcon: accountCloud.icon,
+            title: 'Conta',
+            subtitle: 'Acesso, assinatura e nuvem',
+            badgeLabel: accountCloud.commercialStatusLabel,
+            badgeIcon: accountCloud.commercialStatusIcon,
             emphasized: true,
           ),
-          if (hasSyncAttention) ...[
-            const SizedBox(height: 18),
-            AppSectionCard(
-              title: 'Itens com revisão',
-              subtitle:
-                  'Detalhes reais da fila local para entender o que precisa de nova tentativa ou ajuste.',
-              child: syncIssuesAsync!.when(
-                data: (issues) {
-                  if (issues.isEmpty) {
-                    return Text(
-                      'A fila informou atenção, mas nenhum item detalhado foi encontrado nesta leitura.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    );
-                  }
-                  return Column(
-                    children: [
-                      for (final issue in issues) ...[
-                        _SyncIssueTile(issue: issue),
-                        const SizedBox(height: 10),
-                      ],
-                    ],
-                  );
-                },
-                loading: () => Text(
-                  'Carregando detalhes da fila...',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                error: (error, _) => Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Não foi possível carregar os detalhes da fila: $error',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.error,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    AppButton.secondary(
-                      label: 'Tentar novamente',
-                      icon: Icons.refresh_rounded,
-                      compact: true,
-                      onPressed: () =>
-                          ref.invalidate(accountCloudAttentionItemsProvider),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
           const SizedBox(height: 18),
-          if (authStatus.isRemoteAuthenticated) ...[
-            AppSectionCard(
-              title: 'Fila de sincronização',
-              subtitle:
-                  'Resumo por módulo para saber o que ainda precisa sair deste aparelho.',
-              child: syncSummariesAsync!.when(
-                data: (summaries) {
-                  final activeSummaries = summaries
-                      .where(
-                        (summary) =>
-                            summary.pendingForDisplay > 0 ||
-                            summary.activeProcessingCount > 0 ||
-                            summary.errorCount > 0 ||
-                            summary.blockedCount > 0 ||
-                            summary.conflictCount > 0,
-                      )
-                      .toList(growable: false);
-                  if (activeSummaries.isEmpty) {
-                    return Text(
-                      'Nenhuma pendência local aguardando envio.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    );
-                  }
-                  return Column(
-                    children: [
-                      for (final summary in activeSummaries) ...[
-                        _SyncFeatureSummaryTile(summary: summary),
-                        const SizedBox(height: 10),
-                      ],
-                    ],
-                  );
-                },
-                loading: () => Text(
-                  'Carregando resumo da fila...',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                error: (error, _) => Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Não foi possível carregar o resumo da fila: $error',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.error,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    AppButton.secondary(
-                      label: 'Tentar novamente',
-                      icon: Icons.refresh_rounded,
-                      compact: true,
-                      onPressed: () =>
-                          ref.invalidate(syncQueueFeatureSummariesProvider),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
-          ],
-          AppSectionCard(
-            title: 'Sua conta',
-            subtitle:
-                'Informacoes simples sobre quem esta usando o app neste aparelho.',
-            child: Column(
-              children: [
-                _InfoRow(label: 'Usuario', value: authStatus.userLabel),
-                if (authStatus.email?.trim().isNotEmpty ?? false)
-                  _InfoRow(label: 'E-mail', value: authStatus.email!.trim()),
-                _InfoRow(label: 'Sessão', value: accountCloud.accountModeLabel),
-                const _InfoRow(
-                  label: 'Acesso local',
-                  value: 'Sempre disponível neste aparelho',
-                ),
-              ],
-            ),
+          _SessionCard(
+            authState: authState,
+            authStatus: authStatus,
+            session: session,
+            accountCloud: accountCloud,
+            onRestoreSession: () => _restoreSession(context, ref),
+            onSignOut: () => _signOutToLocalMode(context, ref),
           ),
           const SizedBox(height: 18),
-          AppSectionCard(
-            title: 'Sua empresa',
-            subtitle:
-                'Resumo comercial da empresa conectada a esta instalação do Tatuzin.',
-            child: Column(
-              children: [
-                _InfoRow(label: 'Empresa', value: authStatus.companyLabel),
-                _InfoRow(label: 'Plano', value: authStatus.licensePlanLabel),
-                _InfoRow(
-                  label: 'Licença',
-                  value: authStatus.licenseStatusLabel,
-                ),
-                _InfoRow(
-                  label: 'Validade',
-                  value: authStatus.licenseExpiresAt == null
-                      ? 'Não informada'
-                      : AppFormatters.shortDate(authStatus.licenseExpiresAt!),
-                ),
-                _InfoRow(
-                  label: 'Uso na nuvem',
-                  value: company.allowsCloudSync
-                      ? 'Disponível'
-                      : 'Uso local disponível',
-                ),
-              ],
-            ),
+          _SubscriptionSummaryCard(
+            status: billingStatus,
+            isLoading: billingStatusAsync?.isLoading ?? false,
+            hasError: billingStatusAsync?.hasError ?? false,
+            canManageSubscription: canManageSubscription,
           ),
           const SizedBox(height: 18),
-          AppSectionCard(
-            title: 'Assinatura e planos',
-            subtitle:
-                'Veja planos, status e opções para liberar novos recursos.',
-            child: AppButton.secondary(
-              label: 'Ver planos',
-              icon: Icons.workspace_premium_outlined,
-              onPressed: () => context.goNamed(AppRouteNames.subscription),
-              expand: true,
-            ),
-          ),
-          const SizedBox(height: 18),
-          AppSectionCard(
-            title: 'Nuvem',
-            subtitle:
-                'Um status claro para você saber se a conta está conectada e se a nuvem está acompanhando sua empresa.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    AppStatusBadge(
-                      label: accountCloud.statusLabel,
-                      tone: accountCloud.tone,
-                      icon: accountCloud.icon,
-                    ),
-                    AppStatusBadge(
-                      label: accountCloud.accountModeLabel,
-                      tone: authStatus.isRemoteAuthenticated
-                          ? AppStatusTone.info
-                          : AppStatusTone.neutral,
-                      icon: authStatus.isRemoteAuthenticated
-                          ? Icons.verified_user_rounded
-                          : Icons.offline_bolt_rounded,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  accountCloud.statusMessage,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _InfoRow(
-                  label: 'Status da nuvem',
-                  value: accountCloud.cloudAvailabilityLabel,
-                ),
-                if (authStatus.isRemoteAuthenticated) ...[
-                  _InfoRow(
-                    label: 'Em envio agora',
-                    value: '${accountCloud.syncingNowCount}',
-                  ),
-                  _InfoRow(
-                    label: 'Pendencias',
-                    value: '${accountCloud.pendingCount}',
-                  ),
-                  _InfoRow(
-                    label: 'Com erro',
-                    value: '${accountCloud.errorCount}',
-                  ),
-                  _InfoRow(
-                    label: 'Bloqueados',
-                    value: '${accountCloud.blockedCount}',
-                  ),
-                  if (accountCloud.conflictCount > 0)
-                    _InfoRow(
-                      label: 'Conflitos',
-                      value: '${accountCloud.conflictCount}',
-                    ),
-                  _InfoRow(
-                    label: 'Última sincronização',
-                    value: accountCloud.lastSyncedAt == null
-                        ? 'Ainda não concluída'
-                        : AppFormatters.shortDateTime(
-                            accountCloud.lastSyncedAt!,
-                          ),
-                  ),
-                  _InfoRow(
-                    label: 'Última tentativa',
-                    value: autoSyncSnapshot.lastStartedAt == null
-                        ? 'Ainda não iniciada'
-                        : AppFormatters.shortDateTime(
-                            autoSyncSnapshot.lastStartedAt!,
-                          ),
-                  ),
-                  _InfoRow(
-                    label: 'Última conclusão',
-                    value: autoSyncSnapshot.lastFinishedAt == null
-                        ? 'Ainda não concluída'
-                        : AppFormatters.shortDateTime(
-                            autoSyncSnapshot.lastFinishedAt!,
-                          ),
-                  ),
-                  if (accountCloud.nextRetryAt != null)
-                    _InfoRow(
-                      label: 'Próxima tentativa',
-                      value: AppFormatters.shortDateTime(
-                        accountCloud.nextRetryAt!,
-                      ),
-                    ),
-                  const SizedBox(height: 12),
-                  AppButton.secondary(
-                    label: syncActionState.isLoading
-                        ? 'Sincronizando...'
-                        : 'Sincronizar agora',
-                    icon: Icons.sync_rounded,
-                    compact: true,
-                    onPressed: syncActionState.isLoading
-                        ? null
-                        : () => _syncNow(context, ref),
-                  ),
-                ] else if (accountCloud.supportingValue != null)
-                  _InfoRow(
-                    label: accountCloud.supportingLabel ?? 'Atualização',
-                    value: accountCloud.supportingValue!,
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          AppSectionCard(
-            title: 'Sessão',
-            subtitle:
-                'Entre, saia ou recupere sua conta para manter a empresa local vinculada ao seu login.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (!authStatus.isRemoteAuthenticated &&
-                    authStatus.canAttemptRemoteLogin) ...[
-                  AppButton.primary(
-                    label: authState.isLoading
-                        ? 'Abrindo sua conta...'
-                        : 'Entrar com conta',
-                    icon: Icons.login_rounded,
-                    onPressed: authState.isLoading
-                        ? null
-                        : () => context.goNamed(AppRouteNames.login),
-                    expand: true,
-                  ),
-                  const SizedBox(height: 12),
-                  AppButton.secondary(
-                    label: 'Restaurar sessão',
-                    icon: Icons.refresh_rounded,
-                    onPressed: authState.isLoading
-                        ? null
-                        : () => _restoreSession(context, ref),
-                    expand: true,
-                  ),
-                ] else if (authStatus.isRemoteAuthenticated) ...[
-                  AppButton.primary(
-                    label: authState.isLoading
-                        ? 'Saindo da conta...'
-                        : 'Sair da conta',
-                    icon: Icons.logout_rounded,
-                    onPressed: authState.isLoading
-                        ? null
-                        : () => _signOutToLocalMode(context, ref),
-                    expand: true,
-                  ),
-                ],
-                const SizedBox(height: 12),
-                Text(
-                  authStatus.canAttemptRemoteLogin
-                      ? authStatus.isRemoteAuthenticated
-                            ? 'Ao sair da conta, o Tatuzin volta para a tela de entrada neste dispositivo.'
-                            : 'Entre uma vez com internet para liberar a base local da sua empresa neste dispositivo.'
-                      : 'Conecte-se a internet para entrar no Tatuzin pela primeira vez neste dispositivo.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          AppSectionCard(
-            title: 'Ajuda e suporte',
-            subtitle:
-                'Quando a internet oscila, a operação local continua disponível apenas para sessões já validadas.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Se você precisar renovar o acesso, entre novamente na sua conta. Em caso de internet instável, o Tatuzin usa a empresa local já vinculada a esta conta.',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                if (authStatus.isPlatformAdmin &&
-                    internalAccess.canOpenTechnicalSystem) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    'Acesso interno',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'O admin web e a superficie administrativa principal. Os atalhos abaixo permanecem apenas como apoio interno dentro do app.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      AppButton.secondary(
-                        label: 'Ferramentas internas',
-                        icon: Icons.build_circle_outlined,
-                        compact: true,
-                        onPressed: () =>
-                            context.goNamed(AppRouteNames.technicalSystem),
-                      ),
-                      if (internalAccess.canOpenAdminCloud)
-                        AppButton.secondary(
-                          label: 'Admin interno de apoio',
-                          icon: Icons.admin_panel_settings_outlined,
-                          compact: true,
-                          onPressed: () => context.goNamed(AppRouteNames.admin),
-                        ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
+          _CloudSummaryCard(
+            accountCloud: accountCloud,
+            isRemoteAuthenticated: authStatus.isRemoteAuthenticated,
+            cloudEnabled: company.allowsCloudSync,
+            isSyncing: syncActionState.isLoading,
+            onSync: syncActionState.isLoading
+                ? null
+                : () => _syncNow(context, ref),
+            onDetails: () => context.goNamed(AppRouteNames.backup),
           ),
         ],
       ),
@@ -525,7 +148,7 @@ class AccountCloudPage extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Voce saiu da conta. Entre novamente para acessar a empresa.',
+            'Você saiu da conta. Entre novamente para acessar a empresa.',
           ),
         ),
       );
@@ -577,10 +200,10 @@ class AccountCloudPage extends ConsumerWidget {
           context: context,
           builder: (context) {
             return AlertDialog(
-              title: const Text('Pendencias aguardando envio'),
+              title: const Text('Dados aguardando envio'),
               content: Text(
-                'Existem $pendingCount pendências aguardando envio. '
-                'Elas continuarao salvas neste dispositivo.',
+                'Existem $pendingCount itens aguardando envio. '
+                'Eles continuarao salvos neste dispositivo.',
               ),
               actions: [
                 TextButton(
@@ -591,12 +214,12 @@ class AccountCloudPage extends ConsumerWidget {
                 TextButton(
                   onPressed: () =>
                       Navigator.of(context).pop(_SignOutDecision.syncFirst),
-                  child: const Text('Tentar sincronizar antes'),
+                  child: const Text('Sincronizar antes'),
                 ),
                 FilledButton(
                   onPressed: () =>
                       Navigator.of(context).pop(_SignOutDecision.signOut),
-                  child: const Text('Sair mesmo assim'),
+                  child: const Text('Encerrar sessão'),
                 ),
               ],
             );
@@ -606,23 +229,8 @@ class AccountCloudPage extends ConsumerWidget {
   }
 }
 
-String _syncResultMessage(SyncBatchResult result) {
-  final hasAttention =
-      result.failedCount > 0 ||
-      result.blockedCount > 0 ||
-      result.conflictCount > 0;
-  if (!hasAttention) {
-    return '${result.message} Enviados: ${result.syncedCount}. Falhas: ${result.failedCount}.';
-  }
-
-  final reviewHint = result.conflictCount > 0
-      ? ' A revisão de conflitos será disponibilizada em uma próxima atualização.'
-      : '';
-  return '${result.message}$reviewHint';
-}
-
-class _AccountCloudAppBarTitle extends StatelessWidget {
-  const _AccountCloudAppBarTitle();
+class _AccountAppBarTitle extends StatelessWidget {
+  const _AccountAppBarTitle();
 
   @override
   Widget build(BuildContext context) {
@@ -632,9 +240,9 @@ class _AccountCloudAppBarTitle extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text('Conta e nuvem'),
+        const Text('Conta'),
         Text(
-          'Licença, empresa e sincronização',
+          'Acesso, assinatura e nuvem',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w600,
@@ -645,195 +253,229 @@ class _AccountCloudAppBarTitle extends StatelessWidget {
   }
 }
 
-enum _SignOutDecision { cancel, syncFirst, signOut }
+class _SessionCard extends StatelessWidget {
+  const _SessionCard({
+    required this.authState,
+    required this.authStatus,
+    required this.session,
+    required this.accountCloud,
+    required this.onRestoreSession,
+    required this.onSignOut,
+  });
 
-class _SyncFeatureSummaryTile extends StatelessWidget {
-  const _SyncFeatureSummaryTile({required this.summary});
-
-  final SyncQueueFeatureSummary summary;
+  final AsyncValue<void> authState;
+  final AuthStatusSnapshot authStatus;
+  final AppSession session;
+  final AccountCloudStatusSnapshot accountCloud;
+  final VoidCallback onRestoreSession;
+  final VoidCallback onSignOut;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final nextRetryAt = summary.nextRetryAt;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(color: colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(8),
+    return AppSectionCard(
+      title: 'Sessão atual',
+      subtitle: authStatus.isAuthenticated
+          ? 'Acesso liberado neste aparelho.'
+          : 'Entre para vincular este aparelho a sua empresa.',
+      trailing: AppStatusBadge(
+        label: accountCloud.accountModeLabel,
+        tone: authStatus.isRemoteAuthenticated
+            ? AppStatusTone.success
+            : AppStatusTone.neutral,
+        icon: authStatus.isRemoteAuthenticated
+            ? Icons.verified_user_rounded
+            : Icons.person_outline_rounded,
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    summary.displayName,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                AppStatusBadge(
-                  label: summary.displayState.label,
-                  tone: summary.hasAttention
-                      ? AppStatusTone.warning
-                      : summary.hasActiveProcessing
-                      ? AppStatusTone.info
-                      : AppStatusTone.neutral,
-                  icon: summary.hasAttention
-                      ? Icons.error_outline_rounded
-                      : summary.hasActiveProcessing
-                      ? Icons.sync_rounded
-                      : Icons.schedule_send_rounded,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            _IssueLine(
-              label: 'Pendentes',
-              value: '${summary.pendingForDisplay}',
-            ),
-            _IssueLine(
-              label: 'Em envio',
-              value: '${summary.activeProcessingCount}',
-            ),
-            _IssueLine(label: 'Com erro', value: '${summary.errorCount}'),
-            _IssueLine(label: 'Bloqueados', value: '${summary.blockedCount}'),
-            if (summary.conflictCount > 0)
-              _IssueLine(label: 'Conflitos', value: '${summary.conflictCount}'),
-            if (summary.lastProcessedAt != null)
-              _IssueLine(
-                label: 'Ultimo processamento',
-                value: AppFormatters.shortDateTime(summary.lastProcessedAt!),
-              ),
-            if (nextRetryAt != null)
-              _IssueLine(
-                label: 'Próxima tentativa',
-                value: AppFormatters.shortDateTime(nextRetryAt),
-              ),
-            if (summary.lastError?.trim().isNotEmpty == true)
-              _IssueLine(label: 'Ultimo erro', value: summary.lastError!),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SyncIssueTile extends ConsumerWidget {
-  const _SyncIssueTile({required this.issue});
-
-  final AccountCloudSyncIssue issue;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final nextRetryAt = issue.nextRetryAt;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(color: colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    '${issue.entityLabel} - ${issue.operationLabel}',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                AppStatusBadge(
-                  label: issue.statusLabel,
-                  tone: AppStatusTone.warning,
-                  icon: Icons.error_outline_rounded,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            _IssueLine(label: 'ID local', value: '${issue.localId}'),
-            if (issue.localUuid != null)
-              _IssueLine(label: 'UUID local', value: issue.localUuid!),
-            _IssueLine(
-              label: 'ID remoto',
-              value: issue.remoteId?.trim().isNotEmpty == true
-                  ? issue.remoteId!
-                  : 'Ainda não criado',
-            ),
-            _IssueLine(label: 'Endpoint', value: issue.endpoint),
-            if (issue.httpStatusCode != null)
-              _IssueLine(label: 'HTTP', value: '${issue.httpStatusCode}'),
-            _IssueLine(label: 'Mensagem', value: issue.message),
-            _IssueLine(
-              label: 'Atualizado',
-              value: AppFormatters.shortDateTime(issue.updatedAt),
-            ),
-            _IssueLine(
-              label: 'Próxima tentativa',
-              value: nextRetryAt == null
-                  ? 'Sem retry automatico'
-                  : AppFormatters.shortDateTime(nextRetryAt),
+      child: Column(
+        children: [
+          _InfoRow(label: 'Usuário', value: authStatus.userLabel),
+          if (authStatus.email?.trim().isNotEmpty ?? false)
+            _InfoRow(label: 'E-mail', value: authStatus.email!.trim()),
+          _InfoRow(label: 'Perfil', value: _profileLabel(session)),
+          _InfoRow(label: 'Dispositivo', value: _deviceLabel(session)),
+          _InfoRow(
+            label: 'Sessão iniciada',
+            value: AppFormatters.shortDateTime(session.startedAt),
+          ),
+          const SizedBox(height: 10),
+          if (authStatus.isRemoteAuthenticated)
+            AppButton.secondary(
+              label: authState.isLoading ? 'Encerrando...' : 'Encerrar sessão',
+              icon: Icons.logout_rounded,
+              onPressed: authState.isLoading ? null : onSignOut,
+              expand: true,
+            )
+          else if (authStatus.canAttemptRemoteLogin) ...[
+            AppButton.primary(
+              label: authState.isLoading ? 'Abrindo...' : 'Entrar com conta',
+              icon: Icons.login_rounded,
+              onPressed: authState.isLoading
+                  ? null
+                  : () => context.goNamed(AppRouteNames.login),
+              expand: true,
             ),
             const SizedBox(height: 10),
             AppButton.secondary(
-              label: 'Tentar novamente',
+              label: 'Restaurar sessão',
               icon: Icons.refresh_rounded,
-              compact: true,
-              onPressed: () async {
-                await ref
-                    .read(catalogSyncControllerProvider.notifier)
-                    .retryFeatures([issue.featureKey]);
-                ref.invalidate(accountCloudAttentionItemsProvider);
-              },
+              onPressed: authState.isLoading ? null : onRestoreSession,
+              expand: true,
             ),
-          ],
-        ),
+          ] else
+            Text(
+              'Conecte este dispositivo a internet para entrar pela primeira vez.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+        ],
       ),
     );
   }
 }
 
-class _IssueLine extends StatelessWidget {
-  const _IssueLine({required this.label, required this.value});
+class _SubscriptionSummaryCard extends StatelessWidget {
+  const _SubscriptionSummaryCard({
+    required this.status,
+    required this.isLoading,
+    required this.hasError,
+    required this.canManageSubscription,
+  });
 
-  final String label;
-  final String value;
+  final BillingStatus status;
+  final bool isLoading;
+  final bool hasError;
+  final bool canManageSubscription;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Text.rich(
-        TextSpan(
-          children: [
-            TextSpan(
-              text: '$label: ',
-              style: TextStyle(
-                color: colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
+
+    return AppSectionCard(
+      title: 'Assinatura',
+      subtitle: hasError
+          ? 'Mostrando os dados salvos da sessão.'
+          : 'Plano e acesso comercial da empresa.',
+      trailing: AppStatusBadge(
+        label: _statusLabel(status.status),
+        tone: _subscriptionTone(status.status),
+        icon: Icons.workspace_premium_outlined,
+      ),
+      child: Column(
+        children: [
+          _InfoRow(label: 'Plano', value: _planLabel(status.plan)),
+          _InfoRow(label: 'Status', value: _statusLabel(status.status)),
+          if (status.nextPaymentDate != null)
+            _InfoRow(
+              label: 'Próxima cobrança',
+              value: AppFormatters.shortDate(status.nextPaymentDate!),
+            )
+          else if (status.expiresAt != null)
+            _InfoRow(
+              label: 'Validade',
+              value: AppFormatters.shortDate(status.expiresAt!),
+            ),
+          if (isLoading)
+            const _InfoRow(
+              label: 'Atualização',
+              value: 'Consultando assinatura...',
+            ),
+          const SizedBox(height: 10),
+          if (canManageSubscription)
+            AppButton.secondary(
+              label: 'Ver planos e fatura',
+              icon: Icons.receipt_long_rounded,
+              onPressed: () => context.goNamed(AppRouteNames.subscription),
+              expand: true,
+            )
+          else
+            Text(
+              'Apenas o dono da empresa pode gerenciar planos e cobranças.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            TextSpan(text: value),
-          ],
-        ),
-        style: theme.textTheme.bodySmall,
+        ],
+      ),
+    );
+  }
+}
+
+class _CloudSummaryCard extends StatelessWidget {
+  const _CloudSummaryCard({
+    required this.accountCloud,
+    required this.isRemoteAuthenticated,
+    required this.cloudEnabled,
+    required this.isSyncing,
+    required this.onSync,
+    required this.onDetails,
+  });
+
+  final AccountCloudStatusSnapshot accountCloud;
+  final bool isRemoteAuthenticated;
+  final bool cloudEnabled;
+  final bool isSyncing;
+  final VoidCallback? onSync;
+  final VoidCallback onDetails;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return AppSectionCard(
+      title: 'Nuvem',
+      subtitle: 'Dados protegidos na nuvem.',
+      trailing: AppStatusBadge(
+        label: accountCloud.commercialStatusLabel,
+        tone: accountCloud.commercialTone,
+        icon: accountCloud.commercialStatusIcon,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            accountCloud.commercialStatusMessage,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 14),
+          _InfoRow(
+            label: 'Ultima sincronizacao',
+            value: accountCloud.lastSyncedAt == null
+                ? 'Ainda não concluída'
+                : AppFormatters.shortDateTime(accountCloud.lastSyncedAt!),
+          ),
+          if (accountCloud.pendingCount > 0)
+            _InfoRow(
+              label: 'Aguardando envio',
+              value: '${accountCloud.pendingCount}',
+            ),
+          if (!cloudEnabled && isRemoteAuthenticated)
+            const _InfoRow(label: 'Disponibilidade', value: 'Uso local ativo'),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              if (isRemoteAuthenticated)
+                AppButton.primary(
+                  label: isSyncing ? 'Sincronizando...' : 'Sincronizar',
+                  icon: Icons.sync_rounded,
+                  compact: true,
+                  onPressed: onSync,
+                ),
+              AppButton.secondary(
+                label: 'Ver detalhes',
+                icon: Icons.cloud_outlined,
+                compact: true,
+                onPressed: onDetails,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -847,7 +489,7 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -858,8 +500,8 @@ class _InfoRow extends StatelessWidget {
             width: 136,
             child: Text(
               label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -867,13 +509,118 @@ class _InfoRow extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+enum _SignOutDecision { cancel, syncFirst, signOut }
+
+String _syncResultMessage(SyncBatchResult result) {
+  final hasAttention =
+      result.failedCount > 0 ||
+      result.blockedCount > 0 ||
+      result.conflictCount > 0;
+  if (!hasAttention) {
+    return 'Nuvem atualizada. Enviados: ${result.syncedCount}.';
+  }
+  return 'A nuvem precisa de atenção. Seus dados continuam salvos neste aparelho.';
+}
+
+BillingStatus _fallbackBillingStatus(AppSession session) {
+  final company = session.company;
+  return BillingStatus(
+    companyId: company.remoteId ?? '',
+    plan: company.plan,
+    status: company.licenseStatus ?? 'active',
+    currentPeriodStart: company.licenseStartsAt,
+    currentPeriodEnd: null,
+    expiresAt: company.licenseExpiresAt,
+    provider: null,
+    hasProviderSubscription: false,
+    maskedProviderSubscriptionId: null,
+    canManageBilling: session.isCompanyOwner,
+    nextPaymentDate: null,
+    entitlements: company.entitlements,
+  );
+}
+
+String _profileLabel(AppSession session) {
+  final employeeRole = session.employee?.role.trim();
+  if (employeeRole != null && employeeRole.isNotEmpty) {
+    return _roleLabel(employeeRole);
+  }
+  final membershipRole = session.membership?.role.trim();
+  if (membershipRole != null && membershipRole.isNotEmpty) {
+    return _roleLabel(membershipRole);
+  }
+  return session.user.roleLabel;
+}
+
+String _roleLabel(String role) {
+  switch (role.trim().toUpperCase()) {
+    case 'OWNER':
+      return 'Dono da empresa';
+    case 'ADMIN':
+      return 'Administrador';
+    case 'OPERATOR':
+      return 'Operador';
+    default:
+      return role;
+  }
+}
+
+String _deviceLabel(AppSession session) {
+  if (session.isOfflineFallback) {
+    return 'Este aparelho offline';
+  }
+  if (session.hasClientInstanceId) {
+    return 'Este aparelho vinculado';
+  }
+  return 'Este aparelho';
+}
+
+String _planLabel(PlanKey plan) {
+  switch (plan) {
+    case PlanKey.free:
+      return 'Free';
+    case PlanKey.basic:
+      return 'Básico';
+    case PlanKey.pro:
+      return 'Pro';
+  }
+}
+
+String _statusLabel(String status) {
+  switch (status.trim().toLowerCase()) {
+    case 'active':
+      return 'Ativa';
+    case 'trial':
+      return 'Trial';
+    case 'suspended':
+      return 'Suspensa';
+    case 'expired':
+      return 'Expirada';
+    default:
+      return status.trim().isEmpty ? 'Não informado' : status;
+  }
+}
+
+AppStatusTone _subscriptionTone(String status) {
+  switch (status.trim().toLowerCase()) {
+    case 'active':
+    case 'trial':
+      return AppStatusTone.success;
+    case 'suspended':
+    case 'expired':
+      return AppStatusTone.warning;
+    default:
+      return AppStatusTone.neutral;
   }
 }

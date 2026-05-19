@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../../../app/core/widgets/app_list_tile_card.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/routes/route_names.dart';
-import '../../../../app/core/theme/app_design_tokens.dart';
 
 class MorePage extends StatelessWidget {
   const MorePage({super.key});
@@ -28,7 +28,7 @@ class MorePage extends StatelessWidget {
         children: [
           const AppPageHeader(
             title: 'Mais',
-            subtitle: 'Acesse as outras áreas da sua loja.',
+            subtitle: 'Acesse as outras areas da sua loja.',
             badgeLabel: 'Menu',
             badgeIcon: Icons.apps_rounded,
             emphasized: true,
@@ -39,7 +39,7 @@ class MorePage extends StatelessWidget {
             items: [
               _MoreItem(
                 title: 'Clientes',
-                subtitle: 'Cadastro e histórico de clientes',
+                subtitle: 'Cadastro e historico de clientes',
                 icon: Icons.people_alt_rounded,
                 routeName: AppRouteNames.clients,
               ),
@@ -57,7 +57,7 @@ class MorePage extends StatelessWidget {
             items: [
               _MoreItem(
                 title: 'Estoque',
-                subtitle: 'Saldos, ajustes e conferências',
+                subtitle: 'Saldos, ajustes e conferencias',
                 icon: Icons.inventory_2_outlined,
                 routeName: AppRouteNames.inventory,
               ),
@@ -81,18 +81,18 @@ class MorePage extends StatelessWidget {
             items: [
               _MoreItem(
                 title: 'Caixa',
-                subtitle: 'Abertura, movimentações e fechamento',
+                subtitle: 'Abertura, movimentacoes e fechamento',
                 icon: Icons.account_balance_wallet_rounded,
                 routeName: AppRouteNames.cash,
               ),
               _MoreItem(
-                title: 'Custos e lançamentos',
-                subtitle: 'Despesas, entradas e movimentações financeiras',
+                title: 'Custos e lancamentos',
+                subtitle: 'Despesas, entradas e movimentacoes financeiras',
                 icon: Icons.request_quote_rounded,
                 routeName: AppRouteNames.costs,
               ),
               _MoreItem(
-                title: 'Relatórios',
+                title: 'Relatorios',
                 subtitle: 'Vendas, caixa, estoque e clientes',
                 icon: Icons.assessment_rounded,
                 routeName: AppRouteNames.reports,
@@ -104,14 +104,8 @@ class MorePage extends StatelessWidget {
             title: 'Sistema',
             items: [
               _MoreItem(
-                title: 'Assinatura e planos',
-                subtitle: 'Plano atual e opções de contratação',
-                icon: Icons.workspace_premium_outlined,
-                routeName: AppRouteNames.subscription,
-              ),
-              _MoreItem(
-                title: 'Minha conta',
-                subtitle: 'Perfil, acesso e conexão',
+                title: 'Conta',
+                subtitle: 'Acesso, assinatura e nuvem',
                 icon: Icons.account_circle_outlined,
                 routeName: AppRouteNames.accountCloud,
               ),
@@ -120,12 +114,6 @@ class MorePage extends StatelessWidget {
                 subtitle: 'Dados da loja e plano',
                 icon: Icons.storefront_rounded,
                 routeName: AppRouteNames.company,
-              ),
-              _MoreItem(
-                title: 'Backup',
-                subtitle: 'Salvar e restaurar dados',
-                icon: Icons.backup_rounded,
-                routeName: AppRouteNames.backup,
               ),
               _MoreItem(
                 title: 'Configurações',

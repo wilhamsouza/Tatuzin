@@ -659,6 +659,92 @@ class AccountCloudStatusSnapshot {
   final DateTime? nextRetryAt;
   final String? supportingLabel;
   final String? supportingValue;
+
+  bool get hasAttention =>
+      errorCount > 0 || blockedCount > 0 || conflictCount > 0;
+
+  bool get isOffline =>
+      statusLabel.trim().toLowerCase() == 'sem internet' ||
+      cloudAvailabilityLabel.trim().toLowerCase() == 'sem internet';
+
+  bool get requiresLogin =>
+      statusLabel.trim().toLowerCase().contains('login') ||
+      accountModeLabel.trim().toLowerCase().contains('sem sessao');
+
+  bool get isSyncing =>
+      syncingNowCount > 0 ||
+      statusLabel.trim().toLowerCase().contains('sincronizando');
+
+  String get commercialStatusLabel {
+    if (requiresLogin) {
+      return 'Offline no dispositivo';
+    }
+    if (isSyncing) {
+      return 'Sincronizando...';
+    }
+    if (isOffline) {
+      return 'Offline no dispositivo';
+    }
+    if (hasAttention || tone == AppStatusTone.warning) {
+      return 'Atenção na nuvem';
+    }
+    return 'Nuvem em dia';
+  }
+
+  String get commercialBadgeLabel {
+    if (pendingCount > 0 && !isSyncing && !isOffline && !hasAttention) {
+      return 'Aguardando envio';
+    }
+    return commercialStatusLabel;
+  }
+
+  String get commercialStatusMessage {
+    if (requiresLogin) {
+      return 'Entre com sua conta para proteger os dados na nuvem.';
+    }
+    if (isSyncing) {
+      return 'Estamos atualizando os dados da empresa na nuvem.';
+    }
+    if (isOffline) {
+      return 'Sem internet neste dispositivo. O uso local continua disponivel.';
+    }
+    if (hasAttention || tone == AppStatusTone.warning) {
+      return 'Alguns dados precisam de atenção. Seus dados locais continuam preservados.';
+    }
+    if (pendingCount > 0) {
+      return 'Alguns dados aguardam envio e serão protegidos na próxima conexão.';
+    }
+    return 'Todos os dados sincronizados.';
+  }
+
+  AppStatusTone get commercialTone {
+    if (requiresLogin) {
+      return AppStatusTone.neutral;
+    }
+    if (isSyncing) {
+      return AppStatusTone.info;
+    }
+    if (isOffline || hasAttention || tone == AppStatusTone.warning) {
+      return AppStatusTone.warning;
+    }
+    return AppStatusTone.success;
+  }
+
+  IconData get commercialStatusIcon {
+    if (requiresLogin) {
+      return Icons.lock_outline_rounded;
+    }
+    if (isSyncing) {
+      return Icons.sync_rounded;
+    }
+    if (isOffline) {
+      return Icons.cloud_off_rounded;
+    }
+    if (hasAttention || tone == AppStatusTone.warning) {
+      return Icons.error_outline_rounded;
+    }
+    return Icons.cloud_done_rounded;
+  }
 }
 
 class InternalMobileSurfaceAccess {
