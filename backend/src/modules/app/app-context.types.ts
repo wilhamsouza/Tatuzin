@@ -13,6 +13,17 @@ export type AppContextUser = {
 export type AppContextCompany = {
   id: string;
   name: string;
+  legalName: string;
+  documentNumber: string | null;
+  receiptDisplayName: string | null;
+  receiptDocument: string | null;
+  receiptPhone: string | null;
+  receiptAddress: string | null;
+  receiptFooterMessage: string | null;
+  showDocumentOnReceipt: boolean;
+  showPhoneOnReceipt: boolean;
+  showAddressOnReceipt: boolean;
+  showFooterMessageOnReceipt: boolean;
   setupCompleted: boolean;
 };
 

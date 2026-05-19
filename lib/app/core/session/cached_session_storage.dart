@@ -28,6 +28,21 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
   static const _companyNameKey = 'session.cached.company_name';
   static const _companyLegalNameKey = 'session.cached.company_legal_name';
   static const _companyDocumentKey = 'session.cached.company_document';
+  static const _receiptDisplayNameKey =
+      'session.cached.company.receipt_display_name';
+  static const _receiptDocumentKey = 'session.cached.company.receipt_document';
+  static const _receiptPhoneKey = 'session.cached.company.receipt_phone';
+  static const _receiptAddressKey = 'session.cached.company.receipt_address';
+  static const _receiptFooterMessageKey =
+      'session.cached.company.receipt_footer_message';
+  static const _showDocumentOnReceiptKey =
+      'session.cached.company.show_document_on_receipt';
+  static const _showPhoneOnReceiptKey =
+      'session.cached.company.show_phone_on_receipt';
+  static const _showAddressOnReceiptKey =
+      'session.cached.company.show_address_on_receipt';
+  static const _showFooterMessageOnReceiptKey =
+      'session.cached.company.show_footer_message_on_receipt';
   static const _licensePlanKey = 'session.cached.license_plan';
   static const _licenseStatusKey = 'session.cached.license_status';
   static const _licenseStartsAtKey = 'session.cached.license_starts_at';
@@ -62,6 +77,15 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
     _companyNameKey,
     _companyLegalNameKey,
     _companyDocumentKey,
+    _receiptDisplayNameKey,
+    _receiptDocumentKey,
+    _receiptPhoneKey,
+    _receiptAddressKey,
+    _receiptFooterMessageKey,
+    _showDocumentOnReceiptKey,
+    _showPhoneOnReceiptKey,
+    _showAddressOnReceiptKey,
+    _showFooterMessageOnReceiptKey,
     _licensePlanKey,
     _licenseStatusKey,
     _licenseStartsAtKey,
@@ -127,6 +151,24 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
         licenseExpiresAt: _readDateTime(preferences, _licenseExpiresAtKey),
         maxDevices: preferences.getInt(_maxDevicesKey),
         syncEnabled: preferences.getBool(_syncEnabledKey) ?? false,
+        receiptSettings: CompanyReceiptSettings(
+          receiptDisplayName: _readString(preferences, _receiptDisplayNameKey),
+          receiptDocument: _readString(preferences, _receiptDocumentKey),
+          receiptPhone: _readString(preferences, _receiptPhoneKey),
+          receiptAddress: _readString(preferences, _receiptAddressKey),
+          receiptFooterMessage: _readString(
+            preferences,
+            _receiptFooterMessageKey,
+          ),
+          showDocumentOnReceipt:
+              preferences.getBool(_showDocumentOnReceiptKey) ?? true,
+          showPhoneOnReceipt:
+              preferences.getBool(_showPhoneOnReceiptKey) ?? true,
+          showAddressOnReceipt:
+              preferences.getBool(_showAddressOnReceiptKey) ?? true,
+          showFooterMessageOnReceipt:
+              preferences.getBool(_showFooterMessageOnReceiptKey) ?? true,
+        ),
         entitlements: _readEntitlements(preferences),
       ),
       startedAt: DateTime.now(),
@@ -175,6 +217,7 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
       _companyDocumentKey,
       session.company.documentNumber,
     );
+    await _saveReceiptSettings(preferences, session.company.receiptSettings);
     await _setOptionalString(
       preferences,
       _licensePlanKey,
@@ -301,6 +344,53 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
     await preferences.setStringList(
       _employeePermissionsKey,
       employee.permissions.toList(),
+    );
+  }
+
+  static Future<void> _saveReceiptSettings(
+    SharedPreferences preferences,
+    CompanyReceiptSettings settings,
+  ) async {
+    await _setOptionalString(
+      preferences,
+      _receiptDisplayNameKey,
+      settings.receiptDisplayName,
+    );
+    await _setOptionalString(
+      preferences,
+      _receiptDocumentKey,
+      settings.receiptDocument,
+    );
+    await _setOptionalString(
+      preferences,
+      _receiptPhoneKey,
+      settings.receiptPhone,
+    );
+    await _setOptionalString(
+      preferences,
+      _receiptAddressKey,
+      settings.receiptAddress,
+    );
+    await _setOptionalString(
+      preferences,
+      _receiptFooterMessageKey,
+      settings.receiptFooterMessage,
+    );
+    await preferences.setBool(
+      _showDocumentOnReceiptKey,
+      settings.showDocumentOnReceipt,
+    );
+    await preferences.setBool(
+      _showPhoneOnReceiptKey,
+      settings.showPhoneOnReceipt,
+    );
+    await preferences.setBool(
+      _showAddressOnReceiptKey,
+      settings.showAddressOnReceipt,
+    );
+    await preferences.setBool(
+      _showFooterMessageOnReceiptKey,
+      settings.showFooterMessageOnReceipt,
     );
   }
 

@@ -88,6 +88,20 @@ class CommercialReceiptView extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                           ),
                         ),
+                        if (receipt.businessDetails.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          for (final detail in receipt.businessDetails)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 2),
+                              child: Text(
+                                '${detail.label}: ${detail.value}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                        ],
                         const SizedBox(height: 4),
                         Text(
                           receipt.title,

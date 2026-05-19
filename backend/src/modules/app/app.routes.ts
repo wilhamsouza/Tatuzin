@@ -11,11 +11,14 @@ import { AppBootstrapService } from './app-bootstrap.service';
 import { AppContextService } from './app-context.service';
 import { AppSnapshotService } from './app-snapshot.service';
 import { deviceRegisterSchema } from './app.schemas';
+import { companyReceiptSettingsPatchSchema } from './company-settings.schemas';
+import { CompanySettingsService } from './company-settings.service';
 import { CompanyDeviceService } from './company-device.service';
 
 const appBootstrapService = new AppBootstrapService();
 const appContextService = new AppContextService();
 const appSnapshotService = new AppSnapshotService();
+const companySettingsService = new CompanySettingsService();
 const companyDeviceService = new CompanyDeviceService();
 
 export const appRouter = Router();
@@ -60,6 +63,30 @@ appRouter.get(
       appContext: request.appContext!,
     });
     response.json(payload);
+  }),
+);
+
+appRouter.get(
+  '/company/settings',
+  requireAppContext,
+  asyncHandler(async (request, response) => {
+    response.json(
+      await companySettingsService.getReceiptSettings(request.appContext!),
+    );
+  }),
+);
+
+appRouter.patch(
+  '/company/settings',
+  requireAppContext,
+  validateBody(companyReceiptSettingsPatchSchema),
+  asyncHandler(async (request, response) => {
+    response.json(
+      await companySettingsService.updateReceiptSettings(
+        request.appContext!,
+        request.body,
+      ),
+    );
   }),
 );
 

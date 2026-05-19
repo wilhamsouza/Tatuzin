@@ -14,6 +14,7 @@ class CompanyContext {
     this.licenseExpiresAt,
     this.maxDevices,
     this.syncEnabled = false,
+    this.receiptSettings = const CompanyReceiptSettings.defaults(),
     PlanEntitlements? entitlements,
   }) : entitlements = entitlements ?? PlanEntitlements.free;
 
@@ -29,6 +30,7 @@ class CompanyContext {
       licenseExpiresAt = null,
       maxDevices = null,
       syncEnabled = false,
+      receiptSettings = const CompanyReceiptSettings.defaults(),
       entitlements = PlanEntitlements.free;
 
   final int? localId;
@@ -42,6 +44,7 @@ class CompanyContext {
   final DateTime? licenseExpiresAt;
   final int? maxDevices;
   final bool syncEnabled;
+  final CompanyReceiptSettings receiptSettings;
   final PlanEntitlements entitlements;
 
   PlanKey get plan => entitlements.plan;
@@ -123,4 +126,119 @@ class CompanyContext {
   }
 
   String? get _normalizedLicenseStatus => licenseStatus?.trim().toLowerCase();
+
+  CompanyContext copyWith({
+    String? displayName,
+    String? legalName,
+    String? documentNumber,
+    CompanyReceiptSettings? receiptSettings,
+  }) {
+    return CompanyContext(
+      localId: localId,
+      remoteId: remoteId,
+      displayName: displayName ?? this.displayName,
+      legalName: legalName ?? this.legalName,
+      documentNumber: documentNumber ?? this.documentNumber,
+      licensePlan: licensePlan,
+      licenseStatus: licenseStatus,
+      licenseStartsAt: licenseStartsAt,
+      licenseExpiresAt: licenseExpiresAt,
+      maxDevices: maxDevices,
+      syncEnabled: syncEnabled,
+      receiptSettings: receiptSettings ?? this.receiptSettings,
+      entitlements: entitlements,
+    );
+  }
+}
+
+class CompanyReceiptSettings {
+  const CompanyReceiptSettings({
+    this.receiptDisplayName,
+    this.receiptDocument,
+    this.receiptPhone,
+    this.receiptAddress,
+    this.receiptFooterMessage,
+    this.showDocumentOnReceipt = true,
+    this.showPhoneOnReceipt = true,
+    this.showAddressOnReceipt = true,
+    this.showFooterMessageOnReceipt = true,
+  });
+
+  const CompanyReceiptSettings.defaults()
+    : receiptDisplayName = null,
+      receiptDocument = null,
+      receiptPhone = null,
+      receiptAddress = null,
+      receiptFooterMessage = null,
+      showDocumentOnReceipt = true,
+      showPhoneOnReceipt = true,
+      showAddressOnReceipt = true,
+      showFooterMessageOnReceipt = true;
+
+  final String? receiptDisplayName;
+  final String? receiptDocument;
+  final String? receiptPhone;
+  final String? receiptAddress;
+  final String? receiptFooterMessage;
+  final bool showDocumentOnReceipt;
+  final bool showPhoneOnReceipt;
+  final bool showAddressOnReceipt;
+  final bool showFooterMessageOnReceipt;
+
+  String displayNameOrFallback(String fallback) {
+    final value = receiptDisplayName?.trim();
+    if (value == null || value.isEmpty) {
+      return fallback.trim().isEmpty ? AppConstants.appName : fallback.trim();
+    }
+    return value;
+  }
+
+  String footerOrFallback(String fallback) {
+    final value = receiptFooterMessage?.trim();
+    if (!showFooterMessageOnReceipt || value == null || value.isEmpty) {
+      return fallback;
+    }
+    return value;
+  }
+
+  CompanyReceiptSettings copyWith({
+    String? receiptDisplayName,
+    String? receiptDocument,
+    String? receiptPhone,
+    String? receiptAddress,
+    String? receiptFooterMessage,
+    bool? showDocumentOnReceipt,
+    bool? showPhoneOnReceipt,
+    bool? showAddressOnReceipt,
+    bool? showFooterMessageOnReceipt,
+    bool clearReceiptDisplayName = false,
+    bool clearReceiptDocument = false,
+    bool clearReceiptPhone = false,
+    bool clearReceiptAddress = false,
+    bool clearReceiptFooterMessage = false,
+  }) {
+    return CompanyReceiptSettings(
+      receiptDisplayName: clearReceiptDisplayName
+          ? null
+          : receiptDisplayName ?? this.receiptDisplayName,
+      receiptDocument: clearReceiptDocument
+          ? null
+          : receiptDocument ?? this.receiptDocument,
+      receiptPhone: clearReceiptPhone
+          ? null
+          : receiptPhone ?? this.receiptPhone,
+      receiptAddress: clearReceiptAddress
+          ? null
+          : receiptAddress ?? this.receiptAddress,
+      receiptFooterMessage: clearReceiptFooterMessage
+          ? null
+          : receiptFooterMessage ?? this.receiptFooterMessage,
+      showDocumentOnReceipt:
+          showDocumentOnReceipt ?? this.showDocumentOnReceipt,
+      showPhoneOnReceipt: showPhoneOnReceipt ?? this.showPhoneOnReceipt,
+      showAddressOnReceipt: showAddressOnReceipt ?? this.showAddressOnReceipt,
+      showFooterMessageOnReceipt:
+          showFooterMessageOnReceipt ?? this.showFooterMessageOnReceipt,
+    );
+  }
 }

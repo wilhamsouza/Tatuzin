@@ -73,7 +73,15 @@ describe('app context bootstrap and guards', () => {
     assert.equal(response.status, 200);
     const payload = response.data as {
       user: { id: string; email: string };
-      company: { id: string; setupCompleted: boolean };
+      company: {
+        id: string;
+        setupCompleted: boolean;
+        receiptDisplayName: string | null;
+        showDocumentOnReceipt: boolean;
+        showPhoneOnReceipt: boolean;
+        showAddressOnReceipt: boolean;
+        showFooterMessageOnReceipt: boolean;
+      };
       membership: { id: string; role: string; permissions: string[] };
       license: { id: string; syncEnabled: boolean; maxDevices: number | null };
       plan: string;
@@ -89,6 +97,11 @@ describe('app context bootstrap and guards', () => {
     assert.equal(payload.user.id, fixture.userId);
     assert.equal(payload.company.id, fixture.companyId);
     assert.equal(payload.company.setupCompleted, true);
+    assert.equal(payload.company.receiptDisplayName, null);
+    assert.equal(payload.company.showDocumentOnReceipt, true);
+    assert.equal(payload.company.showPhoneOnReceipt, true);
+    assert.equal(payload.company.showAddressOnReceipt, true);
+    assert.equal(payload.company.showFooterMessageOnReceipt, true);
     assert.equal(payload.membership.id, fixture.membershipId);
     assert.equal(payload.license.syncEnabled, true);
     assert.equal(payload.plan, 'PRO');
@@ -104,6 +117,191 @@ describe('app context bootstrap and guards', () => {
     assert.equal(payload.sync.enabled, true);
     assert.equal(payload.sync.pullRequired, false);
     assert.ok(payload.membership.permissions.length > 0);
+  });
+
+  it('returns company receipt settings for the authenticated company', async () => {
+    const fixture = await createFixture({ deviceStatus: 'ACTIVE' });
+
+    await prisma.company.update({
+      where: { id: fixture.companyId },
+      data: {
+        receiptDisplayName: 'Loja do Recibo',
+        receiptDocument: '12.345.678/0001-90',
+        receiptPhone: '(11) 99999-0000',
+        receiptAddress: 'Rua do Caixa, 100',
+        receiptFooterMessage: 'Obrigado pela preferencia.',
+        showPhoneOnReceipt: false,
+      },
+    });
+
+    const response = await requestJson('GET', '/app/company/settings', {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      company: {
+        receiptDisplayName: string | null;
+        receiptDocument: string | null;
+        receiptPhone: string | null;
+        receiptAddress: string | null;
+        receiptFooterMessage: string | null;
+        showPhoneOnReceipt: boolean;
+      };
+    };
+    assert.equal(payload.company.receiptDisplayName, 'Loja do Recibo');
+    assert.equal(payload.company.receiptDocument, '12.345.678/0001-90');
+    assert.equal(payload.company.receiptPhone, '(11) 99999-0000');
+    assert.equal(payload.company.receiptAddress, 'Rua do Caixa, 100');
+    assert.equal(
+      payload.company.receiptFooterMessage,
+      'Obrigado pela preferencia.',
+    );
+    assert.equal(payload.company.showPhoneOnReceipt, false);
+  });
+
+  it('allows OWNER and ADMIN to update company receipt settings', async () => {
+    const ownerFixture = await createFixture({
+      role: 'OWNER',
+      deviceStatus: 'ACTIVE',
+    });
+    const adminFixture = await createFixture({
+      role: 'ADMIN',
+      deviceStatus: 'ACTIVE',
+    });
+
+    const ownerResponse = await requestJson('PATCH', '/app/company/settings', {
+      token: ownerFixture.token,
+      body: {
+        receiptDisplayName: '  Loja Central  ',
+        receiptDocument: '  12345678000100  ',
+        receiptPhone: '  (11) 98888-7777  ',
+        receiptAddress: '  Avenida Principal, 10  ',
+        receiptFooterMessage: '  Volte sempre!  ',
+        showDocumentOnReceipt: true,
+        showPhoneOnReceipt: true,
+        showAddressOnReceipt: true,
+        showFooterMessageOnReceipt: true,
+      },
+    });
+    const adminResponse = await requestJson('PATCH', '/app/company/settings', {
+      token: adminFixture.token,
+      body: {
+        receiptDisplayName: 'Admin Store',
+        showDocumentOnReceipt: false,
+      },
+    });
+
+    assert.equal(ownerResponse.status, 200);
+    assert.equal(adminResponse.status, 200);
+    const ownerPayload = ownerResponse.data as {
+      company: {
+        receiptDisplayName: string | null;
+        receiptDocument: string | null;
+        receiptPhone: string | null;
+        receiptAddress: string | null;
+        receiptFooterMessage: string | null;
+      };
+    };
+    assert.equal(ownerPayload.company.receiptDisplayName, 'Loja Central');
+    assert.equal(ownerPayload.company.receiptDocument, '12345678000100');
+    assert.equal(ownerPayload.company.receiptPhone, '(11) 98888-7777');
+    assert.equal(ownerPayload.company.receiptAddress, 'Avenida Principal, 10');
+    assert.equal(ownerPayload.company.receiptFooterMessage, 'Volte sempre!');
+  });
+
+  it('blocks OPERATOR from updating company receipt settings', async () => {
+    const fixture = await createFixture({ deviceStatus: 'ACTIVE' });
+
+    const response = await requestJson('PATCH', '/app/company/settings', {
+      token: fixture.token,
+      body: {
+        receiptDisplayName: 'Operador nao pode',
+      },
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal(
+      (response.data as { code?: string }).code,
+      'COMPANY_SETTINGS_FORBIDDEN',
+    );
+  });
+
+  it('normalizes blank receipt fields to null', async () => {
+    const fixture = await createFixture({
+      role: 'OWNER',
+      deviceStatus: 'ACTIVE',
+    });
+
+    const response = await requestJson('PATCH', '/app/company/settings', {
+      token: fixture.token,
+      body: {
+        receiptDisplayName: '   ',
+        receiptDocument: '',
+        receiptPhone: '   ',
+        receiptAddress: '',
+        receiptFooterMessage: '   ',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      company: {
+        receiptDisplayName: string | null;
+        receiptDocument: string | null;
+        receiptPhone: string | null;
+        receiptAddress: string | null;
+        receiptFooterMessage: string | null;
+      };
+    };
+    assert.equal(payload.company.receiptDisplayName, null);
+    assert.equal(payload.company.receiptDocument, null);
+    assert.equal(payload.company.receiptPhone, null);
+    assert.equal(payload.company.receiptAddress, null);
+    assert.equal(payload.company.receiptFooterMessage, null);
+  });
+
+  it('rejects invalid company receipt settings payloads', async () => {
+    const fixture = await createFixture({
+      role: 'OWNER',
+      deviceStatus: 'ACTIVE',
+    });
+
+    const invalidBoolean = await requestJson('PATCH', '/app/company/settings', {
+      token: fixture.token,
+      body: {
+        showPhoneOnReceipt: 'yes',
+      },
+    });
+    const hugeFooter = await requestJson('PATCH', '/app/company/settings', {
+      token: fixture.token,
+      body: {
+        receiptFooterMessage: 'x'.repeat(161),
+      },
+    });
+    const unknownPayload = await requestJson('PATCH', '/app/company/settings', {
+      token: fixture.token,
+      body: {
+        receiptDisplayName: 'Loja',
+        billingPlan: 'pro',
+      },
+    });
+
+    assert.equal(invalidBoolean.status, 422);
+    assert.equal(
+      (invalidBoolean.data as { code?: string }).code,
+      'VALIDATION_ERROR',
+    );
+    assert.equal(hugeFooter.status, 422);
+    assert.equal(
+      (hugeFooter.data as { code?: string }).code,
+      'VALIDATION_ERROR',
+    );
+    assert.equal(unknownPayload.status, 422);
+    assert.equal(
+      (unknownPayload.data as { code?: string }).code,
+      'VALIDATION_ERROR',
+    );
   });
 
   it('returns app snapshot records for the authenticated company only', async () => {

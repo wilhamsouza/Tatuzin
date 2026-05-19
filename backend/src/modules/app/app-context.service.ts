@@ -146,6 +146,18 @@ export class AppContextService {
       company: {
         id: membership.company.id,
         name: membership.company.name,
+        legalName: membership.company.legalName,
+        documentNumber: membership.company.documentNumber,
+        receiptDisplayName: membership.company.receiptDisplayName,
+        receiptDocument: membership.company.receiptDocument,
+        receiptPhone: membership.company.receiptPhone,
+        receiptAddress: membership.company.receiptAddress,
+        receiptFooterMessage: membership.company.receiptFooterMessage,
+        showDocumentOnReceipt: membership.company.showDocumentOnReceipt,
+        showPhoneOnReceipt: membership.company.showPhoneOnReceipt,
+        showAddressOnReceipt: membership.company.showAddressOnReceipt,
+        showFooterMessageOnReceipt:
+          membership.company.showFooterMessageOnReceipt,
         setupCompleted: true,
       },
       membership: {

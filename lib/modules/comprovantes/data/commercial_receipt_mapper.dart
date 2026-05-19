@@ -1,6 +1,7 @@
 import '../../../app/core/constants/app_constants.dart';
 import '../../../app/core/errors/app_exceptions.dart';
 import '../../../app/core/formatters/app_formatters.dart';
+import '../../../app/core/session/company_context.dart';
 import '../../clientes/domain/entities/customer_credit_transaction.dart';
 import '../../clientes/domain/entities/client.dart';
 import '../../fiado/domain/entities/fiado_detail.dart';
@@ -13,7 +14,12 @@ import '../domain/entities/commercial_receipt_detail_line.dart';
 import '../domain/entities/commercial_receipt_item.dart';
 
 abstract final class CommercialReceiptMapper {
-  static CommercialReceipt fromSaleDetail(SaleDetail detail) {
+  static CommercialReceipt fromSaleDetail(
+    SaleDetail detail, {
+    String? businessName,
+    CompanyReceiptSettings receiptSettings =
+        const CompanyReceiptSettings.defaults(),
+  }) {
     final sale = detail.sale;
 
     if (sale.status == SaleStatus.cancelled) {
@@ -30,7 +36,8 @@ abstract final class CommercialReceiptMapper {
       type: type,
       identifier: sale.receiptNumber,
       issuedAt: sale.soldAt,
-      businessName: AppConstants.appName,
+      businessName: _resolvedBusinessName(businessName, receiptSettings),
+      businessDetails: _businessDetails(receiptSettings),
       title: type.title,
       statusLabel: sale.saleType == SaleType.fiado
           ? _fiadoStatusLabel(sale.fiadoStatus)
@@ -111,14 +118,18 @@ abstract final class CommercialReceiptMapper {
       subtotalLabel: 'Subtotal',
       totalLabel: 'Total final',
       notes: sale.notes,
-      footerMessage:
-          'Comprovante gerado com base em dados persistidos do ERP. Guarde este documento para conferencia.',
+      footerMessage: receiptSettings.footerOrFallback(
+        'Comprovante gerado com base em dados persistidos do ERP. Guarde este documento para conferencia.',
+      ),
     );
   }
 
   static CommercialReceipt fromFiadoPayment({
     required FiadoDetail detail,
     required FiadoPaymentEntry entry,
+    String? businessName,
+    CompanyReceiptSettings receiptSettings =
+        const CompanyReceiptSettings.defaults(),
   }) {
     if (entry.entryType != 'pagamento') {
       throw const ValidationException(
@@ -135,7 +146,8 @@ abstract final class CommercialReceiptMapper {
       type: CommercialReceiptType.fiadoPayment,
       identifier: '${detail.account.receiptNumber}-P${entry.id}',
       issuedAt: entry.registeredAt,
-      businessName: AppConstants.appName,
+      businessName: _resolvedBusinessName(businessName, receiptSettings),
+      businessDetails: _businessDetails(receiptSettings),
       title: CommercialReceiptType.fiadoPayment.title,
       statusLabel: paymentStatus,
       customerName: detail.account.clientName,
@@ -188,14 +200,18 @@ abstract final class CommercialReceiptMapper {
       subtotalLabel: 'Valor recebido',
       totalLabel: 'Valor recebido',
       notes: entry.notes,
-      footerMessage:
-          'Recebimento registrado com base no historico persistido da conta a prazo.',
+      footerMessage: receiptSettings.footerOrFallback(
+        'Recebimento registrado com base no historico persistido da conta a prazo.',
+      ),
     );
   }
 
   static CommercialReceipt fromCustomerCredit({
     required CustomerCreditTransaction transaction,
     required Client? client,
+    String? businessName,
+    CompanyReceiptSettings receiptSettings =
+        const CompanyReceiptSettings.defaults(),
   }) {
     final customerName =
         client?.name ?? transaction.customerName ?? 'Cliente nao informado';
@@ -203,7 +219,8 @@ abstract final class CommercialReceiptMapper {
       type: CommercialReceiptType.customerCredit,
       identifier: 'HAV-${transaction.id}',
       issuedAt: transaction.createdAt,
-      businessName: AppConstants.appName,
+      businessName: _resolvedBusinessName(businessName, receiptSettings),
+      businessDetails: _businessDetails(receiptSettings),
       title: CommercialReceiptType.customerCredit.title,
       statusLabel: transaction.isCredit ? 'Credito' : 'Debito',
       customerName: customerName,
@@ -260,8 +277,9 @@ abstract final class CommercialReceiptMapper {
           : 'Debito lançado',
       totalLabel: transaction.isCredit ? 'Credito lançado' : 'Debito lançado',
       notes: transaction.description,
-      footerMessage:
-          'Lancamento de haver persistido com saldo materializado e extrato transacional.',
+      footerMessage: receiptSettings.footerOrFallback(
+        'Lancamento de haver persistido com saldo materializado e extrato transacional.',
+      ),
     );
   }
 
@@ -276,6 +294,51 @@ abstract final class CommercialReceiptMapper {
       default:
         return 'Pendente';
     }
+  }
+
+  static String _resolvedBusinessName(
+    String? businessName,
+    CompanyReceiptSettings settings,
+  ) {
+    return settings.displayNameOrFallback(
+      businessName?.trim().isNotEmpty == true
+          ? businessName!.trim()
+          : AppConstants.appName,
+    );
+  }
+
+  static List<CommercialReceiptDetailLine> _businessDetails(
+    CompanyReceiptSettings settings,
+  ) {
+    final details = <CommercialReceiptDetailLine>[];
+    void addIfVisible({
+      required bool visible,
+      required String label,
+      required String? value,
+    }) {
+      final normalized = value?.trim();
+      if (!visible || normalized == null || normalized.isEmpty) {
+        return;
+      }
+      details.add(CommercialReceiptDetailLine(label: label, value: normalized));
+    }
+
+    addIfVisible(
+      visible: settings.showDocumentOnReceipt,
+      label: 'CPF/CNPJ',
+      value: settings.receiptDocument,
+    );
+    addIfVisible(
+      visible: settings.showPhoneOnReceipt,
+      label: 'Telefone/WhatsApp',
+      value: settings.receiptPhone,
+    );
+    addIfVisible(
+      visible: settings.showAddressOnReceipt,
+      label: 'Endereco',
+      value: settings.receiptAddress,
+    );
+    return details;
   }
 
   static String _customerCreditTypeLabel(String type) {

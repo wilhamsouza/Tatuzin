@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
+import '../../../../app/core/session/session_provider.dart';
 import '../../../fiado/presentation/providers/fiado_providers.dart';
 import '../../../clientes/presentation/providers/client_providers.dart';
 import '../../../historico_vendas/presentation/providers/sale_history_providers.dart';
@@ -16,11 +17,21 @@ import '../../domain/repositories/commercial_receipt_repository.dart';
 
 final commercialReceiptRepositoryProvider =
     Provider<CommercialReceiptRepository>((ref) {
+      final company = ref.watch(currentCompanyContextProvider);
+      final receiptSettings =
+          company.receiptSettings.receiptDocument == null &&
+              company.documentNumber?.trim().isNotEmpty == true
+          ? company.receiptSettings.copyWith(
+              receiptDocument: company.documentNumber!.trim(),
+            )
+          : company.receiptSettings;
       return SqliteCommercialReceiptRepository(
         saleHistoryRepository: ref.read(saleHistoryRepositoryProvider),
         fiadoRepository: ref.read(fiadoRepositoryProvider),
         clientRepository: ref.read(clientRepositoryProvider),
         customerCreditRepository: ref.read(customerCreditRepositoryProvider),
+        businessName: company.displayName,
+        receiptSettings: receiptSettings,
       );
     });
 

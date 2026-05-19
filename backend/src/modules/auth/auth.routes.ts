@@ -221,6 +221,15 @@ companyRouter.get(
         name: company.name,
         legalName: company.legalName,
         documentNumber: company.documentNumber,
+        receiptDisplayName: company.receiptDisplayName,
+        receiptDocument: company.receiptDocument,
+        receiptPhone: company.receiptPhone,
+        receiptAddress: company.receiptAddress,
+        receiptFooterMessage: company.receiptFooterMessage,
+        showDocumentOnReceipt: company.showDocumentOnReceipt,
+        showPhoneOnReceipt: company.showPhoneOnReceipt,
+        showAddressOnReceipt: company.showAddressOnReceipt,
+        showFooterMessageOnReceipt: company.showFooterMessageOnReceipt,
         slug: company.slug,
         license: company.license == null
           ? null

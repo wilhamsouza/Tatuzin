@@ -123,6 +123,20 @@ class ReceiptPdfService {
               color: PdfColors.white,
             ),
           ),
+          if (receipt.businessDetails.isNotEmpty) ...[
+            pw.SizedBox(height: 6),
+            for (final detail in receipt.businessDetails)
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(bottom: 2),
+                child: pw.Text(
+                  '${detail.label}: ${detail.value}',
+                  style: const pw.TextStyle(
+                    fontSize: 9,
+                    color: PdfColors.white,
+                  ),
+                ),
+              ),
+          ],
           pw.SizedBox(height: 8),
           pw.Text(
             receipt.title,

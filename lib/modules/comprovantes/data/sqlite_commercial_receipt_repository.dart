@@ -1,4 +1,5 @@
 import '../../../app/core/errors/app_exceptions.dart';
+import '../../../app/core/session/company_context.dart';
 import '../../clientes/domain/entities/client.dart';
 import '../../clientes/domain/repositories/client_repository.dart';
 import '../../clientes/domain/repositories/customer_credit_repository.dart';
@@ -15,15 +16,21 @@ class SqliteCommercialReceiptRepository implements CommercialReceiptRepository {
     required FiadoRepository fiadoRepository,
     required ClientRepository clientRepository,
     required CustomerCreditRepository customerCreditRepository,
+    required String businessName,
+    required CompanyReceiptSettings receiptSettings,
   }) : _saleHistoryRepository = saleHistoryRepository,
        _fiadoRepository = fiadoRepository,
        _clientRepository = clientRepository,
-       _customerCreditRepository = customerCreditRepository;
+       _customerCreditRepository = customerCreditRepository,
+       _businessName = businessName,
+       _receiptSettings = receiptSettings;
 
   final SaleHistoryRepository _saleHistoryRepository;
   final FiadoRepository _fiadoRepository;
   final ClientRepository _clientRepository;
   final CustomerCreditRepository _customerCreditRepository;
+  final String _businessName;
+  final CompanyReceiptSettings _receiptSettings;
 
   @override
   Future<CommercialReceipt> build(CommercialReceiptRequest request) async {
@@ -34,7 +41,11 @@ class SqliteCommercialReceiptRepository implements CommercialReceiptRepository {
           throw const ValidationException('Venda nao informada.');
         }
         final detail = await _saleHistoryRepository.fetchDetail(saleId);
-        return CommercialReceiptMapper.fromSaleDetail(detail);
+        return CommercialReceiptMapper.fromSaleDetail(
+          detail,
+          businessName: _businessName,
+          receiptSettings: _receiptSettings,
+        );
       case CommercialReceiptRequestType.fiadoPayment:
         final fiadoId = request.fiadoId;
         final paymentEntryId = request.paymentEntryId;
@@ -55,6 +66,8 @@ class SqliteCommercialReceiptRepository implements CommercialReceiptRepository {
         return CommercialReceiptMapper.fromFiadoPayment(
           detail: detail,
           entry: entry,
+          businessName: _businessName,
+          receiptSettings: _receiptSettings,
         );
       case CommercialReceiptRequestType.customerCredit:
         final transactionId = request.transactionId;
@@ -74,6 +87,8 @@ class SqliteCommercialReceiptRepository implements CommercialReceiptRepository {
         return CommercialReceiptMapper.fromCustomerCredit(
           transaction: transaction,
           client: client,
+          businessName: _businessName,
+          receiptSettings: _receiptSettings,
         );
     }
   }

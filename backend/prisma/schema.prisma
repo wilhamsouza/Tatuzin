@@ -114,6 +114,15 @@ model Company {
   name                            String
   legalName                       String
   documentNumber                  String?
+  receiptDisplayName              String?
+  receiptDocument                 String?
+  receiptPhone                    String?
+  receiptAddress                  String?
+  receiptFooterMessage            String?
+  showDocumentOnReceipt           Boolean                          @default(true)
+  showPhoneOnReceipt              Boolean                          @default(true)
+  showAddressOnReceipt            Boolean                          @default(true)
+  showFooterMessageOnReceipt      Boolean                          @default(true)
   slug                            String                           @unique
   isActive                        Boolean                          @default(true)
   createdAt                       DateTime                         @default(now())

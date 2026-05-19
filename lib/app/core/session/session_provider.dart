@@ -92,6 +92,10 @@ class SessionController extends Notifier<AppSession> {
     state = nextState;
   }
 
+  void updateCompany(CompanyContext company) {
+    state = state.copyWith(company: company, startedAt: DateTime.now());
+  }
+
   String _safeRuntimeKeyFor(AppSession session) {
     try {
       return SessionIsolation.runtimeKeyFor(session);

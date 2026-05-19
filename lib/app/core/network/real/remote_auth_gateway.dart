@@ -498,6 +498,7 @@ class RemoteAuthGateway implements AuthGateway {
         licenseExpiresAt: payload.licenseExpiresAt,
         maxDevices: payload.maxDevices,
         syncEnabled: payload.syncEnabled,
+        receiptSettings: payload.receiptSettings,
         entitlements: payload.entitlements,
       ),
       startedAt: DateTime.now(),
@@ -668,6 +669,7 @@ class _AuthIdentityPayload {
     required this.licenseExpiresAt,
     required this.maxDevices,
     required this.syncEnabled,
+    required this.receiptSettings,
     required this.entitlements,
   });
 
@@ -688,6 +690,7 @@ class _AuthIdentityPayload {
   final DateTime? licenseExpiresAt;
   final int? maxDevices;
   final bool syncEnabled;
+  final CompanyReceiptSettings receiptSettings;
   final PlanEntitlements entitlements;
 
   factory _AuthIdentityPayload.fromBootstrap(
@@ -747,6 +750,7 @@ class _AuthIdentityPayload {
           ? legalName
           : companyName,
       companyDocumentNumber: (company['documentNumber'] as String?)?.trim(),
+      receiptSettings: _readReceiptSettings(company),
       membershipRole: RemoteAuthGateway._readString(
         membership,
         'role',
@@ -805,6 +809,33 @@ class _AuthIdentityPayload {
         .map((permission) => permission.trim())
         .where((permission) => permission.isNotEmpty)
         .toSet();
+  }
+
+  static CompanyReceiptSettings _readReceiptSettings(
+    Map<String, dynamic> company,
+  ) {
+    return CompanyReceiptSettings(
+      receiptDisplayName: _readOptionalString(company['receiptDisplayName']),
+      receiptDocument: _readOptionalString(company['receiptDocument']),
+      receiptPhone: _readOptionalString(company['receiptPhone']),
+      receiptAddress: _readOptionalString(company['receiptAddress']),
+      receiptFooterMessage: _readOptionalString(
+        company['receiptFooterMessage'],
+      ),
+      showDocumentOnReceipt: company['showDocumentOnReceipt'] != false,
+      showPhoneOnReceipt: company['showPhoneOnReceipt'] != false,
+      showAddressOnReceipt: company['showAddressOnReceipt'] != false,
+      showFooterMessageOnReceipt:
+          company['showFooterMessageOnReceipt'] != false,
+    );
+  }
+
+  static String? _readOptionalString(Object? rawValue) {
+    final value = rawValue is String ? rawValue.trim() : null;
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value;
   }
 
   static AppEmployeeContext? _readEmployeeContext(Object? rawValue) {

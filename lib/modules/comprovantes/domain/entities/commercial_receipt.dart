@@ -67,6 +67,7 @@ class CommercialReceipt {
     required this.subtotalLabel,
     required this.totalLabel,
     required this.footerMessage,
+    this.businessDetails = const <CommercialReceiptDetailLine>[],
     this.customerName,
     this.paymentMethodLabel,
     this.notes,
@@ -76,6 +77,7 @@ class CommercialReceipt {
   final String identifier;
   final DateTime issuedAt;
   final String businessName;
+  final List<CommercialReceiptDetailLine> businessDetails;
   final String title;
   final String statusLabel;
   final String? customerName;
