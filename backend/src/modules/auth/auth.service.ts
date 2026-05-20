@@ -24,6 +24,7 @@ import type {
   RegisterInitialInput,
   ResetPasswordInput,
   SessionClientInput,
+  ChangeInitialPasswordInput,
 } from './auth.schemas';
 import {
   ResendPasswordResetDeliveryService,
@@ -38,6 +39,8 @@ type MembershipWithRelations = Membership & {
     passwordHash: string;
     isActive: boolean;
     isPlatformAdmin: boolean;
+    mustChangePassword: boolean;
+    temporaryPasswordExpiresAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
   };
@@ -62,6 +65,12 @@ type MembershipWithRelations = Membership & {
       updatedAt: Date;
     } | null;
   };
+  employeeProfiles: Array<{
+    id: string;
+    status: string;
+    role: string;
+    acceptedAt: Date | null;
+  }>;
 };
 
 const INITIAL_TRIAL_DURATION_DAYS = 15;
@@ -123,6 +132,7 @@ export class AuthService {
       throw new AppError('E-mail ou senha invalidos.', 401, 'INVALID_CREDENTIALS');
     }
 
+    this.assertEmployeeCanLogin(membership);
     this.assertLicenseAllowsAppSession(membership.company.license);
 
     const sessionTokens = await this.sessionService.createSession({
@@ -143,6 +153,84 @@ export class AuthService {
     });
 
     return this.buildAuthPayload(membership, sessionTokens);
+  }
+
+  async changeInitialPassword(params: {
+    userId: string;
+    companyId: string;
+    membershipId: string;
+    input: ChangeInitialPasswordInput;
+  }) {
+    const user = await prisma.user.findUnique({
+      where: { id: params.userId },
+      select: {
+        id: true,
+        isActive: true,
+        mustChangePassword: true,
+        temporaryPasswordExpiresAt: true,
+      },
+    });
+
+    if (user == null || !user.isActive) {
+      throw new AppError(
+        'Sessao nao encontrada. Entre novamente para continuar.',
+        401,
+        'SESSION_NOT_FOUND',
+      );
+    }
+
+    if (!user.mustChangePassword) {
+      throw new AppError(
+        'Esta conta nao precisa trocar a senha inicial.',
+        409,
+        'INITIAL_PASSWORD_CHANGE_NOT_REQUIRED',
+      );
+    }
+
+    if (
+      user.temporaryPasswordExpiresAt != null &&
+      user.temporaryPasswordExpiresAt.getTime() <= Date.now()
+    ) {
+      throw new AppError(
+        'Essa senha expirou. Peca ao dono para gerar uma nova.',
+        401,
+        'TEMPORARY_PASSWORD_EXPIRED',
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(params.input.newPassword, 10);
+    await prisma.$transaction(async (transaction) => {
+      await transaction.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          mustChangePassword: false,
+          temporaryPasswordExpiresAt: null,
+        },
+      });
+
+      await transaction.employeeProfile.updateMany({
+        where: {
+          userId: user.id,
+          companyId: params.companyId,
+          membershipId: params.membershipId,
+          acceptedAt: null,
+          status: { not: 'DISABLED' },
+        },
+        data: {
+          status: 'ACTIVE',
+          acceptedAt: new Date(),
+        },
+      });
+    });
+
+    logger.info('auth.initial_password.changed', {
+      userId: user.id,
+    });
+
+    return {
+      message: 'Senha criada com sucesso. Voce ja pode continuar.',
+    };
   }
 
   async refresh(input: RefreshInput) {
@@ -456,6 +544,14 @@ export class AuthService {
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
       include: {
         user: true,
+        employeeProfiles: {
+          select: {
+            id: true,
+            status: true,
+            role: true,
+            acceptedAt: true,
+          },
+        },
         company: {
           include: {
             license: true,
@@ -478,6 +574,14 @@ export class AuthService {
       where: { id: membershipId },
       include: {
         user: true,
+        employeeProfiles: {
+          select: {
+            id: true,
+            status: true,
+            role: true,
+            acceptedAt: true,
+          },
+        },
         company: {
           include: {
             license: true,
@@ -491,6 +595,32 @@ export class AuthService {
     }
 
     return membership;
+  }
+
+  private assertEmployeeCanLogin(membership: MembershipWithRelations) {
+    const employee = membership.employeeProfiles.find(
+      (profile) => profile.role !== 'OWNER',
+    );
+
+    if (employee?.status === 'DISABLED') {
+      throw new AppError(
+        'Funcionario desativado. Fale com o dono da empresa.',
+        403,
+        'EMPLOYEE_DISABLED',
+      );
+    }
+
+    if (
+      membership.user.mustChangePassword &&
+      membership.user.temporaryPasswordExpiresAt != null &&
+      membership.user.temporaryPasswordExpiresAt.getTime() <= Date.now()
+    ) {
+      throw new AppError(
+        'Essa senha expirou. Peca ao dono para gerar uma nova.',
+        401,
+        'TEMPORARY_PASSWORD_EXPIRED',
+      );
+    }
   }
 
   private buildAuthPayload(
@@ -515,6 +645,7 @@ export class AuthService {
         email: membership.user.email,
         name: membership.user.name,
         isPlatformAdmin: membership.user.isPlatformAdmin,
+        mustChangePassword: membership.user.mustChangePassword,
       },
       company: {
         id: membership.company.id,
@@ -677,6 +808,14 @@ export class AuthService {
           },
           include: {
             user: true,
+            employeeProfiles: {
+              select: {
+                id: true,
+                status: true,
+                role: true,
+                acceptedAt: true,
+              },
+            },
             company: {
               include: {
                 license: true,

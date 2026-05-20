@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/database/app_database.dart';
+import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/session/auth_provider.dart';
 import '../../../../app/core/session/session_feedback.dart';
 import '../../../../app/core/session/session_provider.dart';
@@ -329,6 +330,15 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       if (!mounted) {
         return;
       }
+      if (error is InitialPasswordChangeRequiredException) {
+        this.context.goNamed(AppRouteNames.changeInitialPassword);
+        ScaffoldMessenger.of(this.context).showSnackBar(
+          const SnackBar(
+            content: Text('Você precisa criar uma nova senha para continuar.'),
+          ),
+        );
+        return;
+      }
       ScaffoldMessenger.of(this.context).showSnackBar(
         SnackBar(
           content: Text(
@@ -362,6 +372,15 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       this.context.goNamed(AppRouteNames.dashboard);
     } catch (error) {
       if (!mounted) {
+        return;
+      }
+      if (error is InitialPasswordChangeRequiredException) {
+        this.context.goNamed(AppRouteNames.changeInitialPassword);
+        ScaffoldMessenger.of(this.context).showSnackBar(
+          const SnackBar(
+            content: Text('Você precisa criar uma nova senha para continuar.'),
+          ),
+        );
         return;
       }
       ScaffoldMessenger.of(this.context).showSnackBar(

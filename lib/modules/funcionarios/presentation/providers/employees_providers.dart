@@ -101,6 +101,15 @@ class EmployeeActionController extends AsyncNotifier<void> {
     );
   }
 
+  Future<EmployeeTemporaryPasswordResult> generateTemporaryPassword(String id) {
+    return _runMutation(
+      () => ref
+          .read(employeesRemoteDataSourceProvider)
+          .generateTemporaryPassword(id),
+      detailId: id,
+    );
+  }
+
   Future<EmployeeProfile> disable(String id) {
     return _runMutation(
       () => ref.read(employeesRemoteDataSourceProvider).disableEmployee(id),

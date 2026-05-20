@@ -101,6 +101,91 @@ void main() {
     });
 
     test(
+      'login com mustChangePassword preserva tokens para troca obrigatoria',
+      () async {
+        final apiClient = _RecordingApiClient();
+        final tokenStorage = _MemoryAuthTokenStorage(
+          clientContext: const AuthClientContext(
+            clientType: 'mobile_app',
+            clientInstanceId: 'device-123',
+          ),
+        );
+
+        apiClient.onPost('/auth/login', (body, options) {
+          return ApiResponse<Map<String, dynamic>>(
+            statusCode: 200,
+            data: _authPayload(mustChangePassword: true),
+            headers: const <String, String>{},
+          );
+        });
+
+        final gateway = RemoteAuthGateway(
+          apiClient: apiClient,
+          tokenStorage: tokenStorage,
+        );
+
+        await expectLater(
+          () => gateway.signIn(
+            identifier: 'employee@tatuzin.com.br',
+            password: 'Temp123456',
+          ),
+          throwsA(isA<InitialPasswordChangeRequiredException>()),
+        );
+
+        expect(apiClient.calls, [('POST', '/auth/login')]);
+        expect(await tokenStorage.readAccessToken(), 'access-token-1');
+        expect(await tokenStorage.readRefreshToken(), 'refresh-token-1');
+      },
+    );
+
+    test(
+      'restoreSession com mustChangePassword redireciona sem limpar tokens',
+      () async {
+        final apiClient = _RecordingApiClient();
+        final tokenStorage = _MemoryAuthTokenStorage(
+          accessToken: 'access-token-1',
+          refreshToken: 'refresh-token-1',
+          clientContext: const AuthClientContext(
+            clientType: 'mobile_app',
+            clientInstanceId: 'device-123',
+          ),
+        );
+
+        apiClient.onGet(
+          '/auth/me',
+          (options) => ApiResponse<Map<String, dynamic>>(
+            statusCode: 200,
+            data: _authPayload(mustChangePassword: true),
+            headers: const <String, String>{},
+          ),
+        );
+        apiClient.onGet('/app/bootstrap', (options) {
+          throw const NetworkRequestException(
+            'Falha ao chamar /api/app/bootstrap: Voce precisa criar uma nova senha para continuar.',
+            cause: 403,
+          );
+        });
+
+        final gateway = RemoteAuthGateway(
+          apiClient: apiClient,
+          tokenStorage: tokenStorage,
+        );
+
+        await expectLater(
+          gateway.restoreSession,
+          throwsA(isA<InitialPasswordChangeRequiredException>()),
+        );
+
+        expect(apiClient.calls, [
+          ('GET', '/auth/me'),
+          ('GET', '/app/bootstrap'),
+        ]);
+        expect(await tokenStorage.readAccessToken(), 'access-token-1');
+        expect(await tokenStorage.readRefreshToken(), 'refresh-token-1');
+      },
+    );
+
+    test(
       'login falha com timeout especifico quando /app/bootstrap demora',
       () async {
         final apiClient = _RecordingApiClient();
@@ -286,7 +371,7 @@ void main() {
   });
 }
 
-Map<String, dynamic> _authPayload() {
+Map<String, dynamic> _authPayload({bool mustChangePassword = false}) {
   return <String, dynamic>{
     'accessToken': 'access-token-1',
     'refreshToken': 'refresh-token-1',
@@ -295,6 +380,7 @@ Map<String, dynamic> _authPayload() {
       'name': 'Owner',
       'email': 'owner@tatuzin.com.br',
       'isPlatformAdmin': false,
+      'mustChangePassword': mustChangePassword,
     },
     'membership': <String, dynamic>{'role': 'OWNER'},
   };

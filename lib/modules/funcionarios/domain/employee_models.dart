@@ -59,6 +59,30 @@ enum EmployeeStatus {
   ];
 }
 
+enum EmployeeAccessStatus {
+  noAccess('NO_ACCESS', 'Sem acesso'),
+  temporaryPasswordPending(
+    'TEMPORARY_PASSWORD_PENDING',
+    'Senha temporária pendente',
+  ),
+  active('ACTIVE', 'Acesso ativo'),
+  disabled('DISABLED', 'Desativado'),
+  unknown('UNKNOWN', 'Acesso desconhecido');
+
+  const EmployeeAccessStatus(this.key, this.label);
+
+  final String key;
+  final String label;
+
+  static EmployeeAccessStatus fromKey(Object? value) {
+    final normalized = value?.toString().trim().toUpperCase();
+    return EmployeeAccessStatus.values.firstWhere(
+      (status) => status.key == normalized,
+      orElse: () => EmployeeAccessStatus.unknown,
+    );
+  }
+}
+
 enum EmployeePermission {
   salesCreate('sales.create', 'Criar vendas', 'Vendas'),
   salesCancel('sales.cancel', 'Cancelar vendas', 'Vendas'),
@@ -184,6 +208,8 @@ class EmployeeProfile {
     this.inviteExpiresAt,
     this.acceptedAt,
     this.disabledAt,
+    this.accessStatus = EmployeeAccessStatus.noAccess,
+    this.temporaryPasswordExpiresAt,
   });
 
   final String id;
@@ -197,6 +223,8 @@ class EmployeeProfile {
   final DateTime? inviteExpiresAt;
   final DateTime? acceptedAt;
   final DateTime? disabledAt;
+  final EmployeeAccessStatus accessStatus;
+  final DateTime? temporaryPasswordExpiresAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -217,8 +245,43 @@ class EmployeeProfile {
       inviteExpiresAt: _tryParseDate(source['inviteExpiresAt']),
       acceptedAt: _tryParseDate(source['acceptedAt']),
       disabledAt: _tryParseDate(source['disabledAt']),
+      accessStatus: EmployeeAccessStatus.fromKey(source['accessStatus']),
+      temporaryPasswordExpiresAt: _tryParseDate(
+        source['temporaryPasswordExpiresAt'],
+      ),
       createdAt: _tryParseDate(source['createdAt']),
       updatedAt: _tryParseDate(source['updatedAt']),
+    );
+  }
+}
+
+class EmployeeTemporaryPasswordResult {
+  const EmployeeTemporaryPasswordResult({
+    required this.employee,
+    required this.login,
+    required this.temporaryPassword,
+    required this.temporaryPasswordExpiresAt,
+    this.message,
+  });
+
+  final EmployeeProfile employee;
+  final String login;
+  final String temporaryPassword;
+  final DateTime? temporaryPasswordExpiresAt;
+  final String? message;
+
+  factory EmployeeTemporaryPasswordResult.fromMap(Map<String, dynamic> source) {
+    final rawEmployee = source['employee'];
+    return EmployeeTemporaryPasswordResult(
+      employee: rawEmployee is Map
+          ? EmployeeProfile.fromMap(Map<String, dynamic>.from(rawEmployee))
+          : EmployeeProfile.fromMap(const <String, dynamic>{}),
+      login: _readString(source['login']) ?? '',
+      temporaryPassword: _readString(source['temporaryPassword']) ?? '',
+      temporaryPasswordExpiresAt: _tryParseDate(
+        source['temporaryPasswordExpiresAt'],
+      ),
+      message: _readString(source['message']),
     );
   }
 }

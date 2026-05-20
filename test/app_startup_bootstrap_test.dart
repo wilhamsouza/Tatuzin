@@ -486,5 +486,10 @@ class _FakeAuthGateway implements AuthGateway {
   }
 
   @override
+  Future<AppSession> changeInitialPassword({required String newPassword}) {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<void> signOut() async {}
 }

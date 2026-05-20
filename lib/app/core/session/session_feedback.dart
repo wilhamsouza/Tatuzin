@@ -19,6 +19,18 @@ String friendlySessionFeedbackMessage(
     return 'E-mail ou senha inválidos.';
   }
 
+  if (normalized.contains('temporary_password_expired')) {
+    return 'Essa senha expirou. Peça ao dono para gerar uma nova.';
+  }
+
+  if (normalized.contains('initial_password_change_required')) {
+    return 'Você precisa criar uma nova senha para continuar.';
+  }
+
+  if (normalized.contains('employee_disabled')) {
+    return 'Seu acesso foi desativado. Fale com o dono da empresa.';
+  }
+
   if (normalized.contains('auth_required') ||
       normalized.contains('invalid_access_token')) {
     return 'Sua sessão expirou. Entre novamente.';

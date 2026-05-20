@@ -465,5 +465,10 @@ class _NoSessionGateway implements AuthGateway {
   }) async => 'ok';
 
   @override
+  Future<AppSession> changeInitialPassword({required String newPassword}) {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<void> signOut() async {}
 }

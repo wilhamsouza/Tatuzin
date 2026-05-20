@@ -54,6 +54,13 @@ class FakeAuthGateway implements AuthGateway {
   }
 
   @override
+  Future<AppSession> changeInitialPassword({
+    required String newPassword,
+  }) async {
+    return _buildMockSession();
+  }
+
+  @override
   Future<void> signOut() async {}
 
   AppSession _buildMockSession({

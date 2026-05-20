@@ -281,6 +281,30 @@ class AuthController extends AsyncNotifier<void> {
     }
   }
 
+  Future<AppSession> changeInitialPasswordRemote({
+    required String newPassword,
+  }) async {
+    final environment = ref.read(appEnvironmentProvider);
+    if (!environment.authEnabled || !environment.endpointConfig.isConfigured) {
+      throw const ValidationException(
+        'Ative um modo com backend configurado para trocar a senha inicial.',
+      );
+    }
+
+    state = const AsyncLoading();
+    try {
+      final session = await ref
+          .read(remoteAuthGatewayProvider)
+          .changeInitialPassword(newPassword: newPassword);
+      await _applySession(session);
+      state = const AsyncData(null);
+      return session;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+
   Future<void> signOutCurrentSession() async {
     state = const AsyncLoading();
     try {
@@ -317,6 +341,22 @@ class AuthController extends AsyncNotifier<void> {
   Future<void> signOutMock() => signOutCurrentSession();
 
   Future<void> signOutRemote() => signOutCurrentSession();
+
+  Future<void> discardPendingInitialPasswordSession() async {
+    state = const AsyncLoading();
+    try {
+      await ref.read(remoteAuthGatewayProvider).signOut();
+      ref.read(autoSyncCoordinatorProvider).cancelPending();
+      await ref.read(cachedSessionStorageProvider).clear();
+      ref.read(appSessionProvider.notifier).signOutToLocalMode();
+      ref.invalidate(appStartupProvider);
+      await _ensureStartupReady();
+      state = const AsyncData(null);
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
 
   void resetStatus() {
     state = const AsyncData(null);
@@ -472,7 +512,12 @@ class AuthController extends AsyncNotifier<void> {
     if (normalized.contains('license_expired') ||
         normalized.contains('invalid_credentials') ||
         normalized.contains('auth_required') ||
-        normalized.contains('invalid_access_token')) {
+        normalized.contains('invalid_access_token') ||
+        normalized.contains('initial_password_change_required') ||
+        normalized.contains('temporary_password_expired') ||
+        normalized.contains('employee_disabled') ||
+        normalized.contains('precisa criar uma nova senha') ||
+        normalized.contains('senha expirou')) {
       return false;
     }
 

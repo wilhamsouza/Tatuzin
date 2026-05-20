@@ -118,10 +118,20 @@ export const resetPasswordSchema = z.object({
     .max(72),
 });
 
+export const changeInitialPasswordSchema = z.object({
+  newPassword: z
+    .string()
+    .min(8, 'A nova senha precisa ter pelo menos 8 caracteres.')
+    .max(72),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type RefreshInput = z.infer<typeof refreshSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type ChangeInitialPasswordInput = z.infer<
+  typeof changeInitialPasswordSchema
+>;
 export type RegisterInitialInput = z.infer<typeof registerInitialSchema>;
 export type SessionClientInput = z.infer<typeof sessionClientSchema>;

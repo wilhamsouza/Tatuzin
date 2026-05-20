@@ -79,6 +79,15 @@ class RemoteAuthGateway implements AuthGateway {
       await _tokenStorage.clear();
       return null;
     } catch (error, stackTrace) {
+      if (error is InitialPasswordChangeRequiredException) {
+        _logStepFailure(
+          'auth_session_load_started',
+          stopwatch,
+          error,
+          stackTrace: stackTrace,
+        );
+        rethrow;
+      }
       _logStepFailure(
         'auth_session_load_started',
         stopwatch,
@@ -190,6 +199,9 @@ class RemoteAuthGateway implements AuthGateway {
         error,
         stackTrace: stackTrace,
       );
+      if (error is InitialPasswordChangeRequiredException) {
+        rethrow;
+      }
       await _tokenStorage.clear();
       rethrow;
     }
@@ -289,6 +301,34 @@ class RemoteAuthGateway implements AuthGateway {
   }
 
   @override
+  Future<AppSession> changeInitialPassword({
+    required String newPassword,
+  }) async {
+    final token = await _tokenStorage.readAccessToken();
+    final clientContext = await _tokenStorage.readClientContext();
+    if (token == null || token.trim().isEmpty || clientContext == null) {
+      throw const AuthenticationException(
+        'Entre com a senha temporária antes de criar uma nova senha.',
+      );
+    }
+
+    await _apiClient.postJson(
+      '/auth/change-initial-password',
+      body: <String, dynamic>{'newPassword': newPassword},
+      options: _authorized(token),
+    );
+
+    final identity = await _fetchIdentity(
+      token,
+      clientInstanceId: clientContext.clientInstanceId,
+    );
+    return _buildSession(
+      identity,
+      clientInstanceId: clientContext.clientInstanceId,
+    );
+  }
+
+  @override
   Future<void> signOut() async {
     final token = await _tokenStorage.readAccessToken();
     if (token != null) {
@@ -354,6 +394,19 @@ class RemoteAuthGateway implements AuthGateway {
         ),
       );
     } catch (error, stackTrace) {
+      if (_isInitialPasswordChangeRequired(error)) {
+        final initialPasswordError = InitialPasswordChangeRequiredException(
+          'VocÃª precisa criar uma nova senha para continuar.',
+          cause: error,
+        );
+        _logStepFailure(
+          'app_bootstrap_load_started',
+          companyStopwatch,
+          initialPasswordError,
+          stackTrace: stackTrace,
+        );
+        throw initialPasswordError;
+      }
       _logStepFailure(
         'app_bootstrap_load_started',
         companyStopwatch,
@@ -412,6 +465,12 @@ class RemoteAuthGateway implements AuthGateway {
       refreshToken: refreshToken,
     );
 
+    if (_requiresInitialPasswordChange(authPayload)) {
+      throw const InitialPasswordChangeRequiredException(
+        'Você precisa criar uma nova senha para continuar.',
+      );
+    }
+
     final userStopwatch = Stopwatch()..start();
     _logStepStarted('current_user_load_started');
     final userRemoteId = _readOptionalStringFromNestedMap(
@@ -440,6 +499,19 @@ class RemoteAuthGateway implements AuthGateway {
         ),
       );
     } catch (error, stackTrace) {
+      if (_isInitialPasswordChangeRequired(error)) {
+        final initialPasswordError = InitialPasswordChangeRequiredException(
+          'VocÃª precisa criar uma nova senha para continuar.',
+          cause: error,
+        );
+        _logStepFailure(
+          'app_bootstrap_load_started',
+          companyStopwatch,
+          initialPasswordError,
+          stackTrace: stackTrace,
+        );
+        throw initialPasswordError;
+      }
       _logStepFailure(
         'app_bootstrap_load_started',
         companyStopwatch,
@@ -647,6 +719,21 @@ class RemoteAuthGateway implements AuthGateway {
     }
 
     return fallbackMessage;
+  }
+
+  static bool _requiresInitialPasswordChange(Map<String, dynamic> source) {
+    final user = source['user'];
+    if (user is Map<String, dynamic>) {
+      return user['mustChangePassword'] == true;
+    }
+    return false;
+  }
+
+  static bool _isInitialPasswordChangeRequired(Object error) {
+    final normalized = error.toString().toLowerCase();
+    return normalized.contains('initial_password_change_required') ||
+        normalized.contains('precisa criar uma nova senha') ||
+        normalized.contains('criar uma nova senha para continuar');
   }
 }
 

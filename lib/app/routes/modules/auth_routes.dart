@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 
 import '../../../modules/auth/presentation/pages/forgot_password_page.dart';
+import '../../../modules/auth/presentation/pages/change_initial_password_page.dart';
 import '../../../modules/auth/presentation/pages/login_page.dart';
 import '../../../modules/auth/presentation/pages/register_page.dart';
 import '../../../modules/auth/presentation/pages/reset_password_page.dart';
@@ -30,6 +31,11 @@ List<RouteBase> buildAuthRoutes() {
       builder: (context, state) => ResetPasswordPage(
         initialToken: parseOptionalStringQueryParam(state, 'token'),
       ),
+    ),
+    GoRoute(
+      path: AppRoutePaths.changeInitialPassword,
+      name: AppRouteNames.changeInitialPassword,
+      builder: (context, state) => const ChangeInitialPasswordPage(),
     ),
   ];
 }

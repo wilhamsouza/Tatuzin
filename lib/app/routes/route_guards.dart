@@ -10,8 +10,15 @@ String? appRouteRedirect({
   required AppSession session,
   required AppStartupState? startupState,
   required GoRouterState state,
+  bool initialPasswordChangeRequired = false,
 }) {
   final path = state.uri.path;
+
+  if (initialPasswordChangeRequired) {
+    return path == AppRoutePaths.changeInitialPassword
+        ? null
+        : AppRoutePaths.changeInitialPassword;
+  }
 
   if (isPublicRoutePath(path)) {
     if (path == AppRoutePaths.login &&
@@ -33,7 +40,8 @@ bool isPublicRoutePath(String path) {
   return path == AppRoutePaths.login ||
       path == AppRoutePaths.register ||
       path == AppRoutePaths.forgotPassword ||
-      path == AppRoutePaths.resetPassword;
+      path == AppRoutePaths.resetPassword ||
+      path == AppRoutePaths.changeInitialPassword;
 }
 
 bool canOpenTechnicalRoute(AuthStatusSnapshot authStatus) {

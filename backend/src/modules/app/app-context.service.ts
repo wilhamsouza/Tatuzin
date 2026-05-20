@@ -43,6 +43,7 @@ export class AppContextService {
             name: true,
             email: true,
             isActive: true,
+            mustChangePassword: true,
           },
         },
         company: {
@@ -63,6 +64,14 @@ export class AppContextService {
         'Membership ativo obrigatorio para operar no app.',
         403,
         'MEMBERSHIP_REQUIRED',
+      );
+    }
+
+    if (membership.user.mustChangePassword) {
+      throw new AppError(
+        'Voce precisa criar uma nova senha para continuar.',
+        403,
+        'INITIAL_PASSWORD_CHANGE_REQUIRED',
       );
     }
 

@@ -100,6 +100,17 @@ employeesRouter.post(
 );
 
 employeesRouter.post(
+  '/:id/access/temporary-password',
+  asyncHandler(async (request, response) => {
+    const result = await employeesService.generateTemporaryPassword(
+      request.appContext!,
+      readParam(request.params.id),
+    );
+    response.json(result);
+  }),
+);
+
+employeesRouter.post(
   '/:id/disable',
   asyncHandler(async (request, response) => {
     const employee = await employeesService.disable(

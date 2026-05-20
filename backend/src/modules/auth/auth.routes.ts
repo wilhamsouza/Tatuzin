@@ -7,6 +7,7 @@ import { validateBody } from '../../shared/http/validate';
 import { CompaniesService } from '../companies/companies.service';
 import { AuthService } from './auth.service';
 import {
+  changeInitialPasswordSchema,
   forgotPasswordSchema,
   loginSchema,
   registerSchema,
@@ -142,6 +143,21 @@ authRouter.post(
   validateBody(resetPasswordSchema),
   asyncHandler(async (request, response) => {
     const payload = await authService.resetPassword(request.body);
+    response.json(payload);
+  }),
+);
+
+authRouter.post(
+  '/change-initial-password',
+  requireAuth,
+  validateBody(changeInitialPasswordSchema),
+  asyncHandler(async (request, response) => {
+    const payload = await authService.changeInitialPassword({
+      userId: request.auth!.userId,
+      companyId: request.auth!.companyId,
+      membershipId: request.auth!.membershipId,
+      input: request.body,
+    });
     response.json(payload);
   }),
 );

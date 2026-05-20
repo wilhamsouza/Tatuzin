@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 
 import { createApp } from '../../app';
 import { env } from '../../config/env';
@@ -498,6 +499,311 @@ describe('employees PRO module', () => {
       'EMPLOYEE_EMAIL_REQUIRED',
     );
   });
+
+  it('OWNER generates a temporary password without storing it in plain text', async () => {
+    const fixture = await createFixture({ plan: 'pro' });
+    const employeeEmail = `${runId}-caixa-acesso@tatuzin.test`;
+    const create = await requestJson('POST', '/employees', {
+      token: fixture.token,
+      body: {
+        name: 'Caixa Acesso',
+        email: employeeEmail,
+        role: 'CASHIER',
+      },
+    });
+    assert.equal(create.status, 201);
+    const employeeId = (create.data as { employee: EmployeeDto }).employee.id;
+
+    const access = await requestJson(
+      'POST',
+      `/employees/${employeeId}/access/temporary-password`,
+      { token: fixture.token },
+    );
+
+    assert.equal(access.status, 200);
+    const payload = access.data as {
+      employee: EmployeeDto & {
+        accessStatus: string;
+        temporaryPasswordExpiresAt: string | null;
+      };
+      login: string;
+      temporaryPassword: string;
+      temporaryPasswordExpiresAt: string;
+    };
+    assert.equal(payload.login, employeeEmail);
+    assert.ok(payload.temporaryPassword.length >= 10);
+    assert.equal(payload.employee.accessStatus, 'TEMPORARY_PASSWORD_PENDING');
+    assert.equal(
+      payload.employee.temporaryPasswordExpiresAt,
+      payload.temporaryPasswordExpiresAt,
+    );
+
+    const stored = await prisma.employeeProfile.findUniqueOrThrow({
+      where: { id: employeeId },
+      include: { user: true, membership: true },
+    });
+    assert.ok(stored.userId);
+    assert.ok(stored.membershipId);
+    assert.equal(stored.membership?.role, 'OPERATOR');
+    assert.equal(stored.user?.mustChangePassword, true);
+    assert.notEqual(stored.user?.passwordHash, payload.temporaryPassword);
+    assert.equal(
+      await bcrypt.compare(
+        payload.temporaryPassword,
+        stored.user?.passwordHash ?? '',
+      ),
+      true,
+    );
+  });
+
+  it('does not allow employee access takeover with the OWNER email', async () => {
+    const fixture = await createFixture({ plan: 'pro' });
+    const create = await requestJson('POST', '/employees', {
+      token: fixture.token,
+      body: {
+        name: 'Tentativa Owner',
+        email: fixture.email.toUpperCase(),
+        role: 'SELLER',
+      },
+    });
+    assert.equal(create.status, 409);
+    assert.equal(
+      (create.data as { code?: string }).code,
+      'EMPLOYEE_EMAIL_CONFLICT',
+    );
+  });
+
+  it('blocks a regular employee from generating another employee password', async () => {
+    const fixture = await createFixture({ plan: 'pro', role: 'OPERATOR' });
+    await prisma.employeeProfile.create({
+      data: {
+        companyId: fixture.companyId,
+        userId: fixture.userId,
+        membershipId: fixture.membershipId,
+        name: 'Funcionario comum',
+        email: fixture.email,
+        emailNormalized: fixture.email.toLowerCase(),
+        role: 'CASHIER',
+        status: 'ACTIVE',
+        permissions: ['sales.create'],
+      },
+    });
+    const target = await prisma.employeeProfile.create({
+      data: {
+        companyId: fixture.companyId,
+        name: 'Alvo',
+        email: 'alvo-sem-permissao@tatuzin.test',
+        emailNormalized: 'alvo-sem-permissao@tatuzin.test',
+        role: 'SELLER',
+        status: 'ACTIVE',
+      },
+    });
+
+    const response = await requestJson(
+      'POST',
+      `/employees/${target.id}/access/temporary-password`,
+      { token: fixture.token },
+    );
+
+    assert.equal(response.status, 403);
+    assert.equal(
+      (response.data as { code?: string }).code,
+      'EMPLOYEE_PERMISSION_REQUIRED',
+    );
+  });
+
+  it('temporary password login requires initial password change and then activates access', async () => {
+    const fixture = await createFixture({ plan: 'pro' });
+    const employeeEmail = `${runId}-senha-inicial@tatuzin.test`;
+    const create = await requestJson('POST', '/employees', {
+      token: fixture.token,
+      body: {
+        name: 'Senha Inicial',
+        email: employeeEmail,
+        role: 'SELLER',
+      },
+    });
+    const employeeId = (create.data as { employee: EmployeeDto }).employee.id;
+    const access = await requestJson(
+      'POST',
+      `/employees/${employeeId}/access/temporary-password`,
+      { token: fixture.token },
+    );
+    const temporaryPassword = (access.data as { temporaryPassword: string })
+      .temporaryPassword;
+
+    const login = await requestJson('POST', '/auth/login', {
+      body: {
+        email: employeeEmail,
+        password: temporaryPassword,
+        clientType: 'mobile_app',
+        clientInstanceId: `${fixture.clientInstanceId}-employee`,
+      },
+    });
+    assert.equal(login.status, 200);
+    const loginPayload = login.data as {
+      accessToken: string;
+      user: { mustChangePassword: boolean };
+    };
+    assert.equal(loginPayload.user.mustChangePassword, true);
+
+    const bootstrapBlocked = await requestJson('GET', '/app/bootstrap', {
+      token: loginPayload.accessToken,
+    });
+    assert.equal(bootstrapBlocked.status, 403);
+    assert.equal(
+      (bootstrapBlocked.data as { code?: string }).code,
+      'INITIAL_PASSWORD_CHANGE_REQUIRED',
+    );
+
+    const change = await requestJson('POST', '/auth/change-initial-password', {
+      token: loginPayload.accessToken,
+      body: { newPassword: 'NovaSenha123!' },
+    });
+    assert.equal(change.status, 200);
+
+    const stored = await prisma.employeeProfile.findUniqueOrThrow({
+      where: { id: employeeId },
+      include: { user: true },
+    });
+    assert.equal(stored.acceptedAt != null, true);
+    assert.equal(stored.user?.mustChangePassword, false);
+    assert.equal(stored.user?.temporaryPasswordExpiresAt, null);
+    assert.equal(
+      await bcrypt.compare(temporaryPassword, stored.user?.passwordHash ?? ''),
+      false,
+    );
+    assert.equal(
+      await bcrypt.compare('NovaSenha123!', stored.user?.passwordHash ?? ''),
+      true,
+    );
+
+    const oldPasswordLogin = await requestJson('POST', '/auth/login', {
+      body: {
+        email: employeeEmail,
+        password: temporaryPassword,
+        clientType: 'mobile_app',
+        clientInstanceId: `${fixture.clientInstanceId}-old-after-change`,
+      },
+    });
+    assert.equal(oldPasswordLogin.status, 401);
+    assert.equal(
+      (oldPasswordLogin.data as { code?: string }).code,
+      'INVALID_CREDENTIALS',
+    );
+  });
+
+  it('expired and reset temporary passwords cannot be reused', async () => {
+    const fixture = await createFixture({ plan: 'pro' });
+    const employeeEmail = `${runId}-expirada@tatuzin.test`;
+    const create = await requestJson('POST', '/employees', {
+      token: fixture.token,
+      body: {
+        name: 'Expirada',
+        email: employeeEmail,
+        role: 'SELLER',
+      },
+    });
+    const employeeId = (create.data as { employee: EmployeeDto }).employee.id;
+    const firstAccess = await requestJson(
+      'POST',
+      `/employees/${employeeId}/access/temporary-password`,
+      { token: fixture.token },
+    );
+    const firstPassword = (firstAccess.data as { temporaryPassword: string })
+      .temporaryPassword;
+
+    const employee = await prisma.employeeProfile.findUniqueOrThrow({
+      where: { id: employeeId },
+      select: { userId: true },
+    });
+    await prisma.user.update({
+      where: { id: employee.userId! },
+      data: { temporaryPasswordExpiresAt: new Date(Date.now() - 60_000) },
+    });
+
+    const expiredLogin = await requestJson('POST', '/auth/login', {
+      body: {
+        email: employeeEmail,
+        password: firstPassword,
+        clientType: 'mobile_app',
+        clientInstanceId: `${fixture.clientInstanceId}-expired`,
+      },
+    });
+    assert.equal(expiredLogin.status, 401);
+    assert.equal(
+      (expiredLogin.data as { code?: string }).code,
+      'TEMPORARY_PASSWORD_EXPIRED',
+    );
+
+    const resetAccess = await requestJson(
+      'POST',
+      `/employees/${employeeId}/access/temporary-password`,
+      { token: fixture.token },
+    );
+    const secondPassword = (resetAccess.data as { temporaryPassword: string })
+      .temporaryPassword;
+
+    const oldLogin = await requestJson('POST', '/auth/login', {
+      body: {
+        email: employeeEmail,
+        password: firstPassword,
+        clientType: 'mobile_app',
+        clientInstanceId: `${fixture.clientInstanceId}-old`,
+      },
+    });
+    assert.equal(oldLogin.status, 401);
+    assert.equal((oldLogin.data as { code?: string }).code, 'INVALID_CREDENTIALS');
+
+    const newLogin = await requestJson('POST', '/auth/login', {
+      body: {
+        email: employeeEmail,
+        password: secondPassword,
+        clientType: 'mobile_app',
+        clientInstanceId: `${fixture.clientInstanceId}-new`,
+      },
+    });
+    assert.equal(newLogin.status, 200);
+  });
+
+  it('disabled employee with generated access cannot login', async () => {
+    const fixture = await createFixture({ plan: 'pro' });
+    const employeeEmail = `${runId}-desativar-login@tatuzin.test`;
+    const create = await requestJson('POST', '/employees', {
+      token: fixture.token,
+      body: {
+        name: 'Desativar Login',
+        email: employeeEmail,
+        role: 'SELLER',
+      },
+    });
+    const employeeId = (create.data as { employee: EmployeeDto }).employee.id;
+    const access = await requestJson(
+      'POST',
+      `/employees/${employeeId}/access/temporary-password`,
+      { token: fixture.token },
+    );
+    const temporaryPassword = (access.data as { temporaryPassword: string })
+      .temporaryPassword;
+
+    const disable = await requestJson(
+      'POST',
+      `/employees/${employeeId}/disable`,
+      { token: fixture.token },
+    );
+    assert.equal(disable.status, 200);
+
+    const login = await requestJson('POST', '/auth/login', {
+      body: {
+        email: employeeEmail,
+        password: temporaryPassword,
+        clientType: 'mobile_app',
+        clientInstanceId: `${fixture.clientInstanceId}-disabled`,
+      },
+    });
+    assert.equal(login.status, 403);
+    assert.equal((login.data as { code?: string }).code, 'EMPLOYEE_DISABLED');
+  });
 });
 
 type EmployeeDto = {
@@ -506,6 +812,8 @@ type EmployeeDto = {
   role: string;
   status: string;
   permissions: string[];
+  accessStatus?: string;
+  temporaryPasswordExpiresAt?: string | null;
 };
 
 async function createFixture(options: {

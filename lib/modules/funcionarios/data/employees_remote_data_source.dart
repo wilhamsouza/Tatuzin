@@ -96,6 +96,18 @@ class EmployeesRemoteDataSource {
     return EmployeeActionResult.fromMap(response.data);
   }
 
+  Future<EmployeeTemporaryPasswordResult> generateTemporaryPassword(
+    String id,
+  ) async {
+    final response = await _runEmployeeRequest(
+      () async => _apiClient.postJson(
+        '/employees/${Uri.encodeComponent(id)}/access/temporary-password',
+        options: ApiRequestOptions(headers: await _authorizedHeaders()),
+      ),
+    );
+    return EmployeeTemporaryPasswordResult.fromMap(response.data);
+  }
+
   Future<EmployeeProfile> disableEmployee(String id) async {
     final response = await _runEmployeeRequest(
       () async => _apiClient.postJson(
@@ -158,6 +170,13 @@ class EmployeesRemoteDataSource {
         return 'Limite de funcionários atingido para o plano atual.';
       case 'EMPLOYEE_NOT_FOUND':
         return 'Funcionário não encontrado.';
+      case 'EMPLOYEE_EMAIL_REQUIRED_FOR_ACCESS':
+        return 'Informe um e-mail para gerar acesso. Login por telefone fica para uma melhoria futura.';
+      case 'EMPLOYEE_ACCESS_EMAIL_CONFLICT':
+      case 'EMPLOYEE_ACCESS_EMAIL_LOCKED':
+        return 'Já existe uma conta com este e-mail. Use outro e-mail para evitar mistura de acesso.';
+      case 'EMPLOYEE_DISABLED':
+        return 'Reative o funcionário antes de redefinir a senha.';
     }
 
     if (error.cause == 403 || error.message.contains('403')) {
@@ -202,6 +221,10 @@ class EmployeesRemoteDataSource {
         'EMPLOYEE_PERMISSION_REQUIRED',
         'EMPLOYEE_LIMIT_REACHED',
         'EMPLOYEE_NOT_FOUND',
+        'EMPLOYEE_EMAIL_REQUIRED_FOR_ACCESS',
+        'EMPLOYEE_ACCESS_EMAIL_CONFLICT',
+        'EMPLOYEE_ACCESS_EMAIL_LOCKED',
+        'EMPLOYEE_DISABLED',
       ]) {
         if (source.contains(code)) {
           return code;

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/theme/app_design_tokens.dart';
@@ -428,10 +429,16 @@ class _EmployeeTile extends ConsumerWidget {
                   onSelected: (value) => _handleAction(context, ref, value),
                   itemBuilder: (context) => [
                     const PopupMenuItem(value: 'edit', child: Text('Editar')),
-                    if (employee.status == EmployeeStatus.invited)
+                    if (employee.accessStatus == EmployeeAccessStatus.noAccess)
                       const PopupMenuItem(
-                        value: 'invite',
-                        child: Text('Gerar convite'),
+                        value: 'generate-temporary-password',
+                        child: Text('Gerar senha temporária'),
+                      )
+                    else if (employee.accessStatus !=
+                        EmployeeAccessStatus.disabled)
+                      const PopupMenuItem(
+                        value: 'generate-temporary-password',
+                        child: Text('Redefinir senha'),
                       ),
                     if (employee.status == EmployeeStatus.disabled)
                       const PopupMenuItem(
@@ -461,6 +468,11 @@ class _EmployeeTile extends ConsumerWidget {
                 tone: _statusTone(employee.status),
                 icon: _statusIcon(employee.status),
               ),
+              AppStatusBadge(
+                label: employee.accessStatus.label,
+                tone: _accessTone(employee.accessStatus),
+                icon: _accessIcon(employee.accessStatus),
+              ),
               if (employee.isOwner)
                 const AppStatusBadge(
                   label: 'Protegido',
@@ -487,6 +499,9 @@ class _EmployeeTile extends ConsumerWidget {
           useSafeArea: true,
           builder: (_) => _EmployeeFormSheet(employee: employee),
         );
+        return;
+      case 'generate-temporary-password':
+        await _generateTemporaryPassword(context, ref);
         return;
       case 'invite':
         await _runAction(
@@ -526,6 +541,38 @@ class _EmployeeTile extends ConsumerWidget {
           successMessage: 'Acesso desativado sem apagar histórico.',
         );
         return;
+    }
+  }
+
+  Future<void> _generateTemporaryPassword(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    try {
+      final result = await ref
+          .read(employeeActionControllerProvider.notifier)
+          .generateTemporaryPassword(employee.id);
+      if (!context.mounted) {
+        return;
+      }
+      await _showEmployeeAccessSheet(context, result);
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Senha temporária gerada.')));
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Não foi possível gerar a senha: ${_errorMessage(error)}',
+          ),
+        ),
+      );
     }
   }
 
@@ -807,13 +854,22 @@ class _EmployeeFormSheetState extends ConsumerState<_EmployeeFormSheet> {
 
     try {
       final controller = ref.read(employeeActionControllerProvider.notifier);
+      EmployeeProfile? createdEmployee;
       if (_isEditing) {
         await controller.updateEmployee(widget.employee!.id, input);
       } else {
-        await controller.create(input);
+        createdEmployee = await controller.create(input);
       }
       if (!mounted) {
         return;
+      }
+      if (!_isEditing &&
+          createdEmployee != null &&
+          (createdEmployee.email?.trim().isNotEmpty ?? false)) {
+        await _askGenerateTemporaryPassword(context, createdEmployee);
+        if (!mounted) {
+          return;
+        }
       }
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -831,6 +887,55 @@ class _EmployeeFormSheetState extends ConsumerState<_EmployeeFormSheet> {
         SnackBar(
           content: Text(
             'Não foi possível salvar funcionário: ${_errorMessage(error)}',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _askGenerateTemporaryPassword(
+    BuildContext context,
+    EmployeeProfile employee,
+  ) async {
+    final generate = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Gerar senha temporária agora?'),
+        content: const Text(
+          'Mostre essa senha ao funcionário. Ele deverá trocar no primeiro acesso.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Agora não'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Gerar senha'),
+          ),
+        ],
+      ),
+    );
+    if (generate != true || !context.mounted) {
+      return;
+    }
+
+    try {
+      final result = await ref
+          .read(employeeActionControllerProvider.notifier)
+          .generateTemporaryPassword(employee.id);
+      if (!context.mounted) {
+        return;
+      }
+      await _showEmployeeAccessSheet(context, result);
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Não foi possível gerar a senha: ${_errorMessage(error)}',
           ),
         ),
       );
@@ -895,6 +1000,117 @@ Future<bool?> _confirmDisable(BuildContext context, String name) {
   );
 }
 
+Future<void> _showEmployeeAccessSheet(
+  BuildContext context,
+  EmployeeTemporaryPasswordResult result,
+) {
+  final accessText =
+      'Funcionário: ${result.employee.name}\n'
+      'Login: ${result.login}\n'
+      'Senha temporária: ${result.temporaryPassword}';
+
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (context) {
+      final layout = context.appLayout;
+      return Padding(
+        padding: EdgeInsets.all(layout.pagePadding),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Acesso do funcionário',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            SizedBox(height: layout.space4),
+            _AccessRow(label: 'Nome', value: result.employee.name),
+            _AccessRow(label: 'Login', value: result.login),
+            _AccessRow(
+              label: 'Senha temporária',
+              value: result.temporaryPassword,
+            ),
+            SizedBox(height: layout.space3),
+            Text(
+              'Essa senha aparece apenas agora. O funcionário deverá trocar no primeiro acesso.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            SizedBox(height: layout.space6),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: accessText));
+                      if (!context.mounted) {
+                        return;
+                      }
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Dados de acesso copiados.'),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.copy_rounded),
+                    label: const Text('Copiar dados'),
+                  ),
+                ),
+                SizedBox(width: layout.space4),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Fechar'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class _AccessRow extends StatelessWidget {
+  const _AccessRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 2),
+          SelectableText(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 AppStatusTone _statusTone(EmployeeStatus status) {
   switch (status) {
     case EmployeeStatus.active:
@@ -905,6 +1121,35 @@ AppStatusTone _statusTone(EmployeeStatus status) {
       return AppStatusTone.danger;
     case EmployeeStatus.unknown:
       return AppStatusTone.neutral;
+  }
+}
+
+AppStatusTone _accessTone(EmployeeAccessStatus status) {
+  switch (status) {
+    case EmployeeAccessStatus.active:
+      return AppStatusTone.success;
+    case EmployeeAccessStatus.temporaryPasswordPending:
+      return AppStatusTone.warning;
+    case EmployeeAccessStatus.disabled:
+      return AppStatusTone.danger;
+    case EmployeeAccessStatus.noAccess:
+    case EmployeeAccessStatus.unknown:
+      return AppStatusTone.neutral;
+  }
+}
+
+IconData _accessIcon(EmployeeAccessStatus status) {
+  switch (status) {
+    case EmployeeAccessStatus.active:
+      return Icons.verified_user_outlined;
+    case EmployeeAccessStatus.temporaryPasswordPending:
+      return Icons.password_rounded;
+    case EmployeeAccessStatus.disabled:
+      return Icons.block_rounded;
+    case EmployeeAccessStatus.noAccess:
+      return Icons.lock_open_rounded;
+    case EmployeeAccessStatus.unknown:
+      return Icons.info_outline_rounded;
   }
 }
 

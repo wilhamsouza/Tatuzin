@@ -23,6 +23,8 @@ abstract interface class AuthGateway {
     required String newPassword,
   });
 
+  Future<AppSession> changeInitialPassword({required String newPassword});
+
   Future<AppSession> refreshSession();
 
   Future<void> signOut();

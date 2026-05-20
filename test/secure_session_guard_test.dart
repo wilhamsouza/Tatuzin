@@ -127,6 +127,43 @@ void main() {
     },
   );
 
+  test('INITIAL_PASSWORD_CHANGE_REQUIRED nao restaura cache offline', () async {
+    final container = ProviderContainer(
+      overrides: [
+        initialAppEnvironmentProvider.overrideWith((ref) => _remoteEnvironment),
+        remoteAuthGatewayProvider.overrideWith(
+          (ref) => _InitialPasswordRequiredGateway(),
+        ),
+        cachedSessionStorageProvider.overrideWith(
+          (ref) => _MemoryCachedSessionStorage(_remoteSession()),
+        ),
+        tenantDatabaseExistsProvider.overrideWith((ref) {
+          return (isolationKey) async => true;
+        }),
+        appStartupOpenDatabaseProvider.overrideWith((ref) {
+          return (isolationKey) async {};
+        }),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await expectLater(
+      () => container
+          .read(authControllerProvider.notifier)
+          .signInRemote(email: 'employee@tatuzin.test', password: 'Temp123456'),
+      throwsA(
+        isA<NetworkRequestException>()
+            .having(
+              (error) => error.message,
+              'message',
+              contains('INITIAL_PASSWORD_CHANGE_REQUIRED'),
+            )
+            .having((error) => error.cause, 'cause', 403),
+      ),
+    );
+    expect(container.read(appSessionProvider).isLocalDefault, isTrue);
+  });
+
   test('sessao local anterior com tenant permite entrada offline', () async {
     final cachedSession = _remoteSession().copyWith(isOfflineFallback: true);
     final container = ProviderContainer(
@@ -325,6 +362,11 @@ class _NoSessionGateway implements AuthGateway {
   }) async => 'ok';
 
   @override
+  Future<AppSession> changeInitialPassword({required String newPassword}) {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<void> signOut() async {}
 }
 
@@ -350,5 +392,18 @@ class _LicenseExpiredGateway extends _NoSessionGateway {
     required String password,
   }) async {
     throw const NetworkRequestException('LICENSE_EXPIRED', cause: 403);
+  }
+}
+
+class _InitialPasswordRequiredGateway extends _NoSessionGateway {
+  @override
+  Future<AppSession> signIn({
+    required String identifier,
+    required String password,
+  }) async {
+    throw const NetworkRequestException(
+      'INITIAL_PASSWORD_CHANGE_REQUIRED',
+      cause: 403,
+    );
   }
 }

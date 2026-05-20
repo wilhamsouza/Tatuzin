@@ -3,6 +3,7 @@ abstract final class AppRouteNames {
   static const register = 'register';
   static const forgotPassword = 'forgot-password';
   static const resetPassword = 'reset-password';
+  static const changeInitialPassword = 'change-initial-password';
   static const dashboard = 'dashboard';
   static const more = 'more';
   static const accountCloud = 'account-cloud';
@@ -67,6 +68,7 @@ abstract final class AppRoutePaths {
   static const register = '/cadastro';
   static const forgotPassword = '/esqueci-senha';
   static const resetPassword = '/redefinir-senha';
+  static const changeInitialPassword = '/criar-nova-senha';
   static const dashboard = '/';
   static const more = '/mais';
   static const accountCloud = '/conta';

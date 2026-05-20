@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/database/app_database.dart';
+import '../core/errors/app_exceptions.dart';
 import '../core/session/auth_provider.dart';
 import '../core/session/session_provider.dart';
 import 'modules/account_routes.dart';
@@ -26,6 +27,9 @@ import 'route_param_parsers.dart';
 final appRouterProvider = Provider<GoRouter>((ref) {
   final session = ref.watch(appSessionProvider);
   final startupState = ref.watch(appStartupProvider).valueOrNull;
+  final authState = ref.watch(authControllerProvider);
+  final initialPasswordChangeRequired =
+      authState.error is InitialPasswordChangeRequiredException;
 
   AuthStatusSnapshot readAuthStatus() => ref.read(authStatusProvider);
 
@@ -35,6 +39,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       session: session,
       startupState: startupState,
       state: state,
+      initialPasswordChangeRequired: initialPasswordChangeRequired,
     ),
     routes: <RouteBase>[
       ...buildAuthRoutes(),

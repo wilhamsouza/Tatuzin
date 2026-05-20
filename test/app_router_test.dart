@@ -3,6 +3,7 @@ import 'package:erp_pdv_app/app/core/config/app_data_mode.dart';
 import 'package:erp_pdv_app/app/core/config/app_environment.dart';
 import 'package:erp_pdv_app/app/core/database/app_database.dart';
 import 'package:erp_pdv_app/app/core/entitlements/plan_entitlements.dart';
+import 'package:erp_pdv_app/app/core/errors/app_exceptions.dart';
 import 'package:erp_pdv_app/app/core/network/contracts/auth_gateway.dart';
 import 'package:erp_pdv_app/app/core/session/app_session.dart';
 import 'package:erp_pdv_app/app/core/session/app_user.dart';
@@ -173,6 +174,35 @@ void main() {
     expect(find.byType(LoginPage), findsOneWidget);
   });
 
+  testWidgets(
+    'sessao com mustChangePassword restaura na troca e bloqueia rota protegida',
+    (tester) async {
+      final container = ProviderContainer(
+        overrides: _baseOverrides(remoteGateway: _InitialPasswordGateway()),
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const ErpPdvApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Crie sua nova senha'), findsOneWidget);
+
+      final router = GoRouter.of(
+        tester.element(find.text('Crie sua nova senha')),
+      );
+      router.go(AppRoutePaths.sales);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Crie sua nova senha'), findsOneWidget);
+      expect(find.byType(DashboardPage), findsNothing);
+    },
+  );
+
   testWidgets('rota operacional sem tenant nao abre shell', (tester) async {
     await _pumpApp(tester, configureSession: _setSessionWithoutTenant);
 
@@ -220,7 +250,7 @@ void main() {
   });
 }
 
-List<Override> _baseOverrides() {
+List<Override> _baseOverrides({AuthGateway? remoteGateway}) {
   return <Override>[
     initialAppEnvironmentProvider.overrideWith(
       (ref) => AppEnvironment.remoteDefault().copyWith(
@@ -228,7 +258,9 @@ List<Override> _baseOverrides() {
       ),
     ),
     sessionContextResetProvider.overrideWith((ref) {}),
-    remoteAuthGatewayProvider.overrideWith((ref) => _NoSessionGateway()),
+    remoteAuthGatewayProvider.overrideWith(
+      (ref) => remoteGateway ?? _NoSessionGateway(),
+    ),
     appStartupProvider.overrideWith(
       (ref) async => const AppStartupState.success(),
     ),
@@ -414,5 +446,19 @@ class _NoSessionGateway implements AuthGateway {
   }) async => 'ok';
 
   @override
+  Future<AppSession> changeInitialPassword({required String newPassword}) {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<void> signOut() async {}
+}
+
+class _InitialPasswordGateway extends _NoSessionGateway {
+  @override
+  Future<AppSession?> restoreSession() async {
+    throw const InitialPasswordChangeRequiredException(
+      'Voce precisa criar uma nova senha para continuar.',
+    );
+  }
 }

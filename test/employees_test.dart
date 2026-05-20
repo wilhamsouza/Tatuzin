@@ -107,6 +107,7 @@ void main() {
     );
     await dataSource.deleteEmployee('employee 1');
     await dataSource.inviteEmployee('employee 1');
+    await dataSource.generateTemporaryPassword('employee 1');
     await dataSource.disableEmployee('employee 1');
     await dataSource.enableEmployee('employee 1');
 
@@ -119,6 +120,7 @@ void main() {
       'POST',
       'POST',
       'POST',
+      'POST',
     ]);
     expect(api.calls.map((call) => call.path).toList(), [
       '/employees',
@@ -127,6 +129,7 @@ void main() {
       '/employees/employee%201',
       '/employees/employee%201',
       '/employees/employee%201/invite',
+      '/employees/employee%201/access/temporary-password',
       '/employees/employee%201/disable',
       '/employees/employee%201/enable',
     ]);
@@ -274,6 +277,7 @@ void main() {
     expect(find.text('Protegido'), findsOneWidget);
     expect(find.text('Caixa Principal'), findsOneWidget);
     expect(find.text('Desativado'), findsOneWidget);
+    expect(find.text('Acesso ativo'), findsOneWidget);
     expect(find.byType(PopupMenuButton<String>), findsWidgets);
 
     await tester.scrollUntilVisible(
@@ -286,6 +290,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Habilitar'), findsOneWidget);
+    expect(find.text('Redefinir senha'), findsNothing);
   });
 
   testWidgets('convite não mostra token ou hash', (tester) async {
@@ -303,13 +308,21 @@ void main() {
 
     await tester.tap(find.byType(PopupMenuButton<String>));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Gerar convite'));
+    await tester.tap(find.text('Gerar senha temporária'));
     await tester.pumpAndSettle();
 
-    expect(fakeDataSource.inviteCalls, ['employee-invited']);
-    expect(find.textContaining('Convite gerado'), findsOneWidget);
-    expect(find.textContaining('inviteTokenHash'), findsNothing);
-    expect(find.textContaining('secret-token'), findsNothing);
+    expect(fakeDataSource.temporaryPasswordCalls, ['employee-invited']);
+    expect(find.text('Acesso do funcionário'), findsOneWidget);
+    expect(find.text('Temp123456'), findsOneWidget);
+    expect(
+      find.textContaining('Essa senha aparece apenas agora'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('hash'), findsNothing);
+
+    await tester.tap(find.text('Fechar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Temp123456'), findsNothing);
   });
 }
 
@@ -443,6 +456,19 @@ const _cashier = EmployeeProfile(
   role: EmployeeRole.cashier,
   status: EmployeeStatus.active,
   permissions: {EmployeePermission.salesCreate},
+  accessStatus: EmployeeAccessStatus.active,
+  createdAt: null,
+  updatedAt: null,
+);
+
+const _cashierWithTemporaryPassword = EmployeeProfile(
+  id: 'employee-cashier',
+  name: 'Caixa Principal',
+  email: 'caixa@tatuzin.test',
+  role: EmployeeRole.cashier,
+  status: EmployeeStatus.active,
+  permissions: {EmployeePermission.salesCreate},
+  accessStatus: EmployeeAccessStatus.temporaryPasswordPending,
   createdAt: null,
   updatedAt: null,
 );
@@ -453,6 +479,7 @@ const _disabled = EmployeeProfile(
   role: EmployeeRole.seller,
   status: EmployeeStatus.disabled,
   permissions: {EmployeePermission.salesCreate},
+  accessStatus: EmployeeAccessStatus.disabled,
   createdAt: null,
   updatedAt: null,
 );
@@ -464,6 +491,7 @@ const _invited = EmployeeProfile(
   role: EmployeeRole.seller,
   status: EmployeeStatus.invited,
   permissions: {EmployeePermission.salesCreate},
+  accessStatus: EmployeeAccessStatus.noAccess,
   createdAt: null,
   updatedAt: null,
 );
@@ -475,6 +503,7 @@ class _FakeEmployeesRemoteDataSource extends EmployeesRemoteDataSource {
 
   final EmployeesPageResult page;
   final inviteCalls = <String>[];
+  final temporaryPasswordCalls = <String>[];
 
   @override
   Future<EmployeesPageResult> getEmployees({
@@ -494,6 +523,20 @@ class _FakeEmployeesRemoteDataSource extends EmployeesRemoteDataSource {
       employee: _invited,
       message:
           'Convite gerado. O envio automático de e-mail será implementado em etapa futura.',
+    );
+  }
+
+  @override
+  Future<EmployeeTemporaryPasswordResult> generateTemporaryPassword(
+    String id,
+  ) async {
+    temporaryPasswordCalls.add(id);
+    return const EmployeeTemporaryPasswordResult(
+      employee: _cashierWithTemporaryPassword,
+      login: 'caixa@tatuzin.test',
+      temporaryPassword: 'Temp123456',
+      temporaryPasswordExpiresAt: null,
+      message: 'Senha temporária gerada.',
     );
   }
 }
@@ -552,7 +595,11 @@ class _RecordingApiClient implements ApiClientContract {
     calls.add(_ApiCall('POST', path, body: body));
     return ApiResponse<Map<String, dynamic>>(
       statusCode: 200,
-      data: path.endsWith('/invite') ? _invitePayload() : _employeePayload(),
+      data: path.endsWith('/invite')
+          ? _invitePayload()
+          : path.endsWith('/access/temporary-password')
+          ? _temporaryPasswordPayload()
+          : _employeePayload(),
       headers: const <String, String>{},
     );
   }
@@ -701,7 +748,20 @@ Map<String, dynamic> _invitePayload() {
   };
 }
 
-Map<String, dynamic> _employeeMap({String status = 'ACTIVE'}) {
+Map<String, dynamic> _temporaryPasswordPayload() {
+  return <String, dynamic>{
+    'employee': _employeeMap(accessStatus: 'TEMPORARY_PASSWORD_PENDING'),
+    'login': 'caixa@tatuzin.test',
+    'temporaryPassword': 'Temp123456',
+    'temporaryPasswordExpiresAt': '2026-05-27T12:00:00.000Z',
+    'message': 'Senha temporária gerada.',
+  };
+}
+
+Map<String, dynamic> _employeeMap({
+  String status = 'ACTIVE',
+  String accessStatus = 'ACTIVE',
+}) {
   return <String, dynamic>{
     'id': 'employee-1',
     'name': 'Caixa',
@@ -709,6 +769,7 @@ Map<String, dynamic> _employeeMap({String status = 'ACTIVE'}) {
     'phone': '11999990000',
     'role': 'CASHIER',
     'status': status,
+    'accessStatus': accessStatus,
     'permissions': <String>['sales.create'],
     'createdAt': '2026-05-08T12:00:00.000Z',
     'updatedAt': '2026-05-08T12:00:00.000Z',
