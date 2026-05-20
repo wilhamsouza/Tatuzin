@@ -10,6 +10,7 @@ import 'package:erp_pdv_app/app/core/session/session_provider.dart';
 import 'package:erp_pdv_app/app/core/theme/app_theme.dart';
 import 'package:erp_pdv_app/modules/funcionarios/data/employees_remote_data_source.dart';
 import 'package:erp_pdv_app/modules/funcionarios/domain/employee_models.dart';
+import 'package:erp_pdv_app/modules/funcionarios/presentation/pages/employee_activity_page.dart';
 import 'package:erp_pdv_app/modules/funcionarios/presentation/pages/employees_page.dart';
 import 'package:erp_pdv_app/modules/funcionarios/presentation/providers/employees_providers.dart';
 import 'package:flutter/material.dart';
@@ -110,6 +111,16 @@ void main() {
     await dataSource.generateTemporaryPassword('employee 1');
     await dataSource.disableEmployee('employee 1');
     await dataSource.enableEmployee('employee 1');
+    final activityPeriod = EmployeeActivityPeriod(
+      label: 'Hoje',
+      from: DateTime(2026, 5, 20),
+      to: DateTime(2026, 5, 20),
+    );
+    await dataSource.getEmployeeActivitySummary(period: activityPeriod);
+    await dataSource.getEmployeeActivityDetail(
+      'employee 1',
+      period: activityPeriod,
+    );
 
     expect(api.calls.map((call) => call.method).toList(), [
       'GET',
@@ -121,6 +132,8 @@ void main() {
       'POST',
       'POST',
       'POST',
+      'GET',
+      'GET',
     ]);
     expect(api.calls.map((call) => call.path).toList(), [
       '/employees',
@@ -132,9 +145,13 @@ void main() {
       '/employees/employee%201/access/temporary-password',
       '/employees/employee%201/disable',
       '/employees/employee%201/enable',
+      '/employees/activity/summary',
+      '/employees/employee%201/activity',
     ]);
     expect(api.calls.first.queryParameters['status'], 'ACTIVE');
     expect(api.calls.first.queryParameters['role'], 'CASHIER');
+    expect(api.calls[9].queryParameters['from'], '2026-05-20');
+    expect(api.calls[10].queryParameters['to'], '2026-05-20');
     expect(api.calls[2].body?['role'], isNot('OWNER'));
     expect(api.calls[2].body?.containsKey('inviteTokenHash'), isFalse);
 
@@ -278,6 +295,8 @@ void main() {
     expect(find.text('Caixa Principal'), findsOneWidget);
     expect(find.text('Desativado'), findsOneWidget);
     expect(find.text('Acesso ativo'), findsOneWidget);
+    expect(find.text('Ver atividade da equipe'), findsOneWidget);
+    expect(find.text('Ver atividade'), findsWidgets);
     expect(find.byType(PopupMenuButton<String>), findsWidgets);
 
     await tester.scrollUntilVisible(
@@ -323,6 +342,106 @@ void main() {
     await tester.tap(find.text('Fechar'));
     await tester.pumpAndSettle();
     expect(find.text('Temp123456'), findsNothing);
+  });
+
+  testWidgets('Atividade dos funcionários renderiza KPIs e estado parcial', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpEmployeeActivityPage(
+      tester,
+      session: _session(
+        PlanEntitlements.pro,
+        membershipPermissions: const {'reports.advanced'},
+        employee: const AppEmployeeContext(
+          id: 'employee-owner',
+          role: 'OWNER',
+          status: 'ACTIVE',
+          permissions: {'reports.advanced'},
+        ),
+      ),
+      dataSource: _FakeEmployeesRemoteDataSource(),
+    );
+
+    expect(find.text('Atividade dos funcionários'), findsWidgets);
+    expect(find.text('Funcionários ativos'), findsOneWidget);
+    expect(find.text('Total vendido'), findsOneWidget);
+    expect(find.text('R\$ 125,00'), findsAtLeastNWidgets(1));
+    expect(find.text('Dados parcialmente rastreados'), findsOneWidget);
+  });
+
+  testWidgets('Atividade dos funcionários mostra estado vazio', (tester) async {
+    await _pumpEmployeeActivityPage(
+      tester,
+      session: _session(
+        PlanEntitlements.pro,
+        membershipPermissions: const {'reports.advanced'},
+      ),
+      dataSource: _FakeEmployeesRemoteDataSource(
+        activitySummaryPayload: _emptyEmployeeActivitySummaryPayload(),
+      ),
+    );
+
+    expect(find.text('Nenhuma atividade encontrada'), findsOneWidget);
+    expect(
+      find.text('Nenhuma atividade encontrada neste período.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Filtro de período recarrega atividade', (tester) async {
+    final dataSource = _FakeEmployeesRemoteDataSource();
+    await _pumpEmployeeActivityPage(
+      tester,
+      session: _session(
+        PlanEntitlements.pro,
+        membershipPermissions: const {'reports.advanced'},
+      ),
+      dataSource: dataSource,
+    );
+
+    await tester.tap(find.text('Ontem'));
+    await tester.pumpAndSettle();
+
+    expect(dataSource.summaryPeriods.map((period) => period.label), [
+      'Hoje',
+      'Ontem',
+    ]);
+  });
+
+  testWidgets('Atividade do funcionário renderiza timeline', (tester) async {
+    await _pumpEmployeeActivityDetailPage(
+      tester,
+      session: _session(
+        PlanEntitlements.pro,
+        membershipPermissions: const {'reports.advanced'},
+      ),
+      dataSource: _FakeEmployeesRemoteDataSource(),
+    );
+
+    expect(find.text('Caixa Principal'), findsOneWidget);
+    expect(find.text('Linha do tempo'), findsOneWidget);
+    expect(find.text('Venda realizada'), findsOneWidget);
+    expect(find.text('Venda 123'), findsOneWidget);
+  });
+
+  testWidgets('Atividade dos funcionários mostra sem permissão', (
+    tester,
+  ) async {
+    await _pumpEmployeeActivityPage(
+      tester,
+      session: _session(PlanEntitlements.pro, membershipRole: 'OPERATOR'),
+      dataSource: _FakeEmployeesRemoteDataSource(),
+    );
+
+    expect(
+      find.text('Você não tem permissão para ver atividade de funcionários.'),
+      findsOneWidget,
+    );
   });
 }
 
@@ -390,6 +509,74 @@ Future<void> _pumpEmployeesPage(
   await tester.pumpAndSettle();
 }
 
+Future<void> _pumpEmployeeActivityPage(
+  WidgetTester tester, {
+  required AppSession session,
+  required _FakeEmployeesRemoteDataSource dataSource,
+}) async {
+  final container = ProviderContainer(
+    overrides: [
+      employeesRemoteDataSourceProvider.overrideWithValue(dataSource),
+    ],
+  );
+  addTearDown(container.dispose);
+  container
+      .read(appSessionProvider.notifier)
+      .setAuthenticatedSession(
+        scope: session.scope,
+        user: session.user,
+        company: session.company,
+        clientInstanceId: session.clientInstanceId,
+        membership: session.membership,
+        employee: session.employee,
+      );
+
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        theme: AppTheme.light(),
+        home: const EmployeeActivityPage(),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _pumpEmployeeActivityDetailPage(
+  WidgetTester tester, {
+  required AppSession session,
+  required _FakeEmployeesRemoteDataSource dataSource,
+}) async {
+  final container = ProviderContainer(
+    overrides: [
+      employeesRemoteDataSourceProvider.overrideWithValue(dataSource),
+    ],
+  );
+  addTearDown(container.dispose);
+  container
+      .read(appSessionProvider.notifier)
+      .setAuthenticatedSession(
+        scope: session.scope,
+        user: session.user,
+        company: session.company,
+        clientInstanceId: session.clientInstanceId,
+        membership: session.membership,
+        employee: session.employee,
+      );
+
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        theme: AppTheme.light(),
+        home: const EmployeeActivityDetailPage(employeeId: 'employee-cashier'),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 EmployeesPageResult _page(List<EmployeeProfile> employees) {
   return EmployeesPageResult(
     items: employees,
@@ -404,6 +591,7 @@ EmployeesPageResult _page(List<EmployeeProfile> employees) {
 
 AppSession _session(
   PlanEntitlements entitlements, {
+  String membershipRole = 'OWNER',
   Set<String> membershipPermissions = const <String>{},
   AppEmployeeContext? employee,
 }) {
@@ -429,7 +617,7 @@ AppSession _session(
       entitlements: entitlements,
     ),
     membership: AppMembershipContext(
-      role: 'OWNER',
+      role: membershipRole,
       permissions: membershipPermissions,
     ),
     employee: employee,
@@ -497,13 +685,23 @@ const _invited = EmployeeProfile(
 );
 
 class _FakeEmployeesRemoteDataSource extends EmployeesRemoteDataSource {
-  _FakeEmployeesRemoteDataSource({EmployeesPageResult? page})
-    : page = page ?? _page(const <EmployeeProfile>[]),
-      super(apiClient: _NoopApiClient(), tokenStorage: _TokenStorage());
+  _FakeEmployeesRemoteDataSource({
+    EmployeesPageResult? page,
+    Map<String, dynamic>? activitySummaryPayload,
+    Map<String, dynamic>? activityDetailPayload,
+  }) : page = page ?? _page(const <EmployeeProfile>[]),
+       activitySummaryPayload =
+           activitySummaryPayload ?? _employeeActivitySummaryPayload(),
+       activityDetailPayload =
+           activityDetailPayload ?? _employeeActivityDetailPayload(),
+       super(apiClient: _NoopApiClient(), tokenStorage: _TokenStorage());
 
   final EmployeesPageResult page;
+  final Map<String, dynamic> activitySummaryPayload;
+  final Map<String, dynamic> activityDetailPayload;
   final inviteCalls = <String>[];
   final temporaryPasswordCalls = <String>[];
+  final summaryPeriods = <EmployeeActivityPeriod>[];
 
   @override
   Future<EmployeesPageResult> getEmployees({
@@ -539,6 +737,22 @@ class _FakeEmployeesRemoteDataSource extends EmployeesRemoteDataSource {
       message: 'Senha temporária gerada.',
     );
   }
+
+  @override
+  Future<EmployeeActivitySummary> getEmployeeActivitySummary({
+    required EmployeeActivityPeriod period,
+  }) async {
+    summaryPeriods.add(period);
+    return EmployeeActivitySummary.fromMap(activitySummaryPayload);
+  }
+
+  @override
+  Future<EmployeeActivityDetail> getEmployeeActivityDetail(
+    String id, {
+    required EmployeeActivityPeriod period,
+  }) async {
+    return EmployeeActivityDetail.fromMap(activityDetailPayload);
+  }
 }
 
 class _RecordingApiClient implements ApiClientContract {
@@ -567,7 +781,13 @@ class _RecordingApiClient implements ApiClientContract {
     calls.add(_ApiCall('GET', path, queryParameters: options.queryParameters));
     return ApiResponse<Map<String, dynamic>>(
       statusCode: 200,
-      data: path == '/employees' ? _employeesPayload() : _employeePayload(),
+      data: path == '/employees'
+          ? _employeesPayload()
+          : path == '/employees/activity/summary'
+          ? _employeeActivitySummaryPayload()
+          : path.endsWith('/activity')
+          ? _employeeActivityDetailPayload()
+          : _employeePayload(),
       headers: const <String, String>{},
     );
   }
@@ -755,6 +975,96 @@ Map<String, dynamic> _temporaryPasswordPayload() {
     'temporaryPassword': 'Temp123456',
     'temporaryPasswordExpiresAt': '2026-05-27T12:00:00.000Z',
     'message': 'Senha temporária gerada.',
+  };
+}
+
+Map<String, dynamic> _employeeActivitySummaryPayload() {
+  return <String, dynamic>{
+    'totalEmployees': 1,
+    'activeEmployees': 1,
+    'employeesWithActivity': 1,
+    'totalSalesCount': 1,
+    'totalSalesAmountCents': 12500,
+    'totalDiscountAmountCents': 500,
+    'totalCanceledCount': 0,
+    'totalStockAdjustments': 1,
+    'rows': <Map<String, dynamic>>[
+      <String, dynamic>{
+        'employeeId': 'employee-cashier',
+        'name': 'Caixa Principal',
+        'role': 'CASHIER',
+        'status': 'ACTIVE',
+        'salesCount': 1,
+        'salesAmountCents': 12500,
+        'discountAmountCents': 500,
+        'canceledSalesCount': 0,
+        'stockAdjustmentsCount': 1,
+        'cashActionsCount': 2,
+        'lastActivityAt': '2026-05-20T18:00:00.000Z',
+      },
+    ],
+    'tracking': <String, dynamic>{
+      'partial': true,
+      'notes': <String>[
+        'Algumas ações antigas podem aparecer sem responsável.',
+      ],
+    },
+  };
+}
+
+Map<String, dynamic> _emptyEmployeeActivitySummaryPayload() {
+  return <String, dynamic>{
+    'totalEmployees': 1,
+    'activeEmployees': 1,
+    'employeesWithActivity': 0,
+    'totalSalesCount': 0,
+    'totalSalesAmountCents': 0,
+    'totalDiscountAmountCents': 0,
+    'totalCanceledCount': 0,
+    'totalStockAdjustments': 0,
+    'rows': <Map<String, dynamic>>[],
+    'tracking': <String, dynamic>{
+      'partial': true,
+      'notes': <String>[
+        'Algumas ações antigas podem aparecer sem responsável.',
+      ],
+    },
+  };
+}
+
+Map<String, dynamic> _employeeActivityDetailPayload() {
+  return <String, dynamic>{
+    'employee': <String, dynamic>{
+      'id': 'employee-cashier',
+      'name': 'Caixa Principal',
+      'role': 'CASHIER',
+      'status': 'ACTIVE',
+    },
+    'summary': <String, dynamic>{
+      'salesCount': 1,
+      'salesAmountCents': 12500,
+      'discountAmountCents': 500,
+      'canceledSalesCount': 0,
+      'stockAdjustmentsCount': 1,
+      'cashActionsCount': 2,
+      'lastActivityAt': '2026-05-20T18:00:00.000Z',
+    },
+    'timeline': <Map<String, dynamic>>[
+      <String, dynamic>{
+        'id': 'sale:1',
+        'occurredAt': '2026-05-20T12:00:00.000Z',
+        'type': 'SALE',
+        'title': 'Venda realizada',
+        'description': 'Venda 123',
+        'amountCents': 12500,
+      },
+    ],
+    'tracking': <String, dynamic>{
+      'partial': true,
+      'notes': <String>[
+        'Algumas ações antigas podem aparecer sem responsável.',
+      ],
+    },
   };
 }
 

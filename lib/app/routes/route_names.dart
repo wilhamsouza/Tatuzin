@@ -58,6 +58,8 @@ abstract final class AppRouteNames {
   static const profitabilityReports = 'profitability-reports';
   static const backup = 'backup';
   static const employees = 'employees';
+  static const employeeActivity = 'employee-activity';
+  static const employeeActivityDetail = 'employee-activity-detail';
   static const system = 'system';
   static const technicalSystem = 'technical-system';
   static const admin = 'admin';
@@ -124,6 +126,8 @@ abstract final class AppRoutePaths {
   static const profitabilityReports = '/relatorios/lucratividade';
   static const backup = '/backup';
   static const employees = '/funcionarios';
+  static const employeeActivity = '/funcionarios/atividade';
+  static const employeeActivityDetail = '/funcionarios/:employeeId/atividade';
   static const system = '/sistema';
   static const technicalSystem = '/interno/sistema';
   static const legacyAdmin = '/admin';

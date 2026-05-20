@@ -334,6 +334,13 @@ class _ShortcutGrid extends StatelessWidget {
         palette: context.appColors.success,
         routeName: AppRouteNames.profitabilityReports,
       ),
+      _ShortcutConfig(
+        title: 'Funcionários',
+        subtitle: 'Atividade da equipe.',
+        icon: Icons.groups_2_outlined,
+        palette: context.appColors.info,
+        routeName: AppRouteNames.employeeActivity,
+      ),
     ];
 
     return LayoutBuilder(

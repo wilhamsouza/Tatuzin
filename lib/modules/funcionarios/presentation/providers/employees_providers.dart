@@ -30,12 +30,26 @@ final employeeRoleFilterProvider = StateProvider<EmployeeRole?>((ref) => null);
 
 final employeesPageNumberProvider = StateProvider<int>((ref) => 1);
 
+final employeeActivityPeriodProvider = StateProvider<EmployeeActivityPeriod>(
+  (ref) => EmployeeActivityPeriod.today(),
+);
+
 final canManageEmployeesProvider = Provider<bool>((ref) {
   final session = ref.watch(appSessionProvider);
   if (!session.hasFeature(FeatureKey.employees)) {
     return false;
   }
   return session.hasEffectivePermission(EmployeePermission.employeesManage.key);
+});
+
+final canViewEmployeeActivityProvider = Provider<bool>((ref) {
+  final session = ref.watch(appSessionProvider);
+  if (!session.hasFeature(FeatureKey.employees)) {
+    return false;
+  }
+  return session.isCompanyOwner ||
+      session.canAccessPermission(EmployeePermission.employeesManage.key) ||
+      session.canAccessPermission(EmployeePermission.reportsAdvanced.key);
 });
 
 final currentEmployeeDisabledProvider = Provider<bool>((ref) {
@@ -59,6 +73,24 @@ final employeeDetailProvider = FutureProvider.autoDispose
     .family<EmployeeProfile, String>((ref, id) async {
       ref.watch(appDataRefreshProvider);
       return ref.watch(employeesRemoteDataSourceProvider).getEmployee(id);
+    });
+
+final employeeActivitySummaryProvider =
+    FutureProvider.autoDispose<EmployeeActivitySummary>((ref) async {
+      ref.watch(appDataRefreshProvider);
+      final period = ref.watch(employeeActivityPeriodProvider);
+      return ref
+          .watch(employeesRemoteDataSourceProvider)
+          .getEmployeeActivitySummary(period: period);
+    });
+
+final employeeActivityDetailProvider = FutureProvider.autoDispose
+    .family<EmployeeActivityDetail, String>((ref, id) async {
+      ref.watch(appDataRefreshProvider);
+      final period = ref.watch(employeeActivityPeriodProvider);
+      return ref
+          .watch(employeesRemoteDataSourceProvider)
+          .getEmployeeActivityDetail(id, period: period);
     });
 
 final employeeActionControllerProvider =

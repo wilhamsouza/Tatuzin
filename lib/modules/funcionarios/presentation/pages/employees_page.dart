@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/theme/app_design_tokens.dart';
@@ -10,6 +11,7 @@ import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
+import '../../../../app/routes/route_names.dart';
 import '../../domain/employee_models.dart';
 import '../providers/employees_providers.dart';
 
@@ -123,9 +125,28 @@ class _EmployeesContent extends ConsumerWidget {
     final layout = context.appLayout;
     final employeesAsync = ref.watch(employeesListProvider);
     final page = employeesAsync.valueOrNull;
+    final canViewActivity = ref.watch(canViewEmployeeActivityProvider);
 
     return Column(
       children: [
+        if (canViewActivity)
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              layout.pagePadding,
+              0,
+              layout.pagePadding,
+              layout.space3,
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () =>
+                    context.pushNamed(AppRouteNames.employeeActivity),
+                icon: const Icon(Icons.manage_search_rounded),
+                label: const Text('Ver atividade da equipe'),
+              ),
+            ),
+          ),
         Padding(
           padding: EdgeInsets.fromLTRB(
             layout.pagePadding,
@@ -377,6 +398,7 @@ class _EmployeeTile extends ConsumerWidget {
     final layout = context.appLayout;
     final theme = Theme.of(context);
     final isBusy = ref.watch(employeeActionControllerProvider).isLoading;
+    final canViewActivity = ref.watch(canViewEmployeeActivityProvider);
 
     return AppCard(
       padding: EdgeInsets.all(layout.compactCardPadding),
@@ -481,6 +503,20 @@ class _EmployeeTile extends ConsumerWidget {
                 ),
             ],
           ),
+          if (canViewActivity) ...[
+            SizedBox(height: layout.space2),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => context.pushNamed(
+                  AppRouteNames.employeeActivityDetail,
+                  pathParameters: {'employeeId': employee.id},
+                ),
+                icon: const Icon(Icons.manage_search_rounded),
+                label: const Text('Ver atividade'),
+              ),
+            ),
+          ],
         ],
       ),
     );

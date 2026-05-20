@@ -75,6 +75,7 @@ void main() {
       'Clientes',
       'Compras',
       'Lucratividade',
+      'Funcionários',
     ]) {
       expect(find.text(category), findsWidgets);
     }

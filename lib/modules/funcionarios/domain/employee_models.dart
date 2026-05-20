@@ -394,12 +394,300 @@ class EmployeeActionResult {
   }
 }
 
+class EmployeeActivityPeriod {
+  const EmployeeActivityPeriod({
+    required this.label,
+    required this.from,
+    required this.to,
+  });
+
+  final String label;
+  final DateTime from;
+  final DateTime to;
+
+  String get fromQuery => _dateOnly(from);
+  String get toQuery => _dateOnly(to);
+
+  static EmployeeActivityPeriod today({DateTime? now}) {
+    final base = _dateAtMidnight(now ?? DateTime.now());
+    return EmployeeActivityPeriod(label: 'Hoje', from: base, to: base);
+  }
+
+  static EmployeeActivityPeriod yesterday({DateTime? now}) {
+    final base = _dateAtMidnight(
+      now ?? DateTime.now(),
+    ).subtract(const Duration(days: 1));
+    return EmployeeActivityPeriod(label: 'Ontem', from: base, to: base);
+  }
+
+  static EmployeeActivityPeriod last7Days({DateTime? now}) {
+    final end = _dateAtMidnight(now ?? DateTime.now());
+    return EmployeeActivityPeriod(
+      label: '7 dias',
+      from: end.subtract(const Duration(days: 6)),
+      to: end,
+    );
+  }
+
+  static EmployeeActivityPeriod thisMonth({DateTime? now}) {
+    final base = _dateAtMidnight(now ?? DateTime.now());
+    return EmployeeActivityPeriod(
+      label: 'Este mês',
+      from: DateTime(base.year, base.month),
+      to: base,
+    );
+  }
+}
+
+class EmployeeActivitySummary {
+  const EmployeeActivitySummary({
+    required this.totalEmployees,
+    required this.activeEmployees,
+    required this.employeesWithActivity,
+    required this.totalSalesCount,
+    required this.totalSalesAmountCents,
+    required this.totalDiscountAmountCents,
+    required this.totalCanceledCount,
+    required this.totalStockAdjustments,
+    required this.rows,
+    required this.tracking,
+  });
+
+  final int totalEmployees;
+  final int activeEmployees;
+  final int employeesWithActivity;
+  final int totalSalesCount;
+  final int totalSalesAmountCents;
+  final int totalDiscountAmountCents;
+  final int totalCanceledCount;
+  final int totalStockAdjustments;
+  final List<EmployeeActivityRow> rows;
+  final EmployeeActivityTracking tracking;
+
+  factory EmployeeActivitySummary.fromMap(Map<String, dynamic> source) {
+    final rawRows = source['rows'];
+    return EmployeeActivitySummary(
+      totalEmployees: _readInt(source['totalEmployees']) ?? 0,
+      activeEmployees: _readInt(source['activeEmployees']) ?? 0,
+      employeesWithActivity: _readInt(source['employeesWithActivity']) ?? 0,
+      totalSalesCount: _readInt(source['totalSalesCount']) ?? 0,
+      totalSalesAmountCents: _readInt(source['totalSalesAmountCents']) ?? 0,
+      totalDiscountAmountCents:
+          _readInt(source['totalDiscountAmountCents']) ?? 0,
+      totalCanceledCount: _readInt(source['totalCanceledCount']) ?? 0,
+      totalStockAdjustments: _readInt(source['totalStockAdjustments']) ?? 0,
+      rows: rawRows is Iterable
+          ? rawRows
+                .whereType<Map>()
+                .map(
+                  (row) => EmployeeActivityRow.fromMap(
+                    Map<String, dynamic>.from(row),
+                  ),
+                )
+                .toList(growable: false)
+          : const <EmployeeActivityRow>[],
+      tracking: EmployeeActivityTracking.fromMap(source['tracking']),
+    );
+  }
+}
+
+class EmployeeActivityRow {
+  const EmployeeActivityRow({
+    required this.employeeId,
+    required this.name,
+    required this.role,
+    required this.status,
+    required this.salesCount,
+    required this.salesAmountCents,
+    required this.discountAmountCents,
+    required this.canceledSalesCount,
+    required this.stockAdjustmentsCount,
+    required this.cashActionsCount,
+    required this.lastActivityAt,
+  });
+
+  final String employeeId;
+  final String name;
+  final EmployeeRole role;
+  final EmployeeStatus status;
+  final int salesCount;
+  final int salesAmountCents;
+  final int discountAmountCents;
+  final int canceledSalesCount;
+  final int stockAdjustmentsCount;
+  final int cashActionsCount;
+  final DateTime? lastActivityAt;
+
+  bool get hasActivity =>
+      salesCount > 0 ||
+      salesAmountCents > 0 ||
+      discountAmountCents > 0 ||
+      canceledSalesCount > 0 ||
+      stockAdjustmentsCount > 0 ||
+      cashActionsCount > 0 ||
+      lastActivityAt != null;
+
+  factory EmployeeActivityRow.fromMap(Map<String, dynamic> source) {
+    return EmployeeActivityRow(
+      employeeId: _readString(source['employeeId']) ?? '',
+      name: _readString(source['name']) ?? 'Funcionário sem nome',
+      role: EmployeeRole.fromKey(source['role']),
+      status: EmployeeStatus.fromKey(source['status']),
+      salesCount: _readInt(source['salesCount']) ?? 0,
+      salesAmountCents: _readInt(source['salesAmountCents']) ?? 0,
+      discountAmountCents: _readInt(source['discountAmountCents']) ?? 0,
+      canceledSalesCount: _readInt(source['canceledSalesCount']) ?? 0,
+      stockAdjustmentsCount: _readInt(source['stockAdjustmentsCount']) ?? 0,
+      cashActionsCount: _readInt(source['cashActionsCount']) ?? 0,
+      lastActivityAt: _tryParseDate(source['lastActivityAt']),
+    );
+  }
+}
+
+class EmployeeActivityDetail {
+  const EmployeeActivityDetail({
+    required this.employee,
+    required this.summary,
+    required this.timeline,
+    required this.tracking,
+  });
+
+  final EmployeeActivityEmployee employee;
+  final EmployeeActivityRow summary;
+  final List<EmployeeActivityTimelineItem> timeline;
+  final EmployeeActivityTracking tracking;
+
+  factory EmployeeActivityDetail.fromMap(Map<String, dynamic> source) {
+    final rawTimeline = source['timeline'];
+    final rawEmployee = source['employee'];
+    final rawSummary = source['summary'];
+    final employee = rawEmployee is Map
+        ? EmployeeActivityEmployee.fromMap(
+            Map<String, dynamic>.from(rawEmployee),
+          )
+        : EmployeeActivityEmployee.fromMap(const <String, dynamic>{});
+    return EmployeeActivityDetail(
+      employee: employee,
+      summary: rawSummary is Map
+          ? EmployeeActivityRow.fromMap(<String, dynamic>{
+              'employeeId': employee.id,
+              'name': employee.name,
+              'role': employee.role.key,
+              'status': employee.status.key,
+              ...Map<String, dynamic>.from(rawSummary),
+            })
+          : EmployeeActivityRow.fromMap(<String, dynamic>{
+              'employeeId': employee.id,
+              'name': employee.name,
+              'role': employee.role.key,
+              'status': employee.status.key,
+            }),
+      timeline: rawTimeline is Iterable
+          ? rawTimeline
+                .whereType<Map>()
+                .map(
+                  (item) => EmployeeActivityTimelineItem.fromMap(
+                    Map<String, dynamic>.from(item),
+                  ),
+                )
+                .toList(growable: false)
+          : const <EmployeeActivityTimelineItem>[],
+      tracking: EmployeeActivityTracking.fromMap(source['tracking']),
+    );
+  }
+}
+
+class EmployeeActivityEmployee {
+  const EmployeeActivityEmployee({
+    required this.id,
+    required this.name,
+    required this.role,
+    required this.status,
+  });
+
+  final String id;
+  final String name;
+  final EmployeeRole role;
+  final EmployeeStatus status;
+
+  factory EmployeeActivityEmployee.fromMap(Map<String, dynamic> source) {
+    return EmployeeActivityEmployee(
+      id: _readString(source['id']) ?? '',
+      name: _readString(source['name']) ?? 'Funcionário sem nome',
+      role: EmployeeRole.fromKey(source['role']),
+      status: EmployeeStatus.fromKey(source['status']),
+    );
+  }
+}
+
+class EmployeeActivityTimelineItem {
+  const EmployeeActivityTimelineItem({
+    required this.id,
+    required this.occurredAt,
+    required this.type,
+    required this.title,
+    required this.description,
+    this.amountCents,
+  });
+
+  final String id;
+  final DateTime? occurredAt;
+  final String type;
+  final String title;
+  final String description;
+  final int? amountCents;
+
+  factory EmployeeActivityTimelineItem.fromMap(Map<String, dynamic> source) {
+    return EmployeeActivityTimelineItem(
+      id: _readString(source['id']) ?? '',
+      occurredAt: _tryParseDate(source['occurredAt']),
+      type: _readString(source['type']) ?? 'ACTIVITY',
+      title: _readString(source['title']) ?? 'Atividade registrada',
+      description: _readString(source['description']) ?? '',
+      amountCents: _readInt(source['amountCents']),
+    );
+  }
+}
+
+class EmployeeActivityTracking {
+  const EmployeeActivityTracking({required this.partial, required this.notes});
+
+  final bool partial;
+  final List<String> notes;
+
+  factory EmployeeActivityTracking.fromMap(Object? source) {
+    if (source is! Map) {
+      return const EmployeeActivityTracking(partial: false, notes: <String>[]);
+    }
+    final rawNotes = source['notes'];
+    return EmployeeActivityTracking(
+      partial: source['partial'] == true,
+      notes: rawNotes is Iterable
+          ? rawNotes
+                .map((note) => note.toString().trim())
+                .where((note) => note.isNotEmpty)
+                .toList(growable: false)
+          : const <String>[],
+    );
+  }
+}
+
 String? _readString(Object? value) {
   if (value is! String) {
     return null;
   }
   final trimmed = value.trim();
   return trimmed.isEmpty ? null : trimmed;
+}
+
+DateTime _dateAtMidnight(DateTime value) {
+  return DateTime(value.year, value.month, value.day);
+}
+
+String _dateOnly(DateTime value) {
+  final normalized = _dateAtMidnight(value);
+  String twoDigits(int number) => number.toString().padLeft(2, '0');
+  return '${normalized.year}-${twoDigits(normalized.month)}-${twoDigits(normalized.day)}';
 }
 
 int? _readInt(Object? value) {

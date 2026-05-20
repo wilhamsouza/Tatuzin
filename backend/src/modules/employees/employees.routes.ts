@@ -1,31 +1,60 @@
-import { Router } from 'express';
+import { Router } from "express";
 
-import { buildPaginatedResponse } from '../../shared/http/api-response';
-import { requireAppContext } from '../../shared/http/auth-middleware';
-import { asyncHandler } from '../../shared/http/async-handler';
-import { requireFeature } from '../../shared/http/feature-middleware';
-import { validateBody, validateQuery } from '../../shared/http/validate';
-import { requireEmployeePermission } from './employee-permission-middleware';
+import { buildPaginatedResponse } from "../../shared/http/api-response";
+import { requireAppContext } from "../../shared/http/auth-middleware";
+import { asyncHandler } from "../../shared/http/async-handler";
+import { requireFeature } from "../../shared/http/feature-middleware";
+import { validateBody, validateQuery } from "../../shared/http/validate";
+import { EmployeeActivityService } from "./employee-activity.service";
+import { requireEmployeePermission } from "./employee-permission-middleware";
 import {
+  employeeActivityQuerySchema,
+  type EmployeeActivityQueryInput,
   employeeCreateSchema,
   employeeListQuerySchema,
   type EmployeeListQueryInput,
   employeeUpdateSchema,
-} from './employees.schemas';
-import { EmployeesService } from './employees.service';
+} from "./employees.schemas";
+import { EmployeesService } from "./employees.service";
 
 const employeesService = new EmployeesService();
+const employeeActivityService = new EmployeeActivityService();
 
 export const employeesRouter = Router();
 
-employeesRouter.use(
-  requireAppContext,
-  requireFeature('employees'),
-  requireEmployeePermission('employees.manage'),
+employeesRouter.use(requireAppContext, requireFeature("employees"));
+
+employeesRouter.get(
+  "/activity/summary",
+  validateQuery(employeeActivityQuerySchema),
+  asyncHandler(async (request, response) => {
+    const query = request.query as unknown as EmployeeActivityQueryInput;
+    const result = await employeeActivityService.summary(
+      request.appContext!,
+      query,
+    );
+    response.json(result);
+  }),
 );
 
 employeesRouter.get(
-  '/',
+  "/:id/activity",
+  validateQuery(employeeActivityQuerySchema),
+  asyncHandler(async (request, response) => {
+    const query = request.query as unknown as EmployeeActivityQueryInput;
+    const result = await employeeActivityService.detail(
+      request.appContext!,
+      readParam(request.params.id),
+      query,
+    );
+    response.json(result);
+  }),
+);
+
+employeesRouter.use(requireEmployeePermission("employees.manage"));
+
+employeesRouter.get(
+  "/",
   validateQuery(employeeListQuerySchema),
   asyncHandler(async (request, response) => {
     const query = request.query as unknown as EmployeeListQueryInput;
@@ -42,7 +71,7 @@ employeesRouter.get(
 );
 
 employeesRouter.get(
-  '/:id',
+  "/:id",
   asyncHandler(async (request, response) => {
     const employee = await employeesService.get(
       request.appContext!,
@@ -53,7 +82,7 @@ employeesRouter.get(
 );
 
 employeesRouter.post(
-  '/',
+  "/",
   validateBody(employeeCreateSchema),
   asyncHandler(async (request, response) => {
     const employee = await employeesService.create(
@@ -65,7 +94,7 @@ employeesRouter.post(
 );
 
 employeesRouter.patch(
-  '/:id',
+  "/:id",
   validateBody(employeeUpdateSchema),
   asyncHandler(async (request, response) => {
     const employee = await employeesService.update(
@@ -78,7 +107,7 @@ employeesRouter.patch(
 );
 
 employeesRouter.delete(
-  '/:id',
+  "/:id",
   asyncHandler(async (request, response) => {
     const employee = await employeesService.softDelete(
       request.appContext!,
@@ -89,7 +118,7 @@ employeesRouter.delete(
 );
 
 employeesRouter.post(
-  '/:id/invite',
+  "/:id/invite",
   asyncHandler(async (request, response) => {
     const result = await employeesService.invite(
       request.appContext!,
@@ -100,7 +129,7 @@ employeesRouter.post(
 );
 
 employeesRouter.post(
-  '/:id/access/temporary-password',
+  "/:id/access/temporary-password",
   asyncHandler(async (request, response) => {
     const result = await employeesService.generateTemporaryPassword(
       request.appContext!,
@@ -111,7 +140,7 @@ employeesRouter.post(
 );
 
 employeesRouter.post(
-  '/:id/disable',
+  "/:id/disable",
   asyncHandler(async (request, response) => {
     const employee = await employeesService.disable(
       request.appContext!,
@@ -122,7 +151,7 @@ employeesRouter.post(
 );
 
 employeesRouter.post(
-  '/:id/enable',
+  "/:id/enable",
   asyncHandler(async (request, response) => {
     const employee = await employeesService.enable(
       request.appContext!,
@@ -133,5 +162,5 @@ employeesRouter.post(
 );
 
 function readParam(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value ?? '';
+  return Array.isArray(value) ? value[0] : (value ?? "");
 }

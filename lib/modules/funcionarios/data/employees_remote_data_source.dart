@@ -128,6 +128,43 @@ class EmployeesRemoteDataSource {
     return _readEmployee(response.data);
   }
 
+  Future<EmployeeActivitySummary> getEmployeeActivitySummary({
+    required EmployeeActivityPeriod period,
+  }) async {
+    final response = await _runEmployeeRequest(
+      () async => _apiClient.getJson(
+        '/employees/activity/summary',
+        options: ApiRequestOptions(
+          headers: await _authorizedHeaders(),
+          queryParameters: <String, Object?>{
+            'from': period.fromQuery,
+            'to': period.toQuery,
+          },
+        ),
+      ),
+    );
+    return EmployeeActivitySummary.fromMap(response.data);
+  }
+
+  Future<EmployeeActivityDetail> getEmployeeActivityDetail(
+    String id, {
+    required EmployeeActivityPeriod period,
+  }) async {
+    final response = await _runEmployeeRequest(
+      () async => _apiClient.getJson(
+        '/employees/${Uri.encodeComponent(id)}/activity',
+        options: ApiRequestOptions(
+          headers: await _authorizedHeaders(),
+          queryParameters: <String, Object?>{
+            'from': period.fromQuery,
+            'to': period.toQuery,
+          },
+        ),
+      ),
+    );
+    return EmployeeActivityDetail.fromMap(response.data);
+  }
+
   Future<Map<String, String>> _authorizedHeaders() async {
     final token = await _tokenStorage.readAccessToken();
     if (token == null || token.trim().isEmpty) {
@@ -166,6 +203,8 @@ class EmployeesRemoteDataSource {
       case 'EMPLOYEE_PERMISSION_DENIED':
       case 'EMPLOYEE_PERMISSION_REQUIRED':
         return 'Você não tem permissão para gerenciar funcionários.';
+      case 'EMPLOYEE_ACTIVITY_PERMISSION_REQUIRED':
+        return 'Voce nao tem permissao para ver atividade de funcionarios.';
       case 'EMPLOYEE_LIMIT_REACHED':
         return 'Limite de funcionários atingido para o plano atual.';
       case 'EMPLOYEE_NOT_FOUND':
@@ -219,6 +258,7 @@ class EmployeesRemoteDataSource {
         'FEATURE_REQUIRED',
         'EMPLOYEE_PERMISSION_DENIED',
         'EMPLOYEE_PERMISSION_REQUIRED',
+        'EMPLOYEE_ACTIVITY_PERMISSION_REQUIRED',
         'EMPLOYEE_LIMIT_REACHED',
         'EMPLOYEE_NOT_FOUND',
         'EMPLOYEE_EMAIL_REQUIRED_FOR_ACCESS',

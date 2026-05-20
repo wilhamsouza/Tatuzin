@@ -89,6 +89,17 @@ void main() {
         AppRoutePaths.employees,
       );
       expect(
+        router.namedLocation(AppRouteNames.employeeActivity),
+        AppRoutePaths.employeeActivity,
+      );
+      expect(
+        router.namedLocation(
+          AppRouteNames.employeeActivityDetail,
+          pathParameters: {'employeeId': 'abc'},
+        ),
+        '/funcionarios/abc/atividade',
+      );
+      expect(
         router.namedLocation(AppRouteNames.subscription),
         AppRoutePaths.subscription,
       );
