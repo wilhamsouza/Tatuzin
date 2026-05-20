@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/utils/quantity_parser.dart';
+import '../../../../app/core/utils/app_logger.dart';
 import '../../../../app/core/widgets/app_bottom_sheet_container.dart';
 import '../../../../app/core/widgets/app_feedback.dart';
 import '../../../../app/core/widgets/app_list_tile_card.dart';
@@ -20,7 +22,9 @@ import '../../domain/entities/inventory_item.dart';
 import '../providers/inventory_providers.dart';
 
 class InventoryAdjustmentPage extends ConsumerStatefulWidget {
-  const InventoryAdjustmentPage({super.key});
+  const InventoryAdjustmentPage({super.key, this.initialItem});
+
+  final InventoryItem? initialItem;
 
   @override
   ConsumerState<InventoryAdjustmentPage> createState() =>
@@ -42,6 +46,7 @@ class _InventoryAdjustmentPageState
     super.initState();
     _quantityController = TextEditingController();
     _notesController = TextEditingController();
+    _selectedItem = widget.initialItem;
   }
 
   @override
@@ -54,7 +59,7 @@ class _InventoryAdjustmentPageState
   @override
   Widget build(BuildContext context) {
     final layout = context.appLayout;
-    final activeItemsAsync = ref.watch(inventoryActiveItemOptionsProvider);
+    final activeItemsAsync = ref.watch(inventoryLocalActiveItemOptionsProvider);
     final actionState = ref.watch(inventoryActionControllerProvider);
     final activeItems = activeItemsAsync.valueOrNull ?? const <InventoryItem>[];
 
@@ -74,7 +79,7 @@ class _InventoryAdjustmentPageState
             const AppPageHeader(
               title: 'Ajuste manual',
               subtitle:
-                  'Registre entradas e saidas controladas sem trocar a origem do saldo atual.',
+                  'Registre entradas e saídas controladas sem trocar a origem do saldo atual.',
               badgeLabel: 'Controle',
               badgeIcon: Icons.tune_rounded,
               emphasized: true,
@@ -104,15 +109,14 @@ class _InventoryAdjustmentPageState
             AppSectionCard(
               title: 'Item',
               subtitle:
-                  'Selecione o produto simples ou a variante que recebera o ajuste.',
+                  'Selecione o produto simples ou a variante que receberá o ajuste.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (_selectedItem == null)
                     const AppStateCard(
                       title: 'Nenhum item selecionado',
-                      message:
-                          'Escolha um SKU operacional ativo antes de registrar o ajuste.',
+                      message: 'Selecione um item para ajustar o estoque.',
                       compact: true,
                     )
                   else
@@ -193,7 +197,7 @@ class _InventoryAdjustmentPageState
                   TextFormField(
                     controller: _notesController,
                     decoration: const InputDecoration(
-                      labelText: 'Observacao',
+                      labelText: 'Observação',
                       hintText: 'Opcional',
                     ),
                     minLines: 2,
@@ -207,7 +211,7 @@ class _InventoryAdjustmentPageState
               AppSectionCard(
                 title: 'Saldo atual',
                 subtitle:
-                    'A validacao respeita a configuracao local de estoque negativo.',
+                    'A validação respeita a configuração local de estoque negativo.',
                 child: Wrap(
                   spacing: layout.space3,
                   runSpacing: layout.space3,
@@ -219,13 +223,13 @@ class _InventoryAdjustmentPageState
                     ),
                     AppStatusBadge(
                       label:
-                          'Minimo ${AppFormatters.quantityFromMil(_selectedItem!.minimumStockMil)} ${_selectedItem!.unitMeasure}',
+                          'Mínimo ${AppFormatters.quantityFromMil(_selectedItem!.minimumStockMil)} ${_selectedItem!.unitMeasure}',
                       tone: AppStatusTone.neutral,
                     ),
                     AppStatusBadge(
                       label: _selectedItem!.allowNegativeStock
                           ? 'Aceita estoque negativo'
-                          : 'Nao aceita estoque negativo',
+                          : 'Não aceita estoque negativo',
                       tone: _selectedItem!.allowNegativeStock
                           ? AppStatusTone.warning
                           : AppStatusTone.success,
@@ -235,7 +239,9 @@ class _InventoryAdjustmentPageState
               ),
             SizedBox(height: layout.space5),
             FilledButton.icon(
-              onPressed: actionState.isLoading ? null : _submit,
+              onPressed: actionState.isLoading || _selectedItem == null
+                  ? null
+                  : _submit,
               icon: actionState.isLoading
                   ? const SizedBox(
                       width: 16,
@@ -276,17 +282,40 @@ class _InventoryAdjustmentPageState
       return;
     }
     if (_selectedItem == null) {
-      AppFeedback.error(context, 'Selecione um item antes de ajustar.');
+      AppFeedback.error(context, 'Selecione um item para ajustar o estoque.');
       return;
     }
 
     try {
+      final selectedItem = _selectedItem!;
+      AppLogger.info(
+        '[EstoqueAjuste] submit product_id=${selectedItem.productId} '
+        'product_variant_id=${selectedItem.productVariantId ?? 'null'} '
+        'sku=${selectedItem.sku ?? 'n/a'}',
+      );
+      final currentItem = await ref
+          .read(inventoryRepositoryProvider)
+          .findItem(
+            productId: selectedItem.productId,
+            productVariantId: selectedItem.productVariantId,
+          );
+      if (currentItem == null) {
+        if (!mounted) {
+          return;
+        }
+        AppFeedback.error(
+          context,
+          'Este item não está mais disponível para ajuste.',
+        );
+        return;
+      }
+
       await ref
           .read(inventoryActionControllerProvider.notifier)
           .adjustStock(
             InventoryAdjustmentInput(
-              productId: _selectedItem!.productId,
-              productVariantId: _selectedItem!.productVariantId,
+              productId: currentItem.productId,
+              productVariantId: currentItem.productVariantId,
               direction: _direction,
               quantityMil: QuantityParser.parseToMil(_quantityController.text),
               reason: _reason,
@@ -299,8 +328,8 @@ class _InventoryAdjustmentPageState
       final updated = await ref
           .read(inventoryRepositoryProvider)
           .findItem(
-            productId: _selectedItem!.productId,
-            productVariantId: _selectedItem!.productVariantId,
+            productId: currentItem.productId,
+            productVariantId: currentItem.productVariantId,
           );
       if (!mounted) {
         return;
@@ -318,8 +347,19 @@ class _InventoryAdjustmentPageState
       if (!mounted) {
         return;
       }
-      AppFeedback.error(context, 'Nao foi possivel registrar o ajuste: $error');
+      AppFeedback.error(
+        context,
+        'Não foi possível registrar o ajuste: ${_friendlyAdjustmentError(error)}',
+      );
     }
+  }
+
+  String _friendlyAdjustmentError(Object error) {
+    if (error is ValidationException &&
+        error.message.toLowerCase().contains('item de estoque')) {
+      return 'Este item não está mais disponível para ajuste.';
+    }
+    return '$error';
   }
 }
 
@@ -452,7 +492,7 @@ class _InventoryItemPickerSheetState extends State<_InventoryItemPickerSheet> {
                             ),
                             AppStatusBadge(
                               label:
-                                  'Minimo ${AppFormatters.quantityFromMil(item.minimumStockMil)} ${item.unitMeasure}',
+                                  'Mínimo ${AppFormatters.quantityFromMil(item.minimumStockMil)} ${item.unitMeasure}',
                               tone: AppStatusTone.neutral,
                             ),
                           ],

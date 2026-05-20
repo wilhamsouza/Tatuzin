@@ -96,6 +96,104 @@ void main() {
   );
 
   test(
+    'ajuste manual de entrada em produto simples usa productId local',
+    () async {
+      await _insertProduct(
+        database,
+        id: 1,
+        name: 'Farinha 1L',
+        stockMil: 10000,
+      );
+
+      await repository.adjustStock(
+        const InventoryAdjustmentInput(
+          productId: 1,
+          productVariantId: null,
+          direction: InventoryAdjustmentDirection.inbound,
+          quantityMil: 100000,
+          reason: InventoryAdjustmentReason.operationalAdjustment,
+          notes: 'achei a mais',
+        ),
+      );
+
+      expect(await _productStock(database, 1), 110000);
+      final movement = await _latestMovement(database);
+      expect(movement['product_id'], 1);
+      expect(movement['product_variant_id'], isNull);
+      expect(movement['movement_type'], 'adjustment_in');
+      expect(movement['quantity_delta_mil'], 100000);
+      expect(movement['reason'], 'ajuste_operacional');
+    },
+  );
+
+  test(
+    'ajuste manual de saida em produto simples usa productId local',
+    () async {
+      await _insertProduct(
+        database,
+        id: 1,
+        name: 'Farinha 1L',
+        stockMil: 10000,
+      );
+
+      await repository.adjustStock(
+        const InventoryAdjustmentInput(
+          productId: 1,
+          productVariantId: null,
+          direction: InventoryAdjustmentDirection.outbound,
+          quantityMil: 5000,
+          reason: InventoryAdjustmentReason.correction,
+        ),
+      );
+
+      expect(await _productStock(database, 1), 5000);
+      final movement = await _latestMovement(database);
+      expect(movement['product_id'], 1);
+      expect(movement['product_variant_id'], isNull);
+      expect(movement['movement_type'], 'adjustment_out');
+      expect(movement['quantity_delta_mil'], -5000);
+    },
+  );
+
+  test(
+    'ajuste manual de entrada em variante preserva productVariantId',
+    () async {
+      await _insertProduct(
+        database,
+        id: 1,
+        name: 'Camisa Linho',
+        stockMil: 5000,
+      );
+      await _insertVariant(
+        database,
+        id: 10,
+        productId: 1,
+        sku: 'CL-PT-P',
+        color: 'Preta',
+        size: 'P',
+        stockMil: 3000,
+      );
+
+      await repository.adjustStock(
+        const InventoryAdjustmentInput(
+          productId: 1,
+          productVariantId: 10,
+          direction: InventoryAdjustmentDirection.inbound,
+          quantityMil: 2000,
+          reason: InventoryAdjustmentReason.correction,
+        ),
+      );
+
+      expect(await _variantStock(database, 10), 5000);
+      final movement = await _latestMovement(database);
+      expect(movement['product_id'], 1);
+      expect(movement['product_variant_id'], 10);
+      expect(movement['movement_type'], 'adjustment_in');
+      expect(movement['quantity_delta_mil'], 2000);
+    },
+  );
+
+  test(
     'ajuste manual de saida em variante recompone o pai e respeita allow_negative_stock',
     () async {
       await _insertProduct(

@@ -6,7 +6,7 @@ extension InventoryAdjustmentDirectionX on InventoryAdjustmentDirection {
   String get label {
     return switch (this) {
       InventoryAdjustmentDirection.inbound => 'Entrada',
-      InventoryAdjustmentDirection.outbound => 'Saida',
+      InventoryAdjustmentDirection.outbound => 'Saída',
     };
   }
 
@@ -48,7 +48,7 @@ extension InventoryAdjustmentReasonX on InventoryAdjustmentReason {
 
   String get label {
     return switch (this) {
-      InventoryAdjustmentReason.correction => 'Correcao',
+      InventoryAdjustmentReason.correction => 'Correção',
       InventoryAdjustmentReason.damage => 'Avaria',
       InventoryAdjustmentReason.loss => 'Perda',
       InventoryAdjustmentReason.internalUse => 'Consumo interno',

@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/entitlements/feature_gate.dart';
 import '../../core/entitlements/plan_entitlements.dart';
+import '../../../modules/estoque/domain/entities/inventory_item.dart';
 import '../../../modules/estoque/presentation/pages/inventory_adjustment_page.dart';
 import '../../../modules/estoque/presentation/pages/inventory_count_page.dart';
 import '../../../modules/estoque/presentation/pages/inventory_count_session_detail_page.dart';
@@ -49,9 +50,11 @@ List<RouteBase> buildInventoryRoutes() {
     GoRoute(
       path: AppRoutePaths.inventoryAdjustment,
       name: AppRouteNames.inventoryAdjustment,
-      builder: (context, state) => const FeatureGate(
+      builder: (context, state) => FeatureGate(
         feature: FeatureKey.inventoryAdvanced,
-        child: InventoryAdjustmentPage(),
+        child: InventoryAdjustmentPage(
+          initialItem: routeExtraAs<InventoryItem>(state),
+        ),
       ),
     ),
   ];

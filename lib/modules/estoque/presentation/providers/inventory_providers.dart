@@ -129,6 +129,22 @@ final inventoryActiveItemOptionsProvider = FutureProvider<List<InventoryItem>>((
   );
 });
 
+final inventoryLocalActiveItemOptionsProvider =
+    FutureProvider<List<InventoryItem>>((ref) async {
+      await requireTenantBootstrapReady(
+        ref,
+        'inventoryLocalActiveItemOptionsProvider',
+      );
+      ref.watch(appDataRefreshProvider);
+      return runProviderGuarded(
+        'inventoryLocalActiveItemOptionsProvider',
+        () => ref
+            .watch(localInventoryRepositoryProvider)
+            .listItems(filter: InventoryListFilter.active),
+        timeout: localProviderTimeout,
+      );
+    });
+
 final inventoryMovementsProvider =
     FutureProvider.family<List<InventoryMovement>, InventoryMovementQuery>((
       ref,
