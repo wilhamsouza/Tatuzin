@@ -5,6 +5,7 @@ import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { asyncHandler } from '../../shared/http/async-handler';
 import { blockMobilePdvLegacyWrite } from '../../shared/http/pdv-legacy-write-guard';
 import { validateBody, validateQuery } from '../../shared/http/validate';
+import { requireEmployeePermission } from '../employees/employee-permission-middleware';
 import {
   saleCancelSchema,
   saleCreateSchema,
@@ -61,6 +62,7 @@ salesRouter.get(
 salesRouter.post(
   '/',
   blockMobilePdvLegacyWrite,
+  requireEmployeePermission('sales.create'),
   validateBody(saleCreateSchema),
   asyncHandler(async (request, response) => {
     const sale = await salesService.create(request.auth!.companyId, request.body);
@@ -71,6 +73,7 @@ salesRouter.post(
 salesRouter.put(
   '/:id/cancel',
   blockMobilePdvLegacyWrite,
+  requireEmployeePermission('sales.cancel'),
   validateBody(saleCancelSchema),
   asyncHandler(async (request, response) => {
     const saleId = Array.isArray(request.params.id)
