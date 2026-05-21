@@ -4,11 +4,17 @@ import { prisma } from '../../database/prisma';
 import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { toPaginationParams } from '../../shared/http/pagination';
 import type { AppContext } from '../app/app-context.types';
+import { EmployeeActivityService } from '../employees/employee-activity.service';
+import { EmployeeCommissionService } from '../employees/employee-commission.service';
+import { EmployeeContextService } from '../employees/employee-context.service';
+import { effectivePermissionsForEmployee } from '../employees/employee-permissions';
 import { getPlanEntitlements } from '../plans/plan-catalog.service';
 import { OwnerReportingService } from './owner-reporting.service';
 import type {
+  OwnerCommissionsQueryInput,
   OwnerCrmCustomersQueryInput,
   OwnerCrmSummaryQueryInput,
+  OwnerEmployeeActivityQueryInput,
   OwnerEmployeesReportQueryInput,
   OwnerInvoicesQueryInput,
   OwnerProductsReportQueryInput,
@@ -19,6 +25,9 @@ import type {
 
 export class OwnerService {
   private readonly reportingService = new OwnerReportingService();
+  private readonly employeeContextService = new EmployeeContextService();
+  private readonly employeeCommissionService = new EmployeeCommissionService();
+  private readonly employeeActivityService = new EmployeeActivityService();
 
   async getCompanySummary(context: AppContext) {
     const company = await prisma.company.findUniqueOrThrow({
@@ -30,12 +39,20 @@ export class OwnerService {
     return {
       companyId: company.id,
       name: company.name,
+      legalName: company.legalName,
+      documentNumber: company.documentNumber,
       setupCompleted: context.company.setupCompleted,
       createdAt: company.createdAt.toISOString(),
+      owner: {
+        id: context.user.id,
+        name: context.user.name,
+        email: context.user.email,
+      },
       membership: {
         id: context.membership.id,
         role: context.membership.role,
       },
+      receiptSettings: serializeReceiptSettings(company),
       license: serializeLicenseSummary(company.license),
       limits: entitlements.limits,
       features: entitlements.features,
@@ -100,12 +117,91 @@ export class OwnerService {
     });
   }
 
-  getEmployeesPlaceholder() {
+  async listEmployees(context: AppContext) {
+    await this.employeeContextService.ensureOwnerProfilesForCompany(
+      context.company.id,
+    );
+    const employees = await prisma.employeeProfile.findMany({
+      where: { companyId: context.company.id },
+      include: {
+        user: {
+          select: {
+            id: true,
+            isActive: true,
+            mustChangePassword: true,
+            temporaryPasswordExpiresAt: true,
+          },
+        },
+      },
+      orderBy: [{ role: 'asc' }, { name: 'asc' }, { createdAt: 'asc' }],
+    });
+    const userIds = employees
+      .map((employee) => employee.userId)
+      .filter((value): value is string => value != null);
+    const lastSessions =
+      userIds.length === 0
+        ? []
+        : await prisma.deviceSession.groupBy({
+            by: ['userId'],
+            where: {
+              companyId: context.company.id,
+              userId: { in: userIds },
+            },
+            _max: { lastSeenAt: true },
+          });
+    const lastSessionByUserId = new Map(
+      lastSessions.map((row) => [row.userId, row._max.lastSeenAt]),
+    );
+    const items = employees.map((employee) => {
+      const permissions = effectivePermissionsForEmployee(employee);
+      const accessStatus = resolveEmployeeAccessStatus(employee);
+      return {
+        id: employee.id,
+        name: employee.name,
+        email: employee.email,
+        role: employee.role,
+        status: employee.status,
+        accessStatus,
+        permissions: permissions.slice(0, 8),
+        permissionsCount: permissions.length,
+        commissionEnabled: employee.commissionEnabled,
+        commissionType: employee.commissionEnabled
+          ? employee.commissionType
+          : 'NONE',
+        commissionBase: employee.commissionBase,
+        commissionRateBps: employee.commissionRateBps,
+        commissionFixedCents: employee.commissionFixedCents,
+        temporaryPasswordPending: accessStatus === 'TEMPORARY_PASSWORD_PENDING',
+        temporaryPasswordExpiresAt:
+          employee.user?.temporaryPasswordExpiresAt?.toISOString() ?? null,
+        lastSeenAt:
+          employee.userId == null
+            ? null
+            : lastSessionByUserId.get(employee.userId)?.toISOString() ?? null,
+      };
+    });
+
     return {
-      items: [],
-      count: 0,
-      available: false,
-      reason: 'EMPLOYEES_NOT_IMPLEMENTED',
+      available: true,
+      summary: {
+        total: items.length,
+        active: items.filter((employee) => employee.status === 'ACTIVE').length,
+        disabled: items.filter((employee) => employee.status === 'DISABLED')
+          .length,
+        invited: items.filter((employee) => employee.status === 'INVITED')
+          .length,
+        withActiveAccess: items.filter(
+          (employee) => employee.accessStatus === 'ACTIVE',
+        ).length,
+        temporaryPasswordPending: items.filter(
+          (employee) => employee.temporaryPasswordPending,
+        ).length,
+        commissionEnabled: items.filter((employee) => employee.commissionEnabled)
+          .length,
+        maxEmployees: context.limits.maxEmployees,
+      },
+      items,
+      count: items.length,
     };
   }
 
@@ -138,6 +234,7 @@ export class OwnerService {
     const [
       company,
       billing,
+      employees,
       deviceCounts,
       syncState,
       pendingSyncEvents,
@@ -145,6 +242,7 @@ export class OwnerService {
     ] = await Promise.all([
       this.getCompanySummary(context),
       this.getBillingStatus(context),
+      this.listEmployees(context),
       prisma.companyDevice.groupBy({
         by: ['status'],
         where: { companyId: context.company.id },
@@ -175,12 +273,14 @@ export class OwnerService {
         pendingPlan: billing.pendingPlan,
       },
       employees: {
-        active: 0,
-        invited: 0,
-        disabled: 0,
+        active: employees.summary.active,
+        invited: employees.summary.invited,
+        disabled: employees.summary.disabled,
+        withActiveAccess: employees.summary.withActiveAccess,
+        temporaryPasswordPending: employees.summary.temporaryPasswordPending,
+        commissionEnabled: employees.summary.commissionEnabled,
         maxEmployees: context.limits.maxEmployees,
-        available: false,
-        reason: 'EMPLOYEES_NOT_IMPLEMENTED',
+        available: true,
       },
       devices: {
         ...deviceCounts.reduce(
@@ -258,9 +358,89 @@ export class OwnerService {
     return this.reportingService.getEmployeeReports(context, query);
   }
 
+  async getCommissions(
+    context: AppContext,
+    query: OwnerCommissionsQueryInput,
+  ) {
+    return this.employeeCommissionService.summary(
+      context,
+      ownerPeriodToEmployeePeriod(query),
+    );
+  }
+
+  async getEmployeeActivity(
+    context: AppContext,
+    query: OwnerEmployeeActivityQueryInput,
+  ) {
+    return this.employeeActivityService.summary(
+      context,
+      ownerPeriodToEmployeePeriod(query),
+    );
+  }
+
+  async getReceiptSettings(context: AppContext) {
+    const company = await prisma.company.findUniqueOrThrow({
+      where: { id: context.company.id },
+    });
+    return serializeReceiptSettings(company);
+  }
+
   async getReportsCatalog(context: AppContext) {
     return this.reportingService.getReportsCatalog(context);
   }
+}
+
+function ownerPeriodToEmployeePeriod(query: {
+  startDate?: string;
+  endDate?: string;
+}) {
+  const today = new Date();
+  const to = dateOnly(query.endDate == null ? today : new Date(query.endDate));
+  const defaultFrom = new Date(`${to}T00:00:00.000Z`);
+  defaultFrom.setUTCDate(defaultFrom.getUTCDate() - 29);
+  const from = dateOnly(
+    query.startDate == null ? defaultFrom : new Date(query.startDate),
+  );
+  return { from, to };
+}
+
+function resolveEmployeeAccessStatus(employee: {
+  status: string;
+  userId: string | null;
+  membershipId: string | null;
+  user?: { isActive: boolean; mustChangePassword: boolean } | null;
+}) {
+  if (employee.status === 'DISABLED') {
+    return 'DISABLED';
+  }
+  if (employee.userId == null || employee.membershipId == null) {
+    return 'NO_ACCESS';
+  }
+  if (employee.user == null || !employee.user.isActive) {
+    return 'DISABLED';
+  }
+  if (employee.user.mustChangePassword) {
+    return 'TEMPORARY_PASSWORD_PENDING';
+  }
+  return 'ACTIVE';
+}
+
+function serializeReceiptSettings(company: Prisma.CompanyGetPayload<{}>) {
+  return {
+    displayName: company.receiptDisplayName,
+    document: company.receiptDocument,
+    phone: company.receiptPhone,
+    address: company.receiptAddress,
+    footerMessage: company.receiptFooterMessage,
+    showDocument: company.showDocumentOnReceipt,
+    showPhone: company.showPhoneOnReceipt,
+    showAddress: company.showAddressOnReceipt,
+    showFooterMessage: company.showFooterMessageOnReceipt,
+  };
+}
+
+function dateOnly(value: Date) {
+  return value.toISOString().slice(0, 10);
 }
 
 function serializeLicenseSummary(

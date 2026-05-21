@@ -634,6 +634,14 @@ export class EmployeesService {
       accessStatus: this.resolveAccessStatus(employee),
       temporaryPasswordExpiresAt:
         employee.user?.temporaryPasswordExpiresAt?.toISOString() ?? null,
+      commissionEnabled: employee.commissionEnabled,
+      commissionType: employee.commissionEnabled
+        ? employee.commissionType ?? 'NONE'
+        : 'NONE',
+      commissionBase: employee.commissionBase ?? 'NET_SALES',
+      commissionRateBps: employee.commissionRateBps,
+      commissionFixedCents: employee.commissionFixedCents,
+      commissionUpdatedAt: employee.commissionUpdatedAt?.toISOString() ?? null,
       createdAt: employee.createdAt.toISOString(),
       updatedAt: employee.updatedAt.toISOString(),
     };

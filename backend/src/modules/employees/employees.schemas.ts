@@ -109,6 +109,70 @@ export const employeeActivityQuerySchema = z
     },
   );
 
+export const COMMISSION_TYPES = [
+  "NONE",
+  "PERCENTAGE",
+  "FIXED_PER_SALE",
+] as const;
+
+export const COMMISSION_BASES = [
+  "GROSS_SALES",
+  "NET_SALES",
+  "GROSS_PROFIT",
+] as const;
+
+export const employeeCommissionSettingsSchema = z
+  .object({
+    commissionEnabled: z.boolean(),
+    commissionType: z.enum(COMMISSION_TYPES).nullable().optional(),
+    commissionBase: z.enum(COMMISSION_BASES).nullable().optional(),
+    commissionRateBps: z.number().int().min(0).max(10000).nullable().optional(),
+    commissionFixedCents: z.number().int().min(0).nullable().optional(),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    if (!input.commissionEnabled) {
+      return;
+    }
+
+    if (input.commissionType == null || input.commissionType === "NONE") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["commissionType"],
+        message: "Informe um tipo de comissao.",
+      });
+      return;
+    }
+
+    if (input.commissionType === "PERCENTAGE") {
+      if (input.commissionRateBps == null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["commissionRateBps"],
+          message: "Informe o percentual da comissao.",
+        });
+      }
+      if (input.commissionBase == null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["commissionBase"],
+          message: "Informe a base de calculo da comissao.",
+        });
+      }
+    }
+
+    if (
+      input.commissionType === "FIXED_PER_SALE" &&
+      input.commissionFixedCents == null
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["commissionFixedCents"],
+        message: "Informe o valor fixo por venda.",
+      });
+    }
+  });
+
 function parseDateOnly(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   if (year == null || month == null || day == null) {
@@ -131,3 +195,8 @@ export type EmployeeUpdateInput = z.infer<typeof employeeUpdateSchema>;
 export type EmployeeActivityQueryInput = z.infer<
   typeof employeeActivityQuerySchema
 >;
+export type EmployeeCommissionSettingsInput = z.infer<
+  typeof employeeCommissionSettingsSchema
+>;
+export type EmployeeCommissionType = (typeof COMMISSION_TYPES)[number];
+export type EmployeeCommissionBase = (typeof COMMISSION_BASES)[number];

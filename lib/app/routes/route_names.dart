@@ -61,6 +61,8 @@ abstract final class AppRouteNames {
   static const employees = 'employees';
   static const employeeActivity = 'employee-activity';
   static const employeeActivityDetail = 'employee-activity-detail';
+  static const employeeCommissions = 'employee-commissions';
+  static const employeeCommissionDetail = 'employee-commission-detail';
   static const system = 'system';
   static const technicalSystem = 'technical-system';
   static const admin = 'admin';
@@ -130,6 +132,8 @@ abstract final class AppRoutePaths {
   static const employees = '/funcionarios';
   static const employeeActivity = '/funcionarios/atividade';
   static const employeeActivityDetail = '/funcionarios/:employeeId/atividade';
+  static const employeeCommissions = '/funcionarios/comissoes';
+  static const employeeCommissionDetail = '/funcionarios/:employeeId/comissoes';
   static const system = '/sistema';
   static const technicalSystem = '/interno/sistema';
   static const legacyAdmin = '/admin';

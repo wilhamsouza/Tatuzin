@@ -7,8 +7,10 @@ import { AppError } from '../../shared/http/app-error';
 import { requireFeature } from '../../shared/http/feature-middleware';
 import { validateQuery } from '../../shared/http/validate';
 import {
+  ownerCommissionsQuerySchema,
   ownerCrmCustomersQuerySchema,
   ownerCrmSummaryQuerySchema,
+  ownerEmployeeActivityQuerySchema,
   ownerEmployeesReportQuerySchema,
   ownerIdParamSchema,
   ownerInvoicesQuerySchema,
@@ -16,8 +18,10 @@ import {
   ownerReceivablesQuerySchema,
   ownerSalesSummaryQuerySchema,
   ownerStockSummaryQuerySchema,
+  type OwnerCommissionsQueryInput,
   type OwnerCrmCustomersQueryInput,
   type OwnerCrmSummaryQueryInput,
+  type OwnerEmployeeActivityQueryInput,
   type OwnerEmployeesReportQueryInput,
   type OwnerInvoicesQueryInput,
   type OwnerProductsReportQueryInput,
@@ -66,8 +70,41 @@ ownerRouter.get(
 
 ownerRouter.get(
   '/employees',
-  asyncHandler(async (_request, response) => {
-    response.json(ownerService.getEmployeesPlaceholder());
+  asyncHandler(async (request, response) => {
+    response.json(await ownerService.listEmployees(request.appContext!));
+  }),
+);
+
+ownerRouter.get(
+  '/commissions',
+  validateQuery(ownerCommissionsQuerySchema),
+  asyncHandler(async (request, response) => {
+    response.json(
+      await ownerService.getCommissions(
+        request.appContext!,
+        request.query as unknown as OwnerCommissionsQueryInput,
+      ),
+    );
+  }),
+);
+
+ownerRouter.get(
+  '/employee-activity',
+  validateQuery(ownerEmployeeActivityQuerySchema),
+  asyncHandler(async (request, response) => {
+    response.json(
+      await ownerService.getEmployeeActivity(
+        request.appContext!,
+        request.query as unknown as OwnerEmployeeActivityQueryInput,
+      ),
+    );
+  }),
+);
+
+ownerRouter.get(
+  '/receipt-settings',
+  asyncHandler(async (request, response) => {
+    response.json(await ownerService.getReceiptSettings(request.appContext!));
   }),
 );
 

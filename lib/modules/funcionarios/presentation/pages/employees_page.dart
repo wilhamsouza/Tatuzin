@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/errors/app_exceptions.dart';
+import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/theme/app_design_tokens.dart';
+import '../../../../app/core/utils/money_parser.dart';
 import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_input.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
@@ -126,6 +128,7 @@ class _EmployeesContent extends ConsumerWidget {
     final employeesAsync = ref.watch(employeesListProvider);
     final page = employeesAsync.valueOrNull;
     final canViewActivity = ref.watch(canViewEmployeeActivityProvider);
+    final canViewCommissions = ref.watch(canViewEmployeeCommissionsProvider);
 
     return Column(
       children: [
@@ -144,6 +147,24 @@ class _EmployeesContent extends ConsumerWidget {
                     context.pushNamed(AppRouteNames.employeeActivity),
                 icon: const Icon(Icons.manage_search_rounded),
                 label: const Text('Ver atividade da equipe'),
+              ),
+            ),
+          ),
+        if (canViewCommissions)
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              layout.pagePadding,
+              0,
+              layout.pagePadding,
+              layout.space3,
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () =>
+                    context.pushNamed(AppRouteNames.employeeCommissions),
+                icon: const Icon(Icons.payments_outlined),
+                label: const Text('Ver comissões'),
               ),
             ),
           ),
@@ -399,6 +420,7 @@ class _EmployeeTile extends ConsumerWidget {
     final theme = Theme.of(context);
     final isBusy = ref.watch(employeeActionControllerProvider).isLoading;
     final canViewActivity = ref.watch(canViewEmployeeActivityProvider);
+    final canManage = ref.watch(canManageEmployeesProvider);
 
     return AppCard(
       padding: EdgeInsets.all(layout.compactCardPadding),
@@ -451,6 +473,11 @@ class _EmployeeTile extends ConsumerWidget {
                   onSelected: (value) => _handleAction(context, ref, value),
                   itemBuilder: (context) => [
                     const PopupMenuItem(value: 'edit', child: Text('Editar')),
+                    if (canManage)
+                      const PopupMenuItem(
+                        value: 'commission',
+                        child: Text('Configurar comissão'),
+                      ),
                     if (employee.accessStatus == EmployeeAccessStatus.noAccess)
                       const PopupMenuItem(
                         value: 'generate-temporary-password',
@@ -501,6 +528,13 @@ class _EmployeeTile extends ConsumerWidget {
                   tone: AppStatusTone.info,
                   icon: Icons.lock_outline_rounded,
                 ),
+              AppStatusBadge(
+                label: _commissionBadgeLabel(employee),
+                tone: employee.commissionEnabled
+                    ? AppStatusTone.success
+                    : AppStatusTone.neutral,
+                icon: Icons.payments_outlined,
+              ),
             ],
           ),
           if (canViewActivity) ...[
@@ -534,6 +568,14 @@ class _EmployeeTile extends ConsumerWidget {
           isScrollControlled: true,
           useSafeArea: true,
           builder: (_) => _EmployeeFormSheet(employee: employee),
+        );
+        return;
+      case 'commission':
+        await showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          builder: (_) => EmployeeCommissionSettingsSheet(employee: employee),
         );
         return;
       case 'generate-temporary-password':
@@ -637,6 +679,256 @@ class _EmployeeTile extends ConsumerWidget {
         SnackBar(
           content: Text(
             'Não foi possível concluir a ação: ${_errorMessage(error)}',
+          ),
+        ),
+      );
+    }
+  }
+}
+
+class EmployeeCommissionSettingsSheet extends ConsumerStatefulWidget {
+  const EmployeeCommissionSettingsSheet({required this.employee, super.key});
+
+  final EmployeeProfile employee;
+
+  @override
+  ConsumerState<EmployeeCommissionSettingsSheet> createState() =>
+      _EmployeeCommissionSettingsSheetState();
+}
+
+class _EmployeeCommissionSettingsSheetState
+    extends ConsumerState<EmployeeCommissionSettingsSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late bool _enabled;
+  late EmployeeCommissionType _type;
+  late EmployeeCommissionBase _base;
+  late final TextEditingController _rateController;
+  late final TextEditingController _fixedController;
+
+  @override
+  void initState() {
+    super.initState();
+    final settings = EmployeeCommissionSettings.fromEmployee(widget.employee);
+    _enabled = settings.commissionEnabled;
+    _type = settings.commissionType == EmployeeCommissionType.none
+        ? EmployeeCommissionType.percentage
+        : settings.commissionType;
+    _base = settings.commissionBase;
+    _rateController = TextEditingController(
+      text: _percentageInputFromBps(settings.commissionRateBps ?? 0),
+    );
+    _fixedController = TextEditingController(
+      text: AppFormatters.currencyInputFromCents(
+        settings.commissionFixedCents ?? 0,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _rateController.dispose();
+    _fixedController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = context.appLayout;
+    final isBusy = ref.watch(employeeActionControllerProvider).isLoading;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.all(layout.pagePadding),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Comissão do funcionário',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              SizedBox(height: layout.space2),
+              Text(
+                'A comissão é calculada apenas sobre vendas finalizadas atribuídas a este funcionário.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              SizedBox(height: layout.space5),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _enabled,
+                onChanged: isBusy
+                    ? null
+                    : (value) => setState(() => _enabled = value),
+                title: const Text('Ativar comissão'),
+              ),
+              SizedBox(height: layout.space3),
+              DropdownButtonFormField<EmployeeCommissionType>(
+                initialValue: _type,
+                decoration: const InputDecoration(labelText: 'Tipo'),
+                items: const [
+                  DropdownMenuItem(
+                    value: EmployeeCommissionType.percentage,
+                    child: Text('Percentual'),
+                  ),
+                  DropdownMenuItem(
+                    value: EmployeeCommissionType.fixedPerSale,
+                    child: Text('Valor fixo por venda'),
+                  ),
+                ],
+                onChanged: !_enabled || isBusy
+                    ? null
+                    : (value) => setState(() {
+                        _type = value ?? _type;
+                        if (_type == EmployeeCommissionType.fixedPerSale) {
+                          _base = EmployeeCommissionBase.netSales;
+                        }
+                      }),
+              ),
+              SizedBox(height: layout.space4),
+              DropdownButtonFormField<EmployeeCommissionBase>(
+                initialValue: _base,
+                decoration: const InputDecoration(labelText: 'Base de cálculo'),
+                items: EmployeeCommissionBase.values
+                    .map(
+                      (base) => DropdownMenuItem(
+                        value: base,
+                        child: Text(base.label),
+                      ),
+                    )
+                    .toList(),
+                onChanged:
+                    !_enabled ||
+                        isBusy ||
+                        _type == EmployeeCommissionType.fixedPerSale
+                    ? null
+                    : (value) => setState(() => _base = value ?? _base),
+              ),
+              if (_base == EmployeeCommissionBase.grossProfit) ...[
+                SizedBox(height: layout.space3),
+                Text(
+                  'Comissão sobre lucro usa o preço vendido menos o custo cadastrado do produto. Vendas sem custo cadastrado podem ficar fora do cálculo.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+              SizedBox(height: layout.space4),
+              if (_type == EmployeeCommissionType.percentage)
+                TextFormField(
+                  controller: _rateController,
+                  enabled: _enabled && !isBusy,
+                  decoration: const InputDecoration(
+                    labelText: 'Percentual',
+                    suffixText: '%',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  validator: (value) {
+                    if (!_enabled) {
+                      return null;
+                    }
+                    final bps = _tryParseBps(value ?? '');
+                    if (bps == null) {
+                      return 'Informe um percentual válido';
+                    }
+                    if (bps <= 0 || bps > 10000) {
+                      return 'Informe um percentual entre 0,01% e 100%';
+                    }
+                    return null;
+                  },
+                )
+              else
+                TextFormField(
+                  controller: _fixedController,
+                  enabled: _enabled && !isBusy,
+                  decoration: const InputDecoration(labelText: 'Valor fixo'),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  validator: (value) {
+                    if (!_enabled) {
+                      return null;
+                    }
+                    final cents = _tryParseFixedCents(value ?? '');
+                    if (cents == null || cents < 0) {
+                      return 'Informe um valor válido';
+                    }
+                    return null;
+                  },
+                ),
+              SizedBox(height: layout.space6),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: isBusy
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      child: const Text('Cancelar'),
+                    ),
+                  ),
+                  SizedBox(width: layout.space4),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: isBusy ? null : _save,
+                      child: const Text('Salvar alterações'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    final settings = EmployeeCommissionSettings(
+      commissionEnabled: _enabled,
+      commissionType: _enabled ? _type : EmployeeCommissionType.none,
+      commissionBase: _type == EmployeeCommissionType.fixedPerSale
+          ? EmployeeCommissionBase.netSales
+          : _base,
+      commissionRateBps: _type == EmployeeCommissionType.percentage
+          ? _parseBps(_rateController.text)
+          : null,
+      commissionFixedCents: _type == EmployeeCommissionType.fixedPerSale
+          ? (_tryParseFixedCents(_fixedController.text) ?? 0)
+          : null,
+    );
+
+    try {
+      await ref
+          .read(employeeActionControllerProvider.notifier)
+          .updateCommissionSettings(widget.employee.id, settings);
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Comissão atualizada.')));
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Não foi possível salvar comissão: ${_errorMessage(error)}',
           ),
         ),
       );
@@ -1200,6 +1492,76 @@ IconData _statusIcon(EmployeeStatus status) {
     case EmployeeStatus.unknown:
       return Icons.info_outline_rounded;
   }
+}
+
+String _commissionBadgeLabel(EmployeeProfile employee) {
+  if (!employee.commissionEnabled ||
+      employee.commissionType == EmployeeCommissionType.none) {
+    return 'Comissão desativada';
+  }
+  if (employee.commissionType == EmployeeCommissionType.fixedPerSale) {
+    return 'Comissão: ${AppFormatters.currencyFromCents(employee.commissionFixedCents ?? 0)} por venda';
+  }
+  return 'Comissão: ${_percentageInputFromBps(employee.commissionRateBps ?? 0)}% sobre ${_baseShortLabel(employee.commissionBase)}';
+}
+
+String _baseShortLabel(EmployeeCommissionBase base) {
+  switch (base) {
+    case EmployeeCommissionBase.grossSales:
+      return 'venda bruta';
+    case EmployeeCommissionBase.netSales:
+      return 'venda líquida';
+    case EmployeeCommissionBase.grossProfit:
+      return 'lucro';
+  }
+}
+
+String _percentageInputFromBps(int bps) {
+  final whole = bps ~/ 100;
+  final decimal = bps % 100;
+  if (decimal == 0) {
+    return '$whole';
+  }
+  return '$whole,${decimal.toString().padLeft(2, '0').replaceFirst(RegExp(r'0$'), '')}';
+}
+
+int _parseBps(String raw) {
+  return _tryParseBps(raw) ?? -1;
+}
+
+int? _tryParseBps(String raw) {
+  final sanitized = raw.trim().replaceAll('%', '').trim().replaceAll(',', '.');
+  if (sanitized.isEmpty || sanitized.startsWith('-')) {
+    return null;
+  }
+  if (!RegExp(r'^\d+(\.\d{1,2})?$').hasMatch(sanitized)) {
+    return null;
+  }
+  final parts = sanitized.split('.');
+  final whole = int.tryParse(parts.first);
+  if (whole == null) {
+    return null;
+  }
+  final decimalRaw = parts.length == 2 ? parts[1] : '';
+  final decimal = int.tryParse('$decimalRaw${'00'}'.substring(0, 2)) ?? 0;
+  return (whole * 100) + decimal;
+}
+
+int? _tryParseFixedCents(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) {
+    return 0;
+  }
+  if (!RegExp(r'\d').hasMatch(trimmed)) {
+    return null;
+  }
+  final withoutCurrency = trimmed
+      .replaceAll(RegExp(r'[Rr]\$?'), '')
+      .replaceAll(RegExp(r'\s+'), '');
+  if (!RegExp(r'^-?[0-9.,]+$').hasMatch(withoutCurrency)) {
+    return null;
+  }
+  return MoneyParser.parseToCents(trimmed);
 }
 
 String _errorMessage(Object error) {

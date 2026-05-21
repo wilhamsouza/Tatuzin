@@ -196,7 +196,7 @@ describe('owner routes', () => {
     assert.equal((response.data as { code?: string }).code, 'VALIDATION_ERROR');
   });
 
-  it('returns a safe employees placeholder while EmployeeProfile is absent', async () => {
+  it('returns a safe employees overview without temporary password secrets', async () => {
     const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
 
     const response = await requestJson('GET', '/owner/employees', {
@@ -204,12 +204,49 @@ describe('owner routes', () => {
     });
 
     assert.equal(response.status, 200);
-    assert.deepEqual(response.data, {
-      items: [],
-      count: 0,
-      available: false,
-      reason: 'EMPLOYEES_NOT_IMPLEMENTED',
-    });
+    const payload = response.data as {
+      available: boolean;
+      summary: { total: number; active: number; maxEmployees: number };
+      items: Array<{ name: string; temporaryPassword?: string }>;
+    };
+    assert.equal(payload.available, true);
+    assert.equal(payload.summary.maxEmployees, 100);
+    assert.equal(payload.summary.total >= 1, true);
+    assert.equal(JSON.stringify(payload).includes('"temporaryPassword":'), false);
+  });
+
+  it('returns owner commission summary through the read-only owner endpoint', async () => {
+    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+
+    const response = await requestJson(
+      'GET',
+      '/owner/commissions?startDate=2026-05-01&endDate=2026-05-31',
+      { token: fixture.token },
+    );
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      period: { from: string; to: string };
+      totals: { totalCommissionCents: number };
+      rows: unknown[];
+    };
+    assert.equal(payload.period.from, '2026-05-01');
+    assert.equal(payload.period.to, '2026-05-31');
+    assert.equal(payload.totals.totalCommissionCents, 0);
+    assert.equal(Array.isArray(payload.rows), true);
+  });
+
+  it('rejects long owner commission periods with validation error', async () => {
+    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+
+    const response = await requestJson(
+      'GET',
+      '/owner/commissions?startDate=2026-01-01&endDate=2026-05-31',
+      { token: fixture.token },
+    );
+
+    assert.equal(response.status, 422);
+    assert.equal((response.data as { code?: string }).code, 'VALIDATION_ERROR');
   });
 
   it('lists devices without exposing full clientInstanceId', async () => {
@@ -235,12 +272,12 @@ describe('owner routes', () => {
     assert.equal(response.status, 200);
     const payload = response.data as {
       reports: null;
-      employees: { available: boolean; reason: string };
+      employees: { available: boolean; active: number; maxEmployees: number };
       billing: { plan: string };
     };
     assert.equal(payload.billing.plan, 'PRO');
-    assert.equal(payload.employees.available, false);
-    assert.equal(payload.employees.reason, 'EMPLOYEES_NOT_IMPLEMENTED');
+    assert.equal(payload.employees.available, true);
+    assert.equal(payload.employees.maxEmployees, 100);
     assert.equal(payload.reports, null);
   });
 

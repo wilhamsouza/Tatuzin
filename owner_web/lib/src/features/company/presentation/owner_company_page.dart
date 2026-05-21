@@ -21,7 +21,7 @@ class OwnerCompanyPage extends ConsumerWidget {
           children: [
             OwnerPageIntro(
               title: data.name,
-              subtitle: 'Resumo da empresa e do acesso ao painel.',
+              subtitle: 'Resumo da empresa, assinatura e dados de comprovante.',
               icon: Icons.storefront_rounded,
               trailing: Chip(
                 label: Text('Plano ${ownerPlanLabel(data.license.plan)}'),
@@ -30,18 +30,25 @@ class OwnerCompanyPage extends ConsumerWidget {
             const SizedBox(height: 18),
             OwnerSectionCard(
               title: 'Dados da empresa',
-              subtitle: 'Informações disponíveis para consulta.',
+              subtitle: 'Informacoes disponiveis para consulta.',
               child: Wrap(
                 spacing: 24,
                 runSpacing: 14,
                 children: [
                   _InfoItem(label: 'Nome', value: data.name),
+                  _InfoItem(label: 'Razao social', value: data.legalName),
                   _InfoItem(
-                    label: 'Status',
+                    label: 'CPF/CNPJ',
+                    value: data.documentNumber ?? 'Nao informado',
+                  ),
+                  _InfoItem(label: 'Dono', value: data.owner.name),
+                  _InfoItem(label: 'E-mail do dono', value: data.owner.email),
+                  _InfoItem(
+                    label: 'Status da licenca',
                     value: OwnerFormatters.status(data.license.status),
                   ),
                   _InfoItem(
-                    label: 'Próxima cobrança',
+                    label: 'Proxima cobranca',
                     value: OwnerFormatters.date(data.license.nextPaymentDate),
                   ),
                   _InfoItem(
@@ -49,12 +56,55 @@ class OwnerCompanyPage extends ConsumerWidget {
                     value: OwnerFormatters.date(data.createdAt),
                   ),
                   _InfoItem(
-                    label: 'Funcionários no plano',
+                    label: 'Funcionarios no plano',
                     value: '${data.limits.maxEmployees}',
                   ),
                   _InfoItem(
                     label: 'Dispositivos no plano',
                     value: '${data.limits.maxDevices}',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            OwnerSectionCard(
+              title: 'Empresa e comprovante',
+              subtitle: 'Configuracao atual exibida no recibo.',
+              child: Wrap(
+                spacing: 24,
+                runSpacing: 14,
+                children: [
+                  _InfoItem(
+                    label: 'Nome no comprovante',
+                    value: data.receiptSettings.displayName ?? data.name,
+                  ),
+                  _InfoItem(
+                    label: 'Documento',
+                    value: _visibleReceiptValue(
+                      data.receiptSettings.showDocument,
+                      data.receiptSettings.document,
+                    ),
+                  ),
+                  _InfoItem(
+                    label: 'Telefone',
+                    value: _visibleReceiptValue(
+                      data.receiptSettings.showPhone,
+                      data.receiptSettings.phone,
+                    ),
+                  ),
+                  _InfoItem(
+                    label: 'Endereco',
+                    value: _visibleReceiptValue(
+                      data.receiptSettings.showAddress,
+                      data.receiptSettings.address,
+                    ),
+                  ),
+                  _InfoItem(
+                    label: 'Rodape',
+                    value: _visibleReceiptValue(
+                      data.receiptSettings.showFooterMessage,
+                      data.receiptSettings.footerMessage,
+                    ),
                   ),
                 ],
               ),
@@ -96,4 +146,11 @@ class _InfoItem extends StatelessWidget {
       ),
     );
   }
+}
+
+String _visibleReceiptValue(bool visible, String? value) {
+  if (!visible) {
+    return 'Oculto';
+  }
+  return value == null || value.trim().isEmpty ? 'Nao informado' : value;
 }

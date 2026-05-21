@@ -249,9 +249,13 @@ class OwnerCompanySummary {
   const OwnerCompanySummary({
     required this.companyId,
     required this.name,
+    required this.legalName,
+    required this.documentNumber,
     required this.setupCompleted,
     required this.createdAt,
+    required this.owner,
     required this.membershipRole,
+    required this.receiptSettings,
     required this.license,
     required this.limits,
     required this.features,
@@ -259,9 +263,13 @@ class OwnerCompanySummary {
 
   final String companyId;
   final String name;
+  final String legalName;
+  final String? documentNumber;
   final bool setupCompleted;
   final String? createdAt;
+  final OwnerCompanyOwner owner;
   final String membershipRole;
+  final OwnerReceiptSettings receiptSettings;
   final OwnerLicenseSummary license;
   final OwnerLimits limits;
   final Map<String, bool> features;
@@ -270,12 +278,76 @@ class OwnerCompanySummary {
     return OwnerCompanySummary(
       companyId: _readString(map, 'companyId'),
       name: _readString(map, 'name', fallback: 'Empresa'),
+      legalName: _readString(map, 'legalName', fallback: 'Empresa'),
+      documentNumber: _readOptionalString(map, 'documentNumber'),
       setupCompleted: map['setupCompleted'] == true,
       createdAt: _readOptionalString(map, 'createdAt'),
+      owner: OwnerCompanyOwner.fromMap(_readMap(map, 'owner')),
       membershipRole: _readString(_readMap(map, 'membership'), 'role'),
+      receiptSettings: OwnerReceiptSettings.fromMap(
+        _readMap(map, 'receiptSettings'),
+      ),
       license: OwnerLicenseSummary.fromMap(_readMap(map, 'license')),
       limits: OwnerLimits.fromMap(_readMap(map, 'limits')),
       features: _readBoolMap(map['features']),
+    );
+  }
+}
+
+class OwnerCompanyOwner {
+  const OwnerCompanyOwner({
+    required this.id,
+    required this.name,
+    required this.email,
+  });
+
+  final String id;
+  final String name;
+  final String email;
+
+  factory OwnerCompanyOwner.fromMap(Map<String, dynamic> map) {
+    return OwnerCompanyOwner(
+      id: _readString(map, 'id'),
+      name: _readString(map, 'name', fallback: 'Dono'),
+      email: _readString(map, 'email'),
+    );
+  }
+}
+
+class OwnerReceiptSettings {
+  const OwnerReceiptSettings({
+    required this.displayName,
+    required this.document,
+    required this.phone,
+    required this.address,
+    required this.footerMessage,
+    required this.showDocument,
+    required this.showPhone,
+    required this.showAddress,
+    required this.showFooterMessage,
+  });
+
+  final String? displayName;
+  final String? document;
+  final String? phone;
+  final String? address;
+  final String? footerMessage;
+  final bool showDocument;
+  final bool showPhone;
+  final bool showAddress;
+  final bool showFooterMessage;
+
+  factory OwnerReceiptSettings.fromMap(Map<String, dynamic> map) {
+    return OwnerReceiptSettings(
+      displayName: _readOptionalString(map, 'displayName'),
+      document: _readOptionalString(map, 'document'),
+      phone: _readOptionalString(map, 'phone'),
+      address: _readOptionalString(map, 'address'),
+      footerMessage: _readOptionalString(map, 'footerMessage'),
+      showDocument: map['showDocument'] == true,
+      showPhone: map['showPhone'] == true,
+      showAddress: map['showAddress'] == true,
+      showFooterMessage: map['showFooterMessage'] == true,
     );
   }
 }
@@ -510,6 +582,243 @@ class OwnerEmployeesPlaceholder {
       count: _readOptionalInt(map, 'count') ?? 0,
       available: map['available'] == true,
       reason: _readOptionalString(map, 'reason'),
+    );
+  }
+}
+
+class OwnerEmployeesOverview {
+  const OwnerEmployeesOverview({
+    required this.available,
+    required this.summary,
+    required this.items,
+    required this.count,
+  });
+
+  final bool available;
+  final OwnerEmployeesSummary summary;
+  final List<OwnerEmployeeItem> items;
+  final int count;
+
+  factory OwnerEmployeesOverview.fromMap(Map<String, dynamic> map) {
+    final items = _readMapList(
+      map['items'],
+    ).map(OwnerEmployeeItem.fromMap).toList(growable: false);
+    return OwnerEmployeesOverview(
+      available: map['available'] == true,
+      summary: OwnerEmployeesSummary.fromMap(_readMap(map, 'summary')),
+      items: items,
+      count: _readOptionalInt(map, 'count') ?? items.length,
+    );
+  }
+}
+
+class OwnerEmployeesSummary {
+  const OwnerEmployeesSummary({
+    required this.total,
+    required this.active,
+    required this.disabled,
+    required this.invited,
+    required this.withActiveAccess,
+    required this.temporaryPasswordPending,
+    required this.commissionEnabled,
+    required this.maxEmployees,
+  });
+
+  final int total;
+  final int active;
+  final int disabled;
+  final int invited;
+  final int withActiveAccess;
+  final int temporaryPasswordPending;
+  final int commissionEnabled;
+  final int maxEmployees;
+
+  factory OwnerEmployeesSummary.fromMap(Map<String, dynamic> map) {
+    return OwnerEmployeesSummary(
+      total: _readOptionalInt(map, 'total') ?? 0,
+      active: _readOptionalInt(map, 'active') ?? 0,
+      disabled: _readOptionalInt(map, 'disabled') ?? 0,
+      invited: _readOptionalInt(map, 'invited') ?? 0,
+      withActiveAccess: _readOptionalInt(map, 'withActiveAccess') ?? 0,
+      temporaryPasswordPending:
+          _readOptionalInt(map, 'temporaryPasswordPending') ?? 0,
+      commissionEnabled: _readOptionalInt(map, 'commissionEnabled') ?? 0,
+      maxEmployees: _readOptionalInt(map, 'maxEmployees') ?? 0,
+    );
+  }
+}
+
+class OwnerEmployeeItem {
+  const OwnerEmployeeItem({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.role,
+    required this.status,
+    required this.accessStatus,
+    required this.permissions,
+    required this.permissionsCount,
+    required this.commissionEnabled,
+    required this.commissionType,
+    required this.commissionBase,
+    required this.commissionRateBps,
+    required this.commissionFixedCents,
+    required this.temporaryPasswordPending,
+    required this.temporaryPasswordExpiresAt,
+    required this.lastSeenAt,
+  });
+
+  final String id;
+  final String name;
+  final String? email;
+  final String role;
+  final String status;
+  final String accessStatus;
+  final List<String> permissions;
+  final int permissionsCount;
+  final bool commissionEnabled;
+  final String commissionType;
+  final String commissionBase;
+  final int? commissionRateBps;
+  final int? commissionFixedCents;
+  final bool temporaryPasswordPending;
+  final String? temporaryPasswordExpiresAt;
+  final String? lastSeenAt;
+
+  factory OwnerEmployeeItem.fromMap(Map<String, dynamic> map) {
+    return OwnerEmployeeItem(
+      id: _readString(map, 'id'),
+      name: _readString(map, 'name', fallback: 'Funcionario'),
+      email: _readOptionalString(map, 'email'),
+      role: _readString(map, 'role', fallback: 'READ_ONLY'),
+      status: _readString(map, 'status', fallback: 'ACTIVE'),
+      accessStatus: _readString(map, 'accessStatus', fallback: 'NO_ACCESS'),
+      permissions: _readStringList(map['permissions']),
+      permissionsCount: _readOptionalInt(map, 'permissionsCount') ?? 0,
+      commissionEnabled: map['commissionEnabled'] == true,
+      commissionType: _readString(map, 'commissionType', fallback: 'NONE'),
+      commissionBase: _readString(map, 'commissionBase', fallback: 'NET_SALES'),
+      commissionRateBps: _readOptionalInt(map, 'commissionRateBps'),
+      commissionFixedCents: _readOptionalInt(map, 'commissionFixedCents'),
+      temporaryPasswordPending: map['temporaryPasswordPending'] == true,
+      temporaryPasswordExpiresAt: _readOptionalString(
+        map,
+        'temporaryPasswordExpiresAt',
+      ),
+      lastSeenAt: _readOptionalString(map, 'lastSeenAt'),
+    );
+  }
+}
+
+class OwnerCommissionsSummary {
+  const OwnerCommissionsSummary({
+    required this.period,
+    required this.totals,
+    required this.rows,
+    required this.notes,
+  });
+
+  final OwnerReportPeriod period;
+  final OwnerCommissionTotals totals;
+  final List<OwnerCommissionRow> rows;
+  final List<String> notes;
+
+  factory OwnerCommissionsSummary.fromMap(Map<String, dynamic> map) {
+    return OwnerCommissionsSummary(
+      period: OwnerReportPeriod.fromMap(_readMap(map, 'period')),
+      totals: OwnerCommissionTotals.fromMap(_readMap(map, 'totals')),
+      rows: _readMapList(
+        map['rows'],
+      ).map(OwnerCommissionRow.fromMap).toList(growable: false),
+      notes: _readStringList(_readMap(map, 'tracking')['notes']),
+    );
+  }
+}
+
+class OwnerCommissionTotals {
+  const OwnerCommissionTotals({
+    required this.employeesWithCommission,
+    required this.totalEligibleSalesAmountCents,
+    required this.totalCommissionCents,
+    required this.totalSalesCount,
+    required this.salesWithoutReliableCostCount,
+  });
+
+  final int employeesWithCommission;
+  final int totalEligibleSalesAmountCents;
+  final int totalCommissionCents;
+  final int totalSalesCount;
+  final int salesWithoutReliableCostCount;
+
+  factory OwnerCommissionTotals.fromMap(Map<String, dynamic> map) {
+    return OwnerCommissionTotals(
+      employeesWithCommission:
+          _readOptionalInt(map, 'employeesWithCommission') ?? 0,
+      totalEligibleSalesAmountCents:
+          _readOptionalInt(map, 'totalEligibleSalesAmountCents') ?? 0,
+      totalCommissionCents: _readOptionalInt(map, 'totalCommissionCents') ?? 0,
+      totalSalesCount: _readOptionalInt(map, 'totalSalesCount') ?? 0,
+      salesWithoutReliableCostCount:
+          _readOptionalInt(map, 'salesWithoutReliableCostCount') ?? 0,
+    );
+  }
+}
+
+class OwnerCommissionRow {
+  const OwnerCommissionRow({
+    required this.employeeId,
+    required this.employeeName,
+    required this.role,
+    required this.status,
+    required this.commissionEnabled,
+    required this.commissionType,
+    required this.commissionBase,
+    required this.commissionRateBps,
+    required this.commissionFixedCents,
+    required this.salesCount,
+    required this.eligibleSalesCount,
+    required this.salesAmountCents,
+    required this.eligibleBaseAmountCents,
+    required this.commissionAmountCents,
+    required this.salesWithoutReliableCostCount,
+  });
+
+  final String employeeId;
+  final String employeeName;
+  final String role;
+  final String status;
+  final bool commissionEnabled;
+  final String commissionType;
+  final String commissionBase;
+  final int? commissionRateBps;
+  final int? commissionFixedCents;
+  final int salesCount;
+  final int eligibleSalesCount;
+  final int salesAmountCents;
+  final int eligibleBaseAmountCents;
+  final int commissionAmountCents;
+  final int salesWithoutReliableCostCount;
+
+  factory OwnerCommissionRow.fromMap(Map<String, dynamic> map) {
+    return OwnerCommissionRow(
+      employeeId: _readString(map, 'employeeId'),
+      employeeName: _readString(map, 'employeeName', fallback: 'Funcionario'),
+      role: _readString(map, 'role', fallback: 'READ_ONLY'),
+      status: _readString(map, 'status', fallback: 'ACTIVE'),
+      commissionEnabled: map['commissionEnabled'] == true,
+      commissionType: _readString(map, 'commissionType', fallback: 'NONE'),
+      commissionBase: _readString(map, 'commissionBase', fallback: 'NET_SALES'),
+      commissionRateBps: _readOptionalInt(map, 'commissionRateBps'),
+      commissionFixedCents: _readOptionalInt(map, 'commissionFixedCents'),
+      salesCount: _readOptionalInt(map, 'salesCount') ?? 0,
+      eligibleSalesCount: _readOptionalInt(map, 'eligibleSalesCount') ?? 0,
+      salesAmountCents: _readOptionalInt(map, 'salesAmountCents') ?? 0,
+      eligibleBaseAmountCents:
+          _readOptionalInt(map, 'eligibleBaseAmountCents') ?? 0,
+      commissionAmountCents:
+          _readOptionalInt(map, 'commissionAmountCents') ?? 0,
+      salesWithoutReliableCostCount:
+          _readOptionalInt(map, 'salesWithoutReliableCostCount') ?? 0,
     );
   }
 }

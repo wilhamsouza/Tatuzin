@@ -176,6 +176,19 @@ final ownerEmployeeReportsProvider = FutureProvider<OwnerEmployeeReports>((
       );
 });
 
+final ownerCommissionsProvider = FutureProvider<OwnerCommissionsSummary>((
+  ref,
+) async {
+  ref.watch(ownerRefreshTickProvider);
+  final startDate = ref.watch(ownerReportStartDateProvider);
+  final endDate = ref.watch(ownerReportEndDateProvider);
+  return ref
+      .watch(ownerApiServiceProvider)
+      .getCommissions(
+        query: OwnerDateReportQuery(startDate: startDate, endDate: endDate),
+      );
+});
+
 final ownerReportsCatalogProvider = FutureProvider<OwnerReportsCatalog>((
   ref,
 ) async {
@@ -206,11 +219,18 @@ final ownerBillingInvoicesProvider = FutureProvider<OwnerInvoicesPage>((
       );
 });
 
-final ownerEmployeesProvider = FutureProvider<OwnerEmployeesPlaceholder>((
+final ownerEmployeesProvider = FutureProvider<OwnerEmployeesOverview>((
   ref,
 ) async {
   ref.watch(ownerRefreshTickProvider);
   return ref.watch(ownerApiServiceProvider).getEmployees();
+});
+
+final ownerReceiptSettingsProvider = FutureProvider<OwnerReceiptSettings>((
+  ref,
+) async {
+  ref.watch(ownerRefreshTickProvider);
+  return ref.watch(ownerApiServiceProvider).getReceiptSettings();
 });
 
 final ownerDevicesProvider = FutureProvider<OwnerDevicesResult>((ref) async {

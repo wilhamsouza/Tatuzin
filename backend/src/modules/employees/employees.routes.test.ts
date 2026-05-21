@@ -1190,6 +1190,450 @@ describe("employees PRO module", () => {
     );
     assert.equal(tooLong.status, 422);
   });
+
+  it("configures employee commission and calculates net, gross and profit bases safely", async () => {
+    const fixture = await createFixture({ plan: "pro" });
+    const seller = await createEmployeeActor(fixture, {
+      name: "Gabriel Vendedor",
+      role: "SELLER",
+      permissions: ["sales.create"],
+    });
+    const day = new Date("2026-05-20T14:00:00.000Z");
+
+    const settings = await requestJson(
+      "PATCH",
+      `/employees/${seller.employeeId}/commission-settings`,
+      {
+        token: fixture.token,
+        body: {
+          commissionEnabled: true,
+          commissionType: "PERCENTAGE",
+          commissionBase: "NET_SALES",
+          commissionRateBps: 500,
+        },
+      },
+    );
+    assert.equal(settings.status, 200);
+
+    await createCommissionSale(fixture, seller.userId, {
+      localUuid: `${runId}-commission-net`,
+      soldAt: day,
+      subtotalCents: 100000,
+      totalAmountCents: 90000,
+      items: [
+        {
+          localUuid: `${runId}-commission-net-item`,
+          totalPriceCents: 100000,
+          unitCostCents: 60000,
+          totalCostCents: 60000,
+        },
+      ],
+    });
+
+    const netSummary = await requestJson(
+      "GET",
+      "/employees/commissions/summary?from=2026-05-20&to=2026-05-20",
+      { token: fixture.token },
+    );
+    assert.equal(netSummary.status, 200);
+    let row = (
+      netSummary.data as EmployeeCommissionSummaryResponse
+    ).rows.find((candidate) => candidate.employeeId === seller.employeeId);
+    assert.ok(row);
+    assert.equal(row.eligibleBaseAmountCents, 90000);
+    assert.equal(row.commissionAmountCents, 4500);
+
+    await requestJson("PATCH", `/employees/${seller.employeeId}/commission-settings`, {
+      token: fixture.token,
+      body: {
+        commissionEnabled: true,
+        commissionType: "PERCENTAGE",
+        commissionBase: "GROSS_SALES",
+        commissionRateBps: 500,
+      },
+    });
+    const grossSummary = await requestJson(
+      "GET",
+      "/employees/commissions/summary?from=2026-05-20&to=2026-05-20",
+      { token: fixture.token },
+    );
+    row = (grossSummary.data as EmployeeCommissionSummaryResponse).rows.find(
+      (candidate) => candidate.employeeId === seller.employeeId,
+    );
+    assert.ok(row);
+    assert.equal(row.eligibleBaseAmountCents, 100000);
+    assert.equal(row.commissionAmountCents, 5000);
+
+    await requestJson("PATCH", `/employees/${seller.employeeId}/commission-settings`, {
+      token: fixture.token,
+      body: {
+        commissionEnabled: true,
+        commissionType: "PERCENTAGE",
+        commissionBase: "GROSS_PROFIT",
+        commissionRateBps: 2000,
+      },
+    });
+    const profitSummary = await requestJson(
+      "GET",
+      "/employees/commissions/summary?from=2026-05-20&to=2026-05-20",
+      { token: fixture.token },
+    );
+    row = (profitSummary.data as EmployeeCommissionSummaryResponse).rows.find(
+      (candidate) => candidate.employeeId === seller.employeeId,
+    );
+    assert.ok(row);
+    assert.equal(row.grossProfitCents, 30000);
+    assert.equal(row.commissionAmountCents, 6000);
+
+    await requestJson("PATCH", `/employees/${seller.employeeId}/commission-settings`, {
+      token: fixture.token,
+      body: {
+        commissionEnabled: true,
+        commissionType: "FIXED_PER_SALE",
+        commissionBase: "GROSS_PROFIT",
+        commissionFixedCents: 777,
+      },
+    });
+    const fixedSummary = await requestJson(
+      "GET",
+      "/employees/commissions/summary?from=2026-05-20&to=2026-05-20",
+      { token: fixture.token },
+    );
+    row = (fixedSummary.data as EmployeeCommissionSummaryResponse).rows.find(
+      (candidate) => candidate.employeeId === seller.employeeId,
+    );
+    assert.ok(row);
+    assert.equal(row.eligibleSalesCount, 1);
+    assert.equal(row.commissionAmountCents, 777);
+
+    await requestJson("PATCH", `/employees/${seller.employeeId}/commission-settings`, {
+      token: fixture.token,
+      body: {
+        commissionEnabled: false,
+        commissionType: "NONE",
+        commissionBase: "NET_SALES",
+      },
+    });
+    const noneSummary = await requestJson(
+      "GET",
+      "/employees/commissions/summary?from=2026-05-20&to=2026-05-20",
+      { token: fixture.token },
+    );
+    row = (noneSummary.data as EmployeeCommissionSummaryResponse).rows.find(
+      (candidate) => candidate.employeeId === seller.employeeId,
+    );
+    assert.ok(row);
+    assert.equal(row.commissionEnabled, false);
+    assert.equal(row.commissionAmountCents, 0);
+  });
+
+  it("ignores canceled and unattributed sales, flags missing cost and does not expose cost details", async () => {
+    const fixture = await createFixture({ plan: "pro" });
+    const seller = await createEmployeeActor(fixture, {
+      name: "Vendedora Lucro",
+      role: "SELLER",
+      permissions: ["sales.create"],
+    });
+    const day = new Date("2026-05-20T15:00:00.000Z");
+    await requestJson("PATCH", `/employees/${seller.employeeId}/commission-settings`, {
+      token: fixture.token,
+      body: {
+        commissionEnabled: true,
+        commissionType: "PERCENTAGE",
+        commissionBase: "GROSS_PROFIT",
+        commissionRateBps: 1000,
+      },
+    });
+
+    await createCommissionSale(fixture, seller.userId, {
+      localUuid: `${runId}-missing-cost`,
+      soldAt: day,
+      subtotalCents: 10000,
+      totalAmountCents: 10000,
+      items: [
+        {
+          localUuid: `${runId}-missing-cost-item`,
+          totalPriceCents: 10000,
+          unitCostCents: 0,
+          totalCostCents: 0,
+        },
+      ],
+    });
+    await createCommissionSale(fixture, seller.userId, {
+      localUuid: `${runId}-negative-profit`,
+      soldAt: day,
+      subtotalCents: 10000,
+      totalAmountCents: 10000,
+      items: [
+        {
+          localUuid: `${runId}-negative-profit-item`,
+          totalPriceCents: 10000,
+          unitCostCents: 12000,
+          totalCostCents: 12000,
+        },
+      ],
+    });
+    await createCommissionSale(fixture, seller.userId, {
+      localUuid: `${runId}-canceled-commission`,
+      soldAt: day,
+      status: "canceled",
+      canceledAt: day,
+      subtotalCents: 20000,
+      totalAmountCents: 20000,
+      items: [
+        {
+          localUuid: `${runId}-canceled-commission-item`,
+          totalPriceCents: 20000,
+          unitCostCents: 1000,
+          totalCostCents: 1000,
+        },
+      ],
+    });
+    await prisma.sale.create({
+      data: {
+        companyId: fixture.companyId,
+        localUuid: `${runId}-no-actor-commission`,
+        paymentType: "cash",
+        paymentMethod: "cash",
+        status: "active",
+        totalAmountCents: 50000,
+        totalCostCents: 1000,
+        soldAt: day,
+      },
+    });
+
+    const summary = await requestJson(
+      "GET",
+      "/employees/commissions/summary?from=2026-05-20&to=2026-05-20",
+      { token: fixture.token },
+    );
+    assert.equal(summary.status, 200);
+    const payload = summary.data as EmployeeCommissionSummaryResponse;
+    const row = payload.rows.find(
+      (candidate) => candidate.employeeId === seller.employeeId,
+    );
+    assert.ok(row);
+    assert.equal(row.commissionAmountCents, 0);
+    assert.equal(row.canceledSalesCount, 1);
+    assert.equal(row.salesWithoutReliableCostCount, 1);
+    assert.equal(payload.totals.salesWithoutReliableActorCount, 1);
+
+    const detail = await requestJson(
+      "GET",
+      `/employees/${seller.employeeId}/commissions?from=2026-05-20&to=2026-05-20`,
+      { token: fixture.token },
+    );
+    assert.equal(detail.status, 200);
+    assert.equal(JSON.stringify(detail.data).includes("unitCostCents"), false);
+    assert.equal(JSON.stringify(detail.data).includes("totalCostCents"), false);
+  });
+
+  it("attributes event-only sales by sale date even when sync arrives later", async () => {
+    const fixture = await createFixture({ plan: "pro" });
+    const seller = await createEmployeeActor(fixture, {
+      name: "Sincronizado depois",
+      role: "SELLER",
+      permissions: ["sales.create"],
+    });
+    await requestJson("PATCH", `/employees/${seller.employeeId}/commission-settings`, {
+      token: fixture.token,
+      body: {
+        commissionEnabled: true,
+        commissionType: "PERCENTAGE",
+        commissionBase: "NET_SALES",
+        commissionRateBps: 10000,
+      },
+    });
+
+    const sale = await prisma.sale.create({
+      data: {
+        companyId: fixture.companyId,
+        localUuid: `${runId}-event-only-commission`,
+        paymentType: "cash",
+        paymentMethod: "cash",
+        status: "active",
+        totalAmountCents: 12345,
+        totalCostCents: 5000,
+        soldAt: new Date("2026-05-20T18:00:00.000Z"),
+        items: {
+          create: [
+            {
+              localUuid: `${runId}-event-only-commission-item`,
+              productNameSnapshot: "Produto evento",
+              quantityMil: 1000,
+              unitPriceCents: 12345,
+              totalPriceCents: 12345,
+              unitCostCents: 5000,
+              totalCostCents: 5000,
+            },
+          ],
+        },
+      },
+    });
+    await prisma.syncEvent.create({
+      data: {
+        companyId: fixture.companyId,
+        deviceId: fixture.deviceId,
+        userId: seller.userId,
+        eventId: `${runId}-event-only-commission-sync`,
+        feature: "pdv",
+        entity: "sale",
+        operation: "create",
+        entityLocalId: sale.localUuid,
+        entityServerId: sale.id,
+        occurredAt: new Date("2026-05-21T02:00:00.000Z"),
+        payload: {},
+        status: SyncEventStatus.ACCEPTED,
+        materializedAt: new Date("2026-05-21T02:00:00.000Z"),
+      },
+    });
+
+    const summary = await requestJson(
+      "GET",
+      "/employees/commissions/summary?from=2026-05-20&to=2026-05-20",
+      { token: fixture.token },
+    );
+    assert.equal(summary.status, 200);
+    const payload = summary.data as EmployeeCommissionSummaryResponse;
+    const row = payload.rows.find(
+      (candidate) => candidate.employeeId === seller.employeeId,
+    );
+    assert.ok(row);
+    assert.equal(row.eligibleSalesCount, 1);
+    assert.equal(row.commissionAmountCents, 12345);
+    assert.equal(payload.totals.salesWithoutReliableActorCount, 0);
+  });
+
+  it("hides profit amounts from common employee own commission detail", async () => {
+    const fixture = await createFixture({ plan: "pro", role: "OPERATOR" });
+    const ownEmployee = await createEmployeeProfileForFixture(fixture, {
+      name: "Funcionario lucro proprio",
+      role: "SELLER",
+      permissions: ["sales.create"],
+    });
+    await prisma.employeeProfile.update({
+      where: { id: ownEmployee.id },
+      data: {
+        commissionEnabled: true,
+        commissionType: "PERCENTAGE",
+        commissionBase: "GROSS_PROFIT",
+        commissionRateBps: 2000,
+      },
+    });
+    await createCommissionSale(fixture, fixture.userId, {
+      localUuid: `${runId}-own-profit-hidden`,
+      soldAt: new Date("2026-05-20T16:00:00.000Z"),
+      subtotalCents: 10000,
+      totalAmountCents: 10000,
+      items: [
+        {
+          localUuid: `${runId}-own-profit-hidden-item`,
+          totalPriceCents: 10000,
+          unitCostCents: 7000,
+          totalCostCents: 7000,
+        },
+      ],
+    });
+
+    const detail = await requestJson(
+      "GET",
+      `/employees/${ownEmployee.id}/commissions?from=2026-05-20&to=2026-05-20`,
+      { token: fixture.token },
+    );
+    assert.equal(detail.status, 200);
+    const body = JSON.stringify(detail.data);
+    assert.equal(body.includes("unitCostCents"), false);
+    assert.equal(body.includes("totalCostCents"), false);
+    assert.equal(body.includes("grossProfitCents"), false);
+    const payload = detail.data as {
+      summary: { eligibleBaseAmountCents: number; commissionAmountCents: number };
+      sales: Array<{ baseAmountCents: number; commissionAmountCents: number }>;
+    };
+    assert.equal(payload.summary.eligibleBaseAmountCents, 0);
+    assert.equal(payload.summary.commissionAmountCents, 600);
+    assert.equal(payload.sales[0]?.baseAmountCents, 0);
+    assert.equal(payload.sales[0]?.commissionAmountCents, 600);
+  });
+
+  it("protects commission settings, tenant isolation and employee feature entitlement", async () => {
+    const fixture = await createFixture({ plan: "pro", role: "OPERATOR" });
+    const ownEmployee = await createEmployeeProfileForFixture(fixture, {
+      name: "Funcionario comum",
+      role: "SELLER",
+      permissions: ["sales.create"],
+    });
+    const other = await createFixture({ plan: "pro" });
+    const otherEmployee = await createEmployeeActor(other, {
+      name: "Outra empresa",
+      role: "SELLER",
+      permissions: ["sales.create"],
+    });
+    const sameCompanyOther = await createEmployeeActor(fixture, {
+      name: "Outro funcionario da mesma empresa",
+      role: "SELLER",
+      permissions: ["sales.create"],
+    });
+
+    const forbiddenPatch = await requestJson(
+      "PATCH",
+      `/employees/${ownEmployee.id}/commission-settings`,
+      {
+        token: fixture.token,
+        body: {
+          commissionEnabled: true,
+          commissionType: "PERCENTAGE",
+          commissionBase: "NET_SALES",
+          commissionRateBps: 500,
+        },
+      },
+    );
+    assert.equal(forbiddenPatch.status, 403);
+
+    const ownSettings = await requestJson(
+      "GET",
+      `/employees/${ownEmployee.id}/commission-settings`,
+      { token: fixture.token },
+    );
+    assert.equal(ownSettings.status, 200);
+
+    const sameCompanyOtherSettings = await requestJson(
+      "GET",
+      `/employees/${sameCompanyOther.employeeId}/commission-settings`,
+      { token: fixture.token },
+    );
+    assert.equal(sameCompanyOtherSettings.status, 403);
+
+    const otherSettings = await requestJson(
+      "GET",
+      `/employees/${otherEmployee.employeeId}/commission-settings`,
+      { token: fixture.token },
+    );
+    assert.equal(otherSettings.status, 404);
+
+    const invalidPatch = await requestJson(
+      "PATCH",
+      `/employees/${otherEmployee.employeeId}/commission-settings`,
+      {
+        token: other.token,
+        body: {
+          commissionEnabled: true,
+          commissionType: "PERCENTAGE",
+          commissionBase: "NET_SALES",
+          commissionRateBps: 10001,
+        },
+      },
+    );
+    assert.equal(invalidPatch.status, 422);
+
+    const basic = await createFixture({ plan: "basic", pendingPlan: "PRO" });
+    const blocked = await requestJson(
+      "GET",
+      "/employees/commissions/summary?from=2026-05-20&to=2026-05-20",
+      { token: basic.token },
+    );
+    assert.equal(blocked.status, 403);
+    assert.equal((blocked.data as { code?: string }).code, "FEATURE_NOT_AVAILABLE");
+  });
 });
 
 type EmployeeDto = {
@@ -1221,6 +1665,21 @@ type EmployeeActivityDetailResponse = {
   };
   timeline: Array<{
     metadata?: unknown;
+  }>;
+};
+
+type EmployeeCommissionSummaryResponse = {
+  totals: {
+    salesWithoutReliableActorCount: number;
+  };
+  rows: Array<{
+    employeeId: string;
+    eligibleSalesCount: number;
+    eligibleBaseAmountCents: number;
+    grossProfitCents: number;
+    commissionAmountCents: number;
+    canceledSalesCount: number;
+    salesWithoutReliableCostCount: number;
   }>;
 };
 
@@ -1361,6 +1820,70 @@ async function createEmployeeProfileForFixture(
       permissions: input.permissions,
     },
   });
+}
+
+async function createCommissionSale(
+  fixture: Awaited<ReturnType<typeof createFixture>>,
+  sellerUserId: string,
+  input: {
+    localUuid: string;
+    soldAt: Date;
+    subtotalCents: number;
+    totalAmountCents: number;
+    status?: string;
+    canceledAt?: Date | null;
+    items: Array<{
+      localUuid: string;
+      totalPriceCents: number;
+      unitCostCents: number;
+      totalCostCents: number;
+    }>;
+  },
+) {
+  const sale = await prisma.sale.create({
+    data: {
+      companyId: fixture.companyId,
+      localUuid: input.localUuid,
+      paymentType: "cash",
+      paymentMethod: "cash",
+      status: input.status ?? "active",
+      totalAmountCents: input.totalAmountCents,
+      totalCostCents: input.items.reduce(
+        (total, item) => total + item.totalCostCents,
+        0,
+      ),
+      soldAt: input.soldAt,
+      canceledAt: input.canceledAt,
+      items: {
+        create: input.items.map((item) => ({
+          localUuid: item.localUuid,
+          productNameSnapshot: "Produto comissao",
+          quantityMil: 1000,
+          unitPriceCents: item.totalPriceCents,
+          totalPriceCents: item.totalPriceCents,
+          unitCostCents: item.unitCostCents,
+          totalCostCents: item.totalCostCents,
+        })),
+      },
+    },
+  });
+
+  await prisma.operationalOrder.create({
+    data: {
+      companyId: fixture.companyId,
+      localUuid: `${input.localUuid}-order`,
+      sellerUserId,
+      status: input.status === "canceled" ? "cancelled" : "closed",
+      subtotalCents: input.subtotalCents,
+      discountCents: Math.max(input.subtotalCents - input.totalAmountCents, 0),
+      totalCents: input.totalAmountCents,
+      closedAt: input.soldAt,
+      cancelledAt: input.canceledAt,
+      convertedSaleId: sale.id,
+    },
+  });
+
+  return sale;
 }
 
 function signToken(input: {

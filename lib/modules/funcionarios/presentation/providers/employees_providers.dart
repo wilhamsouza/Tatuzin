@@ -52,6 +52,16 @@ final canViewEmployeeActivityProvider = Provider<bool>((ref) {
       session.canAccessPermission(EmployeePermission.reportsAdvanced.key);
 });
 
+final canViewEmployeeCommissionsProvider = Provider<bool>((ref) {
+  final session = ref.watch(appSessionProvider);
+  if (!session.hasFeature(FeatureKey.employees)) {
+    return false;
+  }
+  return session.isCompanyOwner ||
+      session.canAccessPermission(EmployeePermission.employeesManage.key) ||
+      session.canAccessPermission(EmployeePermission.reportsAdvanced.key);
+});
+
 final currentEmployeeDisabledProvider = Provider<bool>((ref) {
   return ref.watch(appSessionProvider).employee?.isDisabled ?? false;
 });
@@ -91,6 +101,32 @@ final employeeActivityDetailProvider = FutureProvider.autoDispose
       return ref
           .watch(employeesRemoteDataSourceProvider)
           .getEmployeeActivityDetail(id, period: period);
+    });
+
+final employeeCommissionSettingsProvider = FutureProvider.autoDispose
+    .family<EmployeeCommissionSettings, String>((ref, id) async {
+      ref.watch(appDataRefreshProvider);
+      return ref
+          .watch(employeesRemoteDataSourceProvider)
+          .getEmployeeCommissionSettings(id);
+    });
+
+final employeeCommissionsSummaryProvider =
+    FutureProvider.autoDispose<EmployeeCommissionsSummary>((ref) async {
+      ref.watch(appDataRefreshProvider);
+      final period = ref.watch(employeeActivityPeriodProvider);
+      return ref
+          .watch(employeesRemoteDataSourceProvider)
+          .getEmployeeCommissionsSummary(period: period);
+    });
+
+final employeeCommissionDetailProvider = FutureProvider.autoDispose
+    .family<EmployeeCommissionDetail, String>((ref, id) async {
+      ref.watch(appDataRefreshProvider);
+      final period = ref.watch(employeeActivityPeriodProvider);
+      return ref
+          .watch(employeesRemoteDataSourceProvider)
+          .getEmployeeCommissionDetail(id, period: period);
     });
 
 final employeeActionControllerProvider =
@@ -156,6 +192,18 @@ class EmployeeActionController extends AsyncNotifier<void> {
     );
   }
 
+  Future<EmployeeCommissionSettings> updateCommissionSettings(
+    String id,
+    EmployeeCommissionSettings settings,
+  ) {
+    return _runMutation(
+      () => ref
+          .read(employeesRemoteDataSourceProvider)
+          .updateEmployeeCommissionSettings(id, settings),
+      detailId: id,
+    );
+  }
+
   Future<T> _runMutation<T>(
     Future<T> Function() mutation, {
     String? detailId,
@@ -193,6 +241,10 @@ class EmployeeActionController extends AsyncNotifier<void> {
     ref.invalidate(employeesListProvider);
     if (detailId != null) {
       ref.invalidate(employeeDetailProvider(detailId));
+      ref.invalidate(employeeCommissionSettingsProvider(detailId));
+      ref.invalidate(employeeCommissionDetailProvider(detailId));
     }
+    ref.invalidate(employeeCommissionsSummaryProvider);
+    ref.invalidate(employeeActivitySummaryProvider);
   }
 }

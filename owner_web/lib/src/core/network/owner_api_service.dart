@@ -385,6 +385,22 @@ class OwnerApiService {
     return OwnerEmployeeReports.fromMap(response);
   }
 
+  Future<OwnerCommissionsSummary> getCommissions({
+    OwnerDateReportQuery query = const OwnerDateReportQuery(),
+  }) async {
+    final response = await _apiClient.getJson(
+      '/owner/commissions',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou comissoes no formato esperado.',
+      );
+    }
+    return OwnerCommissionsSummary.fromMap(response);
+  }
+
   Future<OwnerReportsCatalog> getReportsCatalog() async {
     final response = await _apiClient.getJson(
       '/owner/reports/catalog',
@@ -427,7 +443,7 @@ class OwnerApiService {
     return OwnerInvoicesPage.fromMap(response);
   }
 
-  Future<OwnerEmployeesPlaceholder> getEmployees() async {
+  Future<OwnerEmployeesOverview> getEmployees() async {
     final response = await _apiClient.getJson(
       '/owner/employees',
       accessToken: await _readRequiredToken(),
@@ -437,7 +453,20 @@ class OwnerApiService {
         message: 'A API nao retornou funcionarios no formato esperado.',
       );
     }
-    return OwnerEmployeesPlaceholder.fromMap(response);
+    return OwnerEmployeesOverview.fromMap(response);
+  }
+
+  Future<OwnerReceiptSettings> getReceiptSettings() async {
+    final response = await _apiClient.getJson(
+      '/owner/receipt-settings',
+      accessToken: await _readRequiredToken(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou o comprovante no formato esperado.',
+      );
+    }
+    return OwnerReceiptSettings.fromMap(response);
   }
 
   Future<OwnerDevicesResult> getDevices() async {

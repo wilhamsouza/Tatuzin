@@ -33,6 +33,7 @@ const ownerDateRangeFields = {
   startDate: ownerDateStringSchema.optional(),
   endDate: ownerDateStringSchema.optional(),
 };
+const MAX_OWNER_EMPLOYEE_RANGE_DAYS = 93;
 
 const ownerTopListQuerySchema = withValidDateRange(
   z.object({
@@ -72,6 +73,16 @@ export const ownerReceivablesQuerySchema = paginationQuerySchema.extend({
 
 export const ownerEmployeesReportQuerySchema = ownerTopListQuerySchema;
 
+export const ownerCommissionsQuerySchema = withMaxDateRangeDays(
+  withValidDateRange(z.object(ownerDateRangeFields)),
+  MAX_OWNER_EMPLOYEE_RANGE_DAYS,
+);
+
+export const ownerEmployeeActivityQuerySchema = withMaxDateRangeDays(
+  withValidDateRange(z.object(ownerDateRangeFields)),
+  MAX_OWNER_EMPLOYEE_RANGE_DAYS,
+);
+
 export const ownerIdParamSchema = z.object({
   id: z
     .string()
@@ -106,6 +117,12 @@ export type OwnerReceivablesQueryInput = z.infer<
 export type OwnerEmployeesReportQueryInput = z.infer<
   typeof ownerEmployeesReportQuerySchema
 >;
+export type OwnerCommissionsQueryInput = z.infer<
+  typeof ownerCommissionsQuerySchema
+>;
+export type OwnerEmployeeActivityQueryInput = z.infer<
+  typeof ownerEmployeeActivityQuerySchema
+>;
 
 function withValidDateRange<TSchema extends z.ZodObject<z.ZodRawShape>>(
   schema: TSchema,
@@ -120,6 +137,32 @@ function withValidDateRange<TSchema extends z.ZodObject<z.ZodRawShape>>(
         code: z.ZodIssueCode.custom,
         message: 'startDate deve ser menor ou igual a endDate.',
         path: ['startDate'],
+      });
+    }
+  });
+}
+
+function withMaxDateRangeDays<TSchema extends z.ZodTypeAny>(
+  schema: TSchema,
+  maxDays: number,
+) {
+  return schema.superRefine((value, context) => {
+    const range = value as { startDate?: string; endDate?: string };
+    if (range.startDate == null || range.endDate == null) {
+      return;
+    }
+    const startDate = parseOwnerDate(range.startDate);
+    const endDate = parseOwnerDate(range.endDate);
+    if (startDate == null || endDate == null) {
+      return;
+    }
+    const days =
+      Math.floor((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1;
+    if (days > maxDays) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Escolha um periodo de ate ${maxDays} dias.`,
+        path: ['endDate'],
       });
     }
   });

@@ -11,6 +11,7 @@ import 'package:erp_pdv_app/app/core/theme/app_theme.dart';
 import 'package:erp_pdv_app/modules/funcionarios/data/employees_remote_data_source.dart';
 import 'package:erp_pdv_app/modules/funcionarios/domain/employee_models.dart';
 import 'package:erp_pdv_app/modules/funcionarios/presentation/pages/employee_activity_page.dart';
+import 'package:erp_pdv_app/modules/funcionarios/presentation/pages/employee_commissions_page.dart';
 import 'package:erp_pdv_app/modules/funcionarios/presentation/pages/employees_page.dart';
 import 'package:erp_pdv_app/modules/funcionarios/presentation/providers/employees_providers.dart';
 import 'package:flutter/material.dart';
@@ -121,6 +122,21 @@ void main() {
       'employee 1',
       period: activityPeriod,
     );
+    await dataSource.getEmployeeCommissionSettings('employee 1');
+    await dataSource.updateEmployeeCommissionSettings(
+      'employee 1',
+      const EmployeeCommissionSettings(
+        commissionEnabled: true,
+        commissionType: EmployeeCommissionType.percentage,
+        commissionBase: EmployeeCommissionBase.netSales,
+        commissionRateBps: 500,
+      ),
+    );
+    await dataSource.getEmployeeCommissionsSummary(period: activityPeriod);
+    await dataSource.getEmployeeCommissionDetail(
+      'employee 1',
+      period: activityPeriod,
+    );
 
     expect(api.calls.map((call) => call.method).toList(), [
       'GET',
@@ -132,6 +148,10 @@ void main() {
       'POST',
       'POST',
       'POST',
+      'GET',
+      'GET',
+      'GET',
+      'PATCH',
       'GET',
       'GET',
     ]);
@@ -147,12 +167,19 @@ void main() {
       '/employees/employee%201/enable',
       '/employees/activity/summary',
       '/employees/employee%201/activity',
+      '/employees/employee%201/commission-settings',
+      '/employees/employee%201/commission-settings',
+      '/employees/commissions/summary',
+      '/employees/employee%201/commissions',
     ]);
     expect(api.calls.first.queryParameters['status'], 'ACTIVE');
     expect(api.calls.first.queryParameters['role'], 'CASHIER');
     expect(api.calls[9].queryParameters['from'], '2026-05-20');
     expect(api.calls[10].queryParameters['to'], '2026-05-20');
+    expect(api.calls[13].queryParameters['from'], '2026-05-20');
+    expect(api.calls[14].queryParameters['to'], '2026-05-20');
     expect(api.calls[2].body?['role'], isNot('OWNER'));
+    expect(api.calls[12].body?['commissionRateBps'], 500);
     expect(api.calls[2].body?.containsKey('inviteTokenHash'), isFalse);
 
     expect(
@@ -270,6 +297,7 @@ void main() {
 
     expect(find.text('Sem permissão'), findsOneWidget);
     expect(find.text('Novo funcionário'), findsNothing);
+    expect(find.text('Configurar comissão'), findsNothing);
   });
 
   testWidgets('PRO renderiza lista e protege OWNER', (tester) async {
@@ -292,11 +320,18 @@ void main() {
 
     expect(find.text('Dono'), findsWidgets);
     expect(find.text('Protegido'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Caixa Principal'),
+      160,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Caixa Principal'), findsOneWidget);
-    expect(find.text('Desativado'), findsOneWidget);
     expect(find.text('Acesso ativo'), findsOneWidget);
     expect(find.text('Ver atividade da equipe'), findsOneWidget);
+    expect(find.text('Ver comissões'), findsOneWidget);
     expect(find.text('Ver atividade'), findsWidgets);
+    expect(find.text('Comissão desativada'), findsWidgets);
     expect(find.byType(PopupMenuButton<String>), findsWidgets);
 
     await tester.scrollUntilVisible(
@@ -310,6 +345,58 @@ void main() {
 
     expect(find.text('Habilitar'), findsOneWidget);
     expect(find.text('Redefinir senha'), findsNothing);
+  });
+
+  testWidgets('Funcionários mostra badges de comissão por venda e lucro', (
+    tester,
+  ) async {
+    await _pumpEmployeesPage(
+      tester,
+      session: _session(
+        PlanEntitlements.pro,
+        membershipPermissions: const {'employees.manage'},
+      ),
+      dataSource: _FakeEmployeesRemoteDataSource(
+        page: _page(<EmployeeProfile>[
+          const EmployeeProfile(
+            id: 'employee-net',
+            name: 'Vendedor líquido',
+            role: EmployeeRole.seller,
+            status: EmployeeStatus.active,
+            permissions: {EmployeePermission.salesCreate},
+            commissionEnabled: true,
+            commissionType: EmployeeCommissionType.percentage,
+            commissionBase: EmployeeCommissionBase.netSales,
+            commissionRateBps: 500,
+            createdAt: null,
+            updatedAt: null,
+          ),
+          const EmployeeProfile(
+            id: 'employee-profit',
+            name: 'Vendedor lucro',
+            role: EmployeeRole.seller,
+            status: EmployeeStatus.active,
+            permissions: {EmployeePermission.salesCreate},
+            commissionEnabled: true,
+            commissionType: EmployeeCommissionType.percentage,
+            commissionBase: EmployeeCommissionBase.grossProfit,
+            commissionRateBps: 2000,
+            createdAt: null,
+            updatedAt: null,
+          ),
+          _cashier,
+        ]),
+      ),
+    );
+
+    expect(find.text('Comissão: 5% sobre venda líquida'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Vendedor lucro'),
+      180,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Comissão: 20% sobre lucro'), findsOneWidget);
   });
 
   testWidgets('convite não mostra token ou hash', (tester) async {
@@ -429,6 +516,107 @@ void main() {
     expect(find.text('Venda 123'), findsOneWidget);
   });
 
+  testWidgets('Comissões renderiza KPIs, lista e aviso de custo', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpEmployeeCommissionsPage(
+      tester,
+      session: _session(
+        PlanEntitlements.pro,
+        membershipPermissions: const {'reports.advanced'},
+      ),
+      dataSource: _FakeEmployeesRemoteDataSource(),
+    );
+
+    expect(find.text('Comissões'), findsWidgets);
+    expect(find.text('Comissão total'), findsOneWidget);
+    expect(find.text('Vendas elegíveis'), findsOneWidget);
+    expect(find.text('Custo ausente em algumas vendas'), findsOneWidget);
+    expect(find.text('Caixa Principal'), findsOneWidget);
+    expect(find.textContaining('sobre lucro'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Configurar comissão salva percentual sobre lucro', (
+    tester,
+  ) async {
+    final dataSource = _FakeEmployeesRemoteDataSource();
+    await _pumpCommissionSettingsSheet(
+      tester,
+      employee: _cashier,
+      dataSource: dataSource,
+    );
+
+    await tester.tap(find.text('Ativar comissão'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).first, 'abc');
+    await tester.tap(find.text('Salvar alterações'));
+    await tester.pumpAndSettle();
+    expect(find.text('Informe um percentual válido'), findsOneWidget);
+    expect(dataSource.updatedCommissionSettings, isNull);
+
+    await tester.enterText(find.byType(TextFormField).first, '20');
+    await tester.tap(find.text('Venda líquida'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lucro do produto').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Salvar alterações'));
+    await tester.pumpAndSettle();
+
+    expect(dataSource.updatedCommissionEmployeeId, 'employee-cashier');
+    expect(
+      dataSource.updatedCommissionSettings?.commissionBase,
+      EmployeeCommissionBase.grossProfit,
+    );
+    expect(dataSource.updatedCommissionSettings?.commissionRateBps, 2000);
+  });
+
+  testWidgets('Configurar comissão valida valor fixo inválido', (tester) async {
+    final dataSource = _FakeEmployeesRemoteDataSource();
+    await _pumpCommissionSettingsSheet(
+      tester,
+      employee: _cashier,
+      dataSource: dataSource,
+    );
+
+    await tester.tap(find.text('Ativar comissão'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byType(DropdownButtonFormField<EmployeeCommissionType>),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Valor fixo por venda').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).first, 'abc');
+    await tester.tap(find.text('Salvar alterações'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Informe um valor válido'), findsOneWidget);
+    expect(dataSource.updatedCommissionSettings, isNull);
+  });
+
+  testWidgets('Detalhe de comissão renderiza vendas seguras', (tester) async {
+    await _pumpEmployeeCommissionDetailPage(
+      tester,
+      session: _session(
+        PlanEntitlements.pro,
+        membershipPermissions: const {'reports.advanced'},
+      ),
+      dataSource: _FakeEmployeesRemoteDataSource(),
+    );
+
+    expect(find.text('Caixa Principal'), findsOneWidget);
+    expect(find.text('Comissão estimada'), findsOneWidget);
+    expect(find.text('Vendas'), findsOneWidget);
+    expect(find.text('Venda 123'), findsOneWidget);
+    expect(find.textContaining('custo unit'), findsNothing);
+  });
+
   testWidgets('Timeline da atividade abre resumo seguro ao tocar', (
     tester,
   ) async {
@@ -536,6 +724,46 @@ Future<void> _pumpEmployeesPage(
   await tester.pumpAndSettle();
 }
 
+Future<void> _pumpCommissionSettingsSheet(
+  WidgetTester tester, {
+  required EmployeeProfile employee,
+  required _FakeEmployeesRemoteDataSource dataSource,
+}) async {
+  final session = _session(
+    PlanEntitlements.pro,
+    membershipPermissions: const {'employees.manage'},
+  );
+  final container = ProviderContainer(
+    overrides: [
+      employeesRemoteDataSourceProvider.overrideWithValue(dataSource),
+    ],
+  );
+  addTearDown(container.dispose);
+  container
+      .read(appSessionProvider.notifier)
+      .setAuthenticatedSession(
+        scope: session.scope,
+        user: session.user,
+        company: session.company,
+        clientInstanceId: session.clientInstanceId,
+        membership: session.membership,
+        employee: session.employee,
+      );
+
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: EmployeeCommissionSettingsSheet(employee: employee),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 Future<void> _pumpEmployeeActivityPage(
   WidgetTester tester, {
   required AppSession session,
@@ -598,6 +826,76 @@ Future<void> _pumpEmployeeActivityDetailPage(
       child: MaterialApp(
         theme: AppTheme.light(),
         home: const EmployeeActivityDetailPage(employeeId: 'employee-cashier'),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _pumpEmployeeCommissionsPage(
+  WidgetTester tester, {
+  required AppSession session,
+  required _FakeEmployeesRemoteDataSource dataSource,
+}) async {
+  final container = ProviderContainer(
+    overrides: [
+      employeesRemoteDataSourceProvider.overrideWithValue(dataSource),
+    ],
+  );
+  addTearDown(container.dispose);
+  container
+      .read(appSessionProvider.notifier)
+      .setAuthenticatedSession(
+        scope: session.scope,
+        user: session.user,
+        company: session.company,
+        clientInstanceId: session.clientInstanceId,
+        membership: session.membership,
+        employee: session.employee,
+      );
+
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        theme: AppTheme.light(),
+        home: const EmployeeCommissionsPage(),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _pumpEmployeeCommissionDetailPage(
+  WidgetTester tester, {
+  required AppSession session,
+  required _FakeEmployeesRemoteDataSource dataSource,
+}) async {
+  final container = ProviderContainer(
+    overrides: [
+      employeesRemoteDataSourceProvider.overrideWithValue(dataSource),
+    ],
+  );
+  addTearDown(container.dispose);
+  container
+      .read(appSessionProvider.notifier)
+      .setAuthenticatedSession(
+        scope: session.scope,
+        user: session.user,
+        company: session.company,
+        clientInstanceId: session.clientInstanceId,
+        membership: session.membership,
+        employee: session.employee,
+      );
+
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        theme: AppTheme.light(),
+        home: const EmployeeCommissionDetailPage(
+          employeeId: 'employee-cashier',
+        ),
       ),
     ),
   );
@@ -729,6 +1027,8 @@ class _FakeEmployeesRemoteDataSource extends EmployeesRemoteDataSource {
   final inviteCalls = <String>[];
   final temporaryPasswordCalls = <String>[];
   final summaryPeriods = <EmployeeActivityPeriod>[];
+  String? updatedCommissionEmployeeId;
+  EmployeeCommissionSettings? updatedCommissionSettings;
 
   @override
   Future<EmployeesPageResult> getEmployees({
@@ -780,6 +1080,42 @@ class _FakeEmployeesRemoteDataSource extends EmployeesRemoteDataSource {
   }) async {
     return EmployeeActivityDetail.fromMap(activityDetailPayload);
   }
+
+  @override
+  Future<EmployeeCommissionSettings> getEmployeeCommissionSettings(
+    String id,
+  ) async {
+    return const EmployeeCommissionSettings(
+      commissionEnabled: false,
+      commissionType: EmployeeCommissionType.none,
+      commissionBase: EmployeeCommissionBase.netSales,
+    );
+  }
+
+  @override
+  Future<EmployeeCommissionSettings> updateEmployeeCommissionSettings(
+    String id,
+    EmployeeCommissionSettings settings,
+  ) async {
+    updatedCommissionEmployeeId = id;
+    updatedCommissionSettings = settings;
+    return settings;
+  }
+
+  @override
+  Future<EmployeeCommissionsSummary> getEmployeeCommissionsSummary({
+    required EmployeeActivityPeriod period,
+  }) async {
+    return EmployeeCommissionsSummary.fromMap(_employeeCommissionsPayload());
+  }
+
+  @override
+  Future<EmployeeCommissionDetail> getEmployeeCommissionDetail(
+    String id, {
+    required EmployeeActivityPeriod period,
+  }) async {
+    return EmployeeCommissionDetail.fromMap(_employeeCommissionDetailPayload());
+  }
 }
 
 class _RecordingApiClient implements ApiClientContract {
@@ -812,8 +1148,14 @@ class _RecordingApiClient implements ApiClientContract {
           ? _employeesPayload()
           : path == '/employees/activity/summary'
           ? _employeeActivitySummaryPayload()
+          : path == '/employees/commissions/summary'
+          ? _employeeCommissionsPayload()
           : path.endsWith('/activity')
           ? _employeeActivityDetailPayload()
+          : path.endsWith('/commissions')
+          ? _employeeCommissionDetailPayload()
+          : path.endsWith('/commission-settings')
+          ? _commissionSettingsPayload()
           : _employeePayload(),
       headers: const <String, String>{},
     );
@@ -828,7 +1170,9 @@ class _RecordingApiClient implements ApiClientContract {
     calls.add(_ApiCall('PATCH', path, body: body));
     return ApiResponse<Map<String, dynamic>>(
       statusCode: 200,
-      data: _employeePayload(),
+      data: path.endsWith('/commission-settings')
+          ? _commissionSettingsPayload()
+          : _employeePayload(),
       headers: const <String, String>{},
     );
   }
@@ -1015,6 +1359,7 @@ Map<String, dynamic> _employeeActivitySummaryPayload() {
     'totalDiscountAmountCents': 500,
     'totalCanceledCount': 0,
     'totalStockAdjustments': 1,
+    'totalCommissionAmountCents': 625,
     'rows': <Map<String, dynamic>>[
       <String, dynamic>{
         'employeeId': 'employee-cashier',
@@ -1027,6 +1372,16 @@ Map<String, dynamic> _employeeActivitySummaryPayload() {
         'canceledSalesCount': 0,
         'stockAdjustmentsCount': 1,
         'cashActionsCount': 2,
+        'commissionEnabled': true,
+        'commissionType': 'PERCENTAGE',
+        'commissionBase': 'NET_SALES',
+        'commissionRateBps': 500,
+        'commissionFixedCents': null,
+        'commissionEligibleSalesCount': 1,
+        'commissionBaseAmountCents': 12500,
+        'commissionGrossProfitCents': 0,
+        'commissionAmountCents': 625,
+        'commissionSalesWithoutReliableCostCount': 0,
         'lastActivityAt': '2026-05-20T18:00:00.000Z',
       },
     ],
@@ -1049,6 +1404,7 @@ Map<String, dynamic> _emptyEmployeeActivitySummaryPayload() {
     'totalDiscountAmountCents': 0,
     'totalCanceledCount': 0,
     'totalStockAdjustments': 0,
+    'totalCommissionAmountCents': 0,
     'rows': <Map<String, dynamic>>[],
     'tracking': <String, dynamic>{
       'partial': true,
@@ -1074,6 +1430,16 @@ Map<String, dynamic> _employeeActivityDetailPayload() {
       'canceledSalesCount': 0,
       'stockAdjustmentsCount': 1,
       'cashActionsCount': 2,
+      'commissionEnabled': true,
+      'commissionType': 'PERCENTAGE',
+      'commissionBase': 'NET_SALES',
+      'commissionRateBps': 500,
+      'commissionFixedCents': null,
+      'commissionEligibleSalesCount': 1,
+      'commissionBaseAmountCents': 12500,
+      'commissionGrossProfitCents': 0,
+      'commissionAmountCents': 625,
+      'commissionSalesWithoutReliableCostCount': 0,
       'lastActivityAt': '2026-05-20T18:00:00.000Z',
     },
     'timeline': <Map<String, dynamic>>[
@@ -1095,6 +1461,97 @@ Map<String, dynamic> _employeeActivityDetailPayload() {
   };
 }
 
+Map<String, dynamic> _commissionSettingsPayload() {
+  return <String, dynamic>{
+    'settings': <String, dynamic>{
+      'commissionEnabled': true,
+      'commissionType': 'PERCENTAGE',
+      'commissionBase': 'NET_SALES',
+      'commissionRateBps': 500,
+      'commissionFixedCents': null,
+      'commissionUpdatedAt': '2026-05-20T12:00:00.000Z',
+    },
+  };
+}
+
+Map<String, dynamic> _employeeCommissionsPayload() {
+  return <String, dynamic>{
+    'period': <String, dynamic>{'from': '2026-05-20', 'to': '2026-05-20'},
+    'totals': <String, dynamic>{
+      'employeesWithCommission': 1,
+      'totalSalesAmountCents': 12500,
+      'totalEligibleSalesAmountCents': 12500,
+      'totalGrossProfitCents': 0,
+      'totalCommissionCents': 625,
+      'totalSalesCount': 1,
+      'salesWithoutReliableActorCount': 0,
+      'salesWithoutReliableCostCount': 1,
+    },
+    'rows': <Map<String, dynamic>>[
+      <String, dynamic>{
+        'employeeId': 'employee-cashier',
+        'employeeName': 'Caixa Principal',
+        'role': 'CASHIER',
+        'status': 'ACTIVE',
+        'commissionEnabled': true,
+        'commissionType': 'PERCENTAGE',
+        'commissionBase': 'GROSS_PROFIT',
+        'commissionRateBps': 500,
+        'commissionFixedCents': null,
+        'salesCount': 1,
+        'eligibleSalesCount': 1,
+        'salesAmountCents': 12500,
+        'eligibleBaseAmountCents': 12500,
+        'grossProfitCents': 0,
+        'commissionAmountCents': 625,
+        'canceledSalesCount': 0,
+        'salesWithoutReliableCostCount': 1,
+        'lastSaleAt': '2026-05-20T18:00:00.000Z',
+      },
+    ],
+    'tracking': <String, dynamic>{
+      'partial': true,
+      'notes': <String>['Vendas antigas sem vendedor identificado não entram.'],
+    },
+  };
+}
+
+Map<String, dynamic> _employeeCommissionDetailPayload() {
+  final summary = Map<String, dynamic>.from(
+    (_employeeCommissionsPayload()['rows'] as List).first as Map,
+  );
+  return <String, dynamic>{
+    'employee': <String, dynamic>{
+      'id': 'employee-cashier',
+      'name': 'Caixa Principal',
+      'role': 'CASHIER',
+      'status': 'ACTIVE',
+    },
+    'settings': (_commissionSettingsPayload()['settings'] as Map),
+    'summary': summary,
+    'sales': <Map<String, dynamic>>[
+      <String, dynamic>{
+        'saleId': 'sale-1',
+        'occurredAt': '2026-05-20T18:00:00.000Z',
+        'grossAmountCents': 13000,
+        'netAmountCents': 12500,
+        'discountAmountCents': 500,
+        'baseAmountCents': 12500,
+        'commissionAmountCents': 625,
+        'commissionBase': 'NET_SALES',
+        'status': 'active',
+        'hasReliableCost': false,
+        'ignoredReason': 'PARTIAL_COST_MISSING',
+        'description': 'Venda 123',
+      },
+    ],
+    'tracking': <String, dynamic>{
+      'partial': true,
+      'notes': <String>['Vendas antigas sem vendedor identificado não entram.'],
+    },
+  };
+}
+
 Map<String, dynamic> _employeeMap({
   String status = 'ACTIVE',
   String accessStatus = 'ACTIVE',
@@ -1108,6 +1565,11 @@ Map<String, dynamic> _employeeMap({
     'status': status,
     'accessStatus': accessStatus,
     'permissions': <String>['sales.create'],
+    'commissionEnabled': true,
+    'commissionType': 'PERCENTAGE',
+    'commissionBase': 'NET_SALES',
+    'commissionRateBps': 500,
+    'commissionFixedCents': null,
     'createdAt': '2026-05-08T12:00:00.000Z',
     'updatedAt': '2026-05-08T12:00:00.000Z',
   };

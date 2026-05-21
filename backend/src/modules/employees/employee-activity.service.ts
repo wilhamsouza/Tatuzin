@@ -4,8 +4,10 @@ import { prisma } from "../../database/prisma";
 import type { AppContext } from "../app/app-context.types";
 import { AppError } from "../../shared/http/app-error";
 import { EmployeeContextService } from "./employee-context.service";
+import { EmployeeCommissionService } from "./employee-commission.service";
 import { hasEmployeePermission } from "./employee-permissions";
 import type { EmployeeActivityQueryInput } from "./employees.schemas";
+import { resolveSaleActorUserId } from "./employee-sale-attribution";
 
 type EmployeeActivityType =
   | "SALE"
@@ -27,6 +29,16 @@ type EmployeeActivityRow = {
   canceledSalesCount: number;
   stockAdjustmentsCount: number;
   cashActionsCount: number;
+  commissionAmountCents: number;
+  commissionEnabled: boolean;
+  commissionType: string;
+  commissionBase: string;
+  commissionRateBps: number | null;
+  commissionFixedCents: number | null;
+  commissionEligibleSalesCount: number;
+  commissionBaseAmountCents: number;
+  commissionGrossProfitCents: number;
+  commissionSalesWithoutReliableCostCount: number;
   lastActivityAt: string | null;
 };
 
@@ -62,11 +74,13 @@ const MAX_TIMELINE_ITEMS = 200;
 
 export class EmployeeActivityService {
   private readonly employeeContextService = new EmployeeContextService();
+  private readonly employeeCommissionService = new EmployeeCommissionService();
 
   async summary(context: AppContext, query: EmployeeActivityQueryInput) {
     this.assertCanViewAll(context);
     const range = this.toDateRange(query);
     const activity = await this.buildActivity(context.company.id, range);
+    await this.attachCommission(context.company.id, query, activity.rows);
 
     const rowsWithActivity = activity.rows.filter((row) =>
       this.hasActivity(row),
@@ -88,6 +102,10 @@ export class EmployeeActivityService {
         activity.rows,
         (row) => row.stockAdjustmentsCount,
       ),
+      totalCommissionAmountCents: sum(
+        activity.rows,
+        (row) => row.commissionAmountCents,
+      ),
       rows: activity.rows,
       tracking: this.trackingInfo,
     };
@@ -103,6 +121,7 @@ export class EmployeeActivityService {
     const activity = await this.buildActivity(context.company.id, range, {
       collectTimelineForEmployeeId: employeeId,
     });
+    await this.attachCommission(context.company.id, query, activity.rows);
     const row = activity.rows.find(
       (candidate) => candidate.employeeId === employeeId,
     );
@@ -114,6 +133,9 @@ export class EmployeeActivityService {
         "EMPLOYEE_NOT_FOUND",
       );
     }
+    const canViewProfitAmounts = this.canViewAll(context);
+    const hideCommissionProfitAmounts =
+      !canViewProfitAmounts && row.commissionBase === "GROSS_PROFIT";
 
     return {
       employee: {
@@ -129,6 +151,21 @@ export class EmployeeActivityService {
         canceledSalesCount: row.canceledSalesCount,
         stockAdjustmentsCount: row.stockAdjustmentsCount,
         cashActionsCount: row.cashActionsCount,
+        commissionAmountCents: row.commissionAmountCents,
+        commissionEnabled: row.commissionEnabled,
+        commissionType: row.commissionType,
+        commissionBase: row.commissionBase,
+        commissionRateBps: row.commissionRateBps,
+        commissionFixedCents: row.commissionFixedCents,
+        commissionEligibleSalesCount: row.commissionEligibleSalesCount,
+        commissionBaseAmountCents: hideCommissionProfitAmounts
+          ? 0
+          : row.commissionBaseAmountCents,
+        commissionGrossProfitCents: hideCommissionProfitAmounts
+          ? undefined
+          : row.commissionGrossProfitCents,
+        commissionSalesWithoutReliableCostCount:
+          row.commissionSalesWithoutReliableCostCount,
         lastActivityAt: row.lastActivityAt,
       },
       timeline: activity.timeline
@@ -180,6 +217,16 @@ export class EmployeeActivityService {
         canceledSalesCount: 0,
         stockAdjustmentsCount: 0,
         cashActionsCount: 0,
+        commissionAmountCents: 0,
+        commissionEnabled: false,
+        commissionType: "NONE",
+        commissionBase: "NET_SALES",
+        commissionRateBps: null,
+        commissionFixedCents: null,
+        commissionEligibleSalesCount: 0,
+        commissionBaseAmountCents: 0,
+        commissionGrossProfitCents: 0,
+        commissionSalesWithoutReliableCostCount: 0,
         lastActivityAt: null,
       });
 
@@ -210,38 +257,6 @@ export class EmployeeActivityService {
       timeline.push({ ...item, employeeId });
     };
 
-    const saleEvents = await prisma.syncEvent.findMany({
-      where: {
-        companyId,
-        entity: "sale",
-        status: SyncEventStatus.ACCEPTED,
-        occurredAt: { gte: range.start, lte: range.end },
-        entityServerId: { not: null },
-      },
-      select: {
-        entityServerId: true,
-        userId: true,
-        occurredAt: true,
-      },
-      orderBy: { occurredAt: "asc" },
-    });
-
-    const saleEventBySaleId = new Map<
-      string,
-      { userId: string; occurredAt: Date }
-    >();
-    for (const event of saleEvents) {
-      if (
-        event.entityServerId != null &&
-        !saleEventBySaleId.has(event.entityServerId)
-      ) {
-        saleEventBySaleId.set(event.entityServerId, {
-          userId: event.userId,
-          occurredAt: event.occurredAt,
-        });
-      }
-    }
-
     const sales = await prisma.sale.findMany({
       where: {
         companyId,
@@ -260,14 +275,14 @@ export class EmployeeActivityService {
         },
       },
     });
+    const saleEventBySaleId = await this.saleEventBySaleId(
+      companyId,
+      sales.map((sale) => sale.id),
+    );
 
     for (const sale of sales) {
       const event = saleEventBySaleId.get(sale.id);
-      const employeeId = actorForUser(
-        sale.convertedOperationalOrder?.sellerUserId ??
-          event?.userId ??
-          sale.cashSession?.userId,
-      );
+      const employeeId = actorForUser(resolveSaleActorUserId(sale, event));
       if (employeeId == null) {
         continue;
       }
@@ -627,6 +642,71 @@ export class EmployeeActivityService {
       403,
       "EMPLOYEE_ACTIVITY_PERMISSION_REQUIRED",
     );
+  }
+
+  private async attachCommission(
+    companyId: string,
+    query: EmployeeActivityQueryInput,
+    rows: EmployeeActivityRow[],
+  ) {
+    const commissionByEmployee =
+      await this.employeeCommissionService.buildActivityCommissionByEmployee(
+        companyId,
+        query,
+      );
+
+    for (const row of rows) {
+      const commission = commissionByEmployee.get(row.employeeId);
+      if (commission == null) {
+        continue;
+      }
+      row.commissionEnabled = commission.commissionEnabled;
+      row.commissionType = commission.commissionType;
+      row.commissionBase = commission.commissionBase;
+      row.commissionRateBps = commission.commissionRateBps;
+      row.commissionFixedCents = commission.commissionFixedCents;
+      row.commissionEligibleSalesCount = commission.eligibleSalesCount;
+      row.commissionBaseAmountCents = commission.eligibleBaseAmountCents;
+      row.commissionGrossProfitCents = commission.grossProfitCents;
+      row.commissionAmountCents = commission.commissionAmountCents;
+      row.commissionSalesWithoutReliableCostCount =
+        commission.salesWithoutReliableCostCount;
+    }
+  }
+
+  private async saleEventBySaleId(companyId: string, saleIds: string[]) {
+    if (saleIds.length === 0) {
+      return new Map<string, { userId: string; occurredAt: Date }>();
+    }
+
+    const saleEvents = await prisma.syncEvent.findMany({
+      where: {
+        companyId,
+        entity: "sale",
+        status: SyncEventStatus.ACCEPTED,
+        entityServerId: { in: saleIds },
+      },
+      select: {
+        entityServerId: true,
+        userId: true,
+        occurredAt: true,
+      },
+      orderBy: { occurredAt: "asc" },
+    });
+
+    const eventsBySaleId = new Map<string, { userId: string; occurredAt: Date }>();
+    for (const event of saleEvents) {
+      if (
+        event.entityServerId != null &&
+        !eventsBySaleId.has(event.entityServerId)
+      ) {
+        eventsBySaleId.set(event.entityServerId, {
+          userId: event.userId,
+          occurredAt: event.occurredAt,
+        });
+      }
+    }
+    return eventsBySaleId;
   }
 
   private assertCanViewAll(context: AppContext) {

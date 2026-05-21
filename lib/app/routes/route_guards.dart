@@ -133,6 +133,10 @@ Set<String> requiredAnyPermissionForPath(String path) {
       (path.startsWith('/funcionarios/') && path.endsWith('/atividade'))) {
     return const {'employees.manage', 'reports.advanced'};
   }
+  if (path == AppRoutePaths.employeeCommissions ||
+      (path.startsWith('/funcionarios/') && path.endsWith('/comissoes'))) {
+    return const {'employees.manage', 'reports.advanced'};
+  }
   return const <String>{};
 }
 

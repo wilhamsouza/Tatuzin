@@ -83,6 +83,44 @@ enum EmployeeAccessStatus {
   }
 }
 
+enum EmployeeCommissionType {
+  none('NONE', 'Sem comissão'),
+  percentage('PERCENTAGE', 'Percentual'),
+  fixedPerSale('FIXED_PER_SALE', 'Valor fixo por venda');
+
+  const EmployeeCommissionType(this.key, this.label);
+
+  final String key;
+  final String label;
+
+  static EmployeeCommissionType fromKey(Object? value) {
+    final normalized = value?.toString().trim().toUpperCase();
+    return EmployeeCommissionType.values.firstWhere(
+      (type) => type.key == normalized,
+      orElse: () => EmployeeCommissionType.none,
+    );
+  }
+}
+
+enum EmployeeCommissionBase {
+  grossSales('GROSS_SALES', 'Venda bruta'),
+  netSales('NET_SALES', 'Venda líquida'),
+  grossProfit('GROSS_PROFIT', 'Lucro do produto');
+
+  const EmployeeCommissionBase(this.key, this.label);
+
+  final String key;
+  final String label;
+
+  static EmployeeCommissionBase fromKey(Object? value) {
+    final normalized = value?.toString().trim().toUpperCase();
+    return EmployeeCommissionBase.values.firstWhere(
+      (base) => base.key == normalized,
+      orElse: () => EmployeeCommissionBase.netSales,
+    );
+  }
+}
+
 enum EmployeePermission {
   salesCreate('sales.create', 'Criar vendas', 'Vendas'),
   salesCancel('sales.cancel', 'Cancelar vendas', 'Vendas'),
@@ -210,6 +248,12 @@ class EmployeeProfile {
     this.disabledAt,
     this.accessStatus = EmployeeAccessStatus.noAccess,
     this.temporaryPasswordExpiresAt,
+    this.commissionEnabled = false,
+    this.commissionType = EmployeeCommissionType.none,
+    this.commissionBase = EmployeeCommissionBase.netSales,
+    this.commissionRateBps,
+    this.commissionFixedCents,
+    this.commissionUpdatedAt,
   });
 
   final String id;
@@ -225,6 +269,12 @@ class EmployeeProfile {
   final DateTime? disabledAt;
   final EmployeeAccessStatus accessStatus;
   final DateTime? temporaryPasswordExpiresAt;
+  final bool commissionEnabled;
+  final EmployeeCommissionType commissionType;
+  final EmployeeCommissionBase commissionBase;
+  final int? commissionRateBps;
+  final int? commissionFixedCents;
+  final DateTime? commissionUpdatedAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -249,9 +299,65 @@ class EmployeeProfile {
       temporaryPasswordExpiresAt: _tryParseDate(
         source['temporaryPasswordExpiresAt'],
       ),
+      commissionEnabled: source['commissionEnabled'] == true,
+      commissionType: EmployeeCommissionType.fromKey(source['commissionType']),
+      commissionBase: EmployeeCommissionBase.fromKey(source['commissionBase']),
+      commissionRateBps: _readInt(source['commissionRateBps']),
+      commissionFixedCents: _readInt(source['commissionFixedCents']),
+      commissionUpdatedAt: _tryParseDate(source['commissionUpdatedAt']),
       createdAt: _tryParseDate(source['createdAt']),
       updatedAt: _tryParseDate(source['updatedAt']),
     );
+  }
+}
+
+class EmployeeCommissionSettings {
+  const EmployeeCommissionSettings({
+    required this.commissionEnabled,
+    required this.commissionType,
+    required this.commissionBase,
+    this.commissionRateBps,
+    this.commissionFixedCents,
+    this.commissionUpdatedAt,
+  });
+
+  final bool commissionEnabled;
+  final EmployeeCommissionType commissionType;
+  final EmployeeCommissionBase commissionBase;
+  final int? commissionRateBps;
+  final int? commissionFixedCents;
+  final DateTime? commissionUpdatedAt;
+
+  factory EmployeeCommissionSettings.fromMap(Map<String, dynamic> source) {
+    return EmployeeCommissionSettings(
+      commissionEnabled: source['commissionEnabled'] == true,
+      commissionType: EmployeeCommissionType.fromKey(source['commissionType']),
+      commissionBase: EmployeeCommissionBase.fromKey(source['commissionBase']),
+      commissionRateBps: _readInt(source['commissionRateBps']),
+      commissionFixedCents: _readInt(source['commissionFixedCents']),
+      commissionUpdatedAt: _tryParseDate(source['commissionUpdatedAt']),
+    );
+  }
+
+  factory EmployeeCommissionSettings.fromEmployee(EmployeeProfile employee) {
+    return EmployeeCommissionSettings(
+      commissionEnabled: employee.commissionEnabled,
+      commissionType: employee.commissionType,
+      commissionBase: employee.commissionBase,
+      commissionRateBps: employee.commissionRateBps,
+      commissionFixedCents: employee.commissionFixedCents,
+      commissionUpdatedAt: employee.commissionUpdatedAt,
+    );
+  }
+
+  Map<String, dynamic> toBody() {
+    return <String, dynamic>{
+      'commissionEnabled': commissionEnabled,
+      'commissionType': commissionType.key,
+      'commissionBase': commissionBase.key,
+      'commissionRateBps': commissionRateBps,
+      'commissionFixedCents': commissionFixedCents,
+    };
   }
 }
 
@@ -449,6 +555,7 @@ class EmployeeActivitySummary {
     required this.totalDiscountAmountCents,
     required this.totalCanceledCount,
     required this.totalStockAdjustments,
+    required this.totalCommissionAmountCents,
     required this.rows,
     required this.tracking,
   });
@@ -461,6 +568,7 @@ class EmployeeActivitySummary {
   final int totalDiscountAmountCents;
   final int totalCanceledCount;
   final int totalStockAdjustments;
+  final int totalCommissionAmountCents;
   final List<EmployeeActivityRow> rows;
   final EmployeeActivityTracking tracking;
 
@@ -476,6 +584,8 @@ class EmployeeActivitySummary {
           _readInt(source['totalDiscountAmountCents']) ?? 0,
       totalCanceledCount: _readInt(source['totalCanceledCount']) ?? 0,
       totalStockAdjustments: _readInt(source['totalStockAdjustments']) ?? 0,
+      totalCommissionAmountCents:
+          _readInt(source['totalCommissionAmountCents']) ?? 0,
       rows: rawRows is Iterable
           ? rawRows
                 .whereType<Map>()
@@ -503,6 +613,16 @@ class EmployeeActivityRow {
     required this.canceledSalesCount,
     required this.stockAdjustmentsCount,
     required this.cashActionsCount,
+    required this.commissionAmountCents,
+    required this.commissionEnabled,
+    required this.commissionType,
+    required this.commissionBase,
+    required this.commissionRateBps,
+    required this.commissionFixedCents,
+    required this.commissionEligibleSalesCount,
+    required this.commissionBaseAmountCents,
+    required this.commissionGrossProfitCents,
+    required this.commissionSalesWithoutReliableCostCount,
     required this.lastActivityAt,
   });
 
@@ -516,6 +636,16 @@ class EmployeeActivityRow {
   final int canceledSalesCount;
   final int stockAdjustmentsCount;
   final int cashActionsCount;
+  final int commissionAmountCents;
+  final bool commissionEnabled;
+  final EmployeeCommissionType commissionType;
+  final EmployeeCommissionBase commissionBase;
+  final int? commissionRateBps;
+  final int? commissionFixedCents;
+  final int commissionEligibleSalesCount;
+  final int commissionBaseAmountCents;
+  final int commissionGrossProfitCents;
+  final int commissionSalesWithoutReliableCostCount;
   final DateTime? lastActivityAt;
 
   bool get hasActivity =>
@@ -525,6 +655,7 @@ class EmployeeActivityRow {
       canceledSalesCount > 0 ||
       stockAdjustmentsCount > 0 ||
       cashActionsCount > 0 ||
+      commissionAmountCents > 0 ||
       lastActivityAt != null;
 
   factory EmployeeActivityRow.fromMap(Map<String, dynamic> source) {
@@ -539,7 +670,270 @@ class EmployeeActivityRow {
       canceledSalesCount: _readInt(source['canceledSalesCount']) ?? 0,
       stockAdjustmentsCount: _readInt(source['stockAdjustmentsCount']) ?? 0,
       cashActionsCount: _readInt(source['cashActionsCount']) ?? 0,
+      commissionAmountCents: _readInt(source['commissionAmountCents']) ?? 0,
+      commissionEnabled: source['commissionEnabled'] == true,
+      commissionType: EmployeeCommissionType.fromKey(source['commissionType']),
+      commissionBase: EmployeeCommissionBase.fromKey(source['commissionBase']),
+      commissionRateBps: _readInt(source['commissionRateBps']),
+      commissionFixedCents: _readInt(source['commissionFixedCents']),
+      commissionEligibleSalesCount:
+          _readInt(source['commissionEligibleSalesCount']) ?? 0,
+      commissionBaseAmountCents:
+          _readInt(source['commissionBaseAmountCents']) ?? 0,
+      commissionGrossProfitCents:
+          _readInt(source['commissionGrossProfitCents']) ?? 0,
+      commissionSalesWithoutReliableCostCount:
+          _readInt(source['commissionSalesWithoutReliableCostCount']) ?? 0,
       lastActivityAt: _tryParseDate(source['lastActivityAt']),
+    );
+  }
+}
+
+class EmployeeCommissionsSummary {
+  const EmployeeCommissionsSummary({
+    required this.period,
+    required this.totals,
+    required this.rows,
+    required this.tracking,
+  });
+
+  final EmployeeActivityPeriod period;
+  final EmployeeCommissionsTotals totals;
+  final List<EmployeeCommissionRow> rows;
+  final EmployeeActivityTracking tracking;
+
+  factory EmployeeCommissionsSummary.fromMap(Map<String, dynamic> source) {
+    final rawPeriod = source['period'];
+    final periodMap = rawPeriod is Map
+        ? Map<String, dynamic>.from(rawPeriod)
+        : const <String, dynamic>{};
+    final rawRows = source['rows'];
+    return EmployeeCommissionsSummary(
+      period: EmployeeActivityPeriod(
+        label: 'Período',
+        from:
+            DateTime.tryParse('${periodMap['from']}T00:00:00') ??
+            DateTime.now(),
+        to: DateTime.tryParse('${periodMap['to']}T00:00:00') ?? DateTime.now(),
+      ),
+      totals: EmployeeCommissionsTotals.fromMap(
+        source['totals'] is Map
+            ? Map<String, dynamic>.from(source['totals'] as Map)
+            : const <String, dynamic>{},
+      ),
+      rows: rawRows is Iterable
+          ? rawRows
+                .whereType<Map>()
+                .map(
+                  (row) => EmployeeCommissionRow.fromMap(
+                    Map<String, dynamic>.from(row),
+                  ),
+                )
+                .toList(growable: false)
+          : const <EmployeeCommissionRow>[],
+      tracking: EmployeeActivityTracking.fromMap(source['tracking']),
+    );
+  }
+}
+
+class EmployeeCommissionsTotals {
+  const EmployeeCommissionsTotals({
+    required this.employeesWithCommission,
+    required this.totalSalesAmountCents,
+    required this.totalEligibleSalesAmountCents,
+    required this.totalGrossProfitCents,
+    required this.totalCommissionCents,
+    required this.totalSalesCount,
+    required this.salesWithoutReliableActorCount,
+    required this.salesWithoutReliableCostCount,
+  });
+
+  final int employeesWithCommission;
+  final int totalSalesAmountCents;
+  final int totalEligibleSalesAmountCents;
+  final int totalGrossProfitCents;
+  final int totalCommissionCents;
+  final int totalSalesCount;
+  final int salesWithoutReliableActorCount;
+  final int salesWithoutReliableCostCount;
+
+  factory EmployeeCommissionsTotals.fromMap(Map<String, dynamic> source) {
+    return EmployeeCommissionsTotals(
+      employeesWithCommission: _readInt(source['employeesWithCommission']) ?? 0,
+      totalSalesAmountCents: _readInt(source['totalSalesAmountCents']) ?? 0,
+      totalEligibleSalesAmountCents:
+          _readInt(source['totalEligibleSalesAmountCents']) ?? 0,
+      totalGrossProfitCents: _readInt(source['totalGrossProfitCents']) ?? 0,
+      totalCommissionCents: _readInt(source['totalCommissionCents']) ?? 0,
+      totalSalesCount: _readInt(source['totalSalesCount']) ?? 0,
+      salesWithoutReliableActorCount:
+          _readInt(source['salesWithoutReliableActorCount']) ?? 0,
+      salesWithoutReliableCostCount:
+          _readInt(source['salesWithoutReliableCostCount']) ?? 0,
+    );
+  }
+}
+
+class EmployeeCommissionRow {
+  const EmployeeCommissionRow({
+    required this.employeeId,
+    required this.employeeName,
+    required this.role,
+    required this.status,
+    required this.settings,
+    required this.salesCount,
+    required this.eligibleSalesCount,
+    required this.salesAmountCents,
+    required this.eligibleBaseAmountCents,
+    required this.grossProfitCents,
+    required this.commissionAmountCents,
+    required this.canceledSalesCount,
+    required this.salesWithoutReliableCostCount,
+    this.lastSaleAt,
+  });
+
+  final String employeeId;
+  final String employeeName;
+  final EmployeeRole role;
+  final EmployeeStatus status;
+  final EmployeeCommissionSettings settings;
+  final int salesCount;
+  final int eligibleSalesCount;
+  final int salesAmountCents;
+  final int eligibleBaseAmountCents;
+  final int grossProfitCents;
+  final int commissionAmountCents;
+  final int canceledSalesCount;
+  final int salesWithoutReliableCostCount;
+  final DateTime? lastSaleAt;
+
+  factory EmployeeCommissionRow.fromMap(Map<String, dynamic> source) {
+    return EmployeeCommissionRow(
+      employeeId: _readString(source['employeeId']) ?? '',
+      employeeName:
+          _readString(source['employeeName']) ??
+          _readString(source['name']) ??
+          'Funcionário sem nome',
+      role: EmployeeRole.fromKey(source['role']),
+      status: EmployeeStatus.fromKey(source['status']),
+      settings: EmployeeCommissionSettings.fromMap(source),
+      salesCount: _readInt(source['salesCount']) ?? 0,
+      eligibleSalesCount: _readInt(source['eligibleSalesCount']) ?? 0,
+      salesAmountCents: _readInt(source['salesAmountCents']) ?? 0,
+      eligibleBaseAmountCents: _readInt(source['eligibleBaseAmountCents']) ?? 0,
+      grossProfitCents: _readInt(source['grossProfitCents']) ?? 0,
+      commissionAmountCents: _readInt(source['commissionAmountCents']) ?? 0,
+      canceledSalesCount: _readInt(source['canceledSalesCount']) ?? 0,
+      salesWithoutReliableCostCount:
+          _readInt(source['salesWithoutReliableCostCount']) ?? 0,
+      lastSaleAt: _tryParseDate(source['lastSaleAt']),
+    );
+  }
+}
+
+class EmployeeCommissionDetail {
+  const EmployeeCommissionDetail({
+    required this.employee,
+    required this.settings,
+    required this.summary,
+    required this.sales,
+    required this.tracking,
+  });
+
+  final EmployeeActivityEmployee employee;
+  final EmployeeCommissionSettings settings;
+  final EmployeeCommissionRow summary;
+  final List<EmployeeCommissionSale> sales;
+  final EmployeeActivityTracking tracking;
+
+  factory EmployeeCommissionDetail.fromMap(Map<String, dynamic> source) {
+    final employee = source['employee'] is Map
+        ? EmployeeActivityEmployee.fromMap(
+            Map<String, dynamic>.from(source['employee'] as Map),
+          )
+        : EmployeeActivityEmployee.fromMap(const <String, dynamic>{});
+    final rawSales = source['sales'];
+    return EmployeeCommissionDetail(
+      employee: employee,
+      settings: source['settings'] is Map
+          ? EmployeeCommissionSettings.fromMap(
+              Map<String, dynamic>.from(source['settings'] as Map),
+            )
+          : const EmployeeCommissionSettings(
+              commissionEnabled: false,
+              commissionType: EmployeeCommissionType.none,
+              commissionBase: EmployeeCommissionBase.netSales,
+            ),
+      summary: source['summary'] is Map
+          ? EmployeeCommissionRow.fromMap(<String, dynamic>{
+              'employeeId': employee.id,
+              'employeeName': employee.name,
+              'role': employee.role.key,
+              'status': employee.status.key,
+              ...Map<String, dynamic>.from(source['summary'] as Map),
+            })
+          : EmployeeCommissionRow.fromMap(const <String, dynamic>{}),
+      sales: rawSales is Iterable
+          ? rawSales
+                .whereType<Map>()
+                .map(
+                  (sale) => EmployeeCommissionSale.fromMap(
+                    Map<String, dynamic>.from(sale),
+                  ),
+                )
+                .toList(growable: false)
+          : const <EmployeeCommissionSale>[],
+      tracking: EmployeeActivityTracking.fromMap(source['tracking']),
+    );
+  }
+}
+
+class EmployeeCommissionSale {
+  const EmployeeCommissionSale({
+    required this.saleId,
+    required this.grossAmountCents,
+    required this.netAmountCents,
+    required this.discountAmountCents,
+    required this.baseAmountCents,
+    required this.commissionAmountCents,
+    required this.commissionBase,
+    required this.status,
+    required this.hasReliableCost,
+    required this.description,
+    this.occurredAt,
+    this.grossProfitCents,
+    this.ignoredReason,
+  });
+
+  final String saleId;
+  final DateTime? occurredAt;
+  final int grossAmountCents;
+  final int netAmountCents;
+  final int discountAmountCents;
+  final int baseAmountCents;
+  final int? grossProfitCents;
+  final int commissionAmountCents;
+  final EmployeeCommissionBase commissionBase;
+  final String status;
+  final bool hasReliableCost;
+  final String? ignoredReason;
+  final String description;
+
+  factory EmployeeCommissionSale.fromMap(Map<String, dynamic> source) {
+    return EmployeeCommissionSale(
+      saleId: _readString(source['saleId']) ?? '',
+      occurredAt: _tryParseDate(source['occurredAt']),
+      grossAmountCents: _readInt(source['grossAmountCents']) ?? 0,
+      netAmountCents: _readInt(source['netAmountCents']) ?? 0,
+      discountAmountCents: _readInt(source['discountAmountCents']) ?? 0,
+      baseAmountCents: _readInt(source['baseAmountCents']) ?? 0,
+      grossProfitCents: _readInt(source['grossProfitCents']),
+      commissionAmountCents: _readInt(source['commissionAmountCents']) ?? 0,
+      commissionBase: EmployeeCommissionBase.fromKey(source['commissionBase']),
+      status: _readString(source['status']) ?? 'active',
+      hasReliableCost: source['hasReliableCost'] == true,
+      ignoredReason: _readString(source['ignoredReason']),
+      description: _readString(source['description']) ?? 'Venda registrada',
     );
   }
 }

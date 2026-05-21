@@ -6,10 +6,13 @@ import { asyncHandler } from "../../shared/http/async-handler";
 import { requireFeature } from "../../shared/http/feature-middleware";
 import { validateBody, validateQuery } from "../../shared/http/validate";
 import { EmployeeActivityService } from "./employee-activity.service";
+import { EmployeeCommissionService } from "./employee-commission.service";
 import { requireEmployeePermission } from "./employee-permission-middleware";
 import {
   employeeActivityQuerySchema,
   type EmployeeActivityQueryInput,
+  employeeCommissionSettingsSchema,
+  type EmployeeCommissionSettingsInput,
   employeeCreateSchema,
   employeeListQuerySchema,
   type EmployeeListQueryInput,
@@ -19,10 +22,62 @@ import { EmployeesService } from "./employees.service";
 
 const employeesService = new EmployeesService();
 const employeeActivityService = new EmployeeActivityService();
+const employeeCommissionService = new EmployeeCommissionService();
 
 export const employeesRouter = Router();
 
 employeesRouter.use(requireAppContext, requireFeature("employees"));
+
+employeesRouter.get(
+  "/commissions/summary",
+  validateQuery(employeeActivityQuerySchema),
+  asyncHandler(async (request, response) => {
+    const query = request.query as unknown as EmployeeActivityQueryInput;
+    const result = await employeeCommissionService.summary(
+      request.appContext!,
+      query,
+    );
+    response.json(result);
+  }),
+);
+
+employeesRouter.get(
+  "/:id/commission-settings",
+  asyncHandler(async (request, response) => {
+    const result = await employeeCommissionService.getSettings(
+      request.appContext!,
+      readParam(request.params.id),
+    );
+    response.json(result);
+  }),
+);
+
+employeesRouter.patch(
+  "/:id/commission-settings",
+  validateBody(employeeCommissionSettingsSchema),
+  asyncHandler(async (request, response) => {
+    const result = await employeeCommissionService.updateSettings(
+      request.appContext!,
+      readParam(request.params.id),
+      request.body as EmployeeCommissionSettingsInput,
+    );
+    response.json(result);
+  }),
+);
+
+employeesRouter.get(
+  "/:id/commissions",
+  validateQuery(employeeActivityQuerySchema),
+  asyncHandler(async (request, response) => {
+    const query = request.query as unknown as EmployeeActivityQueryInput;
+    const result = await employeeCommissionService.detail(
+      request.appContext!,
+      readParam(request.params.id),
+      query,
+    );
+    response.json(result);
+  }),
+);
 
 employeesRouter.get(
   "/activity/summary",

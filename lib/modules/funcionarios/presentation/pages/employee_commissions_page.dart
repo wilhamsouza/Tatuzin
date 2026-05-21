@@ -14,23 +14,23 @@ import '../../../../app/routes/route_names.dart';
 import '../../domain/employee_models.dart';
 import '../providers/employees_providers.dart';
 
-class EmployeeActivityPage extends ConsumerWidget {
-  const EmployeeActivityPage({super.key});
+class EmployeeCommissionsPage extends ConsumerWidget {
+  const EmployeeCommissionsPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final layout = context.appLayout;
-    final canView = ref.watch(canViewEmployeeActivityProvider);
-    final summaryAsync = ref.watch(employeeActivitySummaryProvider);
+    final canView = ref.watch(canViewEmployeeCommissionsProvider);
+    final summaryAsync = ref.watch(employeeCommissionsSummaryProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Atividade dos funcionários')),
+      appBar: AppBar(title: const Text('Comissões')),
       drawer: const AppMainDrawer(),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.read(appDataRefreshProvider.notifier).state++;
           if (canView) {
-            await ref.read(employeeActivitySummaryProvider.future);
+            await ref.read(employeeCommissionsSummaryProvider.future);
           }
         },
         child: ListView(
@@ -42,39 +42,38 @@ class EmployeeActivityPage extends ConsumerWidget {
           ),
           children: [
             const AppPageHeader(
-              title: 'Atividade dos funcionários',
-              subtitle: 'Acompanhe vendas, ajustes e ações da equipe.',
-              badgeLabel: 'Equipe',
-              badgeIcon: Icons.groups_2_outlined,
+              title: 'Comissões',
+              subtitle: 'Controle estimado sobre vendas atribuídas à equipe.',
+              badgeLabel: 'Relatório',
+              badgeIcon: Icons.payments_outlined,
             ),
             SizedBox(height: layout.space4),
-            const _ActivityPeriodChips(),
+            const _CommissionPeriodChips(),
             SizedBox(height: layout.space4),
             if (!canView)
               const AppStateCard(
                 title: 'Sem permissão',
-                message:
-                    'Você não tem permissão para ver atividade de funcionários.',
+                message: 'Você não tem permissão para ver comissões.',
                 icon: Icons.lock_outline_rounded,
                 tone: AppStateTone.warning,
                 compact: true,
               )
             else
               summaryAsync.when(
-                data: (summary) => _ActivitySummaryContent(summary: summary),
+                data: (summary) => _CommissionSummaryContent(summary: summary),
                 loading: () => const AppStateCard(
-                  title: 'Carregando atividade',
-                  message: 'Buscando ações registradas no período.',
+                  title: 'Carregando comissões',
+                  message: 'Buscando vendas atribuídas no período.',
                   tone: AppStateTone.loading,
                   compact: true,
                 ),
                 error: (error, _) => AppStateCard(
-                  title: 'Não foi possível carregar a atividade',
+                  title: 'Não foi possível carregar comissões',
                   message: '$error',
                   tone: AppStateTone.error,
                   actionLabel: 'Tentar novamente',
                   onAction: () =>
-                      ref.invalidate(employeeActivitySummaryProvider),
+                      ref.invalidate(employeeCommissionsSummaryProvider),
                   compact: true,
                 ),
               ),
@@ -85,22 +84,22 @@ class EmployeeActivityPage extends ConsumerWidget {
   }
 }
 
-class EmployeeActivityDetailPage extends ConsumerWidget {
-  const EmployeeActivityDetailPage({required this.employeeId, super.key});
+class EmployeeCommissionDetailPage extends ConsumerWidget {
+  const EmployeeCommissionDetailPage({required this.employeeId, super.key});
 
   final String employeeId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final layout = context.appLayout;
-    final detailAsync = ref.watch(employeeActivityDetailProvider(employeeId));
+    final detailAsync = ref.watch(employeeCommissionDetailProvider(employeeId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Atividade do funcionário')),
+      appBar: AppBar(title: const Text('Comissão do funcionário')),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.read(appDataRefreshProvider.notifier).state++;
-          await ref.read(employeeActivityDetailProvider(employeeId).future);
+          await ref.read(employeeCommissionDetailProvider(employeeId).future);
         },
         child: ListView(
           padding: EdgeInsets.fromLTRB(
@@ -110,23 +109,24 @@ class EmployeeActivityDetailPage extends ConsumerWidget {
             layout.pagePadding,
           ),
           children: [
-            const _ActivityPeriodChips(),
+            const _CommissionPeriodChips(),
             SizedBox(height: layout.space4),
             detailAsync.when(
-              data: (detail) => _ActivityDetailContent(detail: detail),
+              data: (detail) => _CommissionDetailContent(detail: detail),
               loading: () => const AppStateCard(
-                title: 'Carregando atividade',
-                message: 'Buscando ações deste funcionário.',
+                title: 'Carregando comissão',
+                message: 'Buscando vendas deste funcionário.',
                 tone: AppStateTone.loading,
                 compact: true,
               ),
               error: (error, _) => AppStateCard(
-                title: 'Não foi possível carregar a atividade',
+                title: 'Não foi possível carregar comissão',
                 message: '$error',
                 tone: AppStateTone.error,
                 actionLabel: 'Tentar novamente',
-                onAction: () =>
-                    ref.invalidate(employeeActivityDetailProvider(employeeId)),
+                onAction: () => ref.invalidate(
+                  employeeCommissionDetailProvider(employeeId),
+                ),
                 compact: true,
               ),
             ),
@@ -137,55 +137,63 @@ class EmployeeActivityDetailPage extends ConsumerWidget {
   }
 }
 
-class _ActivitySummaryContent extends StatelessWidget {
-  const _ActivitySummaryContent({required this.summary});
+class _CommissionSummaryContent extends StatelessWidget {
+  const _CommissionSummaryContent({required this.summary});
 
-  final EmployeeActivitySummary summary;
+  final EmployeeCommissionsSummary summary;
 
   @override
   Widget build(BuildContext context) {
     final layout = context.appLayout;
-    final visibleRows = summary.rows;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _KpiGrid(
           items: [
-            _KpiItem('Funcionários ativos', '${summary.activeEmployees}'),
-            _KpiItem('Com atividade', '${summary.employeesWithActivity}'),
-            _KpiItem('Vendas', '${summary.totalSalesCount}'),
             _KpiItem(
-              'Total vendido',
-              AppFormatters.currencyFromCents(summary.totalSalesAmountCents),
-            ),
-            _KpiItem('Ajustes de estoque', '${summary.totalStockAdjustments}'),
-            _KpiItem('Cancelamentos', '${summary.totalCanceledCount}'),
-            _KpiItem(
-              'Comissão',
+              'Comissão total',
               AppFormatters.currencyFromCents(
-                summary.totalCommissionAmountCents,
+                summary.totals.totalCommissionCents,
               ),
+            ),
+            _KpiItem(
+              'Vendas elegíveis',
+              '${summary.rows.fold<int>(0, (sum, row) => sum + row.eligibleSalesCount)}',
+            ),
+            _KpiItem(
+              'Com comissão',
+              '${summary.totals.employeesWithCommission}',
+            ),
+            _KpiItem(
+              'Sem custo',
+              '${summary.totals.salesWithoutReliableCostCount}',
             ),
           ],
         ),
-        if (summary.tracking.partial) ...[
+        if (summary.totals.salesWithoutReliableCostCount > 0) ...[
           SizedBox(height: layout.space4),
-          const _PartialTrackingBanner(),
+          const AppStateCard(
+            title: 'Custo ausente em algumas vendas',
+            message:
+                'Algumas vendas não entraram integralmente no cálculo por lucro porque produtos não tinham custo cadastrado.',
+            icon: Icons.info_outline_rounded,
+            compact: true,
+          ),
         ],
         SizedBox(height: layout.space4),
-        if (visibleRows.isEmpty)
+        if (summary.rows.isEmpty)
           const AppStateCard(
-            title: 'Nenhuma atividade encontrada',
-            message: 'Nenhuma atividade encontrada neste período.',
+            title: 'Nenhuma comissão encontrada',
+            message: 'Não há vendas elegíveis no período selecionado.',
             icon: Icons.event_busy_outlined,
             compact: true,
           )
         else
           Column(
             children: [
-              for (final row in visibleRows) ...[
-                _EmployeeActivityRowCard(row: row),
+              for (final row in summary.rows) ...[
+                _CommissionRowCard(row: row),
                 SizedBox(height: layout.space3),
               ],
             ],
@@ -195,10 +203,10 @@ class _ActivitySummaryContent extends StatelessWidget {
   }
 }
 
-class _ActivityDetailContent extends StatelessWidget {
-  const _ActivityDetailContent({required this.detail});
+class _CommissionDetailContent extends StatelessWidget {
+  const _CommissionDetailContent({required this.detail});
 
-  final EmployeeActivityDetail detail;
+  final EmployeeCommissionDetail detail;
 
   @override
   Widget build(BuildContext context) {
@@ -212,96 +220,54 @@ class _ActivityDetailContent extends StatelessWidget {
           title: detail.employee.name,
           subtitle:
               '${detail.employee.role.label} • ${detail.employee.status.label}',
-          badgeLabel: 'Atividade',
-          badgeIcon: Icons.manage_search_rounded,
+          badgeLabel: 'Comissão',
+          badgeIcon: Icons.payments_outlined,
         ),
         SizedBox(height: layout.space4),
         _KpiGrid(
           items: [
-            _KpiItem('Vendas', '${summary.salesCount}'),
-            _KpiItem(
-              'Total vendido',
-              AppFormatters.currencyFromCents(summary.salesAmountCents),
-            ),
-            _KpiItem(
-              'Descontos',
-              AppFormatters.currencyFromCents(summary.discountAmountCents),
-            ),
-            _KpiItem('Cancelamentos', '${summary.canceledSalesCount}'),
-            _KpiItem('Ajustes de estoque', '${summary.stockAdjustmentsCount}'),
-            _KpiItem('Caixa', '${summary.cashActionsCount}'),
             _KpiItem(
               'Comissão estimada',
               AppFormatters.currencyFromCents(summary.commissionAmountCents),
             ),
+            _KpiItem('Vendas elegíveis', '${summary.eligibleSalesCount}'),
+            _KpiItem(
+              'Base de cálculo',
+              AppFormatters.currencyFromCents(summary.eligibleBaseAmountCents),
+            ),
+            _KpiItem('Regra', _settingsLabel(detail.settings)),
           ],
         ),
-        SizedBox(height: layout.space4),
-        AppCard(
-          padding: EdgeInsets.all(layout.compactCardPadding),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Comissão',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-              ),
-              SizedBox(height: layout.space3),
-              Wrap(
-                spacing: 12,
-                runSpacing: 8,
-                children: [
-                  _InlineMetric(
-                    label: summary.commissionEnabled
-                        ? summary.commissionBase.label
-                        : 'Status',
-                    value: summary.commissionEnabled
-                        ? AppFormatters.currencyFromCents(
-                            summary.commissionBaseAmountCents,
-                          )
-                        : 'Desativada',
-                  ),
-                  _InlineMetric(
-                    label: 'Vendas elegíveis',
-                    value: '${summary.commissionEligibleSalesCount}',
-                  ),
-                  if (summary.commissionSalesWithoutReliableCostCount > 0)
-                    _InlineMetric(
-                      label: 'Sem custo',
-                      value:
-                          '${summary.commissionSalesWithoutReliableCostCount}',
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        if (detail.tracking.partial) ...[
+        if (summary.salesWithoutReliableCostCount > 0) ...[
           SizedBox(height: layout.space4),
-          const _PartialTrackingBanner(),
+          const AppStateCard(
+            title: 'Custo ausente',
+            message:
+                'Vendas sem custo cadastrado podem ficar fora do cálculo por lucro.',
+            icon: Icons.info_outline_rounded,
+            compact: true,
+          ),
         ],
         SizedBox(height: layout.space4),
         Text(
-          'Linha do tempo',
+          'Vendas',
           style: Theme.of(
             context,
           ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
         ),
         SizedBox(height: layout.space3),
-        if (detail.timeline.isEmpty)
+        if (detail.sales.isEmpty)
           const AppStateCard(
-            title: 'Sem atividade',
-            message: 'Nenhuma atividade encontrada neste período.',
+            title: 'Sem vendas elegíveis',
+            message: 'Nenhuma venda atribuída no período.',
             icon: Icons.event_busy_outlined,
             compact: true,
           )
         else
           Column(
             children: [
-              for (final item in detail.timeline) ...[
-                _TimelineItemCard(item: item),
+              for (final sale in detail.sales) ...[
+                _CommissionSaleCard(sale: sale),
                 SizedBox(height: layout.space3),
               ],
             ],
@@ -311,15 +277,14 @@ class _ActivityDetailContent extends StatelessWidget {
   }
 }
 
-class _ActivityPeriodChips extends ConsumerWidget {
-  const _ActivityPeriodChips();
+class _CommissionPeriodChips extends ConsumerWidget {
+  const _CommissionPeriodChips();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selected = ref.watch(employeeActivityPeriodProvider);
     final presets = <EmployeeActivityPeriod>[
       EmployeeActivityPeriod.today(),
-      EmployeeActivityPeriod.yesterday(),
       EmployeeActivityPeriod.last7Days(),
       EmployeeActivityPeriod.thisMonth(),
     ];
@@ -347,10 +312,10 @@ class _ActivityPeriodChips extends ConsumerWidget {
   }
 }
 
-class _EmployeeActivityRowCard extends StatelessWidget {
-  const _EmployeeActivityRowCard({required this.row});
+class _CommissionRowCard extends StatelessWidget {
+  const _CommissionRowCard({required this.row});
 
-  final EmployeeActivityRow row;
+  final EmployeeCommissionRow row;
 
   @override
   Widget build(BuildContext context) {
@@ -370,7 +335,7 @@ class _EmployeeActivityRowCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      row.name,
+                      row.employeeName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.titleMedium?.copyWith(
@@ -387,8 +352,8 @@ class _EmployeeActivityRowCard extends StatelessWidget {
                           icon: Icons.badge_outlined,
                         ),
                         AppStatusBadge(
-                          label: row.status.label,
-                          icon: Icons.circle_outlined,
+                          label: _settingsLabel(row.settings),
+                          icon: Icons.percent_rounded,
                         ),
                       ],
                     ),
@@ -397,7 +362,7 @@ class _EmployeeActivityRowCard extends StatelessWidget {
               ),
               TextButton.icon(
                 onPressed: () => context.pushNamed(
-                  AppRouteNames.employeeActivityDetail,
+                  AppRouteNames.employeeCommissionDetail,
                   pathParameters: {'employeeId': row.employeeId},
                 ),
                 icon: const Icon(Icons.chevron_right_rounded),
@@ -414,7 +379,6 @@ class _EmployeeActivityRowCard extends StatelessWidget {
                 label: 'Vendido',
                 value: AppFormatters.currencyFromCents(row.salesAmountCents),
               ),
-              _InlineMetric(label: 'Vendas', value: '${row.salesCount}'),
               _InlineMetric(
                 label: 'Comissão',
                 value: AppFormatters.currencyFromCents(
@@ -422,10 +386,8 @@ class _EmployeeActivityRowCard extends StatelessWidget {
                 ),
               ),
               _InlineMetric(
-                label: 'Última atividade',
-                value: row.lastActivityAt == null
-                    ? 'Sem atividade'
-                    : AppFormatters.shortDateTime(row.lastActivityAt!),
+                label: 'Elegíveis',
+                value: '${row.eligibleSalesCount}',
               ),
             ],
           ),
@@ -435,124 +397,66 @@ class _EmployeeActivityRowCard extends StatelessWidget {
   }
 }
 
-class _TimelineItemCard extends StatelessWidget {
-  const _TimelineItemCard({required this.item});
+class _CommissionSaleCard extends StatelessWidget {
+  const _CommissionSaleCard({required this.sale});
 
-  final EmployeeActivityTimelineItem item;
+  final EmployeeCommissionSale sale;
 
   @override
   Widget build(BuildContext context) {
     final layout = context.appLayout;
     final theme = Theme.of(context);
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(layout.radiusMd),
-      onTap: () => _showTimelineDetails(context, item),
-      child: AppCard(
-        padding: EdgeInsets.all(layout.compactCardPadding),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(_iconForType(item.type), color: theme.colorScheme.primary),
-            SizedBox(width: layout.space3),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    item.description,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    item.occurredAt == null
-                        ? 'Horário não informado'
-                        : AppFormatters.shortDateTime(item.occurredAt!),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (item.amountCents != null)
-              Text(
-                AppFormatters.currencyFromCents(item.amountCents!),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showTimelineDetails(
-    BuildContext context,
-    EmployeeActivityTimelineItem item,
-  ) {
-    final layout = context.appLayout;
-    final theme = Theme.of(context);
-    return showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              layout.pagePadding,
-              layout.space2,
-              layout.pagePadding,
-              layout.pagePadding,
-            ),
+    return AppCard(
+      padding: EdgeInsets.all(layout.compactCardPadding),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.receipt_long_outlined, color: theme.colorScheme.primary),
+          SizedBox(width: layout.space3),
+          Expanded(
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item.title,
-                  style: theme.textTheme.titleMedium?.copyWith(
+                  sale.description,
+                  style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                SizedBox(height: layout.space2),
-                Text(item.description),
-                SizedBox(height: layout.space4),
-                _InlineMetric(
-                  label: 'Horario',
-                  value: item.occurredAt == null
-                      ? 'Nao informado'
-                      : AppFormatters.shortDateTime(item.occurredAt!),
-                ),
-                if (item.amountCents != null) ...[
-                  SizedBox(height: layout.space3),
-                  _InlineMetric(
-                    label: 'Valor',
-                    value: AppFormatters.currencyFromCents(item.amountCents!),
-                  ),
-                ],
-                SizedBox(height: layout.space5),
+                const SizedBox(height: 2),
                 Text(
-                  'Detalhes completos ainda nao estao disponiveis para esta acao.',
+                  sale.occurredAt == null
+                      ? 'Horário não informado'
+                      : AppFormatters.shortDateTime(sale.occurredAt!),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: [
+                    _InlineMetric(
+                      label: 'Base',
+                      value: AppFormatters.currencyFromCents(
+                        sale.baseAmountCents,
+                      ),
+                    ),
+                    _InlineMetric(
+                      label: 'Comissão',
+                      value: AppFormatters.currencyFromCents(
+                        sale.commissionAmountCents,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
@@ -567,7 +471,7 @@ class _KpiGrid extends StatelessWidget {
     final layout = context.appLayout;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 720 ? 3 : 2;
+        final columns = constraints.maxWidth >= 720 ? 4 : 2;
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -650,36 +554,23 @@ class _InlineMetric extends StatelessWidget {
   }
 }
 
-class _PartialTrackingBanner extends StatelessWidget {
-  const _PartialTrackingBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return const AppStateCard(
-      title: 'Dados parcialmente rastreados',
-      message: 'Algumas ações antigas podem aparecer sem responsável.',
-      icon: Icons.info_outline_rounded,
-      tone: AppStateTone.neutral,
-      compact: true,
-    );
+String _settingsLabel(EmployeeCommissionSettings settings) {
+  if (!settings.commissionEnabled ||
+      settings.commissionType == EmployeeCommissionType.none) {
+    return 'Desativada';
   }
+  if (settings.commissionType == EmployeeCommissionType.fixedPerSale) {
+    return '${AppFormatters.currencyFromCents(settings.commissionFixedCents ?? 0)} por venda';
+  }
+  final bps = settings.commissionRateBps ?? 0;
+  return '${_percentageLabel(bps)}% sobre ${settings.commissionBase.label.toLowerCase()}';
 }
 
-IconData _iconForType(String type) {
-  switch (type) {
-    case 'SALE':
-      return Icons.point_of_sale_rounded;
-    case 'DISCOUNT':
-      return Icons.percent_rounded;
-    case 'CANCELLATION':
-      return Icons.cancel_outlined;
-    case 'CASH_OPEN':
-    case 'CASH_CLOSE':
-    case 'CASH_MOVEMENT':
-      return Icons.account_balance_wallet_outlined;
-    case 'STOCK_ADJUSTMENT':
-      return Icons.inventory_2_outlined;
-    default:
-      return Icons.history_rounded;
+String _percentageLabel(int bps) {
+  final whole = bps ~/ 100;
+  final decimal = bps % 100;
+  if (decimal == 0) {
+    return '$whole';
   }
+  return '$whole,${decimal.toString().padLeft(2, '0').replaceFirst(RegExp(r'0$'), '')}';
 }

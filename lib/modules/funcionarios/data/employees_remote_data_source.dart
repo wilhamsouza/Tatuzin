@@ -165,6 +165,79 @@ class EmployeesRemoteDataSource {
     return EmployeeActivityDetail.fromMap(response.data);
   }
 
+  Future<EmployeeCommissionSettings> getEmployeeCommissionSettings(
+    String id,
+  ) async {
+    final response = await _runEmployeeRequest(
+      () async => _apiClient.getJson(
+        '/employees/${Uri.encodeComponent(id)}/commission-settings',
+        options: ApiRequestOptions(headers: await _authorizedHeaders()),
+      ),
+    );
+    final rawSettings = response.data['settings'];
+    return rawSettings is Map
+        ? EmployeeCommissionSettings.fromMap(
+            Map<String, dynamic>.from(rawSettings),
+          )
+        : EmployeeCommissionSettings.fromMap(const <String, dynamic>{});
+  }
+
+  Future<EmployeeCommissionSettings> updateEmployeeCommissionSettings(
+    String id,
+    EmployeeCommissionSettings settings,
+  ) async {
+    final response = await _runEmployeeRequest(
+      () async => _apiClient.patchJson(
+        '/employees/${Uri.encodeComponent(id)}/commission-settings',
+        body: settings.toBody(),
+        options: ApiRequestOptions(headers: await _authorizedHeaders()),
+      ),
+    );
+    final rawSettings = response.data['settings'];
+    return rawSettings is Map
+        ? EmployeeCommissionSettings.fromMap(
+            Map<String, dynamic>.from(rawSettings),
+          )
+        : EmployeeCommissionSettings.fromMap(const <String, dynamic>{});
+  }
+
+  Future<EmployeeCommissionsSummary> getEmployeeCommissionsSummary({
+    required EmployeeActivityPeriod period,
+  }) async {
+    final response = await _runEmployeeRequest(
+      () async => _apiClient.getJson(
+        '/employees/commissions/summary',
+        options: ApiRequestOptions(
+          headers: await _authorizedHeaders(),
+          queryParameters: <String, Object?>{
+            'from': period.fromQuery,
+            'to': period.toQuery,
+          },
+        ),
+      ),
+    );
+    return EmployeeCommissionsSummary.fromMap(response.data);
+  }
+
+  Future<EmployeeCommissionDetail> getEmployeeCommissionDetail(
+    String id, {
+    required EmployeeActivityPeriod period,
+  }) async {
+    final response = await _runEmployeeRequest(
+      () async => _apiClient.getJson(
+        '/employees/${Uri.encodeComponent(id)}/commissions',
+        options: ApiRequestOptions(
+          headers: await _authorizedHeaders(),
+          queryParameters: <String, Object?>{
+            'from': period.fromQuery,
+            'to': period.toQuery,
+          },
+        ),
+      ),
+    );
+    return EmployeeCommissionDetail.fromMap(response.data);
+  }
+
   Future<Map<String, String>> _authorizedHeaders() async {
     final token = await _tokenStorage.readAccessToken();
     if (token == null || token.trim().isEmpty) {
@@ -205,6 +278,10 @@ class EmployeesRemoteDataSource {
         return 'Você não tem permissão para gerenciar funcionários.';
       case 'EMPLOYEE_ACTIVITY_PERMISSION_REQUIRED':
         return 'Voce nao tem permissao para ver atividade de funcionarios.';
+      case 'EMPLOYEE_COMMISSION_PERMISSION_REQUIRED':
+        return 'Você não tem permissão para ver comissões.';
+      case 'EMPLOYEE_COMMISSION_MANAGE_REQUIRED':
+        return 'Você não tem permissão para configurar comissões.';
       case 'EMPLOYEE_LIMIT_REACHED':
         return 'Limite de funcionários atingido para o plano atual.';
       case 'EMPLOYEE_NOT_FOUND':
@@ -259,6 +336,8 @@ class EmployeesRemoteDataSource {
         'EMPLOYEE_PERMISSION_DENIED',
         'EMPLOYEE_PERMISSION_REQUIRED',
         'EMPLOYEE_ACTIVITY_PERMISSION_REQUIRED',
+        'EMPLOYEE_COMMISSION_PERMISSION_REQUIRED',
+        'EMPLOYEE_COMMISSION_MANAGE_REQUIRED',
         'EMPLOYEE_LIMIT_REACHED',
         'EMPLOYEE_NOT_FOUND',
         'EMPLOYEE_EMAIL_REQUIRED_FOR_ACCESS',

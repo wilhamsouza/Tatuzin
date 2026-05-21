@@ -156,11 +156,14 @@ void main() {
       'maskedClientInstanceId': 'full...e-id',
       'status': 'ACTIVE',
     });
-    final employees = OwnerEmployeesPlaceholder.fromMap({
-      'items': [],
-      'count': 0,
-      'available': false,
-      'reason': 'EMPLOYEES_NOT_IMPLEMENTED',
+    final employees = OwnerEmployeesOverview.fromMap({
+      ..._employeesPayload(),
+      'temporaryPassword': 'secret',
+    });
+    final commissions = OwnerCommissionsSummary.fromMap({
+      ..._commissionsPayload(),
+      'costCents': 7000,
+      'payload': {'token': 'secret'},
     });
     final dashboard = OwnerBusinessDashboard.fromMap({
       'sales': {'todayAmountCents': null},
@@ -199,8 +202,9 @@ void main() {
     expect(billing.maskedProviderSubscriptionId, 'prea...9999');
     expect(invoice.amountCents, 12990);
     expect(device.maskedClientInstanceId, 'full...e-id');
-    expect(employees.available, false);
-    expect(employees.reason, 'EMPLOYEES_NOT_IMPLEMENTED');
+    expect(employees.available, true);
+    expect(employees.items.single.temporaryPasswordPending, true);
+    expect(commissions.totals.totalCommissionCents, 500);
     expect(dashboard.sales.todayAmountCents, isNull);
     expect(dashboard.employees.reason, 'EMPLOYEE_REPORTS_NOT_AVAILABLE');
     expect(sales.recentSales.items.single.receiptNumber, isNull);
@@ -235,6 +239,8 @@ void main() {
           return _jsonResponse(_receivablesPayload());
         case '/api/owner/reports/employees':
           return _jsonResponse(_employeeReportsPayload());
+        case '/api/owner/commissions':
+          return _jsonResponse(_commissionsPayload());
         case '/api/owner/reports/catalog':
           return _jsonResponse(_reportsCatalogPayload());
         case '/api/owner/billing/status':
@@ -275,6 +281,7 @@ void main() {
     await service.getCrmCustomer('customer-1');
     await service.getReceivables();
     await service.getEmployeeReports();
+    await service.getCommissions();
     await service.getReportsCatalog();
     await service.getBillingStatus();
     await service.getBillingInvoices(
@@ -298,6 +305,7 @@ void main() {
     expect(paths, contains('/api/owner/crm/customers/customer-1'));
     expect(paths, contains('/api/owner/financial/receivables'));
     expect(paths, contains('/api/owner/reports/employees'));
+    expect(paths, contains('/api/owner/commissions'));
     expect(paths, contains('/api/owner/reports/catalog'));
     expect(paths, contains('/api/owner/billing/status'));
     expect(paths, contains('/api/owner/billing/invoices'));
@@ -655,12 +663,18 @@ void main() {
     expect(find.textContaining('payload'), findsNothing);
   });
 
-  testWidgets('employees placeholder renders without token or hash', (
+  testWidgets('employees page renders access and commissions safely', (
     tester,
   ) async {
     await tester.pumpWidget(
       _withProviders(
         overrides: [
+          ownerEmployeesProvider.overrideWith((ref) async {
+            return OwnerEmployeesOverview.fromMap(_employeesPayload());
+          }),
+          ownerCommissionsProvider.overrideWith((ref) async {
+            return OwnerCommissionsSummary.fromMap(_commissionsPayload());
+          }),
           ownerEmployeeReportsProvider.overrideWith((ref) async {
             return OwnerEmployeeReports.fromMap(
               _employeeReportsPayload(available: false),
@@ -672,14 +686,11 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Desempenho da equipe'), findsOneWidget);
-    expect(find.text('Indicador em preparação'), findsOneWidget);
-    expect(
-      find.text(
-        'Este indicador será liberado quando houver dados suficientes.',
-      ),
-      findsWidgets,
-    );
+    expect(find.text('Equipe'), findsOneWidget);
+    expect(find.text('Comissoes'), findsOneWidget);
+    expect(find.text('Gabriel'), findsWidgets);
+    expect(find.textContaining('lucro do produto'), findsWidgets);
+    expect(find.textContaining('senha temporaria pendente'), findsWidgets);
     expect(find.textContaining('inviteTokenHash'), findsNothing);
     expect(find.textContaining('token'), findsNothing);
   });
@@ -857,9 +868,23 @@ Map<String, dynamic> _companyPayload() {
   return {
     'companyId': 'company-1',
     'name': 'Loja Tatuzin',
+    'legalName': 'Loja Tatuzin LTDA',
+    'documentNumber': '12.345.678/0001-90',
     'setupCompleted': true,
     'createdAt': '2026-05-01T00:00:00.000Z',
+    'owner': {'id': 'owner-1', 'name': 'Gabriel', 'email': 'owner@teste.com'},
     'membership': {'id': 'membership-1', 'role': 'OWNER'},
+    'receiptSettings': {
+      'displayName': 'Loja Tatuzin',
+      'document': '12.345.678/0001-90',
+      'phone': '(11) 99999-0000',
+      'address': 'Rua Teste, 123',
+      'footerMessage': 'Obrigado pela preferencia',
+      'showDocument': true,
+      'showPhone': true,
+      'showAddress': true,
+      'showFooterMessage': true,
+    },
     'license': {
       'plan': 'PRO',
       'rawPlan': 'PRO',
@@ -924,10 +949,77 @@ Map<String, dynamic> _invoicesPayload() {
 
 Map<String, dynamic> _employeesPayload() {
   return {
-    'items': [],
-    'count': 0,
-    'available': false,
-    'reason': 'EMPLOYEES_NOT_IMPLEMENTED',
+    'available': true,
+    'summary': {
+      'total': 1,
+      'active': 1,
+      'disabled': 0,
+      'invited': 0,
+      'withActiveAccess': 0,
+      'temporaryPasswordPending': 1,
+      'commissionEnabled': 1,
+      'maxEmployees': 100,
+    },
+    'items': [
+      {
+        'id': 'employee-1',
+        'name': 'Gabriel',
+        'email': 'gabriel@teste.com',
+        'role': 'SELLER',
+        'status': 'ACTIVE',
+        'accessStatus': 'TEMPORARY_PASSWORD_PENDING',
+        'permissions': ['sales.read'],
+        'permissionsCount': 1,
+        'commissionEnabled': true,
+        'commissionType': 'PERCENTAGE',
+        'commissionBase': 'GROSS_PROFIT',
+        'commissionRateBps': 2000,
+        'commissionFixedCents': null,
+        'temporaryPasswordPending': true,
+        'temporaryPasswordExpiresAt': '2026-05-28T00:00:00.000Z',
+        'lastSeenAt': null,
+      },
+    ],
+    'count': 1,
+  };
+}
+
+Map<String, dynamic> _commissionsPayload() {
+  return {
+    'period': {'from': '2026-05-01', 'to': '2026-05-30'},
+    'totals': {
+      'employeesWithCommission': 1,
+      'totalSalesAmountCents': 10000,
+      'totalEligibleSalesAmountCents': 2500,
+      'totalGrossProfitCents': 2500,
+      'totalCommissionCents': 500,
+      'totalSalesCount': 1,
+      'salesWithoutReliableActorCount': 0,
+      'salesWithoutReliableCostCount': 1,
+    },
+    'rows': [
+      {
+        'employeeId': 'employee-1',
+        'employeeName': 'Gabriel',
+        'role': 'SELLER',
+        'status': 'ACTIVE',
+        'commissionEnabled': true,
+        'commissionType': 'PERCENTAGE',
+        'commissionBase': 'GROSS_PROFIT',
+        'commissionRateBps': 2000,
+        'commissionFixedCents': null,
+        'salesCount': 1,
+        'eligibleSalesCount': 1,
+        'salesAmountCents': 10000,
+        'eligibleBaseAmountCents': 2500,
+        'commissionAmountCents': 500,
+        'salesWithoutReliableCostCount': 1,
+      },
+    ],
+    'tracking': {
+      'partial': true,
+      'notes': ['Algumas vendas ficaram com custo parcial.'],
+    },
   };
 }
 
@@ -1333,12 +1425,14 @@ Map<String, dynamic> _dashboardPayload() {
       'pendingPlan': null,
     },
     'employees': {
-      'active': 0,
+      'active': 1,
       'invited': 0,
       'disabled': 0,
+      'withActiveAccess': 0,
+      'temporaryPasswordPending': 1,
+      'commissionEnabled': 1,
       'maxEmployees': 100,
-      'available': false,
-      'reason': 'EMPLOYEES_NOT_IMPLEMENTED',
+      'available': true,
     },
     'devices': {
       'active': 1,
