@@ -1674,6 +1674,11 @@ type EmployeeCommissionSummaryResponse = {
   };
   rows: Array<{
     employeeId: string;
+    commissionEnabled: boolean;
+    commissionType: "NONE" | "PERCENTAGE" | "FIXED_PER_SALE";
+    commissionBase: "GROSS_SALES" | "NET_SALES" | "GROSS_PROFIT";
+    commissionRateBps: number | null;
+    commissionFixedCents: number | null;
     eligibleSalesCount: number;
     eligibleBaseAmountCents: number;
     grossProfitCents: number;
