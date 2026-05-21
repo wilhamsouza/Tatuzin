@@ -5,6 +5,7 @@ import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { asyncHandler } from '../../shared/http/async-handler';
 import { requireFeature } from '../../shared/http/feature-middleware';
 import { validateBody, validateQuery } from '../../shared/http/validate';
+import { requireAnyEmployeePermission } from '../employees/employee-permission-middleware';
 import {
   supplyListQuerySchema,
   type SupplyListQueryInput,
@@ -24,7 +25,11 @@ suppliesRouter.get('/health', (_request, response) => {
   });
 });
 
-suppliesRouter.use(requireAppContext, requireFeature('supplies'));
+suppliesRouter.use(
+  requireAppContext,
+  requireFeature('supplies'),
+  requireAnyEmployeePermission(['stock.adjust', 'products.write']),
+);
 
 suppliesRouter.get(
   '/',

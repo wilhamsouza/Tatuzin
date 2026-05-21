@@ -104,6 +104,17 @@ export class AppContextService {
         userEmail: membership.user.email,
       });
 
+    if (
+      employeeContext.employee != null &&
+      !['ACTIVE', 'INVITED'].includes(employeeContext.employee.status)
+    ) {
+      throw new AppError(
+        'Funcionario desativado nao pode acessar o app.',
+        403,
+        'EMPLOYEE_DISABLED',
+      );
+    }
+
     const device = await prisma.companyDevice.findUnique({
       where: {
         companyId_clientInstanceId: {
@@ -171,7 +182,7 @@ export class AppContextService {
       },
       membership: {
         id: membership.id,
-        role: membership.role,
+        role: employeeContext.membershipRole,
         permissions: employeeContext.permissions,
       },
       employee: employeeContext.employee,

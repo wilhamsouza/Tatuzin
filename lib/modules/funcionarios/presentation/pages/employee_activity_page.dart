@@ -387,51 +387,114 @@ class _TimelineItemCard extends StatelessWidget {
     final layout = context.appLayout;
     final theme = Theme.of(context);
 
-    return AppCard(
-      padding: EdgeInsets.all(layout.compactCardPadding),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(_iconForType(item.type), color: theme.colorScheme.primary),
-          SizedBox(width: layout.space3),
-          Expanded(
+    return InkWell(
+      borderRadius: BorderRadius.circular(layout.radiusMd),
+      onTap: () => _showTimelineDetails(context, item),
+      child: AppCard(
+        padding: EdgeInsets.all(layout.compactCardPadding),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(_iconForType(item.type), color: theme.colorScheme.primary),
+            SizedBox(width: layout.space3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    item.description,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    item.occurredAt == null
+                        ? 'Horário não informado'
+                        : AppFormatters.shortDateTime(item.occurredAt!),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (item.amountCents != null)
+              Text(
+                AppFormatters.currencyFromCents(item.amountCents!),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showTimelineDetails(
+    BuildContext context,
+    EmployeeActivityTimelineItem item,
+  ) {
+    final layout = context.appLayout;
+    final theme = Theme.of(context);
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              layout.pagePadding,
+              layout.space2,
+              layout.pagePadding,
+              layout.pagePadding,
+            ),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   item.title,
-                  style: theme.textTheme.titleSmall?.copyWith(
+                  style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 2),
+                SizedBox(height: layout.space2),
+                Text(item.description),
+                SizedBox(height: layout.space4),
+                _InlineMetric(
+                  label: 'Horario',
+                  value: item.occurredAt == null
+                      ? 'Nao informado'
+                      : AppFormatters.shortDateTime(item.occurredAt!),
+                ),
+                if (item.amountCents != null) ...[
+                  SizedBox(height: layout.space3),
+                  _InlineMetric(
+                    label: 'Valor',
+                    value: AppFormatters.currencyFromCents(item.amountCents!),
+                  ),
+                ],
+                SizedBox(height: layout.space5),
                 Text(
-                  item.description,
+                  'Detalhes completos ainda nao estao disponiveis para esta acao.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  item.occurredAt == null
-                      ? 'Horário não informado'
-                      : AppFormatters.shortDateTime(item.occurredAt!),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
           ),
-          if (item.amountCents != null)
-            Text(
-              AppFormatters.currencyFromCents(item.amountCents!),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

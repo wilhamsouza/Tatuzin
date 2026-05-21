@@ -391,6 +391,129 @@ describe("operational local-first sync routes", () => {
     assert.equal(payload.conflicts[0]?.code, "CASH_SESSION_CLOSED");
   });
 
+  it("does not let a cashier close another employee cash session", async () => {
+    const fixture = await createFixture();
+    const otherUser = await prisma.user.create({
+      data: {
+        email: `${runId}-other-cash-${Date.now()}@tatuzin.test`,
+        name: "Other Cashier",
+        passwordHash: "not-used",
+      },
+    });
+    const cashSession = await prisma.cashSession.create({
+      data: {
+        companyId: fixture.companyId,
+        userId: otherUser.id,
+        localUuid: `${runId}-other-cash-session`,
+        status: "open",
+        openedAt: new Date("2026-05-20T10:00:00.000Z"),
+        openingBalanceCents: 1000,
+      },
+    });
+
+    const response = await push(fixture, [
+      buildEvent("cash-session-close-other-forbidden", "cashSession", {
+        operation: "update",
+        entityLocalId: cashSession.localUuid,
+        payload: {
+          status: "closed",
+          closedAt: new Date("2026-05-20T18:00:00.000Z").toISOString(),
+          closingBalanceCents: 1200,
+        },
+      }),
+    ]);
+
+    assert.equal(response.status, 202);
+    const payload = response.data as {
+      rejected: Array<{ code: string; message: string }>;
+      summary: { rejected: number };
+    };
+    assert.equal(payload.summary.rejected, 1);
+    assert.equal(payload.rejected[0]?.code, "CASH_CLOSE_OTHER_FORBIDDEN");
+    assert.equal(
+      payload.rejected[0]?.message,
+      "Voce nao tem permissao para fechar o caixa de outro funcionario.",
+    );
+
+    const stored = await prisma.cashSession.findUniqueOrThrow({
+      where: { id: cashSession.id },
+    });
+    assert.equal(stored.status, "open");
+    assert.equal(stored.userId, otherUser.id);
+  });
+
+  it("lets a cashier close own cash session and OWNER close another user's session", async () => {
+    const cashier = await createFixture();
+    await push(cashier, [
+      buildEvent("cash-session-own-open", "cashSession", {
+        entityLocalId: `${runId}-own-cash-session`,
+        payload: {
+          status: "open",
+          openedAt: new Date("2026-05-20T10:00:00.000Z").toISOString(),
+          openingBalanceCents: 1000,
+        },
+      }),
+    ]);
+    const ownClose = await push(cashier, [
+      buildEvent("cash-session-own-close", "cashSession", {
+        operation: "update",
+        entityLocalId: `${runId}-own-cash-session`,
+        payload: {
+          status: "closed",
+          closedAt: new Date("2026-05-20T18:00:00.000Z").toISOString(),
+          closingBalanceCents: 1300,
+        },
+      }),
+    ]);
+    assert.equal(ownClose.status, 202);
+    assert.equal(
+      (ownClose.data as { summary: { accepted: number } }).summary.accepted,
+      1,
+    );
+
+    const owner = await createFixture({ role: "OWNER" });
+    const otherUser = await prisma.user.create({
+      data: {
+        email: `${runId}-owner-close-other-${Date.now()}@tatuzin.test`,
+        name: "Owner Other Cashier",
+        passwordHash: "not-used",
+      },
+    });
+    const otherSession = await prisma.cashSession.create({
+      data: {
+        companyId: owner.companyId,
+        userId: otherUser.id,
+        localUuid: `${runId}-owner-close-other-session`,
+        status: "open",
+        openedAt: new Date("2026-05-20T10:00:00.000Z"),
+        openingBalanceCents: 1000,
+      },
+    });
+
+    const ownerClose = await push(owner, [
+      buildEvent("cash-session-owner-close-other", "cashSession", {
+        operation: "update",
+        entityLocalId: otherSession.localUuid,
+        payload: {
+          status: "closed",
+          closedAt: new Date("2026-05-20T18:00:00.000Z").toISOString(),
+          closingBalanceCents: 1400,
+        },
+      }),
+    ]);
+
+    assert.equal(ownerClose.status, 202);
+    assert.equal(
+      (ownerClose.data as { summary: { accepted: number } }).summary.accepted,
+      1,
+    );
+    const stored = await prisma.cashSession.findUniqueOrThrow({
+      where: { id: otherSession.id },
+    });
+    assert.equal(stored.status, "closed");
+    assert.equal(stored.userId, otherUser.id);
+  });
+
   it("guards cashSession updates with lastLocalSequence", async () => {
     const fixture = await createFixture();
     const entityLocalId = `${runId}-cash-session-sequence`;
@@ -1714,7 +1837,7 @@ describe("operational local-first sync routes", () => {
   });
 
   it("materializes operationalOrder/create", async () => {
-    const fixture = await createFixture();
+    const fixture = await createFixture({ role: "ADMIN" });
     const orderLocalId = `${runId}-operational-order`;
 
     const response = await push(fixture, [
@@ -2251,7 +2374,7 @@ describe("operational local-first sync routes", () => {
   });
 
   it("device B pulls a sale created by device A with projection", async () => {
-    const deviceA = await createFixture();
+    const deviceA = await createFixture({ role: "ADMIN" });
     const deviceB = await createAdditionalDevice(deviceA);
     await push(deviceA, [
       buildEvent("pull-sale-projection", "sale", {
@@ -2288,7 +2411,7 @@ describe("operational local-first sync routes", () => {
   });
 
   it("device B pulls an operationalOrder created by device A with projection", async () => {
-    const deviceA = await createFixture();
+    const deviceA = await createFixture({ role: "ADMIN" });
     const deviceB = await createAdditionalDevice(deviceA);
     await push(deviceA, [
       buildEvent("pull-order-projection", "operationalOrder", {
@@ -2585,7 +2708,10 @@ describe("operational local-first sync routes", () => {
   });
 });
 
-async function createFixture(options?: { syncEnabled?: boolean }) {
+async function createFixture(options?: {
+  syncEnabled?: boolean;
+  role?: "OWNER" | "ADMIN" | "OPERATOR";
+}) {
   const company = await prisma.company.create({
     data: {
       name: "Sync Real Company",
@@ -2604,7 +2730,7 @@ async function createFixture(options?: { syncEnabled?: boolean }) {
     data: {
       userId: user.id,
       companyId: company.id,
-      role: "OPERATOR",
+      role: options?.role ?? "OPERATOR",
       isDefault: true,
     },
   });

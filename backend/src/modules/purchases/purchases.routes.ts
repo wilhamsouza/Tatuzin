@@ -5,6 +5,7 @@ import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { asyncHandler } from '../../shared/http/async-handler';
 import { requireFeature } from '../../shared/http/feature-middleware';
 import { validateBody, validateQuery } from '../../shared/http/validate';
+import { requireEmployeePermission } from '../employees/employee-permission-middleware';
 import {
   purchaseListQuerySchema,
   type PurchaseListQueryInput,
@@ -24,7 +25,11 @@ purchasesRouter.get('/health', (_request, response) => {
   });
 });
 
-purchasesRouter.use(requireAppContext, requireFeature('purchases'));
+purchasesRouter.use(
+  requireAppContext,
+  requireFeature('purchases'),
+  requireEmployeePermission('reports.advanced'),
+);
 
 purchasesRouter.get(
   '/',

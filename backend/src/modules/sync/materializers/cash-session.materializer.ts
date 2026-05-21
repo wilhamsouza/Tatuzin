@@ -16,6 +16,10 @@ import type {
   SyncMaterializerInput,
   SyncMaterializerResult,
 } from './materializer.types';
+import {
+  canManageOtherCashSessions,
+  requireSyncPermission,
+} from './sync-authorization';
 
 export class CashSessionMaterializer {
   async materialize(
@@ -142,6 +146,15 @@ export class CashSessionMaterializer {
       return invalidPayload;
     }
 
+    const authorization = this.authorizeCashSessionChange({
+      input,
+      existing,
+      requestedStatus: normalizedStatus,
+    });
+    if (authorization != null) {
+      return authorization;
+    }
+
     const defaultOpenedAt = existing?.openedAt ?? new Date(input.event.occurredAt);
     const defaultClosedAt = existing?.closedAt ?? new Date(input.event.occurredAt);
     const openedAt =
@@ -159,7 +172,7 @@ export class CashSessionMaterializer {
 
     const data = {
       deviceId: input.context.device.id,
-      userId: input.context.user.id,
+      userId: existing?.userId ?? input.context.user.id,
       localId: firstIdentity(input.payload, ['localId', 'id']),
       status: normalizedStatus,
       openedAt,
@@ -254,6 +267,52 @@ export class CashSessionMaterializer {
         missingFields,
         invalidFields,
       },
+    };
+  }
+
+  private authorizeCashSessionChange(input: {
+    input: SyncMaterializerInput;
+    existing: ExistingCashSession | null;
+    requestedStatus: 'open' | 'closed';
+  }): SyncMaterializerResult | null {
+    const { existing, requestedStatus } = input;
+    const currentUserId = input.input.context.user.id;
+    const isOwnSession = existing == null || existing.userId === currentUserId;
+
+    if (requestedStatus === 'open') {
+      if (!isOwnSession && !canManageOtherCashSessions(input.input)) {
+        return {
+          outcome: 'rejected',
+          code: 'CASH_SESSION_OWNERSHIP_REQUIRED',
+          message: 'Voce so pode alterar o seu proprio caixa.',
+        };
+      }
+
+      return existing == null
+        ? requireSyncPermission(
+            input.input,
+            'cash.open',
+            'Voce nao tem permissao para abrir caixa.',
+          )
+        : null;
+    }
+
+    if (isOwnSession) {
+      return requireSyncPermission(
+        input.input,
+        'cash.close',
+        'Voce nao tem permissao para fechar caixa.',
+      );
+    }
+
+    if (canManageOtherCashSessions(input.input)) {
+      return null;
+    }
+
+    return {
+      outcome: 'rejected',
+      code: 'CASH_CLOSE_OTHER_FORBIDDEN',
+      message: 'Voce nao tem permissao para fechar o caixa de outro funcionario.',
     };
   }
 

@@ -128,7 +128,7 @@ describe("employees PRO module", () => {
     );
   });
 
-  it("removes effective permissions from DISABLED employee profiles", async () => {
+  it("blocks app context for DISABLED employee profiles", async () => {
     const fixture = await createFixture({ plan: "pro", role: "ADMIN" });
     await prisma.employeeProfile.create({
       data: {
@@ -148,14 +148,56 @@ describe("employees PRO module", () => {
     const bootstrap = await requestJson("GET", "/app/bootstrap", {
       token: fixture.token,
     });
+    assert.equal(bootstrap.status, 403);
+    assert.equal((bootstrap.data as { code?: string }).code, "EMPLOYEE_DISABLED");
+
+    const response = await requestJson("GET", "/employees", {
+      token: fixture.token,
+    });
+    assert.equal(response.status, 403);
+    assert.equal((response.data as { code?: string }).code, "EMPLOYEE_DISABLED");
+
+    const activity = await requestJson(
+      "GET",
+      "/employees/activity/summary?from=2026-05-20&to=2026-05-20",
+      { token: fixture.token },
+    );
+    assert.equal(activity.status, 403);
+    assert.equal((activity.data as { code?: string }).code, "EMPLOYEE_DISABLED");
+  });
+
+  it("does not let a cashier profile inherit ADMIN membership permissions", async () => {
+    const fixture = await createFixture({ plan: "pro", role: "ADMIN" });
+    await prisma.employeeProfile.create({
+      data: {
+        companyId: fixture.companyId,
+        userId: fixture.userId,
+        membershipId: fixture.membershipId,
+        name: "Cashier Effective",
+        email: fixture.email,
+        emailNormalized: fixture.email.toLowerCase(),
+        role: "CASHIER",
+        status: "ACTIVE",
+        permissions: ["sales.create", "cash.open", "cash.close"],
+      },
+    });
+
+    const bootstrap = await requestJson("GET", "/app/bootstrap", {
+      token: fixture.token,
+    });
     assert.equal(bootstrap.status, 200);
-    const bootstrapPayload = bootstrap.data as {
-      membership: { permissions: string[] };
-      employee: { status: string; permissions: string[] };
+    const payload = bootstrap.data as {
+      membership: { role: string; permissions: string[] };
+      employee: { role: string; permissions: string[] };
     };
-    assert.equal(bootstrapPayload.employee.status, "DISABLED");
-    assert.deepEqual(bootstrapPayload.employee.permissions, []);
-    assert.deepEqual(bootstrapPayload.membership.permissions, []);
+    assert.equal(payload.employee.role, "CASHIER");
+    assert.equal(payload.membership.role, "OPERATOR");
+    assert.deepEqual(payload.membership.permissions, [
+      "sales.create",
+      "cash.open",
+      "cash.close",
+    ]);
+    assert.equal(payload.membership.permissions.includes("employees.manage"), false);
 
     const response = await requestJson("GET", "/employees", {
       token: fixture.token,
@@ -164,17 +206,6 @@ describe("employees PRO module", () => {
     assert.equal(
       (response.data as { code?: string }).code,
       "EMPLOYEE_PERMISSION_REQUIRED",
-    );
-
-    const activity = await requestJson(
-      "GET",
-      "/employees/activity/summary?from=2026-05-20&to=2026-05-20",
-      { token: fixture.token },
-    );
-    assert.equal(activity.status, 403);
-    assert.equal(
-      (activity.data as { code?: string }).code,
-      "EMPLOYEE_ACTIVITY_PERMISSION_REQUIRED",
     );
   });
 

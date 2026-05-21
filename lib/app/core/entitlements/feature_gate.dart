@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../session/session_provider.dart';
 import '../theme/app_design_tokens.dart';
 import '../widgets/app_main_drawer.dart';
+import '../widgets/app_state_card.dart';
 import '../../routes/route_names.dart';
 import 'plan_entitlements.dart';
 
@@ -127,6 +128,35 @@ class LockedFeaturePage extends StatelessWidget {
                 feature: feature,
                 title: title,
                 message: message,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class PermissionDeniedPage extends StatelessWidget {
+  const PermissionDeniedPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = context.appLayout;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Sem permissão')),
+      drawer: const AppMainDrawer(),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Padding(
+              padding: EdgeInsets.all(layout.space8),
+              child: const AppStateCard(
+                title: 'Sem permissão',
+                message: 'Você não tem permissão para acessar esta área.',
+                icon: Icons.lock_outline_rounded,
+                tone: AppStateTone.warning,
               ),
             ),
           ),

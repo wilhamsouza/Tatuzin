@@ -6,6 +6,8 @@ import { asyncHandler } from '../../../shared/http/async-handler';
 import { AppError } from '../../../shared/http/app-error';
 import { requireFeature } from '../../../shared/http/feature-middleware';
 import { validateQuery } from '../../../shared/http/validate';
+import { requireEmployeePermission } from '../../employees/employee-permission-middleware';
+import { hasEmployeePermission } from '../../employees/employee-permissions';
 import type { FeatureKey } from '../../plans/plan-catalog.service';
 import { requiredPlanForFeature } from '../../plans/plan-catalog.service';
 import { AnalyticsReportsService } from './analytics-reports.service';
@@ -97,6 +99,7 @@ tenantAnalyticsReportsRouter.get(
   '/top-variants',
   validateQuery(tenantAnalyticsReportQuerySchema),
   requireFeature('reportsAdvanced'),
+  requireEmployeePermission('reports.advanced'),
   asyncHandler(async (_request, response) => {
     response.json({
       partial: true,
@@ -117,6 +120,7 @@ tenantAnalyticsReportsRouter.get(
   '/profitability',
   validateQuery(tenantAnalyticsReportQuerySchema),
   requireFeature('reportsAdvanced'),
+  requireEmployeePermission('reports.advanced'),
   asyncHandler(async (request, response) => {
     const query = request.query as unknown as TenantAnalyticsReportQueryInput;
     const payload = await analyticsReportsService.getProfitabilityForTenant(
@@ -134,6 +138,7 @@ tenantAnalyticsReportsRouter.get(
   '/purchases',
   validateQuery(tenantAnalyticsReportQuerySchema),
   requireFeature('reportsAdvanced'),
+  requireEmployeePermission('reports.advanced'),
   asyncHandler(async (request, response) => {
     const query = request.query as unknown as TenantAnalyticsReportQueryInput;
     const payload = await analyticsReportsService.getPurchasesForTenant(
@@ -148,6 +153,7 @@ tenantAnalyticsReportsRouter.get(
   '/inventory',
   validateQuery(tenantAnalyticsReportQuerySchema),
   requireFeature('reportsAdvanced'),
+  requireEmployeePermission('reports.advanced'),
   asyncHandler(async (request, response) => {
     const payload = await analyticsReportsService.getInventoryForTenant(
       request.auth!.companyId,
@@ -164,7 +170,30 @@ function requireTenantReportPeriodFeature(
   const query = request.query as unknown as TenantAnalyticsReportQueryInput;
   const feature = featureForReportPeriod(query);
   if (request.appContext?.features[feature] === true) {
-    next();
+    const permissions = request.appContext.membership.permissions;
+    if (
+      feature === 'reportsAdvanced'
+        ? hasEmployeePermission(permissions, 'reports.advanced')
+        : hasEmployeePermission(permissions, 'reports.basic') ||
+          hasEmployeePermission(permissions, 'reports.advanced')
+    ) {
+      next();
+      return;
+    }
+
+    next(
+      new AppError(
+        'Voce nao tem permissao para acessar esta area.',
+        403,
+        'EMPLOYEE_PERMISSION_REQUIRED',
+        {
+          permissions:
+            feature === 'reportsAdvanced'
+              ? ['reports.advanced']
+              : ['reports.basic', 'reports.advanced'],
+        },
+      ),
+    );
     return;
   }
 

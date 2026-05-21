@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { requireAppContext } from '../../shared/http/auth-middleware';
 import { asyncHandler } from '../../shared/http/async-handler';
 import { validateQuery } from '../../shared/http/validate';
+import { requireAnyEmployeePermission } from '../employees/employee-permission-middleware';
 import {
   inventoryListQuerySchema,
   inventorySummaryQuerySchema,
@@ -22,7 +23,10 @@ inventoryRouter.get('/health', (_request, response) => {
   });
 });
 
-inventoryRouter.use(requireAppContext);
+inventoryRouter.use(
+  requireAppContext,
+  requireAnyEmployeePermission(['stock.adjust', 'reports.advanced']),
+);
 
 inventoryRouter.get(
   '/summary',

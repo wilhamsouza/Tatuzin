@@ -5,6 +5,7 @@ import { asyncHandler } from '../../shared/http/async-handler';
 import { requireFeature } from '../../shared/http/feature-middleware';
 import { blockMobilePdvLegacyWrite } from '../../shared/http/pdv-legacy-write-guard';
 import { validateBody } from '../../shared/http/validate';
+import { requireEmployeePermission } from '../employees/employee-permission-middleware';
 import { fiadoPaymentCreateSchema } from './fiado-payments.schemas';
 import { FiadoPaymentsService } from './fiado-payments.service';
 
@@ -17,6 +18,7 @@ fiadoPaymentsRouter.use(requireAppContext);
 fiadoPaymentsRouter.post(
   '/payments',
   requireFeature('fiadoManagement'),
+  requireEmployeePermission('fiado.receive'),
   blockMobilePdvLegacyWrite,
   validateBody(fiadoPaymentCreateSchema),
   asyncHandler(async (request, response) => {

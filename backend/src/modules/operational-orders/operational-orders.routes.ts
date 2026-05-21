@@ -4,6 +4,7 @@ import { requireAppContext } from '../../shared/http/auth-middleware';
 import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { asyncHandler } from '../../shared/http/async-handler';
 import { validateQuery } from '../../shared/http/validate';
+import { requireAnyEmployeePermission } from '../employees/employee-permission-middleware';
 import {
   operationalOrderIdParamSchema,
   operationalOrderListQuerySchema,
@@ -16,7 +17,14 @@ const operationalOrdersService = new OperationalOrdersService();
 
 export const operationalOrdersRouter = Router();
 
-operationalOrdersRouter.use(requireAppContext);
+operationalOrdersRouter.use(
+  requireAppContext,
+  requireAnyEmployeePermission([
+    'sales.create',
+    'reports.basic',
+    'reports.advanced',
+  ]),
+);
 
 operationalOrdersRouter.get(
   '/',

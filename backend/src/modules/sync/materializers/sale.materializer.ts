@@ -14,6 +14,7 @@ import type {
   SyncMaterializerInput,
   SyncMaterializerResult,
 } from "./materializer.types";
+import { requireSyncPermission } from "./sync-authorization";
 
 export class SaleMaterializer {
   constructor(
@@ -53,6 +54,11 @@ export class SaleMaterializer {
         code: "INVALID_OPERATION",
         message: "sale aceita create, upsert ou append nesta etapa.",
       };
+    }
+
+    const salePermission = this.authorizeSale(input);
+    if (salePermission != null) {
+      return salePermission;
     }
 
     const localUuid = domainIdentityFor(
@@ -472,6 +478,27 @@ export class SaleMaterializer {
     return status === "canceled" || status === "cancelada"
       ? "canceled"
       : "active";
+  }
+
+  private authorizeSale(input: SyncMaterializerInput) {
+    const createPermission = requireSyncPermission(
+      input,
+      "sales.create",
+      "Voce nao tem permissao para criar venda.",
+    );
+    if (createPermission != null) {
+      return createPermission;
+    }
+
+    if (this.saleStatus(input) === "canceled") {
+      return requireSyncPermission(
+        input,
+        "sales.cancel",
+        "Voce nao tem permissao para cancelar venda.",
+      );
+    }
+
+    return null;
   }
 
   private async convertExistingSaleOrder(

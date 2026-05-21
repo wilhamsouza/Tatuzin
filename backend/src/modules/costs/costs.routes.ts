@@ -4,6 +4,7 @@ import { requireAppContext } from '../../shared/http/auth-middleware';
 import { asyncHandler } from '../../shared/http/async-handler';
 import { requireFeature } from '../../shared/http/feature-middleware';
 import { validateBody, validateQuery } from '../../shared/http/validate';
+import { requireEmployeePermission } from '../employees/employee-permission-middleware';
 import {
   costCancelSchema,
   costCreateSchema,
@@ -32,7 +33,11 @@ costsRouter.get('/health', (_request, response) => {
   });
 });
 
-costsRouter.use(requireAppContext, requireFeature('costs'));
+costsRouter.use(
+  requireAppContext,
+  requireFeature('costs'),
+  requireEmployeePermission('reports.advanced'),
+);
 
 costsRouter.get(
   '/summary',

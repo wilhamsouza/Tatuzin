@@ -11,6 +11,10 @@ import type {
   SyncMaterializerInput,
   SyncMaterializerResult,
 } from './materializer.types';
+import {
+  canManageOtherCashSessions,
+  requireSyncPermission,
+} from './sync-authorization';
 
 export class CashMovementMaterializer {
   async materialize(
@@ -67,6 +71,11 @@ export class CashMovementMaterializer {
     }
 
     const cashSession = await this.findCashSession(input);
+    const authorization = this.authorizeCashMovement(input, cashSession);
+    if (authorization != null) {
+      return authorization;
+    }
+
     if (cashSession != null && isClosedStatus(cashSession.status)) {
       return {
         outcome: 'conflict',
@@ -146,5 +155,34 @@ export class CashMovementMaterializer {
         localId,
       },
     });
+  }
+
+  private authorizeCashMovement(
+    input: SyncMaterializerInput,
+    cashSession: { userId: string | null } | null,
+  ): SyncMaterializerResult | null {
+    const permission = requireSyncPermission(
+      input,
+      'cash.withdraw',
+      'Voce nao tem permissao para movimentar caixa.',
+    );
+    if (permission != null) {
+      return permission;
+    }
+
+    if (
+      cashSession != null &&
+      cashSession.userId !== input.context.user.id &&
+      !canManageOtherCashSessions(input)
+    ) {
+      return {
+        outcome: 'rejected',
+        code: 'CASH_MOVEMENT_OTHER_FORBIDDEN',
+        message:
+          'Voce nao tem permissao para movimentar caixa de outro funcionario.',
+      };
+    }
+
+    return null;
   }
 }

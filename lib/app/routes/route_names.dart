@@ -5,6 +5,7 @@ abstract final class AppRouteNames {
   static const resetPassword = 'reset-password';
   static const changeInitialPassword = 'change-initial-password';
   static const dashboard = 'dashboard';
+  static const permissionDenied = 'permission-denied';
   static const more = 'more';
   static const accountCloud = 'account-cloud';
   static const company = 'company';
@@ -72,6 +73,7 @@ abstract final class AppRoutePaths {
   static const resetPassword = '/redefinir-senha';
   static const changeInitialPassword = '/criar-nova-senha';
   static const dashboard = '/';
+  static const permissionDenied = '/sem-permissao';
   static const more = '/mais';
   static const accountCloud = '/conta';
   static const company = '/empresa';

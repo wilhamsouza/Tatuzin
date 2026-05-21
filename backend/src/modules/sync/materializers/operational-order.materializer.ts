@@ -16,6 +16,7 @@ import type {
   SyncMaterializerInput,
   SyncMaterializerResult,
 } from "./materializer.types";
+import { requireSyncPermission } from "./sync-authorization";
 
 type OperationalOrderLike = {
   id: string;
@@ -237,6 +238,10 @@ export class OperationalOrderMaterializer {
     const cashSession = await this.findCashSession(input);
     const customerId = await this.resolveCustomerId(input);
     const requestedStatus = this.orderStatus(input, existing);
+    const authorization = this.authorizeOrder(input, existing, requestedStatus);
+    if (authorization != null) {
+      return authorization;
+    }
     const now = new Date();
     const baseData = {
       cashSessionId: cashSession?.id ?? existing?.cashSessionId,
@@ -674,6 +679,46 @@ export class OperationalOrderMaterializer {
       return "open";
     }
     return normalized;
+  }
+
+  private authorizeOrder(
+    input: SyncMaterializerInput,
+    existing: OperationalOrderLike | null,
+    requestedStatus: string,
+  ): SyncMaterializerResult | null {
+    const createPermission = requireSyncPermission(
+      input,
+      "sales.create",
+      "Voce nao tem permissao para criar venda.",
+    );
+    if (createPermission != null) {
+      return createPermission;
+    }
+
+    if (requestedStatus === "canceled") {
+      const cancelPermission = requireSyncPermission(
+        input,
+        "sales.cancel",
+        "Voce nao tem permissao para cancelar venda.",
+      );
+      if (cancelPermission != null) {
+        return cancelPermission;
+      }
+    }
+
+    const nextDiscount =
+      nonNegativeInt(input.payload, ["discountCents"]) ??
+      existing?.discountCents ??
+      0;
+    if (nextDiscount > 0) {
+      return requireSyncPermission(
+        input,
+        "sales.discount",
+        "Voce nao tem permissao para aplicar desconto.",
+      );
+    }
+
+    return null;
   }
 
   private closedAt(

@@ -3,6 +3,7 @@ import { Prisma, type MembershipRole } from '@prisma/client';
 import { prisma } from '../../database/prisma';
 import {
   effectivePermissionsForEmployee,
+  membershipRoleFromEmployeeRole,
   roleFromMembershipRole,
 } from './employee-permissions';
 
@@ -25,7 +26,11 @@ type MembershipInput = {
 export class EmployeeContextService {
   async resolveForMembership(
     input: MembershipInput,
-  ): Promise<{ employee: EmployeeContextSnapshot | null; permissions: string[] }> {
+  ): Promise<{
+    employee: EmployeeContextSnapshot | null;
+    permissions: string[];
+    membershipRole: string;
+  }> {
     const fallbackRole = roleFromMembershipRole(input.membershipRole);
     const profile =
       fallbackRole === 'OWNER'
@@ -38,7 +43,11 @@ export class EmployeeContextService {
         status: 'ACTIVE',
         permissions: null,
       });
-      return { employee: null, permissions };
+      return {
+        employee: null,
+        permissions,
+        membershipRole: input.membershipRole,
+      };
     }
 
     const effectiveRole =
@@ -58,6 +67,7 @@ export class EmployeeContextService {
         permissions,
       },
       permissions,
+      membershipRole: membershipRoleFromEmployeeRole(effectiveRole),
     };
   }
 

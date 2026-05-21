@@ -256,7 +256,7 @@ async function createTenantFixture(options?: { createLicense?: boolean }) {
     data: {
       userId: user.id,
       companyId: company.id,
-      role: 'OPERATOR',
+      role: 'ADMIN',
       isDefault: true,
     },
   });
@@ -377,7 +377,7 @@ function signToken(input: {
       sub: input.userId,
       companyId: input.companyId,
       membershipId: input.membershipId,
-      membershipRole: 'OPERATOR',
+      membershipRole: 'ADMIN',
       email: input.email,
       isPlatformAdmin: input.isPlatformAdmin,
       clientInstanceId: input.clientInstanceId,

@@ -63,6 +63,7 @@ const ROLE_DEFAULT_PERMISSIONS: Record<EmployeeRole, EmployeePermission[]> = {
     'cash.open',
     'cash.close',
     'cash.withdraw',
+    'products.read',
     'customers.read',
     'fiado.read',
     'fiado.receive',
@@ -109,6 +110,17 @@ export function roleFromMembershipRole(membershipRole: string): EmployeeRole {
     case 'OPERATOR':
     default:
       return 'CASHIER';
+  }
+}
+
+export function membershipRoleFromEmployeeRole(role: string) {
+  switch (normalizeEmployeeRole(role)) {
+    case 'OWNER':
+      return 'OWNER';
+    case 'MANAGER':
+      return 'ADMIN';
+    default:
+      return 'OPERATOR';
   }
 }
 

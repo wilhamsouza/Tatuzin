@@ -429,6 +429,33 @@ void main() {
     expect(find.text('Venda 123'), findsOneWidget);
   });
 
+  testWidgets('Timeline da atividade abre resumo seguro ao tocar', (
+    tester,
+  ) async {
+    await _pumpEmployeeActivityDetailPage(
+      tester,
+      session: _session(
+        PlanEntitlements.pro,
+        membershipPermissions: const {'reports.advanced'},
+      ),
+      dataSource: _FakeEmployeesRemoteDataSource(),
+    );
+
+    await tester.ensureVisible(find.text('Venda realizada'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Venda realizada'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Detalhes completos ainda nao estao disponiveis para esta acao.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Valor'), findsOneWidget);
+    expect(find.text('R\$ 125,00'), findsWidgets);
+  });
+
   testWidgets('Atividade dos funcionários mostra sem permissão', (
     tester,
   ) async {

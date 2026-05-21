@@ -24,6 +24,7 @@ class AppMainDrawer extends ConsumerWidget {
     final authState = ref.watch(authControllerProvider);
     final authStatus = ref.watch(authStatusProvider);
     final companyContext = ref.watch(currentCompanyContextProvider);
+    final session = ref.watch(appSessionProvider);
     final accountCloud = ref.watch(accountCloudStatusProvider);
     final internalAccess = ref.watch(internalMobileSurfaceAccessProvider);
     final currentPath = GoRouterState.of(context).uri.path;
@@ -38,6 +39,20 @@ class AppMainDrawer extends ConsumerWidget {
     }
 
     bool can(FeatureKey feature) => companyContext.hasFeature(feature);
+    bool canAny(Iterable<String> permissions) =>
+        permissions.any(session.canAccessPermission);
+    bool canFeaturePermission(
+      FeatureKey feature,
+      Iterable<String> permissions,
+    ) {
+      return can(feature) && canAny(permissions);
+    }
+
+    final effectiveRole =
+        (session.employee?.role ?? session.membership?.role ?? '')
+            .trim()
+            .toUpperCase();
+    final canAdminSettings = session.isCompanyOwner || effectiveRole == 'ADMIN';
 
     return Drawer(
       child: SafeArea(
@@ -185,68 +200,76 @@ class AppMainDrawer extends ConsumerWidget {
                           routeName: AppRouteNames.dashboard,
                         ),
                       ),
-                      _DrawerItem(
-                        label: 'PDV / Vendas',
-                        icon: Icons.point_of_sale_rounded,
-                        isSelected:
-                            selected(AppRoutePaths.sales) ||
-                            selected(AppRoutePaths.cart) ||
-                            selected(AppRoutePaths.checkout),
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.sales,
-                          routeName: AppRouteNames.sales,
+                      if (canAny(['sales.create']))
+                        _DrawerItem(
+                          label: 'PDV / Vendas',
+                          icon: Icons.point_of_sale_rounded,
+                          isSelected:
+                              selected(AppRoutePaths.sales) ||
+                              selected(AppRoutePaths.cart) ||
+                              selected(AppRoutePaths.checkout),
+                          onTap: () => _navigateTo(
+                            context,
+                            currentPath: currentPath,
+                            path: AppRoutePaths.sales,
+                            routeName: AppRouteNames.sales,
+                          ),
                         ),
-                      ),
-                      _DrawerItem(
-                        label: 'Caixa',
-                        icon: Icons.account_balance_wallet_rounded,
-                        isSelected: selected(AppRoutePaths.cash),
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.cash,
-                          routeName: AppRouteNames.cash,
+                      if (canAny(['cash.open', 'cash.close', 'cash.withdraw']))
+                        _DrawerItem(
+                          label: 'Caixa',
+                          icon: Icons.account_balance_wallet_rounded,
+                          isSelected: selected(AppRoutePaths.cash),
+                          onTap: () => _navigateTo(
+                            context,
+                            currentPath: currentPath,
+                            path: AppRoutePaths.cash,
+                            routeName: AppRouteNames.cash,
+                          ),
                         ),
-                      ),
-                      _DrawerItem(
-                        label: 'Pedidos',
-                        icon: Icons.receipt_long_rounded,
-                        isSelected: selected(AppRoutePaths.orders),
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.orders,
-                          routeName: AppRouteNames.orders,
+                      if (canAny(['sales.create']))
+                        _DrawerItem(
+                          label: 'Pedidos',
+                          icon: Icons.receipt_long_rounded,
+                          isSelected: selected(AppRoutePaths.orders),
+                          onTap: () => _navigateTo(
+                            context,
+                            currentPath: currentPath,
+                            path: AppRoutePaths.orders,
+                            routeName: AppRouteNames.orders,
+                          ),
                         ),
-                      ),
-                      _DrawerItem(
-                        label: 'Clientes',
-                        icon: Icons.people_alt_rounded,
-                        isSelected: selected(AppRoutePaths.clients),
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.clients,
-                          routeName: AppRouteNames.clients,
+                      if (canAny(['customers.read', 'customers.write']))
+                        _DrawerItem(
+                          label: 'Clientes',
+                          icon: Icons.people_alt_rounded,
+                          isSelected: selected(AppRoutePaths.clients),
+                          onTap: () => _navigateTo(
+                            context,
+                            currentPath: currentPath,
+                            path: AppRoutePaths.clients,
+                            routeName: AppRouteNames.clients,
+                          ),
                         ),
-                      ),
-                      _DrawerItem(
-                        label: 'Produtos',
-                        icon: Icons.inventory_2_rounded,
-                        isSelected:
-                            selected(AppRoutePaths.products) ||
-                            (selected(AppRoutePaths.inventory) &&
-                                !selected(AppRoutePaths.inventoryCounts)),
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.products,
-                          routeName: AppRouteNames.products,
+                      if (canAny(['products.read', 'products.write']))
+                        _DrawerItem(
+                          label: 'Produtos',
+                          icon: Icons.inventory_2_rounded,
+                          isSelected:
+                              selected(AppRoutePaths.products) ||
+                              (selected(AppRoutePaths.inventory) &&
+                                  !selected(AppRoutePaths.inventoryCounts)),
+                          onTap: () => _navigateTo(
+                            context,
+                            currentPath: currentPath,
+                            path: AppRoutePaths.products,
+                            routeName: AppRouteNames.products,
+                          ),
                         ),
-                      ),
-                      if (can(FeatureKey.inventoryAdvanced))
+                      if (canFeaturePermission(FeatureKey.inventoryAdvanced, [
+                        'stock.adjust',
+                        'reports.advanced',
+                      ]))
                         _DrawerItem(
                           label: 'Inventário físico',
                           icon: Icons.fact_check_rounded,
@@ -258,7 +281,9 @@ class AppMainDrawer extends ConsumerWidget {
                             routeName: AppRouteNames.inventoryCounts,
                           ),
                         ),
-                      if (can(FeatureKey.purchases))
+                      if (canFeaturePermission(FeatureKey.purchases, [
+                        'reports.advanced',
+                      ]))
                         _DrawerItem(
                           label: 'Compras',
                           icon: Icons.shopping_bag_outlined,
@@ -275,7 +300,9 @@ class AppMainDrawer extends ConsumerWidget {
                   _DrawerGroup(
                     label: 'FINANCEIRO',
                     children: [
-                      if (can(FeatureKey.costs))
+                      if (canFeaturePermission(FeatureKey.costs, [
+                        'reports.advanced',
+                      ]))
                         _DrawerItem(
                           label: 'Custos e lançamentos',
                           icon: Icons.account_balance_rounded,
@@ -287,7 +314,10 @@ class AppMainDrawer extends ConsumerWidget {
                             routeName: AppRouteNames.costs,
                           ),
                         ),
-                      if (can(FeatureKey.fiadoManagement))
+                      if (canFeaturePermission(FeatureKey.fiadoManagement, [
+                        'fiado.read',
+                        'fiado.receive',
+                      ]))
                         _DrawerItem(
                           label: 'Fiado',
                           icon: Icons.receipt_long_rounded,
@@ -299,34 +329,42 @@ class AppMainDrawer extends ConsumerWidget {
                             routeName: AppRouteNames.fiado,
                           ),
                         ),
-                      _DrawerItem(
-                        label: 'Relatórios',
-                        icon: Icons.assessment_rounded,
-                        isSelected: selected(AppRoutePaths.reports),
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.reports,
-                          routeName: AppRouteNames.reports,
+                      if (canAny(['reports.basic', 'reports.advanced']))
+                        _DrawerItem(
+                          label: 'Relatórios',
+                          icon: Icons.assessment_rounded,
+                          isSelected: selected(AppRoutePaths.reports),
+                          onTap: () => _navigateTo(
+                            context,
+                            currentPath: currentPath,
+                            path: AppRoutePaths.reports,
+                            routeName: AppRouteNames.reports,
+                          ),
                         ),
-                      ),
-                      _DrawerItem(
-                        label: 'Histórico de vendas',
-                        icon: Icons.history_rounded,
-                        isSelected: selected(AppRoutePaths.salesHistory),
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.salesHistory,
-                          routeName: AppRouteNames.salesHistory,
+                      if (canAny([
+                        'sales.create',
+                        'reports.basic',
+                        'reports.advanced',
+                      ]))
+                        _DrawerItem(
+                          label: 'Histórico de vendas',
+                          icon: Icons.history_rounded,
+                          isSelected: selected(AppRoutePaths.salesHistory),
+                          onTap: () => _navigateTo(
+                            context,
+                            currentPath: currentPath,
+                            path: AppRoutePaths.salesHistory,
+                            routeName: AppRouteNames.salesHistory,
+                          ),
                         ),
-                      ),
                     ],
                   ),
                   _DrawerGroup(
                     label: 'CADASTROS',
                     children: [
-                      if (can(FeatureKey.suppliers))
+                      if (canFeaturePermission(FeatureKey.suppliers, [
+                        'reports.advanced',
+                      ]))
                         _DrawerItem(
                           label: 'Fornecedores',
                           icon: Icons.local_shipping_outlined,
@@ -338,18 +376,22 @@ class AppMainDrawer extends ConsumerWidget {
                             routeName: AppRouteNames.suppliers,
                           ),
                         ),
-                      _DrawerItem(
-                        label: 'Categorias',
-                        icon: Icons.category_rounded,
-                        isSelected: selected(AppRoutePaths.categories),
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.categories,
-                          routeName: AppRouteNames.categories,
+                      if (canAny(['products.write']))
+                        _DrawerItem(
+                          label: 'Categorias',
+                          icon: Icons.category_rounded,
+                          isSelected: selected(AppRoutePaths.categories),
+                          onTap: () => _navigateTo(
+                            context,
+                            currentPath: currentPath,
+                            path: AppRoutePaths.categories,
+                            routeName: AppRouteNames.categories,
+                          ),
                         ),
-                      ),
-                      if (can(FeatureKey.supplies))
+                      if (canFeaturePermission(FeatureKey.supplies, [
+                        'stock.adjust',
+                        'products.write',
+                      ]))
                         _DrawerItem(
                           label: 'Insumos',
                           icon: Icons.scale_rounded,
@@ -361,7 +403,9 @@ class AppMainDrawer extends ConsumerWidget {
                             routeName: AppRouteNames.supplies,
                           ),
                         ),
-                      if (can(FeatureKey.employees))
+                      if (canFeaturePermission(FeatureKey.employees, [
+                        'employees.manage',
+                      ]))
                         _DrawerItem(
                           label: 'Funcionários',
                           icon: Icons.badge_outlined,
@@ -378,44 +422,47 @@ class AppMainDrawer extends ConsumerWidget {
                   _DrawerGroup(
                     label: 'SISTEMA',
                     children: [
-                      _DrawerItem(
-                        label: 'Conta',
-                        icon: Icons.person_outline_rounded,
-                        isSelected: selected(AppRoutePaths.accountCloud),
-                        statusBadge: AppStatusBadge(
-                          label: accountCloud.commercialBadgeLabel,
-                          tone: accountCloud.commercialTone,
-                          icon: accountCloud.commercialStatusIcon,
+                      if (canAdminSettings)
+                        _DrawerItem(
+                          label: 'Conta',
+                          icon: Icons.person_outline_rounded,
+                          isSelected: selected(AppRoutePaths.accountCloud),
+                          statusBadge: AppStatusBadge(
+                            label: accountCloud.commercialBadgeLabel,
+                            tone: accountCloud.commercialTone,
+                            icon: accountCloud.commercialStatusIcon,
+                          ),
+                          onTap: () => _navigateTo(
+                            context,
+                            currentPath: currentPath,
+                            path: AppRoutePaths.accountCloud,
+                            routeName: AppRouteNames.accountCloud,
+                          ),
                         ),
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.accountCloud,
-                          routeName: AppRouteNames.accountCloud,
+                      if (canAdminSettings)
+                        _DrawerItem(
+                          label: 'Empresa',
+                          icon: Icons.storefront_rounded,
+                          isSelected: selected(AppRoutePaths.company),
+                          onTap: () => _navigateTo(
+                            context,
+                            currentPath: currentPath,
+                            path: AppRoutePaths.company,
+                            routeName: AppRouteNames.company,
+                          ),
                         ),
-                      ),
-                      _DrawerItem(
-                        label: 'Empresa',
-                        icon: Icons.storefront_rounded,
-                        isSelected: selected(AppRoutePaths.company),
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.company,
-                          routeName: AppRouteNames.company,
+                      if (canAdminSettings)
+                        _DrawerItem(
+                          label: 'Configurações',
+                          icon: Icons.settings_rounded,
+                          isSelected: selected(AppRoutePaths.settings),
+                          onTap: () => _navigateTo(
+                            context,
+                            currentPath: currentPath,
+                            path: AppRoutePaths.settings,
+                            routeName: AppRouteNames.settings,
+                          ),
                         ),
-                      ),
-                      _DrawerItem(
-                        label: 'Configurações',
-                        icon: Icons.settings_rounded,
-                        isSelected: selected(AppRoutePaths.settings),
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.settings,
-                          routeName: AppRouteNames.settings,
-                        ),
-                      ),
                     ],
                   ),
                 ],

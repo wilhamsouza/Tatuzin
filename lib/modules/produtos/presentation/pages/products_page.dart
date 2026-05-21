@@ -75,6 +75,14 @@ class _ProductsPageState extends ConsumerState<ProductsPage> {
     });
 
     final layout = context.appLayout;
+    final session = ref.watch(appSessionProvider);
+    final canWriteProducts = session.canAccessPermission('products.write');
+    final canAdjustStock = session.canAccessPermission('stock.adjust');
+    final canViewInventory =
+        canAdjustStock || session.canAccessPermission('reports.advanced');
+    if (_selectedTab == ProductHubTab.inventory && !canViewInventory) {
+      _selectedTab = ProductHubTab.catalog;
+    }
     final totalLabel = _buildAppBarSubtitle();
 
     return Scaffold(
@@ -96,7 +104,11 @@ class _ProductsPageState extends ConsumerState<ProductsPage> {
         ),
       ),
       drawer: const AppMainDrawer(),
-      floatingActionButton: _buildFloatingActionButton(context),
+      floatingActionButton: _buildFloatingActionButton(
+        context,
+        canWriteProducts: canWriteProducts,
+        canAdjustStock: canAdjustStock,
+      ),
       body: Column(
         children: [
           Padding(
@@ -115,7 +127,11 @@ class _ProductsPageState extends ConsumerState<ProductsPage> {
               onClear: _clearSearchQuery,
             ),
           ),
-          _HubTabSelector(selectedTab: _selectedTab, onChanged: _selectTab),
+          _HubTabSelector(
+            selectedTab: _selectedTab,
+            canViewInventory: canViewInventory,
+            onChanged: _selectTab,
+          ),
           SizedBox(height: layout.space2),
           Expanded(
             child: _selectedTab == ProductHubTab.catalog
@@ -146,7 +162,18 @@ class _ProductsPageState extends ConsumerState<ProductsPage> {
     };
   }
 
-  Widget _buildFloatingActionButton(BuildContext context) {
+  Widget? _buildFloatingActionButton(
+    BuildContext context, {
+    required bool canWriteProducts,
+    required bool canAdjustStock,
+  }) {
+    if (_selectedTab == ProductHubTab.catalog && !canWriteProducts) {
+      return null;
+    }
+    if (_selectedTab == ProductHubTab.inventory && !canAdjustStock) {
+      return null;
+    }
+
     return FloatingActionButton.extended(
       onPressed: () async {
         if (_selectedTab == ProductHubTab.catalog) {
@@ -171,6 +198,9 @@ class _ProductsPageState extends ConsumerState<ProductsPage> {
 
   Widget _buildCatalogTab(BuildContext context) {
     final productsAsync = ref.watch(productListProvider);
+    final canWriteProducts = ref
+        .watch(appSessionProvider)
+        .canAccessPermission('products.write');
     final layout = context.appLayout;
 
     return productsAsync.when(
@@ -188,8 +218,10 @@ class _ProductsPageState extends ConsumerState<ProductsPage> {
                 title: 'Nenhum produto cadastrado',
                 message:
                     'Cadastre o primeiro item para montar o catálogo da operação.',
-                actionLabel: 'Novo produto',
-                onAction: () => context.pushNamed(AppRouteNames.productForm),
+                actionLabel: canWriteProducts ? 'Novo produto' : null,
+                onAction: canWriteProducts
+                    ? () => context.pushNamed(AppRouteNames.productForm)
+                    : null,
               ),
             ],
           );
@@ -434,13 +466,22 @@ class _ProductsPageState extends ConsumerState<ProductsPage> {
 }
 
 class _HubTabSelector extends StatelessWidget {
-  const _HubTabSelector({required this.selectedTab, required this.onChanged});
+  const _HubTabSelector({
+    required this.selectedTab,
+    required this.canViewInventory,
+    required this.onChanged,
+  });
 
   final ProductHubTab selectedTab;
+  final bool canViewInventory;
   final ValueChanged<ProductHubTab> onChanged;
 
   @override
   Widget build(BuildContext context) {
+    if (!canViewInventory) {
+      return const SizedBox.shrink();
+    }
+
     final layout = context.appLayout;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: layout.pagePadding),
@@ -819,6 +860,9 @@ class _ProductTile extends ConsumerWidget {
       '${AppFormatters.quantityFromMil(product.stockMil)} ${product.unitMeasure} em estoque',
     ];
     final hasModifiers = product.modifierGroupCount > 0;
+    final canWriteProducts = ref
+        .watch(appSessionProvider)
+        .canAccessPermission('products.write');
 
     return AppListTileCard(
       title: product.displayName,
@@ -869,26 +913,28 @@ class _ProductTile extends ConsumerWidget {
             tone: AppStatusTone.info,
           ),
       ],
-      footer: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () => _openEditor(context, ref),
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('Editar'),
-            ),
-          ),
-          SizedBox(width: context.appLayout.space4),
-          Expanded(
-            child: FilledButton.tonalIcon(
-              onPressed: () => _delete(context, ref),
-              icon: const Icon(Icons.delete_outline),
-              label: const Text('Excluir'),
-            ),
-          ),
-        ],
-      ),
-      onTap: () => _openEditor(context, ref),
+      footer: canWriteProducts
+          ? Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _openEditor(context, ref),
+                    icon: const Icon(Icons.edit_outlined),
+                    label: const Text('Editar'),
+                  ),
+                ),
+                SizedBox(width: context.appLayout.space4),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => _delete(context, ref),
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Excluir'),
+                  ),
+                ),
+              ],
+            )
+          : null,
+      onTap: canWriteProducts ? () => _openEditor(context, ref) : null,
       tone: stockLow ? AppCardTone.warning : AppCardTone.standard,
     );
   }

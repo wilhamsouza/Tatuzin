@@ -7,6 +7,12 @@ import { hasEmployeePermission } from './employee-permissions';
 export function requireEmployeePermission(
   permission: EmployeePermission,
 ): RequestHandler {
+  return requireAnyEmployeePermission([permission]);
+}
+
+export function requireAnyEmployeePermission(
+  permissions: readonly EmployeePermission[],
+): RequestHandler {
   return (request: Request, _response: Response, next: NextFunction) => {
     const appContext = request.appContext;
     if (appContext == null) {
@@ -20,17 +26,21 @@ export function requireEmployeePermission(
       return;
     }
 
-    if (hasEmployeePermission(appContext.membership.permissions, permission)) {
+    if (
+      permissions.some((permission) =>
+        hasEmployeePermission(appContext.membership.permissions, permission),
+      )
+    ) {
       next();
       return;
     }
 
     next(
       new AppError(
-        'Voce nao tem permissao para gerenciar funcionarios.',
+        'Voce nao tem permissao para acessar esta area.',
         403,
         'EMPLOYEE_PERMISSION_REQUIRED',
-        { permission },
+        { permissions },
       ),
     );
   };

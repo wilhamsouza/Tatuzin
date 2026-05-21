@@ -4,6 +4,7 @@ import { requireAppContext } from '../../shared/http/auth-middleware';
 import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { asyncHandler } from '../../shared/http/async-handler';
 import { validateBody, validateQuery } from '../../shared/http/validate';
+import { requireAnyEmployeePermission, requireEmployeePermission } from '../employees/employee-permission-middleware';
 import {
   productListQuerySchema,
   type ProductListQueryInput,
@@ -27,6 +28,7 @@ productsRouter.use(requireAppContext);
 
 productsRouter.get(
   '/',
+  requireAnyEmployeePermission(['products.read', 'products.write']),
   validateQuery(productListQuerySchema),
   asyncHandler(async (request, response) => {
     const query = request.query as ProductListQueryInput;
@@ -47,6 +49,7 @@ productsRouter.get(
 
 productsRouter.get(
   '/:id',
+  requireAnyEmployeePermission(['products.read', 'products.write']),
   asyncHandler(async (request, response) => {
     const productId = Array.isArray(request.params.id)
       ? request.params.id[0]
@@ -61,6 +64,7 @@ productsRouter.get(
 
 productsRouter.post(
   '/',
+  requireEmployeePermission('products.write'),
   validateBody(productUpsertSchema),
   asyncHandler(async (request, response) => {
     const product = await productsService.create(
@@ -73,6 +77,7 @@ productsRouter.post(
 
 productsRouter.put(
   '/:id',
+  requireEmployeePermission('products.write'),
   validateBody(productUpsertSchema),
   asyncHandler(async (request, response) => {
     const productId = Array.isArray(request.params.id)
@@ -89,6 +94,7 @@ productsRouter.put(
 
 productsRouter.delete(
   '/:id',
+  requireEmployeePermission('products.write'),
   asyncHandler(async (request, response) => {
     const productId = Array.isArray(request.params.id)
       ? request.params.id[0]
