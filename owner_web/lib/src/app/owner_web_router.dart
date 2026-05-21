@@ -141,7 +141,7 @@ String _titleForLocation(String location) {
     return 'Funcionários';
   }
   if (location.startsWith('/devices')) {
-    return 'Dispositivos conectados';
+    return 'Nuvem e sincronizacao';
   }
   if (location.startsWith('/settings')) {
     return 'Configurações';

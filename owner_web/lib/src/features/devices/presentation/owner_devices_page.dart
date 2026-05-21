@@ -12,41 +12,131 @@ class OwnerDevicesPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final sync = ref.watch(ownerSyncStatusProvider);
     final devices = ref.watch(ownerDevicesProvider);
-    return OwnerAsyncView(
-      value: devices,
-      onRetry: () => ref.invalidate(ownerDevicesProvider),
-      builder: (page) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        OwnerPageIntro(
+          title: 'Nuvem e sincronizacao',
+          subtitle: 'Acompanhe se os dados da empresa estao chegando na nuvem.',
+          icon: Icons.cloud_sync_rounded,
+          trailing: FilledButton.icon(
+            onPressed: () {
+              ref.invalidate(ownerSyncStatusProvider);
+              ref.invalidate(ownerDevicesProvider);
+              ref.read(ownerRefreshTickProvider.notifier).state++;
+            },
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Atualizar status'),
+          ),
+        ),
+        const SizedBox(height: 18),
+        OwnerAsyncView(
+          value: sync,
+          onRetry: () => ref.invalidate(ownerSyncStatusProvider),
+          builder: (status) => _SyncContent(status: status),
+        ),
+        const SizedBox(height: 18),
+        OwnerSectionCard(
+          title: 'Dispositivos e sessoes',
+          subtitle: 'Aparelhos e navegadores usados na empresa.',
+          child: OwnerAsyncView(
+            value: devices,
+            onRetry: () => ref.invalidate(ownerDevicesProvider),
+            builder: (page) {
+              if (page.items.isEmpty) {
+                return const OwnerEmptyState(
+                  title: 'Nenhum dispositivo encontrado',
+                  message:
+                      'Quando um aparelho acessar a empresa, ele aparecera aqui.',
+                );
+              }
+              return Column(
+                children: [
+                  for (final device in page.items) _DeviceTile(device: device),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SyncContent extends StatelessWidget {
+  const _SyncContent({required this.status});
+
+  final OwnerSyncStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 16,
+          runSpacing: 16,
           children: [
-            const OwnerPageIntro(
-              title: 'Dispositivos conectados',
-              subtitle:
-                  'Aparelhos e navegadores usados para acessar a empresa.',
-              icon: Icons.devices_rounded,
+            OwnerMetricCard(
+              title: 'Status da nuvem',
+              value: status.message,
+              detail: status.online ? 'Conectado agora.' : 'Sem sinal recente.',
+              icon: _healthIcon(status.health),
+              isAvailable: status.syncEnabled,
             ),
-            const SizedBox(height: 18),
-            OwnerSectionCard(
-              title: 'Acessos da empresa',
-              subtitle:
-                  '${page.count}/${page.maxDevices} dispositivos no plano.',
-              child: page.items.isEmpty
-                  ? const OwnerEmptyState(
-                      title: 'Nenhum dispositivo encontrado',
-                      message:
-                          'Quando um aparelho acessar a empresa, ele aparecerá aqui com nome, tipo, último acesso e status.',
-                    )
-                  : Column(
-                      children: [
-                        for (final device in page.items)
-                          _DeviceTile(device: device),
-                      ],
-                    ),
+            OwnerMetricCard(
+              title: 'Ultima sincronizacao',
+              value: OwnerFormatters.date(status.lastSyncAt),
+              detail: 'Ultimo dado processado pela nuvem.',
+              icon: Icons.schedule_rounded,
+              isAvailable: status.lastSyncAt != null,
+            ),
+            OwnerMetricCard(
+              title: 'Pendencias',
+              value: '${status.pendingEvents}',
+              detail: status.pendingEvents == 0
+                  ? 'Tudo enviado.'
+                  : 'Existem dados aguardando envio.',
+              icon: Icons.outbox_rounded,
+              isAvailable: true,
+            ),
+            OwnerMetricCard(
+              title: 'Falhas recentes',
+              value: '${status.recentErrors.length + status.openConflicts}',
+              detail: status.openConflicts == 0
+                  ? 'Sem conflitos abertos.'
+                  : '${status.openConflicts} conflitos para revisar.',
+              icon: Icons.warning_amber_rounded,
+              isAvailable: true,
             ),
           ],
-        );
-      },
+        ),
+        const SizedBox(height: 18),
+        OwnerSectionCard(
+          title: 'Erros recentes',
+          subtitle: 'Linguagem resumida, sem payload tecnico.',
+          child: status.recentErrors.isEmpty
+              ? const OwnerEmptyState(
+                  title: 'Nenhuma falha recente',
+                  message: 'Tudo sincronizado ou aguardando envio normal.',
+                  icon: Icons.check_circle_outline_rounded,
+                )
+              : Column(
+                  children: [
+                    for (final error in status.recentErrors)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.warning_amber_rounded),
+                        title: Text(error.area),
+                        subtitle: Text(error.message),
+                        trailing: Text(OwnerFormatters.date(error.updatedAt)),
+                      ),
+                  ],
+                ),
+        ),
+      ],
     );
   }
 }
@@ -63,10 +153,21 @@ class _DeviceTile extends StatelessWidget {
       leading: const Icon(Icons.devices_rounded),
       title: Text(_deviceName(device)),
       subtitle: Text(
-        '${_deviceType(device)} • Último acesso ${OwnerFormatters.date(device.lastSeenAt)}',
+        '${_deviceType(device)} - Ultimo acesso ${OwnerFormatters.date(device.lastSeenAt)}',
       ),
       trailing: Chip(label: Text(OwnerFormatters.status(device.status))),
     );
+  }
+}
+
+IconData _healthIcon(String health) {
+  switch (health) {
+    case 'attention':
+      return Icons.warning_amber_rounded;
+    case 'pending':
+      return Icons.outbox_rounded;
+    default:
+      return Icons.cloud_done_outlined;
   }
 }
 

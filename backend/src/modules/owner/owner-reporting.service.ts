@@ -750,17 +750,21 @@ export class OwnerReportingService {
       items: [
         reportCatalogItem('sales', 'Vendas', 'Resumo de vendas, formas de pagamento e vendas recentes.', true),
         reportCatalogItem('products', 'Produtos', 'Produtos mais vendidos e itens com pouca saida.', true),
-        reportCatalogItem('cash', 'Caixa', 'Indicadores de caixa a partir das sessoes e eventos sincronizados.', true),
+        reportCatalogItem('cash', 'Caixa', 'Resumo financeiro gerencial a partir das vendas e recebimentos.', true),
         reportCatalogItem('stock', 'Estoque', 'Produtos zerados, baixo estoque e valor estimado do estoque.', productCount > 0, 'NO_PRODUCTS_REGISTERED'),
         reportCatalogItem('customers', 'Clientes', 'CRM, clientes ativos, inativos e melhores clientes.', customerCount > 0 || saleCount > 0, 'NO_CUSTOMER_DATA'),
-        reportCatalogItem('purchases', 'Compras', 'Compras por fornecedor e pendencias de compras.', false, 'PURCHASE_REPORTS_NOT_AVAILABLE'),
-        reportCatalogItem('profitability', 'Lucratividade', 'Receita, custo e margem estimada por produto.', saleCount > 0, 'NO_SALES_DATA'),
         reportCatalogItem(
           'employees',
           'Funcionarios',
           'Desempenho de vendas por funcionario.',
           employeeReports.available,
           employeeReports.reason ?? 'EMPLOYEE_REPORTS_NOT_AVAILABLE',
+        ),
+        reportCatalogItem(
+          'commissions',
+          'Comissoes',
+          'Comissao total, vendas elegiveis e regras por funcionario.',
+          true,
         ),
       ],
     };

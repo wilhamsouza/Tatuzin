@@ -1,24 +1,24 @@
-import assert from 'node:assert/strict';
-import { after, before, beforeEach, describe, it } from 'node:test';
-import type { AddressInfo } from 'node:net';
-import type { Server } from 'http';
-import { readFileSync } from 'node:fs';
+import assert from "node:assert/strict";
+import { after, before, beforeEach, describe, it } from "node:test";
+import type { AddressInfo } from "node:net";
+import type { Server } from "http";
+import { readFileSync } from "node:fs";
 
-import jwt from 'jsonwebtoken';
-import type { Prisma } from '@prisma/client';
+import jwt from "jsonwebtoken";
+import type { Prisma } from "@prisma/client";
 
-import { createApp } from '../../app';
-import { env } from '../../config/env';
-import { prisma } from '../../database/prisma';
-import { getPlanEntitlements } from '../plans/plan-catalog.service';
+import { createApp } from "../../app";
+import { env } from "../../config/env";
+import { prisma } from "../../database/prisma";
+import { getPlanEntitlements } from "../plans/plan-catalog.service";
 
 const runId = `owner-routes-${Date.now()}`;
 
 let server: Server;
-let apiBaseUrl = '';
+let apiBaseUrl = "";
 let originalFetch: typeof globalThis.fetch;
 
-describe('owner routes', () => {
+describe("owner routes", () => {
   before(async () => {
     await prisma.$connect();
     originalFetch = globalThis.fetch;
@@ -39,125 +39,138 @@ describe('owner routes', () => {
     await prisma.$disconnect();
   });
 
-  it('keeps ownerWebPanel as an existing PRO-only entitlement', () => {
-    assert.equal(getPlanEntitlements('FREE').features.ownerWebPanel, false);
-    assert.equal(getPlanEntitlements('BASIC').features.ownerWebPanel, false);
-    assert.equal(getPlanEntitlements('PRO').features.ownerWebPanel, true);
+  it("keeps ownerWebPanel as an existing PRO-only entitlement", () => {
+    assert.equal(getPlanEntitlements("FREE").features.ownerWebPanel, false);
+    assert.equal(getPlanEntitlements("BASIC").features.ownerWebPanel, false);
+    assert.equal(getPlanEntitlements("PRO").features.ownerWebPanel, true);
   });
 
-  it('requires app context before owner membership', async () => {
-    const response = await requestJson('GET', '/owner/company');
+  it("requires app context before owner membership", async () => {
+    const response = await requestJson("GET", "/owner/company");
 
     assert.equal(response.status, 401);
-    assert.equal((response.data as { code?: string }).code, 'AUTH_REQUIRED');
+    assert.equal((response.data as { code?: string }).code, "AUTH_REQUIRED");
   });
 
-  it('returns OWNER_REQUIRED for non-owner before checking ownerWebPanel entitlement', async () => {
-    const fixture = await createFixture({ plan: 'FREE', role: 'OPERATOR' });
+  it("blocks common operators before checking ownerWebPanel entitlement", async () => {
+    const fixture = await createFixture({ plan: "FREE", role: "OPERATOR" });
 
-    const response = await requestJson('GET', '/owner/company', {
-      token: fixture.token,
-    });
-
-    assert.equal(response.status, 403);
-    assert.equal((response.data as { code?: string }).code, 'OWNER_REQUIRED');
-  });
-
-  it('does not allow platform admin access without OWNER app context', async () => {
-    const fixture = await createFixture({
-      plan: 'PRO',
-      role: 'OPERATOR',
-      isPlatformAdmin: true,
-    });
-
-    const response = await requestJson('GET', '/owner/company', {
-      token: fixture.token,
-    });
-
-    assert.equal(response.status, 403);
-    assert.equal((response.data as { code?: string }).code, 'OWNER_REQUIRED');
-  });
-
-  it('blocks OWNER in FREE or BASIC with FEATURE_NOT_AVAILABLE', async () => {
-    for (const plan of ['FREE', 'BASIC'] as const) {
-      const fixture = await createFixture({ plan, role: 'OWNER' });
-
-      const response = await requestJson('GET', '/owner/company', {
-        token: fixture.token,
-      });
-
-      assert.equal(response.status, 403, plan);
-      assert.equal(
-        (response.data as { code?: string }).code,
-        'FEATURE_NOT_AVAILABLE',
-        plan,
-      );
-    }
-  });
-
-  it('does not unlock owner panel with pendingPlan PRO', async () => {
-    const fixture = await createFixture({
-      plan: 'FREE',
-      role: 'OWNER',
-      pendingPlan: 'PRO',
-    });
-
-    const response = await requestJson('GET', '/owner/company', {
+    const response = await requestJson("GET", "/owner/company", {
       token: fixture.token,
     });
 
     assert.equal(response.status, 403);
     assert.equal(
       (response.data as { code?: string }).code,
-      'FEATURE_NOT_AVAILABLE',
+      "OWNER_PANEL_ACCESS_REQUIRED",
     );
   });
 
-  it('allows OWNER in PRO to read safe company and billing summaries', async () => {
+  it("does not allow platform admin access without owner panel app context", async () => {
     const fixture = await createFixture({
-      plan: 'PRO',
-      role: 'OWNER',
-      providerSubscriptionId: 'preapproval-owner-secret-9999',
+      plan: "PRO",
+      role: "OPERATOR",
+      isPlatformAdmin: true,
     });
 
-    const company = await requestJson('GET', '/owner/company', {
+    const response = await requestJson("GET", "/owner/company", {
       token: fixture.token,
     });
-    const status = await requestJson('GET', '/owner/billing/status', {
+
+    assert.equal(response.status, 403);
+    assert.equal(
+      (response.data as { code?: string }).code,
+      "OWNER_PANEL_ACCESS_REQUIRED",
+    );
+  });
+
+  it("blocks OWNER in FREE or BASIC with FEATURE_NOT_AVAILABLE", async () => {
+    for (const plan of ["FREE", "BASIC"] as const) {
+      const fixture = await createFixture({ plan, role: "OWNER" });
+
+      const response = await requestJson("GET", "/owner/company", {
+        token: fixture.token,
+      });
+
+      assert.equal(response.status, 403, plan);
+      assert.equal(
+        (response.data as { code?: string }).code,
+        "FEATURE_NOT_AVAILABLE",
+        plan,
+      );
+    }
+  });
+
+  it("does not unlock owner panel with pendingPlan PRO", async () => {
+    const fixture = await createFixture({
+      plan: "FREE",
+      role: "OWNER",
+      pendingPlan: "PRO",
+    });
+
+    const response = await requestJson("GET", "/owner/company", {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal(
+      (response.data as { code?: string }).code,
+      "FEATURE_NOT_AVAILABLE",
+    );
+  });
+
+  it("allows OWNER in PRO to read safe company and billing summaries", async () => {
+    const fixture = await createFixture({
+      plan: "PRO",
+      role: "OWNER",
+      providerSubscriptionId: "preapproval-owner-secret-9999",
+    });
+
+    const company = await requestJson("GET", "/owner/company", {
+      token: fixture.token,
+    });
+    const status = await requestJson("GET", "/owner/billing/status", {
       token: fixture.token,
     });
 
     assert.equal(company.status, 200);
     assert.equal(status.status, 200);
-    const serialized = JSON.stringify({ company: company.data, status: status.data });
-    assert.equal(serialized.includes('preapproval-owner-secret-9999'), false);
-    assert.equal(serialized.includes('prea...9999'), true);
-    assert.equal((status.data as { providerSubscriptionId?: string }).providerSubscriptionId, undefined);
+    const serialized = JSON.stringify({
+      company: company.data,
+      status: status.data,
+    });
+    assert.equal(serialized.includes("preapproval-owner-secret-9999"), false);
+    assert.equal(serialized.includes("prea...9999"), true);
+    assert.equal(
+      (status.data as { providerSubscriptionId?: string })
+        .providerSubscriptionId,
+      undefined,
+    );
   });
 
-  it('lists only safe owner invoices for the current company', async () => {
+  it("lists only safe owner invoices for the current company", async () => {
     const fixture = await createFixture({
-      plan: 'PRO',
-      role: 'OWNER',
-      providerSubscriptionId: 'preapproval-owner-secret-9999',
+      plan: "PRO",
+      role: "OWNER",
+      providerSubscriptionId: "preapproval-owner-secret-9999",
     });
     await createInvoice(fixture, {
-      status: 'paid',
+      status: "paid",
       providerInvoiceId: `${runId}-invoice-current`,
-      invoiceUrl: 'https://mercadopago.test/invoices/current?token=secret',
-      payload: { token: 'invoice-token' },
+      invoiceUrl: "https://mercadopago.test/invoices/current?token=secret",
+      payload: { token: "invoice-token" },
     });
-    const otherFixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+    const otherFixture = await createFixture({ plan: "PRO", role: "OWNER" });
     await createInvoice(otherFixture, {
-      status: 'paid',
+      status: "paid",
       providerInvoiceId: `${runId}-invoice-other`,
-      invoiceUrl: 'https://mercadopago.test/invoices/other',
-      payload: { token: 'other-token' },
+      invoiceUrl: "https://mercadopago.test/invoices/other",
+      payload: { token: "other-token" },
     });
 
     const response = await requestJson(
-      'GET',
-      '/owner/billing/invoices?status=paid&page=1&pageSize=10',
+      "GET",
+      "/owner/billing/invoices?status=paid&page=1&pageSize=10",
       { token: fixture.token },
     );
 
@@ -173,33 +186,33 @@ describe('owner routes', () => {
       total: number;
     };
     assert.equal(payload.items.length, 1);
-    assert.equal(payload.items[0]?.status, 'paid');
+    assert.equal(payload.items[0]?.status, "paid");
     assert.equal(payload.items[0]?.invoiceUrl, null);
     assert.equal(payload.items[0]?.payload, undefined);
     assert.equal(payload.items[0]?.providerSubscriptionId, undefined);
     const serialized = JSON.stringify(payload);
-    assert.equal(serialized.includes('invoice-token'), false);
-    assert.equal(serialized.includes('other-token'), false);
-    assert.equal(serialized.includes('preapproval-owner-secret-9999'), false);
+    assert.equal(serialized.includes("invoice-token"), false);
+    assert.equal(serialized.includes("other-token"), false);
+    assert.equal(serialized.includes("preapproval-owner-secret-9999"), false);
   });
 
-  it('rejects invalid owner invoice status filters safely', async () => {
-    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+  it("rejects invalid owner invoice status filters safely", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
 
     const response = await requestJson(
-      'GET',
-      '/owner/billing/invoices?status=approved&page=1&pageSize=10',
+      "GET",
+      "/owner/billing/invoices?status=approved&page=1&pageSize=10",
       { token: fixture.token },
     );
 
     assert.equal(response.status, 422);
-    assert.equal((response.data as { code?: string }).code, 'VALIDATION_ERROR');
+    assert.equal((response.data as { code?: string }).code, "VALIDATION_ERROR");
   });
 
-  it('returns a safe employees overview without temporary password secrets', async () => {
-    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+  it("returns a safe employees overview without temporary password secrets", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
 
-    const response = await requestJson('GET', '/owner/employees', {
+    const response = await requestJson("GET", "/owner/employees", {
       token: fixture.token,
     });
 
@@ -212,15 +225,345 @@ describe('owner routes', () => {
     assert.equal(payload.available, true);
     assert.equal(payload.summary.maxEmployees, 100);
     assert.equal(payload.summary.total >= 1, true);
-    assert.equal(JSON.stringify(payload).includes('"temporaryPassword":'), false);
+    assert.equal(
+      JSON.stringify(payload).includes('"temporaryPassword":'),
+      false,
+    );
   });
 
-  it('returns owner commission summary through the read-only owner endpoint', async () => {
-    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+  it("lets owner create, update, disable, enable and generate one-time temporary password", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
+
+    const created = await requestJson("POST", "/owner/employees", {
+      token: fixture.token,
+      body: {
+        name: "Ana Vendedora",
+        email: `${runId}-ana@tatuzin.test`,
+        phone: "11999990000",
+        role: "SELLER",
+        status: "ACTIVE",
+        permissions: ["sales.create", "customers.read"],
+      },
+    });
+
+    assert.equal(created.status, 201);
+    const employeeId = (created.data as { employee: { id: string } }).employee
+      .id;
+
+    const updated = await requestJson(
+      "PATCH",
+      `/owner/employees/${employeeId}`,
+      {
+        token: fixture.token,
+        body: {
+          name: "Ana Gerente",
+          phone: "11888880000",
+          role: "MANAGER",
+          permissions: ["reports.advanced", "employees.manage"],
+        },
+      },
+    );
+    assert.equal(updated.status, 200);
+
+    const disabled = await requestJson(
+      "POST",
+      `/owner/employees/${employeeId}/disable`,
+      { token: fixture.token },
+    );
+    assert.equal(disabled.status, 200);
+    assert.equal(
+      (disabled.data as { employee: { status: string } }).employee.status,
+      "DISABLED",
+    );
+
+    const enabled = await requestJson(
+      "POST",
+      `/owner/employees/${employeeId}/enable`,
+      { token: fixture.token },
+    );
+    assert.equal(enabled.status, 200);
+
+    const temporaryPassword = await requestJson(
+      "POST",
+      `/owner/employees/${employeeId}/access/temporary-password`,
+      { token: fixture.token },
+    );
+    assert.equal(temporaryPassword.status, 200);
+    const passwordPayload = temporaryPassword.data as {
+      login: string;
+      temporaryPassword: string;
+      employee: { temporaryPassword?: string };
+    };
+    assert.equal(passwordPayload.login, `${runId}-ana@tatuzin.test`);
+    assert.equal(passwordPayload.temporaryPassword.length > 0, true);
+    assert.equal(passwordPayload.employee.temporaryPassword, undefined);
+
+    const listed = await requestJson("GET", "/owner/employees", {
+      token: fixture.token,
+    });
+    assert.equal(listed.status, 200);
+    assert.equal(
+      JSON.stringify(listed.data).includes(passwordPayload.temporaryPassword),
+      false,
+    );
+  });
+
+  it("blocks manager without employees.manage from owner employee mutations", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "ADMIN" });
+    await prisma.employeeProfile.create({
+      data: {
+        companyId: fixture.companyId,
+        userId: fixture.userId,
+        membershipId: fixture.membershipId,
+        name: "Manager Sem Permissao",
+        email: `${fixture.userId}@tatuzin.test`,
+        emailNormalized: `${fixture.userId}@tatuzin.test`,
+        role: "MANAGER",
+        status: "ACTIVE",
+        permissions: [] as Prisma.InputJsonValue,
+      },
+    });
+
+    const response = await requestJson("POST", "/owner/employees", {
+      token: fixture.token,
+      body: {
+        name: "Bloqueado",
+        role: "SELLER",
+        status: "ACTIVE",
+        permissions: ["sales.create"],
+      },
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal(
+      (response.data as { code?: string }).code,
+      "EMPLOYEE_PERMISSION_REQUIRED",
+    );
+  });
+
+  it("keeps OWNER employee protected from owner employee mutations", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
+    const listed = await requestJson("GET", "/owner/employees", {
+      token: fixture.token,
+    });
+    assert.equal(listed.status, 200);
+    const ownerEmployee = (
+      listed.data as { items: Array<{ id: string; role: string }> }
+    ).items.find((item) => item.role === "OWNER");
+    assert.notEqual(ownerEmployee, undefined);
+
+    const disabled = await requestJson(
+      "POST",
+      `/owner/employees/${ownerEmployee!.id}/disable`,
+      { token: fixture.token },
+    );
+    assert.equal(disabled.status, 403);
+    assert.equal(
+      (disabled.data as { code?: string }).code,
+      "EMPLOYEE_OWNER_PROTECTED",
+    );
+
+    const patched = await requestJson(
+      "PATCH",
+      `/owner/employees/${ownerEmployee!.id}`,
+      { token: fixture.token, body: { role: "SELLER" } },
+    );
+    assert.equal(patched.status, 403);
+    assert.equal(
+      (patched.data as { code?: string }).code,
+      "EMPLOYEE_OWNER_PROTECTED",
+    );
+  });
+
+  it("blocks ADMIN from owner-only billing actions", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "ADMIN" });
+
+    for (const [method, path, body] of [
+      ["GET", "/owner/billing/invoices", undefined],
+      ["POST", "/owner/billing/subscribe", { plan: "PRO" }],
+      ["POST", "/owner/billing/cancel", { effective: "period_end" }],
+      ["POST", "/owner/billing/resume", undefined],
+      ["POST", "/owner/billing/change-plan", { plan: "BASIC" }],
+    ] as const) {
+      const response = await requestJson(method, path, {
+        token: fixture.token,
+        body,
+      });
+      assert.equal(response.status, 403);
+      assert.equal((response.data as { code?: string }).code, "OWNER_REQUIRED");
+    }
+  });
+
+  it("returns 404 for employee ids from another company through owner wrappers", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
+    const otherFixture = await createFixture({ plan: "PRO", role: "OWNER" });
+    const created = await requestJson("POST", "/owner/employees", {
+      token: otherFixture.token,
+      body: {
+        name: "Outra Empresa",
+        email: `${runId}-outra@tatuzin.test`,
+        role: "SELLER",
+        status: "ACTIVE",
+        permissions: ["sales.create"],
+      },
+    });
+    assert.equal(created.status, 201);
+    const employeeId = (created.data as { employee: { id: string } }).employee
+      .id;
+
+    const patched = await requestJson(
+      "PATCH",
+      `/owner/employees/${employeeId}`,
+      {
+        token: fixture.token,
+        body: { name: "Nao Deve Alterar" },
+      },
+    );
+    assert.equal(patched.status, 404);
+    assert.equal(
+      (patched.data as { code?: string }).code,
+      "EMPLOYEE_NOT_FOUND",
+    );
+
+    const commission = await requestJson(
+      "PATCH",
+      `/owner/employees/${employeeId}/commission-settings`,
+      {
+        token: fixture.token,
+        body: {
+          commissionEnabled: true,
+          commissionType: "PERCENTAGE",
+          commissionBase: "NET_SALES",
+          commissionRateBps: 1000,
+        },
+      },
+    );
+    assert.equal(commission.status, 404);
+  });
+
+  it("lets owner configure commissions and edit receipt settings safely", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
+    const created = await requestJson("POST", "/owner/employees", {
+      token: fixture.token,
+      body: {
+        name: "Bruno Comissao",
+        email: `${runId}-bruno@tatuzin.test`,
+        role: "SELLER",
+        status: "ACTIVE",
+        permissions: ["sales.create"],
+      },
+    });
+    const employeeId = (created.data as { employee: { id: string } }).employee
+      .id;
+
+    const commission = await requestJson(
+      "PATCH",
+      `/owner/employees/${employeeId}/commission-settings`,
+      {
+        token: fixture.token,
+        body: {
+          commissionEnabled: true,
+          commissionType: "PERCENTAGE",
+          commissionBase: "NET_SALES",
+          commissionRateBps: 1250,
+        },
+      },
+    );
+    assert.equal(commission.status, 200);
+    assert.equal(
+      (commission.data as { settings: { commissionRateBps: number } }).settings
+        .commissionRateBps,
+      1250,
+    );
+
+    const receipt = await requestJson("PATCH", "/owner/receipt-settings", {
+      token: fixture.token,
+      body: {
+        receiptDisplayName: "Loja Owner",
+        receiptDocument: "12345678000100",
+        receiptPhone: "(11) 97777-0000",
+        receiptAddress: "Rua Owner, 1",
+        receiptFooterMessage: "Obrigado.",
+        showDocumentOnReceipt: true,
+        showPhoneOnReceipt: true,
+        showAddressOnReceipt: false,
+        showFooterMessageOnReceipt: true,
+      },
+    });
+    assert.equal(receipt.status, 200);
+    const payload = receipt.data as {
+      displayName: string;
+      document: string;
+      showAddress: boolean;
+    };
+    assert.equal(payload.displayName, "Loja Owner");
+    assert.equal(payload.document, "12345678000100");
+    assert.equal(payload.showAddress, false);
+  });
+
+  it("blocks operator from owner receipt settings patch", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OPERATOR" });
+
+    const response = await requestJson("PATCH", "/owner/receipt-settings", {
+      token: fixture.token,
+      body: { receiptDisplayName: "Nao autorizado" },
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal(
+      (response.data as { code?: string }).code,
+      "OWNER_PANEL_ACCESS_REQUIRED",
+    );
+  });
+
+  it("does not expose cost internals in owner commission payloads", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
+    const created = await requestJson("POST", "/owner/employees", {
+      token: fixture.token,
+      body: {
+        name: "Comissao Lucro",
+        email: `${runId}-lucro@tatuzin.test`,
+        role: "SELLER",
+        status: "ACTIVE",
+        permissions: ["sales.create"],
+      },
+    });
+    const employeeId = (created.data as { employee: { id: string } }).employee
+      .id;
+
+    await requestJson(
+      "PATCH",
+      `/owner/employees/${employeeId}/commission-settings`,
+      {
+        token: fixture.token,
+        body: {
+          commissionEnabled: true,
+          commissionType: "PERCENTAGE",
+          commissionBase: "GROSS_PROFIT",
+          commissionRateBps: 1000,
+        },
+      },
+    );
 
     const response = await requestJson(
-      'GET',
-      '/owner/commissions?startDate=2026-05-01&endDate=2026-05-31',
+      "GET",
+      `/owner/employees/${employeeId}/commissions?startDate=2026-05-01&endDate=2026-05-31`,
+      { token: fixture.token },
+    );
+    assert.equal(response.status, 200);
+    const serialized = JSON.stringify(response.data);
+    assert.equal(serialized.includes("unitCostCents"), false);
+    assert.equal(serialized.includes("totalCostCents"), false);
+    assert.equal(serialized.includes("costPriceCents"), false);
+    assert.equal(serialized.includes("payload"), false);
+  });
+
+  it("returns owner commission summary through the read-only owner endpoint", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
+
+    const response = await requestJson(
+      "GET",
+      "/owner/commissions?startDate=2026-05-01&endDate=2026-05-31",
       { token: fixture.token },
     );
 
@@ -230,42 +573,74 @@ describe('owner routes', () => {
       totals: { totalCommissionCents: number };
       rows: unknown[];
     };
-    assert.equal(payload.period.from, '2026-05-01');
-    assert.equal(payload.period.to, '2026-05-31');
+    assert.equal(payload.period.from, "2026-05-01");
+    assert.equal(payload.period.to, "2026-05-31");
     assert.equal(payload.totals.totalCommissionCents, 0);
     assert.equal(Array.isArray(payload.rows), true);
   });
 
-  it('rejects long owner commission periods with validation error', async () => {
-    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+  it("blocks ADMIN without reports.advanced from owner report endpoints", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "ADMIN" });
+    await prisma.employeeProfile.create({
+      data: {
+        companyId: fixture.companyId,
+        userId: fixture.userId,
+        membershipId: fixture.membershipId,
+        name: "Manager Sem Relatorio",
+        email: `${fixture.userId}@tatuzin.test`,
+        emailNormalized: `${fixture.userId}@tatuzin.test`,
+        role: "MANAGER",
+        status: "ACTIVE",
+        permissions: [] as Prisma.InputJsonValue,
+      },
+    });
 
     const response = await requestJson(
-      'GET',
-      '/owner/commissions?startDate=2026-01-01&endDate=2026-05-31',
+      "GET",
+      "/owner/reports/sales-summary?startDate=2026-05-01&endDate=2026-05-31",
+      { token: fixture.token },
+    );
+
+    assert.equal(response.status, 403);
+    assert.equal(
+      (response.data as { code?: string }).code,
+      "EMPLOYEE_PERMISSION_REQUIRED",
+    );
+  });
+
+  it("rejects long owner commission periods with validation error", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
+
+    const response = await requestJson(
+      "GET",
+      "/owner/commissions?startDate=2026-01-01&endDate=2026-05-31",
       { token: fixture.token },
     );
 
     assert.equal(response.status, 422);
-    assert.equal((response.data as { code?: string }).code, 'VALIDATION_ERROR');
+    assert.equal((response.data as { code?: string }).code, "VALIDATION_ERROR");
   });
 
-  it('lists devices without exposing full clientInstanceId', async () => {
-    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+  it("lists devices without exposing full clientInstanceId", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
 
-    const response = await requestJson('GET', '/owner/devices', {
+    const response = await requestJson("GET", "/owner/devices", {
       token: fixture.token,
     });
 
     assert.equal(response.status, 200);
     const serialized = JSON.stringify(response.data);
     assert.equal(serialized.includes(fixture.clientInstanceId), false);
-    assert.equal(serialized.includes(`${fixture.clientInstanceId.slice(0, 4)}...`), true);
+    assert.equal(
+      serialized.includes(`${fixture.clientInstanceId.slice(0, 4)}...`),
+      true,
+    );
   });
 
-  it('returns a lightweight dashboard with nullable optional summaries', async () => {
-    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+  it("returns a lightweight dashboard with nullable optional summaries", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
 
-    const response = await requestJson('GET', '/owner/dashboard', {
+    const response = await requestJson("GET", "/owner/dashboard", {
       token: fixture.token,
     });
 
@@ -275,81 +650,82 @@ describe('owner routes', () => {
       employees: { available: boolean; active: number; maxEmployees: number };
       billing: { plan: string };
     };
-    assert.equal(payload.billing.plan, 'PRO');
+    assert.equal(payload.billing.plan, "PRO");
     assert.equal(payload.employees.available, true);
     assert.equal(payload.employees.maxEmployees, 100);
     assert.equal(payload.reports, null);
   });
 
-  it('protects new business reports with owner and ownerWebPanel checks', async () => {
-    const unauthenticated = await requestJson('GET', '/owner/dashboard/business');
+  it("protects new business reports with owner and ownerWebPanel checks", async () => {
+    const unauthenticated = await requestJson(
+      "GET",
+      "/owner/dashboard/business",
+    );
     assert.equal(unauthenticated.status, 401);
     assert.equal(
       (unauthenticated.data as { code?: string }).code,
-      'AUTH_REQUIRED',
+      "AUTH_REQUIRED",
     );
 
-    const operator = await createFixture({ plan: 'PRO', role: 'OPERATOR' });
+    const operator = await createFixture({ plan: "PRO", role: "OPERATOR" });
     const operatorResponse = await requestJson(
-      'GET',
-      '/owner/dashboard/business',
+      "GET",
+      "/owner/dashboard/business",
       { token: operator.token },
     );
     assert.equal(operatorResponse.status, 403);
     assert.equal(
       (operatorResponse.data as { code?: string }).code,
-      'OWNER_REQUIRED',
+      "OWNER_PANEL_ACCESS_REQUIRED",
     );
 
-    const freeOwner = await createFixture({ plan: 'FREE', role: 'OWNER' });
-    const freeResponse = await requestJson(
-      'GET',
-      '/owner/dashboard/business',
-      { token: freeOwner.token },
-    );
+    const freeOwner = await createFixture({ plan: "FREE", role: "OWNER" });
+    const freeResponse = await requestJson("GET", "/owner/dashboard/business", {
+      token: freeOwner.token,
+    });
     assert.equal(freeResponse.status, 403);
     assert.equal(
       (freeResponse.data as { code?: string }).code,
-      'FEATURE_NOT_AVAILABLE',
+      "FEATURE_NOT_AVAILABLE",
     );
 
     const pendingOwner = await createFixture({
-      plan: 'BASIC',
-      role: 'OWNER',
-      pendingPlan: 'PRO',
+      plan: "BASIC",
+      role: "OWNER",
+      pendingPlan: "PRO",
     });
     const pendingResponse = await requestJson(
-      'GET',
-      '/owner/reports/sales-summary',
+      "GET",
+      "/owner/reports/sales-summary",
       { token: pendingOwner.token },
     );
     assert.equal(pendingResponse.status, 403);
     assert.equal(
       (pendingResponse.data as { code?: string }).code,
-      'FEATURE_NOT_AVAILABLE',
+      "FEATURE_NOT_AVAILABLE",
     );
   });
 
-  it('returns real business dashboard, sales, products and stock summaries', async () => {
-    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+  it("returns real business dashboard, sales, products and stock summaries", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
     await createBusinessData(fixture);
-    const otherFixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+    const otherFixture = await createFixture({ plan: "PRO", role: "OWNER" });
     await createBusinessData(otherFixture);
 
-    const dashboard = await requestJson('GET', '/owner/dashboard/business', {
+    const dashboard = await requestJson("GET", "/owner/dashboard/business", {
       token: fixture.token,
     });
     const sales = await requestJson(
-      'GET',
+      "GET",
       `/owner/reports/sales-summary?startDate=${todayDate()}&endDate=${todayDate()}&groupBy=day&page=1&pageSize=10`,
       { token: fixture.token },
     );
     const products = await requestJson(
-      'GET',
+      "GET",
       `/owner/reports/products?startDate=${todayDate()}&endDate=${todayDate()}&limit=5`,
       { token: fixture.token },
     );
-    const stock = await requestJson('GET', '/owner/stock/summary?limit=10', {
+    const stock = await requestJson("GET", "/owner/stock/summary?limit=10", {
       token: fixture.token,
     });
 
@@ -384,19 +760,22 @@ describe('owner routes', () => {
     assert.equal(salesPayload.averageTicketCents, 5333);
     assert.equal(
       salesPayload.byPaymentMethod.some(
-        (item) => item.label === 'Dinheiro' && item.totalAmountCents === 10000,
+        (item) => item.label === "Dinheiro" && item.totalAmountCents === 10000,
       ),
       true,
     );
     const serializedSales = JSON.stringify(salesPayload.recentSales.items);
-    assert.equal(serializedSales.includes('localUuid'), false);
-    assert.equal(serializedSales.includes('owner-routes-sale'), false);
+    assert.equal(serializedSales.includes("localUuid"), false);
+    assert.equal(serializedSales.includes("owner-routes-sale"), false);
 
     const productsPayload = products.data as {
       topSellingProducts: Array<{ productName: string; amountCents: number }>;
       stockSummary: { outOfStockCount: number; lowStockCount: number };
     };
-    assert.equal(productsPayload.topSellingProducts[0]?.productName, 'Cafe coado');
+    assert.equal(
+      productsPayload.topSellingProducts[0]?.productName,
+      "Cafe coado",
+    );
     assert.equal(productsPayload.topSellingProducts[0]?.amountCents, 15000);
     assert.equal(productsPayload.stockSummary.outOfStockCount, 1);
     assert.equal(productsPayload.stockSummary.lowStockCount, 1);
@@ -411,52 +790,52 @@ describe('owner routes', () => {
     assert.equal(stockPayload.totalProducts, 3);
     assert.equal(stockPayload.lowStockCount, 1);
     assert.equal(stockPayload.outOfStockCount, 1);
-    assert.equal(stockPayload.itemsLowStock[0]?.name, 'Acucar cristal');
-    assert.equal(stockPayload.itemsOutOfStock[0]?.name, 'Leite integral');
+    assert.equal(stockPayload.itemsLowStock[0]?.name, "Acucar cristal");
+    assert.equal(stockPayload.itemsOutOfStock[0]?.name, "Leite integral");
   });
 
-  it('limits owner report date windows safely', async () => {
-    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+  it("limits owner report date windows safely", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
 
     const response = await requestJson(
-      'GET',
-      '/owner/reports/sales-summary?startDate=2026-01-01&endDate=2026-05-10',
+      "GET",
+      "/owner/reports/sales-summary?startDate=2026-01-01&endDate=2026-05-10",
       { token: fixture.token },
     );
 
     assert.equal(response.status, 422);
     assert.equal(
       (response.data as { code?: string }).code,
-      'OWNER_REPORT_DATE_RANGE_TOO_LONG',
+      "OWNER_REPORT_DATE_RANGE_TOO_LONG",
     );
   });
 
-  it('returns CRM summaries, paginated customers and blocks cross-company customer detail', async () => {
-    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+  it("returns CRM summaries, paginated customers and blocks cross-company customer detail", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
     const business = await createBusinessData(fixture);
-    const otherFixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+    const otherFixture = await createFixture({ plan: "PRO", role: "OWNER" });
     const otherBusiness = await createBusinessData(otherFixture);
 
-    const summary = await requestJson('GET', '/owner/crm/summary?limit=5', {
+    const summary = await requestJson("GET", "/owner/crm/summary?limit=5", {
       token: fixture.token,
     });
     const customers = await requestJson(
-      'GET',
-      '/owner/crm/customers?status=with_receivables&page=1&pageSize=10',
+      "GET",
+      "/owner/crm/customers?status=with_receivables&page=1&pageSize=10",
       { token: fixture.token },
     );
     const searchCustomers = await requestJson(
-      'GET',
-      '/owner/crm/customers?search=ana&page=1&pageSize=10',
+      "GET",
+      "/owner/crm/customers?search=ana&page=1&pageSize=10",
       { token: fixture.token },
     );
     const detail = await requestJson(
-      'GET',
+      "GET",
       `/owner/crm/customers/${business.bobCustomerId}`,
       { token: fixture.token },
     );
     const crossCompany = await requestJson(
-      'GET',
+      "GET",
       `/owner/crm/customers/${otherBusiness.aliceCustomerId}`,
       { token: fixture.token },
     );
@@ -475,7 +854,7 @@ describe('owner routes', () => {
     assert.equal(summaryPayload.inactiveCustomers, 1);
     assert.equal(summaryPayload.newCustomersThisMonth, 3);
     assert.equal(summaryPayload.customersWithReceivables, 1);
-    assert.equal(summaryPayload.topCustomers[0]?.name, 'Ana Cliente');
+    assert.equal(summaryPayload.topCustomers[0]?.name, "Ana Cliente");
 
     assert.equal(customers.status, 200);
     const customersPayload = customers.data as {
@@ -483,7 +862,7 @@ describe('owner routes', () => {
       total: number;
     };
     assert.equal(customersPayload.total, 1);
-    assert.equal(customersPayload.items[0]?.name, 'Bruno Fiado');
+    assert.equal(customersPayload.items[0]?.name, "Bruno Fiado");
     assert.equal(customersPayload.items[0]?.openReceivableAmountCents, 3000);
 
     assert.equal(searchCustomers.status, 200);
@@ -492,7 +871,7 @@ describe('owner routes', () => {
       total: number;
     };
     assert.equal(searchPayload.total, 1);
-    assert.equal(searchPayload.items[0]?.name, 'Ana Cliente');
+    assert.equal(searchPayload.items[0]?.name, "Ana Cliente");
 
     assert.equal(detail.status, 200);
     const detailPayload = detail.data as {
@@ -501,40 +880,40 @@ describe('owner routes', () => {
       recentPurchases: Array<{ receiptNumber: string | null }>;
       receivables: { openAmountCents: number };
     };
-    assert.equal(detailPayload.customer.name, 'Bruno Fiado');
+    assert.equal(detailPayload.customer.name, "Bruno Fiado");
     assert.equal(detailPayload.customer.openReceivableAmountCents, 3000);
-    assert.equal(detailPayload.topProducts[0]?.productName, 'Cafe coado');
-    assert.equal(detailPayload.recentPurchases[0]?.receiptNumber, 'F-101');
+    assert.equal(detailPayload.topProducts[0]?.productName, "Cafe coado");
+    assert.equal(detailPayload.recentPurchases[0]?.receiptNumber, "F-101");
     assert.equal(detailPayload.receivables.openAmountCents, 3000);
 
     assert.equal(crossCompany.status, 404);
     assert.equal(
       (crossCompany.data as { code?: string }).code,
-      'OWNER_CUSTOMER_NOT_FOUND',
+      "OWNER_CUSTOMER_NOT_FOUND",
     );
   });
 
-  it('returns receivables, report catalog and employee reports safely', async () => {
-    const fixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+  it("returns receivables, report catalog and employee reports safely", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
     await createBusinessData(fixture);
-    const emptyFixture = await createFixture({ plan: 'PRO', role: 'OWNER' });
+    const emptyFixture = await createFixture({ plan: "PRO", role: "OWNER" });
 
     const receivables = await requestJson(
-      'GET',
-      '/owner/financial/receivables?status=open&page=1&pageSize=10',
+      "GET",
+      "/owner/financial/receivables?status=open&page=1&pageSize=10",
       { token: fixture.token },
     );
     const employees = await requestJson(
-      'GET',
+      "GET",
       `/owner/reports/employees?startDate=${todayDate()}&endDate=${todayDate()}&limit=5`,
       { token: fixture.token },
     );
     const emptyEmployees = await requestJson(
-      'GET',
-      '/owner/reports/employees?limit=5',
+      "GET",
+      "/owner/reports/employees?limit=5",
       { token: emptyFixture.token },
     );
-    const catalog = await requestJson('GET', '/owner/reports/catalog', {
+    const catalog = await requestJson("GET", "/owner/reports/catalog", {
       token: fixture.token,
     });
 
@@ -552,8 +931,11 @@ describe('owner routes', () => {
     assert.equal(receivablesPayload.summary.overdueAmountCents, 0);
     assert.equal(receivablesPayload.summary.openCount, 1);
     assert.equal(receivablesPayload.summary.receivedThisMonthCents, 3000);
-    assert.equal(receivablesPayload.items.items[0]?.customerName, 'Bruno Fiado');
-    assert.equal(receivablesPayload.items.items[0]?.status, 'open');
+    assert.equal(
+      receivablesPayload.items.items[0]?.customerName,
+      "Bruno Fiado",
+    );
+    assert.equal(receivablesPayload.items.items[0]?.status, "open");
 
     assert.equal(employees.status, 200);
     const employeesPayload = employees.data as {
@@ -566,7 +948,7 @@ describe('owner routes', () => {
       }>;
     };
     assert.equal(employeesPayload.available, true);
-    assert.equal(employeesPayload.topEmployees[0]?.name, 'Owner Routes User');
+    assert.equal(employeesPayload.topEmployees[0]?.name, "Owner Routes User");
     assert.equal(employeesPayload.topEmployees[0]?.salesAmountCents, 16000);
     assert.equal(employeesPayload.topEmployees[0]?.salesCount, 3);
     assert.equal(employeesPayload.topEmployees[0]?.averageTicketCents, 5333);
@@ -574,7 +956,7 @@ describe('owner routes', () => {
     assert.equal(emptyEmployees.status, 200);
     assert.deepEqual(emptyEmployees.data, {
       available: false,
-      reason: 'EMPLOYEE_REPORTS_NOT_AVAILABLE',
+      reason: "EMPLOYEE_REPORTS_NOT_AVAILABLE",
       period: (emptyEmployees.data as { period: unknown }).period,
       topEmployees: [],
     });
@@ -585,42 +967,42 @@ describe('owner routes', () => {
     };
     const reportKeys = catalogPayload.items.map((item) => item.key);
     assert.deepEqual(reportKeys, [
-      'sales',
-      'products',
-      'cash',
-      'stock',
-      'customers',
-      'purchases',
-      'profitability',
-      'employees',
+      "sales",
+      "products",
+      "cash",
+      "stock",
+      "customers",
+      "employees",
+      "commissions",
     ]);
     assert.equal(
       catalogPayload.items.some(
-        (item) => item.key === 'employees' && item.available,
+        (item) => item.key === "employees" && item.available,
       ),
       true,
     );
   });
 
-  it('keeps owner reporting GET-only and free from admin API usage', () => {
+  it("keeps owner APIs free from admin API usage", () => {
     const routesSource = readFileSync(
-      'src/modules/owner/owner.routes.ts',
-      'utf8',
+      "src/modules/owner/owner.routes.ts",
+      "utf8",
     );
     const serviceSource = readFileSync(
-      'src/modules/owner/owner-reporting.service.ts',
-      'utf8',
+      "src/modules/owner/owner-reporting.service.ts",
+      "utf8",
     );
 
-    assert.equal(routesSource.includes('/api/admin'), false);
-    assert.equal(serviceSource.includes('/api/admin'), false);
-    assert.equal(/ownerRouter\.(post|put|patch|delete)\(/.test(routesSource), false);
+    assert.equal(routesSource.includes("/api/admin"), false);
+    assert.equal(serviceSource.includes("/api/admin"), false);
+    assert.equal(routesSource.includes("/admin/"), false);
+    assert.equal(serviceSource.includes("/admin/"), false);
   });
 });
 
 async function createFixture(options: {
-  plan: 'FREE' | 'BASIC' | 'PRO';
-  role: 'OWNER' | 'ADMIN' | 'OPERATOR';
+  plan: "FREE" | "BASIC" | "PRO";
+  role: "OWNER" | "ADMIN" | "OPERATOR";
   pendingPlan?: string | null;
   providerSubscriptionId?: string | null;
   isPlatformAdmin?: boolean;
@@ -636,8 +1018,8 @@ async function createFixture(options: {
   const user = await prisma.user.create({
     data: {
       email: `${runId}-${suffix}@tatuzin.test`,
-      name: 'Owner Routes User',
-      passwordHash: 'not-used',
+      name: "Owner Routes User",
+      passwordHash: "not-used",
       isPlatformAdmin: options.isPlatformAdmin ?? false,
     },
   });
@@ -653,18 +1035,20 @@ async function createFixture(options: {
     data: {
       companyId: company.id,
       plan: options.plan,
-      status: 'ACTIVE',
-      startsAt: new Date('2026-05-01T00:00:00.000Z'),
+      status: "ACTIVE",
+      startsAt: new Date("2026-05-01T00:00:00.000Z"),
       syncEnabled: true,
       billingProvider:
-        options.providerSubscriptionId == null ? null : 'mercadopago',
+        options.providerSubscriptionId == null ? null : "mercadopago",
       providerSubscriptionId: options.providerSubscriptionId ?? null,
-      currentPeriodStart: new Date('2026-05-01T00:00:00.000Z'),
-      currentPeriodEnd: new Date('2026-06-01T00:00:00.000Z'),
-      nextPaymentDate: new Date('2026-06-01T00:00:00.000Z'),
+      currentPeriodStart: new Date("2026-05-01T00:00:00.000Z"),
+      currentPeriodEnd: new Date("2026-06-01T00:00:00.000Z"),
+      nextPaymentDate: new Date("2026-06-01T00:00:00.000Z"),
       pendingPlan: options.pendingPlan ?? null,
       pendingPlanRequestedAt:
-        options.pendingPlan == null ? null : new Date('2026-05-02T00:00:00.000Z'),
+        options.pendingPlan == null
+          ? null
+          : new Date("2026-05-02T00:00:00.000Z"),
     },
   });
   const clientInstanceId = `${runId}-device-${suffix}`;
@@ -673,10 +1057,10 @@ async function createFixture(options: {
       companyId: company.id,
       userId: user.id,
       clientInstanceId,
-      deviceLabel: 'Owner Routes Device',
-      platform: 'node-test',
-      appVersion: 'owner-routes-test',
-      status: 'ACTIVE',
+      deviceLabel: "Owner Routes Device",
+      platform: "node-test",
+      appVersion: "owner-routes-test",
+      status: "ACTIVE",
       approvedAt: new Date(),
       approvedByUserId: user.id,
       lastSeenAt: new Date(),
@@ -712,16 +1096,16 @@ async function createInvoice(
   await prisma.billingInvoice.create({
     data: {
       companyId: fixture.companyId,
-      provider: 'mercadopago',
+      provider: "mercadopago",
       providerInvoiceId: input.providerInvoiceId,
-      providerSubscriptionId: 'preapproval-owner-secret-9999',
-      plan: 'PRO',
+      providerSubscriptionId: "preapproval-owner-secret-9999",
+      plan: "PRO",
       status: input.status,
       amountCents: 8500,
-      currency: 'BRL',
+      currency: "BRL",
       invoiceUrl: input.invoiceUrl,
       payload: input.payload as Prisma.InputJsonValue,
-      paidAt: new Date('2026-05-03T00:00:00.000Z'),
+      paidAt: new Date("2026-05-03T00:00:00.000Z"),
     },
   });
 }
@@ -736,12 +1120,12 @@ async function createBusinessData(fixture: {
       companyId: fixture.companyId,
       userId: fixture.userId,
       membershipId: fixture.membershipId,
-      name: 'Owner Routes User',
+      name: "Owner Routes User",
       email: `${fixture.userId}@tatuzin.test`,
       emailNormalized: `${fixture.userId}@tatuzin.test`,
-      role: 'OWNER',
-      status: 'ACTIVE',
-      permissions: ['employees.manage'] as Prisma.InputJsonValue,
+      role: "OWNER",
+      status: "ACTIVE",
+      permissions: ["employees.manage"] as Prisma.InputJsonValue,
       createdByUserId: fixture.userId,
       updatedByUserId: fixture.userId,
     },
@@ -752,7 +1136,7 @@ async function createBusinessData(fixture: {
       data: {
         companyId: fixture.companyId,
         localUuid: `${runId}-product-coffee`,
-        name: 'Cafe coado',
+        name: "Cafe coado",
         salePriceCents: 5000,
         costPriceCents: 2000,
         stockMil: 5000,
@@ -762,7 +1146,7 @@ async function createBusinessData(fixture: {
       data: {
         companyId: fixture.companyId,
         localUuid: `${runId}-product-sugar`,
-        name: 'Acucar cristal',
+        name: "Acucar cristal",
         salePriceCents: 1000,
         costPriceCents: 400,
         stockMil: 500,
@@ -772,7 +1156,7 @@ async function createBusinessData(fixture: {
       data: {
         companyId: fixture.companyId,
         localUuid: `${runId}-product-milk`,
-        name: 'Leite integral',
+        name: "Leite integral",
         salePriceCents: 700,
         costPriceCents: 350,
         stockMil: 0,
@@ -785,23 +1169,23 @@ async function createBusinessData(fixture: {
       data: {
         companyId: fixture.companyId,
         localUuid: `${runId}-customer-alice`,
-        name: 'Ana Cliente',
-        phone: '11999990000',
+        name: "Ana Cliente",
+        phone: "11999990000",
       },
     }),
     prisma.customer.create({
       data: {
         companyId: fixture.companyId,
         localUuid: `${runId}-customer-bob`,
-        name: 'Bruno Fiado',
-        phone: '11888880000',
+        name: "Bruno Fiado",
+        phone: "11888880000",
       },
     }),
     prisma.customer.create({
       data: {
         companyId: fixture.companyId,
         localUuid: `${runId}-customer-inactive`,
-        name: 'Carla Sem Compra',
+        name: "Carla Sem Compra",
       },
     }),
   ]);
@@ -811,7 +1195,7 @@ async function createBusinessData(fixture: {
       companyId: fixture.companyId,
       userId: fixture.userId,
       localUuid: `${runId}-cash-session`,
-      status: 'open',
+      status: "open",
       openedAt: new Date(),
     },
   });
@@ -822,10 +1206,10 @@ async function createBusinessData(fixture: {
       cashSessionId: cashSession.id,
       localUuid: `${runId}-sale-cash`,
       customerId: alice.id,
-      receiptNumber: 'F-100',
-      paymentType: 'vista',
-      paymentMethod: 'dinheiro',
-      status: 'active',
+      receiptNumber: "F-100",
+      paymentType: "vista",
+      paymentMethod: "dinheiro",
+      status: "active",
       totalAmountCents: 10000,
       totalCostCents: 4000,
       soldAt: new Date(),
@@ -839,8 +1223,8 @@ async function createBusinessData(fixture: {
             totalPriceCents: 10000,
             unitCostCents: 2000,
             totalCostCents: 4000,
-            unitMeasure: 'un',
-            productType: 'unidade',
+            unitMeasure: "un",
+            productType: "unidade",
           },
         ],
       },
@@ -853,10 +1237,10 @@ async function createBusinessData(fixture: {
       cashSessionId: cashSession.id,
       localUuid: `${runId}-sale-fiado-open`,
       customerId: bob.id,
-      receiptNumber: 'F-101',
-      paymentType: 'fiado',
-      paymentMethod: 'fiado',
-      status: 'active',
+      receiptNumber: "F-101",
+      paymentType: "fiado",
+      paymentMethod: "fiado",
+      status: "active",
       totalAmountCents: 5000,
       totalCostCents: 2000,
       soldAt: new Date(),
@@ -870,8 +1254,8 @@ async function createBusinessData(fixture: {
             totalPriceCents: 5000,
             unitCostCents: 2000,
             totalCostCents: 2000,
-            unitMeasure: 'un',
-            productType: 'unidade',
+            unitMeasure: "un",
+            productType: "unidade",
           },
         ],
       },
@@ -884,10 +1268,10 @@ async function createBusinessData(fixture: {
       cashSessionId: cashSession.id,
       localUuid: `${runId}-sale-fiado-paid`,
       customerId: alice.id,
-      receiptNumber: 'F-102',
-      paymentType: 'fiado',
-      paymentMethod: 'fiado',
-      status: 'active',
+      receiptNumber: "F-102",
+      paymentType: "fiado",
+      paymentMethod: "fiado",
+      status: "active",
       totalAmountCents: 1000,
       totalCostCents: 400,
       soldAt: new Date(),
@@ -901,8 +1285,8 @@ async function createBusinessData(fixture: {
             totalPriceCents: 1000,
             unitCostCents: 400,
             totalCostCents: 400,
-            unitMeasure: 'un',
-            productType: 'unidade',
+            unitMeasure: "un",
+            productType: "unidade",
           },
         ],
       },
@@ -916,7 +1300,7 @@ async function createBusinessData(fixture: {
         saleId: openFiadoSale.id,
         localUuid: `${runId}-fiado-payment-open`,
         amountCents: 2000,
-        paymentMethod: 'pix',
+        paymentMethod: "pix",
         createdAt: new Date(),
       },
       {
@@ -924,7 +1308,7 @@ async function createBusinessData(fixture: {
         saleId: paidFiadoSale.id,
         localUuid: `${runId}-fiado-payment-paid`,
         amountCents: 1000,
-        paymentMethod: 'dinheiro',
+        paymentMethod: "dinheiro",
         createdAt: new Date(),
       },
     ],
@@ -962,21 +1346,29 @@ function signToken(input: {
       clientInstanceId: input.clientInstanceId,
     },
     env.JWT_SECRET,
-    { expiresIn: '15m' },
+    { expiresIn: "15m" },
   );
 }
 
 async function requestJson(
   method: string,
   path: string,
-  options?: { token?: string },
+  options?: { token?: string; body?: unknown },
 ) {
   const response = await originalFetch(`${apiBaseUrl}${path}`, {
     method,
     headers:
       options?.token == null
-        ? undefined
-        : { Authorization: `Bearer ${options.token}` },
+        ? options?.body == null
+          ? undefined
+          : { "Content-Type": "application/json" }
+        : {
+            Authorization: `Bearer ${options.token}`,
+            ...(options.body == null
+              ? {}
+              : { "Content-Type": "application/json" }),
+          },
+    body: options?.body == null ? undefined : JSON.stringify(options.body),
   });
   const rawBody = await response.text();
   return {

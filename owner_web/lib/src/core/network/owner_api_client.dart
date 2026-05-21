@@ -41,6 +41,14 @@ class OwnerApiClient {
     return _send('POST', path, body: body, accessToken: accessToken);
   }
 
+  Future<dynamic> patchJson(
+    String path, {
+    Map<String, dynamic>? body,
+    String? accessToken,
+  }) {
+    return _send('PATCH', path, body: body, accessToken: accessToken);
+  }
+
   Future<dynamic> _send(
     String method,
     String path, {
@@ -147,6 +155,12 @@ class OwnerApiClient {
         return _httpClient.get(uri, headers: headers);
       case 'POST':
         return _httpClient.post(
+          uri,
+          headers: headers,
+          body: body == null ? null : jsonEncode(body),
+        );
+      case 'PATCH':
+        return _httpClient.patch(
           uri,
           headers: headers,
           body: body == null ? null : jsonEncode(body),

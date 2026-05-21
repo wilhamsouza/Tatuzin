@@ -241,6 +241,7 @@ class OwnerReportThemeCard extends StatelessWidget {
     required this.icon,
     this.available = false,
     this.reason,
+    this.onTap,
   });
 
   final String title;
@@ -248,6 +249,7 @@ class OwnerReportThemeCard extends StatelessWidget {
   final IconData icon;
   final bool available;
   final String? reason;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -255,40 +257,44 @@ class OwnerReportThemeCard extends StatelessWidget {
     return SizedBox(
       width: 250,
       child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, color: colorScheme.primary),
-              const SizedBox(height: 14),
-              Text(
-                title,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              Text(description),
-              const SizedBox(height: 12),
-              Chip(
-                label: Text(available ? 'Disponível' : 'Em preparação'),
-                backgroundColor: available
-                    ? colorScheme.primaryContainer
-                    : colorScheme.surfaceContainerHighest,
-              ),
-              if (!available &&
-                  reason != null &&
-                  reason!.trim().isNotEmpty) ...[
-                const SizedBox(height: 8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: available ? onTap : null,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, color: colorScheme.primary),
+                const SizedBox(height: 14),
                 Text(
-                  reason!,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
+                const SizedBox(height: 8),
+                Text(description),
+                const SizedBox(height: 12),
+                Chip(
+                  label: Text(available ? 'Abrir relatorio' : 'Em preparação'),
+                  backgroundColor: available
+                      ? colorScheme.primaryContainer
+                      : colorScheme.surfaceContainerHighest,
+                ),
+                if (!available &&
+                    reason != null &&
+                    reason!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    reason!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

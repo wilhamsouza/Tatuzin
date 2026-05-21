@@ -1,24 +1,25 @@
-import crypto from 'node:crypto';
+import crypto from "node:crypto";
 
-import { MembershipRole, Prisma, type EmployeeProfile } from '@prisma/client';
-import bcrypt from 'bcryptjs';
+import { MembershipRole, Prisma, type EmployeeProfile } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
-import { prisma } from '../../database/prisma';
-import type { AppContext } from '../app/app-context.types';
-import { AppError } from '../../shared/http/app-error';
-import { toPaginationParams } from '../../shared/http/pagination';
-import { EmployeeContextService } from './employee-context.service';
+import { prisma } from "../../database/prisma";
+import type { AppContext } from "../app/app-context.types";
+import { AppError } from "../../shared/http/app-error";
+import { toPaginationParams } from "../../shared/http/pagination";
+import { EmployeeContextService } from "./employee-context.service";
 import {
   effectivePermissionsForEmployee,
   normalizeEmployeeRole,
   normalizeEmployeeStatus,
-  type EmployeeStatus,
-} from './employee-permissions';
+  parseStoredPermissions,
+  type EmployeePermission,
+} from "./employee-permissions";
 import type {
   EmployeeCreateInput,
   EmployeeListQueryInput,
   EmployeeUpdateInput,
-} from './employees.schemas';
+} from "./employees.schemas";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const TEMPORARY_PASSWORD_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -48,7 +49,7 @@ export class EmployeesService {
         where,
         skip,
         take,
-        orderBy: [{ role: 'asc' }, { name: 'asc' }, { createdAt: 'asc' }],
+        orderBy: [{ role: "asc" }, { name: "asc" }, { createdAt: "asc" }],
         include: {
           user: {
             select: {
@@ -81,12 +82,13 @@ export class EmployeesService {
 
   async create(context: AppContext, input: EmployeeCreateInput) {
     this.assertNotOwnerRole(input.role);
+    this.assertPermissionsAllowedForRole(input.role, input.permissions);
     const email = normalizeEmail(input.email);
-    if (input.status === 'INVITED' && email == null) {
+    if (input.status === "INVITED" && email == null) {
       throw new AppError(
-        'E-mail obrigatorio para convidar funcionario.',
+        "E-mail obrigatorio para convidar funcionario.",
         422,
-        'EMPLOYEE_EMAIL_REQUIRED',
+        "EMPLOYEE_EMAIL_REQUIRED",
       );
     }
 
@@ -105,7 +107,7 @@ export class EmployeesService {
         role: input.role,
         status: input.status,
         permissions: this.toPermissionsJson(input.permissions),
-        disabledAt: input.status === 'DISABLED' ? new Date() : null,
+        disabledAt: input.status === "DISABLED" ? new Date() : null,
         createdByUserId: context.user.id,
         updatedByUserId: context.user.id,
       },
@@ -128,11 +130,19 @@ export class EmployeesService {
       this.assertNotOwnerRole(input.role);
     }
 
-    const email = input.email === undefined ? undefined : normalizeEmail(input.email);
+    const email =
+      input.email === undefined ? undefined : normalizeEmail(input.email);
     const nextEmailNormalized =
-      email === undefined ? existing.emailNormalized : email?.normalized ?? null;
+      email === undefined
+        ? existing.emailNormalized
+        : (email?.normalized ?? null);
     const nextRole = input.role ?? existing.role;
     const nextStatus = input.status ?? existing.status;
+    const nextPermissions =
+      input.permissions === undefined
+        ? parseStoredPermissions(existing.permissions)
+        : input.permissions;
+    this.assertPermissionsAllowedForRole(nextRole, nextPermissions);
     if (email !== undefined) {
       await this.ensureEmailAvailable(
         context.company.id,
@@ -144,18 +154,18 @@ export class EmployeesService {
         email?.normalized !== existing.emailNormalized
       ) {
         throw new AppError(
-          'Nao altere o e-mail de um funcionario com acesso ativo. Redefina o acesso com outro cadastro.',
+          "Nao altere o e-mail de um funcionario com acesso ativo. Redefina o acesso com outro cadastro.",
           409,
-          'EMPLOYEE_ACCESS_EMAIL_LOCKED',
+          "EMPLOYEE_ACCESS_EMAIL_LOCKED",
         );
       }
     }
 
-    if (nextStatus === 'INVITED' && nextEmailNormalized == null) {
+    if (nextStatus === "INVITED" && nextEmailNormalized == null) {
       throw new AppError(
-        'E-mail obrigatorio para convidar funcionario.',
+        "E-mail obrigatorio para convidar funcionario.",
         422,
-        'EMPLOYEE_EMAIL_REQUIRED',
+        "EMPLOYEE_EMAIL_REQUIRED",
       );
     }
 
@@ -183,8 +193,8 @@ export class EmployeesService {
           : {
               status: input.status,
               disabledAt:
-                input.status === 'DISABLED'
-                  ? existing.disabledAt ?? new Date()
+                input.status === "DISABLED"
+                  ? (existing.disabledAt ?? new Date())
                   : null,
             }),
         ...(input.permissions === undefined
@@ -204,14 +214,14 @@ export class EmployeesService {
     );
     this.assertMutableEmployee(existing);
 
-    if (existing.status === 'DISABLED') {
+    if (existing.status === "DISABLED") {
       return this.toDto(existing);
     }
 
     const employee = await prisma.employeeProfile.update({
       where: { id: existing.id },
       data: {
-        status: 'DISABLED',
+        status: "DISABLED",
         disabledAt: new Date(),
         updatedByUserId: context.user.id,
       },
@@ -228,9 +238,9 @@ export class EmployeesService {
     this.assertMutableEmployee(existing);
     if (existing.emailNormalized == null) {
       throw new AppError(
-        'E-mail obrigatorio para convidar funcionario.',
+        "E-mail obrigatorio para convidar funcionario.",
         422,
-        'EMPLOYEE_EMAIL_REQUIRED',
+        "EMPLOYEE_EMAIL_REQUIRED",
       );
     }
 
@@ -238,16 +248,16 @@ export class EmployeesService {
       await this.ensureEmployeeLimitAvailable(context);
     }
 
-    const rawToken = crypto.randomBytes(32).toString('hex');
+    const rawToken = crypto.randomBytes(32).toString("hex");
     const inviteTokenHash = crypto
-      .createHash('sha256')
+      .createHash("sha256")
       .update(rawToken)
-      .digest('hex');
+      .digest("hex");
 
     const employee = await prisma.employeeProfile.update({
       where: { id: existing.id },
       data: {
-        status: 'INVITED',
+        status: "INVITED",
         invitedAt: new Date(),
         inviteTokenHash,
         inviteExpiresAt: new Date(Date.now() + INVITE_TTL_MS),
@@ -259,7 +269,7 @@ export class EmployeesService {
     return {
       employee: this.toDto(employee),
       message:
-        'Convite gerado. O envio automatico de e-mail sera implementado em etapa futura.',
+        "Convite gerado. O envio automatico de e-mail sera implementado em etapa futura.",
     };
   }
 
@@ -270,19 +280,19 @@ export class EmployeesService {
     );
     this.assertMutableEmployee(existing);
 
-    if (existing.status === 'DISABLED') {
+    if (existing.status === "DISABLED") {
       throw new AppError(
-        'Reative o funcionario antes de redefinir a senha.',
+        "Reative o funcionario antes de redefinir a senha.",
         409,
-        'EMPLOYEE_DISABLED',
+        "EMPLOYEE_DISABLED",
       );
     }
 
     if (existing.emailNormalized == null) {
       throw new AppError(
-        'Informe um e-mail para gerar acesso. Login por telefone ficara para uma melhoria futura.',
+        "Informe um e-mail para gerar acesso. Login por telefone ficara para uma melhoria futura.",
         422,
-        'EMPLOYEE_EMAIL_REQUIRED_FOR_ACCESS',
+        "EMPLOYEE_EMAIL_REQUIRED_FOR_ACCESS",
       );
     }
 
@@ -302,9 +312,9 @@ export class EmployeesService {
 
         if (existingUser != null) {
           throw new AppError(
-            'Ja existe uma conta com este e-mail. Use outro e-mail para evitar mistura de acesso.',
+            "Ja existe uma conta com este e-mail. Use outro e-mail para evitar mistura de acesso.",
             409,
-            'EMPLOYEE_ACCESS_EMAIL_CONFLICT',
+            "EMPLOYEE_ACCESS_EMAIL_CONFLICT",
           );
         }
 
@@ -331,25 +341,25 @@ export class EmployeesService {
 
         if (user == null) {
           throw new AppError(
-            'Conta vinculada ao funcionario nao foi encontrada.',
+            "Conta vinculada ao funcionario nao foi encontrada.",
             409,
-            'EMPLOYEE_ACCESS_USER_NOT_FOUND',
+            "EMPLOYEE_ACCESS_USER_NOT_FOUND",
           );
         }
 
         if (user.email.toLowerCase().trim() !== existing.emailNormalized) {
           throw new AppError(
-            'O e-mail do funcionario nao confere com a conta vinculada.',
+            "O e-mail do funcionario nao confere com a conta vinculada.",
             409,
-            'EMPLOYEE_ACCESS_EMAIL_CONFLICT',
+            "EMPLOYEE_ACCESS_EMAIL_CONFLICT",
           );
         }
 
         if (user.isPlatformAdmin) {
           throw new AppError(
-            'Esta conta nao pode receber senha de funcionario.',
+            "Esta conta nao pode receber senha de funcionario.",
             403,
-            'EMPLOYEE_ACCESS_PROTECTED_USER',
+            "EMPLOYEE_ACCESS_PROTECTED_USER",
           );
         }
 
@@ -378,9 +388,9 @@ export class EmployeesService {
 
         if (membership?.role === MembershipRole.OWNER) {
           throw new AppError(
-            'OWNER nao pode ser alterado por este fluxo.',
+            "OWNER nao pode ser alterado por este fluxo.",
             403,
-            'EMPLOYEE_OWNER_PROTECTED',
+            "EMPLOYEE_OWNER_PROTECTED",
           );
         }
 
@@ -410,17 +420,17 @@ export class EmployeesService {
           membership.companyId !== context.company.id
         ) {
           throw new AppError(
-            'Vinculo de acesso do funcionario esta inconsistente.',
+            "Vinculo de acesso do funcionario esta inconsistente.",
             409,
-            'EMPLOYEE_ACCESS_MEMBERSHIP_CONFLICT',
+            "EMPLOYEE_ACCESS_MEMBERSHIP_CONFLICT",
           );
         }
 
         if (membership.role === MembershipRole.OWNER) {
           throw new AppError(
-            'OWNER nao pode ser alterado por este fluxo.',
+            "OWNER nao pode ser alterado por este fluxo.",
             403,
-            'EMPLOYEE_OWNER_PROTECTED',
+            "EMPLOYEE_OWNER_PROTECTED",
           );
         }
       }
@@ -430,7 +440,7 @@ export class EmployeesService {
         data: {
           userId,
           membershipId,
-          status: 'ACTIVE',
+          status: "ACTIVE",
           invitedAt: null,
           inviteTokenHash: null,
           inviteExpiresAt: null,
@@ -456,7 +466,7 @@ export class EmployeesService {
       login: employee.email,
       temporaryPassword,
       temporaryPasswordExpiresAt: expiresAt.toISOString(),
-      message: 'Senha temporaria gerada.',
+      message: "Senha temporaria gerada.",
     };
   }
 
@@ -478,7 +488,7 @@ export class EmployeesService {
     const employee = await prisma.employeeProfile.update({
       where: { id: existing.id },
       data: {
-        status: 'ACTIVE',
+        status: "ACTIVE",
         disabledAt: null,
         updatedByUserId: context.user.id,
       },
@@ -496,9 +506,15 @@ export class EmployeesService {
         ? {}
         : {
             OR: [
-              { name: { contains: query.search, mode: 'insensitive' as const } },
-              { email: { contains: query.search, mode: 'insensitive' as const } },
-              { phone: { contains: query.search, mode: 'insensitive' as const } },
+              {
+                name: { contains: query.search, mode: "insensitive" as const },
+              },
+              {
+                email: { contains: query.search, mode: "insensitive" as const },
+              },
+              {
+                phone: { contains: query.search, mode: "insensitive" as const },
+              },
             ],
           }),
     };
@@ -524,9 +540,9 @@ export class EmployeesService {
 
     if (employee == null) {
       throw new AppError(
-        'Funcionario nao encontrado.',
+        "Funcionario nao encontrado.",
         404,
-        'EMPLOYEE_NOT_FOUND',
+        "EMPLOYEE_NOT_FOUND",
       );
     }
 
@@ -534,21 +550,46 @@ export class EmployeesService {
   }
 
   private assertNotOwnerRole(role: string) {
-    if (role === 'OWNER') {
+    if (role === "OWNER") {
       throw new AppError(
-        'OWNER nao pode ser criado ou promovido manualmente.',
+        "OWNER nao pode ser criado ou promovido manualmente.",
         422,
-        'EMPLOYEE_OWNER_PROTECTED',
+        "EMPLOYEE_OWNER_PROTECTED",
       );
     }
   }
 
   private assertMutableEmployee(employee: EmployeeProfile) {
-    if (employee.role === 'OWNER') {
+    if (employee.role === "OWNER") {
       throw new AppError(
-        'OWNER nao pode ser alterado por este endpoint.',
+        "OWNER nao pode ser alterado por este endpoint.",
         403,
-        'EMPLOYEE_OWNER_PROTECTED',
+        "EMPLOYEE_OWNER_PROTECTED",
+      );
+    }
+  }
+
+  private assertPermissionsAllowedForRole(
+    role: string,
+    permissions: readonly string[] | null | undefined,
+  ) {
+    if (permissions == null) {
+      return;
+    }
+    const normalizedRole = normalizeEmployeeRole(role) ?? "READ_ONLY";
+    const restrictedPermissions = new Set<EmployeePermission>([
+      "employees.manage",
+      "subscription.manage",
+      "devices.manage",
+    ]);
+    const hasRestrictedPermission = permissions.some((permission) =>
+      restrictedPermissions.has(permission as EmployeePermission),
+    );
+    if (normalizedRole !== "MANAGER" && hasRestrictedPermission) {
+      throw new AppError(
+        "Permissoes administrativas exigem cargo de gerente.",
+        422,
+        "EMPLOYEE_PERMISSION_ROLE_MISMATCH",
       );
     }
   }
@@ -566,16 +607,18 @@ export class EmployeesService {
       where: {
         companyId,
         emailNormalized,
-        ...(currentEmployeeId == null ? {} : { id: { not: currentEmployeeId } }),
+        ...(currentEmployeeId == null
+          ? {}
+          : { id: { not: currentEmployeeId } }),
       },
       select: { id: true },
     });
 
     if (existing != null) {
       throw new AppError(
-        'Ja existe funcionario com este e-mail nesta empresa.',
+        "Ja existe funcionario com este e-mail nesta empresa.",
         409,
-        'EMPLOYEE_EMAIL_CONFLICT',
+        "EMPLOYEE_EMAIL_CONFLICT",
       );
     }
   }
@@ -585,23 +628,23 @@ export class EmployeesService {
     const total = await prisma.employeeProfile.count({
       where: {
         companyId: context.company.id,
-        role: { not: 'OWNER' },
-        status: { in: ['ACTIVE', 'INVITED'] },
+        role: { not: "OWNER" },
+        status: { in: ["ACTIVE", "INVITED"] },
       },
     });
 
     if (total >= maxEmployees) {
       throw new AppError(
-        'Limite de funcionarios atingido para o plano atual.',
+        "Limite de funcionarios atingido para o plano atual.",
         409,
-        'EMPLOYEE_LIMIT_REACHED',
+        "EMPLOYEE_LIMIT_REACHED",
         { maxEmployees },
       );
     }
   }
 
   private countsTowardLimit(role: string, status: string) {
-    return role !== 'OWNER' && (status === 'ACTIVE' || status === 'INVITED');
+    return role !== "OWNER" && (status === "ACTIVE" || status === "INVITED");
   }
 
   private toPermissionsJson(
@@ -617,8 +660,8 @@ export class EmployeesService {
   }
 
   private toDto(employee: EmployeeWithAccess) {
-    const role = normalizeEmployeeRole(employee.role) ?? 'READ_ONLY';
-    const status = normalizeEmployeeStatus(employee.status) ?? 'DISABLED';
+    const role = normalizeEmployeeRole(employee.role) ?? "READ_ONLY";
+    const status = normalizeEmployeeStatus(employee.status) ?? "DISABLED";
     return {
       id: employee.id,
       name: employee.name,
@@ -636,9 +679,9 @@ export class EmployeesService {
         employee.user?.temporaryPasswordExpiresAt?.toISOString() ?? null,
       commissionEnabled: employee.commissionEnabled,
       commissionType: employee.commissionEnabled
-        ? employee.commissionType ?? 'NONE'
-        : 'NONE',
-      commissionBase: employee.commissionBase ?? 'NET_SALES',
+        ? (employee.commissionType ?? "NONE")
+        : "NONE",
+      commissionBase: employee.commissionBase ?? "NET_SALES",
       commissionRateBps: employee.commissionRateBps,
       commissionFixedCents: employee.commissionFixedCents,
       commissionUpdatedAt: employee.commissionUpdatedAt?.toISOString() ?? null,
@@ -648,27 +691,27 @@ export class EmployeesService {
   }
 
   private resolveAccessStatus(employee: EmployeeWithAccess) {
-    if (employee.status === 'DISABLED') {
-      return 'DISABLED';
+    if (employee.status === "DISABLED") {
+      return "DISABLED";
     }
     if (employee.userId == null || employee.membershipId == null) {
-      return 'NO_ACCESS';
+      return "NO_ACCESS";
     }
     if (employee.user == null || !employee.user.isActive) {
-      return 'DISABLED';
+      return "DISABLED";
     }
     if (employee.user.mustChangePassword) {
-      return 'TEMPORARY_PASSWORD_PENDING';
+      return "TEMPORARY_PASSWORD_PENDING";
     }
-    return 'ACTIVE';
+    return "ACTIVE";
   }
 
   private membershipRoleForEmployee(role: string) {
-    return role === 'MANAGER' ? MembershipRole.ADMIN : MembershipRole.OPERATOR;
+    return role === "MANAGER" ? MembershipRole.ADMIN : MembershipRole.OPERATOR;
   }
 
   private generateTemporaryPasswordValue() {
-    return crypto.randomBytes(9).toString('base64url');
+    return crypto.randomBytes(9).toString("base64url");
   }
 }
 
@@ -677,7 +720,9 @@ type NormalizedEmail = {
   normalized: string;
 };
 
-function normalizeEmail(rawEmail: string | null | undefined): NormalizedEmail | null {
+function normalizeEmail(
+  rawEmail: string | null | undefined,
+): NormalizedEmail | null {
   const display = rawEmail?.trim();
   if (display == null || display.length === 0) {
     return null;

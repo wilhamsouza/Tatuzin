@@ -456,10 +456,111 @@ class OwnerApiService {
     return OwnerEmployeesOverview.fromMap(response);
   }
 
+  Future<OwnerEmployeeMutationResult> createEmployee({
+    required Map<String, dynamic> body,
+  }) async {
+    final response = await _apiClient.postJson(
+      '/owner/employees',
+      accessToken: await _readRequiredToken(),
+      body: body,
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou o funcionario no formato esperado.',
+      );
+    }
+    return OwnerEmployeeMutationResult.fromMap(response);
+  }
+
+  Future<OwnerEmployeeMutationResult> updateEmployee({
+    required String employeeId,
+    required Map<String, dynamic> body,
+  }) async {
+    final response = await _apiClient.patchJson(
+      '/owner/employees/${Uri.encodeComponent(employeeId)}',
+      accessToken: await _readRequiredToken(),
+      body: body,
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou o funcionario no formato esperado.',
+      );
+    }
+    return OwnerEmployeeMutationResult.fromMap(response);
+  }
+
+  Future<OwnerEmployeeMutationResult> setEmployeeEnabled({
+    required String employeeId,
+    required bool enabled,
+  }) async {
+    final response = await _apiClient.postJson(
+      '/owner/employees/${Uri.encodeComponent(employeeId)}/${enabled ? 'enable' : 'disable'}',
+      accessToken: await _readRequiredToken(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou o funcionario no formato esperado.',
+      );
+    }
+    return OwnerEmployeeMutationResult.fromMap(response);
+  }
+
+  Future<OwnerTemporaryPasswordResult> generateTemporaryPassword({
+    required String employeeId,
+  }) async {
+    final response = await _apiClient.postJson(
+      '/owner/employees/${Uri.encodeComponent(employeeId)}/access/temporary-password',
+      accessToken: await _readRequiredToken(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou a senha temporaria no formato esperado.',
+      );
+    }
+    return OwnerTemporaryPasswordResult.fromMap(response);
+  }
+
+  Future<OwnerCommissionSettings> updateCommissionSettings({
+    required String employeeId,
+    required Map<String, dynamic> body,
+  }) async {
+    final response = await _apiClient.patchJson(
+      '/owner/employees/${Uri.encodeComponent(employeeId)}/commission-settings',
+      accessToken: await _readRequiredToken(),
+      body: body,
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou a comissao no formato esperado.',
+      );
+    }
+    return OwnerCommissionSettings.fromMap(
+      response['settings'] is Map<String, dynamic>
+          ? response['settings'] as Map<String, dynamic>
+          : const <String, dynamic>{},
+    );
+  }
+
   Future<OwnerReceiptSettings> getReceiptSettings() async {
     final response = await _apiClient.getJson(
       '/owner/receipt-settings',
       accessToken: await _readRequiredToken(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou o comprovante no formato esperado.',
+      );
+    }
+    return OwnerReceiptSettings.fromMap(response);
+  }
+
+  Future<OwnerReceiptSettings> updateReceiptSettings({
+    required Map<String, dynamic> body,
+  }) async {
+    final response = await _apiClient.patchJson(
+      '/owner/receipt-settings',
+      accessToken: await _readRequiredToken(),
+      body: body,
     );
     if (response is! Map<String, dynamic>) {
       throw const OwnerApiException(
@@ -480,6 +581,63 @@ class OwnerApiService {
       );
     }
     return OwnerDevicesResult.fromMap(response);
+  }
+
+  Future<OwnerSyncStatus> getSyncStatus() async {
+    final response = await _apiClient.getJson(
+      '/owner/sync/status',
+      accessToken: await _readRequiredToken(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou a sincronizacao no formato esperado.',
+      );
+    }
+    return OwnerSyncStatus.fromMap(response);
+  }
+
+  Future<Map<String, dynamic>> subscribe({required String plan}) async {
+    return _writeMap('/owner/billing/subscribe', <String, dynamic>{
+      'plan': plan,
+      'billingCycle': 'monthly',
+    });
+  }
+
+  Future<Map<String, dynamic>> changePlan({required String plan}) async {
+    return _writeMap('/owner/billing/change-plan', <String, dynamic>{
+      'plan': plan,
+    });
+  }
+
+  Future<Map<String, dynamic>> cancelSubscription() async {
+    return _writeMap('/owner/billing/cancel', const <String, dynamic>{
+      'effective': 'period_end',
+    });
+  }
+
+  Future<Map<String, dynamic>> resumeSubscription() async {
+    return _writeMap('/owner/billing/resume');
+  }
+
+  Future<Map<String, dynamic>> refreshBilling() async {
+    return _writeMap('/owner/billing/refresh');
+  }
+
+  Future<Map<String, dynamic>> _writeMap(
+    String path, [
+    Map<String, dynamic>? body,
+  ]) async {
+    final response = await _apiClient.postJson(
+      path,
+      accessToken: await _readRequiredToken(),
+      body: body,
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou a resposta no formato esperado.',
+      );
+    }
+    return response;
   }
 
   Future<String> _readRequiredToken() async {

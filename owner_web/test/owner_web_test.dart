@@ -251,6 +251,8 @@ void main() {
           return _jsonResponse(_employeesPayload());
         case '/api/owner/devices':
           return _jsonResponse(_devicesPayload());
+        case '/api/owner/sync/status':
+          return _jsonResponse(_syncStatusPayload());
         default:
           return http.Response('not found', 404);
       }
@@ -289,6 +291,7 @@ void main() {
     );
     await service.getEmployees();
     await service.getDevices();
+    await service.getSyncStatus();
 
     final paths = fakeClient.requests
         .map((request) => request.url.path)
@@ -311,13 +314,14 @@ void main() {
     expect(paths, contains('/api/owner/billing/invoices'));
     expect(paths, contains('/api/owner/employees'));
     expect(paths, contains('/api/owner/devices'));
+    expect(paths, contains('/api/owner/sync/status'));
     expect(paths.any((path) => path.startsWith('/api/admin/')), false);
     expect(paths.any((path) => path.startsWith('/api/billing/')), false);
     expect(paths.any((path) => path.startsWith('/api/employees/')), false);
     expect(paths.any((path) => path.startsWith('/api/sync/')), false);
   });
 
-  test('source does not call admin APIs or owner write endpoints', () {
+  test('source does not call admin APIs or internal app endpoints', () {
     final source = Directory('lib')
         .listSync(recursive: true)
         .whereType<File>()
@@ -327,16 +331,10 @@ void main() {
 
     expect(source, isNot(contains('/api/admin')));
     expect(source, isNot(contains('/admin/')));
-    expect(
-      RegExp(
-        r'''(?:postJson|putJson|patchJson|deleteJson)\(\s*['"]/owner/''',
-      ).hasMatch(source),
-      isFalse,
-    );
-    expect(
-      RegExp(r'''_send\('(?:PUT|PATCH|DELETE)' ''').hasMatch(source),
-      isFalse,
-    );
+    expect(source, isNot(contains('/api/employees')));
+    expect(source, isNot(contains('/api/billing')));
+    expect(source, isNot(contains('/api/sync')));
+    expect(source, isNot(contains('/api/app')));
   });
 
   test('api client clears local session on final 401', () async {
@@ -663,6 +661,35 @@ void main() {
     expect(find.textContaining('payload'), findsNothing);
   });
 
+  testWidgets('billing page hides owner-only actions from admin sessions', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _withProviders(
+        overrides: [
+          ownerBillingStatusProvider.overrideWith((ref) async {
+            return OwnerBillingStatus.fromMap({
+              ..._billingPayload(),
+              'canManageBilling': false,
+            });
+          }),
+          ownerBillingInvoicesProvider.overrideWith((ref) async {
+            return OwnerInvoicesPage.fromMap(_invoicesPayload());
+          }),
+        ],
+        child: const OwnerBillingPage(),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Alterar plano'), findsNothing);
+    expect(find.text('Cancelar no fim do periodo'), findsNothing);
+    expect(
+      find.text('Apenas o dono pode alterar a assinatura'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('employees page renders access and commissions safely', (
     tester,
   ) async {
@@ -695,10 +722,109 @@ void main() {
     expect(find.textContaining('token'), findsNothing);
   });
 
+  testWidgets('employees page hides actions without employees.manage', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _withProviders(
+        overrides: [
+          ownerEmployeesProvider.overrideWith((ref) async {
+            return OwnerEmployeesOverview.fromMap({
+              ..._employeesPayload(),
+              'canManage': false,
+            });
+          }),
+          ownerCommissionsProvider.overrideWith((ref) async {
+            return OwnerCommissionsSummary.fromMap(_commissionsPayload());
+          }),
+          ownerEmployeeReportsProvider.overrideWith((ref) async {
+            return OwnerEmployeeReports.fromMap(
+              _employeeReportsPayload(available: false),
+            );
+          }),
+        ],
+        child: const OwnerEmployeesPage(),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Novo funcionario'), findsNothing);
+    expect(find.byIcon(Icons.edit_outlined), findsNothing);
+    expect(find.byIcon(Icons.password_rounded), findsNothing);
+    expect(find.text('Somente leitura'), findsOneWidget);
+  });
+
+  testWidgets('create employee dialog validates required fields', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _withProviders(
+        overrides: [
+          ownerEmployeesProvider.overrideWith((ref) async {
+            return OwnerEmployeesOverview.fromMap(_employeesPayload());
+          }),
+          ownerCommissionsProvider.overrideWith((ref) async {
+            return OwnerCommissionsSummary.fromMap(_commissionsPayload());
+          }),
+          ownerEmployeeReportsProvider.overrideWith((ref) async {
+            return OwnerEmployeeReports.fromMap(
+              _employeeReportsPayload(available: false),
+            );
+          }),
+        ],
+        child: const OwnerEmployeesPage(),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('Novo funcionario'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Salvar'));
+    await tester.pump();
+
+    expect(find.text('Informe o nome do funcionario.'), findsOneWidget);
+  });
+
+  testWidgets('commission dialog validates percent values', (tester) async {
+    await tester.pumpWidget(
+      _withProviders(
+        overrides: [
+          ownerEmployeesProvider.overrideWith((ref) async {
+            return OwnerEmployeesOverview.fromMap(_employeesPayload());
+          }),
+          ownerCommissionsProvider.overrideWith((ref) async {
+            return OwnerCommissionsSummary.fromMap(_commissionsPayload());
+          }),
+          ownerEmployeeReportsProvider.overrideWith((ref) async {
+            return OwnerEmployeeReports.fromMap(
+              _employeeReportsPayload(available: false),
+            );
+          }),
+        ],
+        child: const OwnerEmployeesPage(),
+      ),
+    );
+    await tester.pump();
+    final commissionButton = find.byTooltip('Configurar comissao');
+    await tester.ensureVisible(commissionButton);
+    await tester.tap(commissionButton);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '0');
+    await tester.tap(find.text('Salvar'));
+    await tester.pump();
+
+    expect(
+      find.text('Informe percentual maior que 0 e ate 100%.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('devices page hides technical ids', (tester) async {
     await tester.pumpWidget(
       _withProviders(
         overrides: [
+          ownerSyncStatusProvider.overrideWith((ref) async {
+            return OwnerSyncStatus.fromMap(_syncStatusPayload());
+          }),
           ownerDevicesProvider.overrideWith((ref) async {
             return OwnerDevicesResult.fromMap(_devicesPayload());
           }),
@@ -914,6 +1040,7 @@ Map<String, dynamic> _billingPayload() {
     'provider': 'mercadopago',
     'hasProviderSubscription': true,
     'maskedProviderSubscriptionId': 'prea...9999',
+    'canManageBilling': true,
     'nextPaymentDate': '2026-06-01T00:00:00.000Z',
     'cancelAtPeriodEnd': false,
     'pendingPlan': null,
@@ -950,6 +1077,7 @@ Map<String, dynamic> _invoicesPayload() {
 Map<String, dynamic> _employeesPayload() {
   return {
     'available': true,
+    'canManage': true,
     'summary': {
       'total': 1,
       'active': 1,
@@ -1041,6 +1169,30 @@ Map<String, dynamic> _devicesPayload() {
     ],
     'count': 1,
     'limits': {'maxDevices': 100},
+  };
+}
+
+Map<String, dynamic> _syncStatusPayload() {
+  return {
+    'online': true,
+    'syncEnabled': true,
+    'lastSyncAt': '2026-05-03T00:00:00.000Z',
+    'pendingEvents': 0,
+    'openConflicts': 0,
+    'activeDevices': 1,
+    'health': 'ok',
+    'message': 'Tudo sincronizado',
+    'recentErrors': [],
+    'sessions': [
+      {
+        'id': 'session-1',
+        'clientType': 'MOBILE_APP',
+        'deviceLabel': 'PDV Principal',
+        'platform': 'android',
+        'appVersion': '1.0.0',
+        'lastSeenAt': '2026-05-03T00:00:00.000Z',
+      },
+    ],
   };
 }
 

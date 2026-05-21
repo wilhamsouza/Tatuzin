@@ -54,9 +54,19 @@ class OwnerShellScaffold extends ConsumerWidget {
       label: 'Relatórios',
     ),
     _OwnerNavItem(
+      route: '/company',
+      icon: Icons.storefront_rounded,
+      label: 'Empresa',
+    ),
+    _OwnerNavItem(
       route: '/billing',
       icon: Icons.receipt_long_rounded,
       label: 'Assinatura',
+    ),
+    _OwnerNavItem(
+      route: '/devices',
+      icon: Icons.cloud_sync_rounded,
+      label: 'Nuvem',
     ),
     _OwnerNavItem(
       route: '/settings',

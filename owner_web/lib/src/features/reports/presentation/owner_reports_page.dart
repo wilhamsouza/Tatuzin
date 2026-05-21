@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/owner_providers.dart';
 import '../../../core/models/owner_models.dart';
@@ -45,6 +46,12 @@ class OwnerReportsPage extends ConsumerWidget {
                     icon: _reportIcon(item.key),
                     available: item.available,
                     reason: _friendlyReason(item),
+                    onTap: () {
+                      final route = _routeForReport(item.key);
+                      if (route != null) {
+                        context.go(route);
+                      }
+                    },
                   ),
               ],
             );
@@ -73,8 +80,29 @@ IconData _reportIcon(String key) {
       return Icons.trending_up_rounded;
     case 'employees':
       return Icons.badge_outlined;
+    case 'commissions':
+      return Icons.price_check_rounded;
     default:
       return Icons.assessment_outlined;
+  }
+}
+
+String? _routeForReport(String key) {
+  switch (key) {
+    case 'sales':
+      return '/sales';
+    case 'products':
+    case 'stock':
+      return '/products';
+    case 'cash':
+      return '/finance';
+    case 'customers':
+      return '/clients';
+    case 'employees':
+    case 'commissions':
+      return '/employees';
+    default:
+      return null;
   }
 }
 

@@ -238,6 +238,11 @@ final ownerDevicesProvider = FutureProvider<OwnerDevicesResult>((ref) async {
   return ref.watch(ownerApiServiceProvider).getDevices();
 });
 
+final ownerSyncStatusProvider = FutureProvider<OwnerSyncStatus>((ref) async {
+  ref.watch(ownerRefreshTickProvider);
+  return ref.watch(ownerApiServiceProvider).getSyncStatus();
+});
+
 String _dateOnly(DateTime value) {
   final local = value.toLocal();
   return '${local.year.toString().padLeft(4, '0')}-'

@@ -421,6 +421,7 @@ class OwnerBillingStatus {
     required this.provider,
     required this.hasProviderSubscription,
     required this.maskedProviderSubscriptionId,
+    required this.canManageBilling,
     required this.nextPaymentDate,
     required this.cancelAtPeriodEnd,
     required this.cancelRequestedAt,
@@ -441,6 +442,7 @@ class OwnerBillingStatus {
   final String? provider;
   final bool hasProviderSubscription;
   final String? maskedProviderSubscriptionId;
+  final bool canManageBilling;
   final String? nextPaymentDate;
   final bool cancelAtPeriodEnd;
   final String? cancelRequestedAt;
@@ -465,6 +467,7 @@ class OwnerBillingStatus {
         map,
         'maskedProviderSubscriptionId',
       ),
+      canManageBilling: map['canManageBilling'] == true,
       nextPaymentDate: _readOptionalString(map, 'nextPaymentDate'),
       cancelAtPeriodEnd: map['cancelAtPeriodEnd'] == true,
       cancelRequestedAt: _readOptionalString(map, 'cancelRequestedAt'),
@@ -589,12 +592,14 @@ class OwnerEmployeesPlaceholder {
 class OwnerEmployeesOverview {
   const OwnerEmployeesOverview({
     required this.available,
+    required this.canManage,
     required this.summary,
     required this.items,
     required this.count,
   });
 
   final bool available;
+  final bool canManage;
   final OwnerEmployeesSummary summary;
   final List<OwnerEmployeeItem> items;
   final int count;
@@ -605,6 +610,7 @@ class OwnerEmployeesOverview {
     ).map(OwnerEmployeeItem.fromMap).toList(growable: false);
     return OwnerEmployeesOverview(
       available: map['available'] == true,
+      canManage: map['canManage'] == true,
       summary: OwnerEmployeesSummary.fromMap(_readMap(map, 'summary')),
       items: items,
       count: _readOptionalInt(map, 'count') ?? items.length,
@@ -653,6 +659,7 @@ class OwnerEmployeeItem {
     required this.id,
     required this.name,
     required this.email,
+    required this.phone,
     required this.role,
     required this.status,
     required this.accessStatus,
@@ -671,6 +678,7 @@ class OwnerEmployeeItem {
   final String id;
   final String name;
   final String? email;
+  final String? phone;
   final String role;
   final String status;
   final String accessStatus;
@@ -690,6 +698,7 @@ class OwnerEmployeeItem {
       id: _readString(map, 'id'),
       name: _readString(map, 'name', fallback: 'Funcionario'),
       email: _readOptionalString(map, 'email'),
+      phone: _readOptionalString(map, 'phone'),
       role: _readString(map, 'role', fallback: 'READ_ONLY'),
       status: _readString(map, 'status', fallback: 'ACTIVE'),
       accessStatus: _readString(map, 'accessStatus', fallback: 'NO_ACCESS'),
@@ -706,6 +715,73 @@ class OwnerEmployeeItem {
         'temporaryPasswordExpiresAt',
       ),
       lastSeenAt: _readOptionalString(map, 'lastSeenAt'),
+    );
+  }
+}
+
+class OwnerEmployeeMutationResult {
+  const OwnerEmployeeMutationResult({required this.employee});
+
+  final OwnerEmployeeItem employee;
+
+  factory OwnerEmployeeMutationResult.fromMap(Map<String, dynamic> map) {
+    return OwnerEmployeeMutationResult(
+      employee: OwnerEmployeeItem.fromMap(_readMap(map, 'employee')),
+    );
+  }
+}
+
+class OwnerTemporaryPasswordResult {
+  const OwnerTemporaryPasswordResult({
+    required this.employee,
+    required this.login,
+    required this.temporaryPassword,
+    required this.temporaryPasswordExpiresAt,
+  });
+
+  final OwnerEmployeeItem employee;
+  final String login;
+  final String temporaryPassword;
+  final String? temporaryPasswordExpiresAt;
+
+  factory OwnerTemporaryPasswordResult.fromMap(Map<String, dynamic> map) {
+    return OwnerTemporaryPasswordResult(
+      employee: OwnerEmployeeItem.fromMap(_readMap(map, 'employee')),
+      login: _readString(map, 'login'),
+      temporaryPassword: _readString(map, 'temporaryPassword'),
+      temporaryPasswordExpiresAt: _readOptionalString(
+        map,
+        'temporaryPasswordExpiresAt',
+      ),
+    );
+  }
+}
+
+class OwnerCommissionSettings {
+  const OwnerCommissionSettings({
+    required this.commissionEnabled,
+    required this.commissionType,
+    required this.commissionBase,
+    required this.commissionRateBps,
+    required this.commissionFixedCents,
+    required this.commissionUpdatedAt,
+  });
+
+  final bool commissionEnabled;
+  final String commissionType;
+  final String commissionBase;
+  final int? commissionRateBps;
+  final int? commissionFixedCents;
+  final String? commissionUpdatedAt;
+
+  factory OwnerCommissionSettings.fromMap(Map<String, dynamic> map) {
+    return OwnerCommissionSettings(
+      commissionEnabled: map['commissionEnabled'] == true,
+      commissionType: _readString(map, 'commissionType', fallback: 'NONE'),
+      commissionBase: _readString(map, 'commissionBase', fallback: 'NET_SALES'),
+      commissionRateBps: _readOptionalInt(map, 'commissionRateBps'),
+      commissionFixedCents: _readOptionalInt(map, 'commissionFixedCents'),
+      commissionUpdatedAt: _readOptionalString(map, 'commissionUpdatedAt'),
     );
   }
 }
@@ -880,6 +956,107 @@ class OwnerDevicesResult {
       items: _readMapList(map['items']).map(OwnerDevice.fromMap).toList(),
       count: _readOptionalInt(map, 'count') ?? 0,
       maxDevices: _readOptionalInt(_readMap(map, 'limits'), 'maxDevices') ?? 1,
+    );
+  }
+}
+
+class OwnerSyncStatus {
+  const OwnerSyncStatus({
+    required this.online,
+    required this.syncEnabled,
+    required this.lastSyncAt,
+    required this.pendingEvents,
+    required this.openConflicts,
+    required this.activeDevices,
+    required this.health,
+    required this.message,
+    required this.recentErrors,
+    required this.sessions,
+  });
+
+  final bool online;
+  final bool syncEnabled;
+  final String? lastSyncAt;
+  final int pendingEvents;
+  final int openConflicts;
+  final int activeDevices;
+  final String health;
+  final String message;
+  final List<OwnerSyncError> recentErrors;
+  final List<OwnerSyncSession> sessions;
+
+  factory OwnerSyncStatus.fromMap(Map<String, dynamic> map) {
+    return OwnerSyncStatus(
+      online: map['online'] == true,
+      syncEnabled: map['syncEnabled'] == true,
+      lastSyncAt: _readOptionalString(map, 'lastSyncAt'),
+      pendingEvents: _readOptionalInt(map, 'pendingEvents') ?? 0,
+      openConflicts: _readOptionalInt(map, 'openConflicts') ?? 0,
+      activeDevices: _readOptionalInt(map, 'activeDevices') ?? 0,
+      health: _readString(map, 'health', fallback: 'ok'),
+      message: _readString(map, 'message', fallback: 'Tudo sincronizado'),
+      recentErrors: _readMapList(
+        map['recentErrors'],
+      ).map(OwnerSyncError.fromMap).toList(growable: false),
+      sessions: _readMapList(
+        map['sessions'],
+      ).map(OwnerSyncSession.fromMap).toList(growable: false),
+    );
+  }
+}
+
+class OwnerSyncError {
+  const OwnerSyncError({
+    required this.area,
+    required this.status,
+    required this.code,
+    required this.message,
+    required this.updatedAt,
+  });
+
+  final String area;
+  final String status;
+  final String? code;
+  final String message;
+  final String? updatedAt;
+
+  factory OwnerSyncError.fromMap(Map<String, dynamic> map) {
+    return OwnerSyncError(
+      area: _readString(map, 'area', fallback: 'Sincronizacao'),
+      status: _readString(map, 'status', fallback: 'FAILED'),
+      code: _readOptionalString(map, 'code'),
+      message: _readString(
+        map,
+        'message',
+        fallback: 'Falha recente de sincronizacao.',
+      ),
+      updatedAt: _readOptionalString(map, 'updatedAt'),
+    );
+  }
+}
+
+class OwnerSyncSession {
+  const OwnerSyncSession({
+    required this.clientType,
+    required this.deviceLabel,
+    required this.platform,
+    required this.appVersion,
+    required this.lastSeenAt,
+  });
+
+  final String clientType;
+  final String? deviceLabel;
+  final String? platform;
+  final String? appVersion;
+  final String? lastSeenAt;
+
+  factory OwnerSyncSession.fromMap(Map<String, dynamic> map) {
+    return OwnerSyncSession(
+      clientType: _readString(map, 'clientType', fallback: 'UNKNOWN'),
+      deviceLabel: _readOptionalString(map, 'deviceLabel'),
+      platform: _readOptionalString(map, 'platform'),
+      appVersion: _readOptionalString(map, 'appVersion'),
+      lastSeenAt: _readOptionalString(map, 'lastSeenAt'),
     );
   }
 }

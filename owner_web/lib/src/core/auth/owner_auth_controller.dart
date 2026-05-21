@@ -174,6 +174,8 @@ String describeOwnerError(Object error) {
     switch (error.code) {
       case 'OWNER_REQUIRED':
         return 'Apenas o dono da empresa pode acessar este painel.';
+      case 'OWNER_PANEL_ACCESS_REQUIRED':
+        return 'Você não tem permissão para acessar este painel.';
       case 'FEATURE_NOT_AVAILABLE':
         return 'Painel da empresa está disponível no plano PRO.';
       case 'OWNER_AUTH_REQUIRED':
