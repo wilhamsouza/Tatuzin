@@ -1,0 +1,50 @@
+import '../entities/product.dart';
+
+abstract final class ProductPermissionSanitizer {
+  static Product sanitizeForSalesRead(Product product) {
+    return Product(
+      id: product.id,
+      uuid: product.uuid,
+      name: product.name,
+      description: product.description,
+      categoryId: product.categoryId,
+      categoryName: product.categoryName,
+      barcode: product.barcode,
+      primaryPhotoPath: product.primaryPhotoPath,
+      productType: product.productType,
+      niche: product.niche,
+      catalogType: product.catalogType,
+      modelName: product.modelName,
+      variantLabel: product.variantLabel,
+      baseProductId: product.baseProductId,
+      baseProductName: product.baseProductName,
+      variantAttributes: product.variantAttributes,
+      variants: product.variants,
+      modifierGroups: product.modifierGroups,
+      sellableVariantId: product.sellableVariantId,
+      sellableVariantRemoteId: product.sellableVariantRemoteId,
+      sellableVariantSku: product.sellableVariantSku,
+      sellableVariantColorLabel: product.sellableVariantColorLabel,
+      sellableVariantSizeLabel: product.sellableVariantSizeLabel,
+      sellableVariantPriceAdditionalCents:
+          product.sellableVariantPriceAdditionalCents,
+      unitMeasure: product.unitMeasure,
+      costCents: 0,
+      manualCostCents: 0,
+      costSource: ProductCostSource.manual,
+      variableCostSnapshotCents: null,
+      estimatedGrossMarginCents: null,
+      estimatedGrossMarginPercentBasisPoints: null,
+      lastCostUpdatedAt: null,
+      salePriceCents: product.salePriceCents,
+      stockMil: product.stockMil,
+      isActive: product.isActive,
+      createdAt: product.createdAt,
+      updatedAt: product.updatedAt,
+      deletedAt: product.deletedAt,
+      remoteId: product.remoteId,
+      syncStatus: product.syncStatus,
+      lastSyncedAt: product.lastSyncedAt,
+    );
+  }
+}

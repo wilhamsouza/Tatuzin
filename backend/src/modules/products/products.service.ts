@@ -31,8 +31,16 @@ type ProductCollectionsPayload = Pick<
   'modifierGroups' | 'variants'
 >;
 
+type ProductDtoOptions = {
+  includeSensitiveData?: boolean;
+};
+
 export class ProductsService {
-  async listForCompany(companyId: string, query: ProductListQueryInput) {
+  async listForCompany(
+    companyId: string,
+    query: ProductListQueryInput,
+    options: ProductDtoOptions = {},
+  ) {
     const where = {
       companyId,
       ...(query.includeDeleted ? {} : { deletedAt: null }),
@@ -54,12 +62,16 @@ export class ProductsService {
     ]);
 
     return {
-      items: products.map((product) => this.toProductDto(product)),
+      items: products.map((product) => this.toProductDto(product, options)),
       total,
     };
   }
 
-  async getById(companyId: string, productId: string) {
+  async getById(
+    companyId: string,
+    productId: string,
+    options: ProductDtoOptions = {},
+  ) {
     const product = await prisma.product.findFirst({
       where: {
         id: productId,
@@ -72,7 +84,7 @@ export class ProductsService {
       throw new AppError('Produto nao encontrado.', 404, 'PRODUCT_NOT_FOUND');
     }
 
-    return this.toProductDto(product);
+    return this.toProductDto(product, options);
   }
 
   async create(companyId: string, input: ProductUpsertInput) {
@@ -456,8 +468,11 @@ export class ProductsService {
     };
   }
 
-  private toProductDto(product: ProductWithRelations) {
-    return {
+  toProductDto(
+    product: ProductWithRelations,
+    options: ProductDtoOptions = {},
+  ) {
+    const dto = {
       id: product.id,
       companyId: product.companyId,
       localUuid: product.localUuid,
@@ -520,6 +535,24 @@ export class ProductsService {
         })),
       })),
     };
+
+    if (options.includeSensitiveData) {
+      return dto;
+    }
+
+    const {
+      costPriceCents: _costPriceCents,
+      manualCostCents: _manualCostCents,
+      costSource: _costSource,
+      variableCostSnapshotCents: _variableCostSnapshotCents,
+      estimatedGrossMarginCents: _estimatedGrossMarginCents,
+      estimatedGrossMarginPercentBasisPoints:
+        _estimatedGrossMarginPercentBasisPoints,
+      lastCostUpdatedAt: _lastCostUpdatedAt,
+      ...publicDto
+    } = dto;
+
+    return publicDto;
   }
 
   private normalizeCollections(input: ProductUpsertInput): ProductCollectionsPayload {

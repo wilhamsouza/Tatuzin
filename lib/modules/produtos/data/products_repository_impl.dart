@@ -16,6 +16,7 @@ import '../../../app/core/utils/id_generator.dart';
 import '../../categorias/data/sqlite_category_repository.dart';
 import '../domain/entities/product.dart';
 import '../domain/repositories/product_repository.dart';
+import '../domain/services/product_permission_sanitizer.dart';
 import 'datasources/products_remote_datasource.dart';
 import 'models/remote_product_record.dart';
 import 'sqlite_product_repository.dart';
@@ -123,27 +124,35 @@ class ProductsRepositoryImpl
         AppLogger.info(
           '[ProdutosRepo] remote_list_finished count=${remoteProducts.length}',
         );
-        return _cacheAndResolveRemoteProducts(remoteProducts, query: query);
+        final products = await _cacheAndResolveRemoteProducts(
+          remoteProducts,
+          query: query,
+        );
+        return _sanitizeProductsIfNeeded(products);
       } catch (error, stackTrace) {
         AppLogger.error(
           'Produtos ERP server-first falhou; usando cache local com timeout.',
           error: error,
           stackTrace: stackTrace,
         );
-        return _localRepository
+        final cachedProducts = await _localRepository
             .search(query: query)
             .timeout(const Duration(seconds: 8));
+        return _sanitizeProductsIfNeeded(cachedProducts);
       }
     }
 
-    return _localRepository.search(query: query);
+    return _sanitizeProductsIfNeeded(
+      await _localRepository.search(query: query),
+    );
   }
 
   @override
   Future<List<Product>> searchAvailable({String query = ''}) async {
-    return _localRepository
+    final products = await _localRepository
         .searchAvailable(query: query)
         .timeout(const Duration(seconds: 8));
+    return _sanitizeProductsIfNeeded(products);
   }
 
   Future<SyncActionResult> syncNow({bool retryOnly = false}) async {
@@ -380,6 +389,20 @@ class ProductsRepositoryImpl
 
   bool get _shouldUseErpRemoteWrite => _shouldUseErpRemoteRead;
 
+  bool get _canViewSensitiveProductData =>
+      _operationalContext.session.canAccessPermission('products.write') ||
+      _operationalContext.session.canAccessPermission('stock.adjust') ||
+      _operationalContext.session.canAccessPermission('reports.advanced');
+
+  List<Product> _sanitizeProductsIfNeeded(List<Product> products) {
+    if (_canViewSensitiveProductData) {
+      return products;
+    }
+    return products
+        .map(ProductPermissionSanitizer.sanitizeForSalesRead)
+        .toList(growable: false);
+  }
+
   Future<List<Product>> _cacheAndResolveRemoteProducts(
     List<RemoteProductRecord> remoteProducts, {
     required String query,
@@ -397,7 +420,9 @@ class ProductsRepositoryImpl
         error: error,
         stackTrace: stackTrace,
       );
-      return _remoteProductsToEntities(remoteProducts, query: query);
+      return _sanitizeProductsIfNeeded(
+        _remoteProductsToEntities(remoteProducts, query: query),
+      );
     }
   }
 

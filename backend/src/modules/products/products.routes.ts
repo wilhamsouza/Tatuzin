@@ -5,6 +5,7 @@ import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { asyncHandler } from '../../shared/http/async-handler';
 import { validateBody, validateQuery } from '../../shared/http/validate';
 import { requireAnyEmployeePermission, requireEmployeePermission } from '../employees/employee-permission-middleware';
+import { canViewSensitiveProductData } from './product-access';
 import {
   productListQuerySchema,
   type ProductListQueryInput,
@@ -35,6 +36,9 @@ productsRouter.get(
     const result = await productsService.listForCompany(
       request.auth!.companyId,
       query,
+      {
+        includeSensitiveData: canViewSensitiveProductData(request.appContext!),
+      },
     );
     response.json(
       buildPaginatedResponse({
@@ -57,6 +61,9 @@ productsRouter.get(
     const product = await productsService.getById(
       request.auth!.companyId,
       productId,
+      {
+        includeSensitiveData: canViewSensitiveProductData(request.appContext!),
+      },
     );
     response.json({ product });
   }),

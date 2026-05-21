@@ -223,10 +223,8 @@ class RealProductsRemoteDatasource implements ProductsRemoteDatasource {
       'niche': body['niche'],
       'catalogType': body['catalogType'],
       'barcode': body['barcode'],
-      'costPriceCents': body['costPriceCents'],
-      'manualCostCents': body['manualCostCents'],
-      'costSource': body['costSource'],
-      'lastCostUpdatedAt': body['lastCostUpdatedAt'],
+      'cost_present':
+          body['costPriceCents'] != null || body['manualCostCents'] != null,
       'salePriceCents': body['salePriceCents'],
       'stockMil': body['stockMil'],
       'isActive': body['isActive'],

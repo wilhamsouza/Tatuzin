@@ -1,4 +1,6 @@
 import { prisma } from '../../database/prisma';
+import { canViewSensitiveProductData } from '../products/product-access';
+import { ProductsService } from '../products/products.service';
 import type { AppContext } from './app-context.types';
 
 const SERVER_FIRST_SNAPSHOT_FEATURES = [
@@ -15,6 +17,8 @@ const SERVER_FIRST_SNAPSHOT_FEATURES = [
 ] as const;
 
 export class AppSnapshotService {
+  private readonly productsService = new ProductsService();
+
   async buildSnapshot(input: { context: AppContext; features: string[] }) {
     const requestedFeatures =
       input.features.length === 0
@@ -54,6 +58,8 @@ export class AppSnapshotService {
   ) {
     switch (feature) {
       case 'products':
+        const includeSensitiveProductData =
+          canViewSensitiveProductData(context);
         return this.buildModelSnapshot(feature, () =>
           prisma.product.findMany({
             where: { companyId: context.company.id },
@@ -72,70 +78,10 @@ export class AppSnapshotService {
             },
             orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
           }),
-          (product) => ({
-            id: product.id,
-            companyId: product.companyId,
-            localUuid: product.localUuid,
-            categoryId: product.categoryId,
-            name: product.name,
-            description: product.description,
-            barcode: product.barcode,
-            productType: product.productType,
-            niche: product.niche,
-            catalogType: product.catalogType,
-            modelName: product.modelName,
-            variantLabel: product.variantLabel,
-            unitMeasure: product.unitMeasure,
-            costPriceCents: product.costPriceCents,
-            manualCostCents: product.manualCostCents,
-            costSource: product.costSource,
-            variableCostSnapshotCents: product.variableCostSnapshotCents,
-            estimatedGrossMarginCents: product.estimatedGrossMarginCents,
-            estimatedGrossMarginPercentBasisPoints:
-              product.estimatedGrossMarginPercentBasisPoints,
-            lastCostUpdatedAt:
-              product.lastCostUpdatedAt?.toISOString() ?? null,
-            salePriceCents: product.salePriceCents,
-            stockMil: product.stockMil,
-            isActive: product.isActive,
-            deletedAt: product.deletedAt?.toISOString() ?? null,
-            createdAt: product.createdAt.toISOString(),
-            updatedAt: product.updatedAt.toISOString(),
-            variants: product.variants.map((variant) => ({
-              id: variant.id,
-              sku: variant.sku,
-              colorLabel: variant.colorLabel,
-              sizeLabel: variant.sizeLabel,
-              priceAdditionalCents: variant.priceAdditionalCents,
-              stockMil: variant.stockMil,
-              sortOrder: variant.sortOrder,
-              isActive: variant.isActive,
-              createdAt: variant.createdAt.toISOString(),
-              updatedAt: variant.updatedAt.toISOString(),
-            })),
-            modifierGroups: product.modifierGroups.map((group) => ({
-              id: group.id,
-              name: group.name,
-              isRequired: group.isRequired,
-              minSelections: group.minSelections,
-              maxSelections: group.maxSelections,
-              sortOrder: group.sortOrder,
-              isActive: group.isActive,
-              createdAt: group.createdAt.toISOString(),
-              updatedAt: group.updatedAt.toISOString(),
-              options: group.options.map((option) => ({
-                id: option.id,
-                name: option.name,
-                adjustmentType: option.adjustmentType,
-                priceDeltaCents: option.priceDeltaCents,
-                linkedProductId: option.linkedProductId,
-                sortOrder: option.sortOrder,
-                isActive: option.isActive,
-                createdAt: option.createdAt.toISOString(),
-                updatedAt: option.updatedAt.toISOString(),
-              })),
-            })),
-          }),
+          (product) =>
+            this.productsService.toProductDto(product, {
+              includeSensitiveData: includeSensitiveProductData,
+            }),
         );
       case 'categories':
         return this.buildModelSnapshot(feature, () =>

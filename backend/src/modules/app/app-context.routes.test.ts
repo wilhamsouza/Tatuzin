@@ -387,6 +387,45 @@ describe('app context bootstrap and guards', () => {
       variants?: Array<{ id: string }>;
     };
     assert.equal(product.variants?.[0]?.id, snapshotData.variantId);
+    assertNoSensitiveProductFields(product);
+  });
+
+  it('sanitizes product REST payload for cashier products.read access', async () => {
+    const fixture = await createFixture({ deviceStatus: 'ACTIVE' });
+    await seedSnapshotData(fixture.companyId, fixture.userId, 'cashier-product');
+
+    const response = await requestJson('GET', '/products?page=1&pageSize=20', {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      items: Array<Record<string, unknown>>;
+    };
+    assert.equal(payload.items.length, 1);
+    assertNoSensitiveProductFields(payload.items[0]!);
+    assert.equal(payload.items[0]!.salePriceCents, 1200);
+    assert.equal(payload.items[0]!.stockMil, 10000);
+  });
+
+  it('keeps full product cost fields for owner/admin product access', async () => {
+    const fixture = await createFixture({
+      role: 'OWNER',
+      deviceStatus: 'ACTIVE',
+    });
+    await seedSnapshotData(fixture.companyId, fixture.userId, 'owner-product');
+
+    const response = await requestJson('GET', '/products?page=1&pageSize=20', {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      items: Array<Record<string, unknown>>;
+    };
+    assert.equal(payload.items.length, 1);
+    assert.equal(payload.items[0]!.costPriceCents, 500);
+    assert.equal(payload.items[0]!.manualCostCents, 500);
   });
 
   it('blocks app snapshot when license is expired', async () => {
@@ -826,4 +865,22 @@ async function cleanupFixtures() {
   await prisma.user.deleteMany({
     where: { email: { startsWith: `${runId}-` } },
   });
+}
+
+function assertNoSensitiveProductFields(product: Record<string, unknown>) {
+  for (const key of [
+    'costPriceCents',
+    'manualCostCents',
+    'costSource',
+    'variableCostSnapshotCents',
+    'estimatedGrossMarginCents',
+    'estimatedGrossMarginPercentBasisPoints',
+    'lastCostUpdatedAt',
+  ]) {
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(product, key),
+      false,
+      `sanitized product must not include ${key}`,
+    );
+  }
 }
