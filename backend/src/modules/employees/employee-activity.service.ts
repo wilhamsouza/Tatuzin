@@ -49,6 +49,9 @@ type EmployeeActivityTimelineItem = {
   title: string;
   description: string;
   amountCents?: number;
+  saleId?: string;
+  cashSessionId?: string;
+  cashEventId?: string;
 };
 
 type MutableRow = Omit<EmployeeActivityRow, "lastActivityAt"> & {
@@ -301,6 +304,7 @@ export class EmployeeActivityService {
           title: "Venda cancelada",
           description: this.saleDescription(sale.receiptNumber),
           amountCents: sale.totalAmountCents,
+          saleId: sale.id,
         });
       } else {
         row.salesCount += 1;
@@ -312,6 +316,7 @@ export class EmployeeActivityService {
           title: "Venda realizada",
           description: this.saleDescription(sale.receiptNumber),
           amountCents: sale.totalAmountCents,
+          saleId: sale.id,
         });
       }
     }
@@ -416,6 +421,7 @@ export class EmployeeActivityService {
           title: "Caixa aberto",
           description: "Abertura de caixa",
           amountCents: session.openingBalanceCents,
+          cashSessionId: session.id,
         });
       }
 
@@ -428,6 +434,7 @@ export class EmployeeActivityService {
           title: "Caixa fechado",
           description: "Fechamento de caixa",
           amountCents: session.closingBalanceCents ?? undefined,
+          cashSessionId: session.id,
         });
       }
     }
@@ -509,6 +516,7 @@ export class EmployeeActivityService {
       },
       select: {
         id: true,
+        cashSessionId: true,
         eventType: true,
         amountCents: true,
         createdAt: true,
@@ -530,6 +538,8 @@ export class EmployeeActivityService {
         title: this.cashMovementTitle(cashEvent.eventType),
         description: "Movimentacao de caixa",
         amountCents: cashEvent.amountCents,
+        cashEventId: cashEvent.id,
+        cashSessionId: cashEvent.cashSessionId ?? undefined,
       });
     }
   }

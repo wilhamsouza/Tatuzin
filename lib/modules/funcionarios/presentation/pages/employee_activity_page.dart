@@ -11,6 +11,7 @@ import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
+import '../../../caixa/presentation/widgets/cash_session_detail_sheet.dart';
 import '../../domain/employee_models.dart';
 import '../providers/employees_providers.dart';
 
@@ -435,19 +436,19 @@ class _EmployeeActivityRowCard extends StatelessWidget {
   }
 }
 
-class _TimelineItemCard extends StatelessWidget {
+class _TimelineItemCard extends ConsumerWidget {
   const _TimelineItemCard({required this.item});
 
   final EmployeeActivityTimelineItem item;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final layout = context.appLayout;
     final theme = Theme.of(context);
 
     return InkWell(
       borderRadius: BorderRadius.circular(layout.radiusMd),
-      onTap: () => _showTimelineDetails(context, item),
+      onTap: () => _openTimelineTarget(context, ref, item),
       child: AppCard(
         padding: EdgeInsets.all(layout.compactCardPadding),
         child: Row(
@@ -495,6 +496,99 @@ class _TimelineItemCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openTimelineTarget(
+    BuildContext context,
+    WidgetRef ref,
+    EmployeeActivityTimelineItem item,
+  ) {
+    if (item.type == 'SALE' || item.type == 'CANCELLATION') {
+      return _openSale(context, ref, item);
+    }
+    if (item.type == 'CASH_OPEN' ||
+        item.type == 'CASH_CLOSE' ||
+        item.type == 'CASH_MOVEMENT') {
+      return _openCashSession(context, ref, item);
+    }
+    return _showTimelineDetails(context, item);
+  }
+
+  Future<void> _openSale(
+    BuildContext context,
+    WidgetRef ref,
+    EmployeeActivityTimelineItem item,
+  ) async {
+    final saleId = item.saleId?.trim();
+    if (saleId == null || saleId.isEmpty) {
+      _showLegacyMessage(
+        context,
+        'Nao foi possivel abrir esta venda porque ela foi registrada em uma versao antiga.',
+      );
+      return;
+    }
+
+    final localSaleId = await ref.read(
+      employeeActivitySaleLocalIdProvider(saleId).future,
+    );
+    if (!context.mounted) {
+      return;
+    }
+    if (localSaleId == null) {
+      _showLegacyMessage(
+        context,
+        'Nao foi possivel abrir esta venda porque ela ainda nao esta sincronizada neste aparelho.',
+      );
+      return;
+    }
+    context.pushNamed(
+      AppRouteNames.saleDetail,
+      pathParameters: {'saleId': '$localSaleId'},
+    );
+  }
+
+  Future<void> _openCashSession(
+    BuildContext context,
+    WidgetRef ref,
+    EmployeeActivityTimelineItem item,
+  ) async {
+    final cashSessionId = item.cashSessionId?.trim();
+    if (cashSessionId == null || cashSessionId.isEmpty) {
+      _showLegacyMessage(
+        context,
+        'Nao foi possivel abrir este caixa porque ele foi registrado em uma versao antiga.',
+      );
+      return;
+    }
+
+    final localSessionId = await ref.read(
+      employeeActivityCashSessionLocalIdProvider(cashSessionId).future,
+    );
+    if (!context.mounted) {
+      return;
+    }
+    if (localSessionId == null) {
+      _showLegacyMessage(
+        context,
+        'Nao foi possivel abrir este caixa porque ele ainda nao esta sincronizado neste aparelho.',
+      );
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) =>
+          CashSessionDetailSheet.byId(sessionId: localSessionId),
+    );
+  }
+
+  void _showLegacyMessage(BuildContext context, String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _showTimelineDetails(

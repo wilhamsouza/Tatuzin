@@ -13,6 +13,7 @@ import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../domain/employee_models.dart';
 import '../providers/employees_providers.dart';
+import 'employees_page.dart';
 
 class EmployeeCommissionsPage extends ConsumerWidget {
   const EmployeeCommissionsPage({super.key});
@@ -203,15 +204,16 @@ class _CommissionSummaryContent extends StatelessWidget {
   }
 }
 
-class _CommissionDetailContent extends StatelessWidget {
+class _CommissionDetailContent extends ConsumerWidget {
   const _CommissionDetailContent({required this.detail});
 
   final EmployeeCommissionDetail detail;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final layout = context.appLayout;
     final summary = detail.summary;
+    final canManage = ref.watch(canManageEmployeesProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -238,6 +240,21 @@ class _CommissionDetailContent extends StatelessWidget {
             _KpiItem('Regra', _settingsLabel(detail.settings)),
           ],
         ),
+        if (canManage) ...[
+          SizedBox(height: layout.space4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              onPressed: () => _openSettingsSheet(context, detail),
+              icon: const Icon(Icons.tune_rounded),
+              label: Text(
+                detail.settings.commissionEnabled
+                    ? 'Configurar comissão'
+                    : 'Ativar comissão',
+              ),
+            ),
+          ),
+        ],
         if (summary.salesWithoutReliableCostCount > 0) ...[
           SizedBox(height: layout.space4),
           const AppStateCard(
@@ -273,6 +290,22 @@ class _CommissionDetailContent extends StatelessWidget {
             ],
           ),
       ],
+    );
+  }
+
+  Future<void> _openSettingsSheet(
+    BuildContext context,
+    EmployeeCommissionDetail detail,
+  ) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => EmployeeCommissionSettingsSheet.forSettings(
+        employeeId: detail.employee.id,
+        employeeName: detail.employee.name,
+        initialSettings: detail.settings,
+      ),
     );
   }
 }
@@ -312,15 +345,16 @@ class _CommissionPeriodChips extends ConsumerWidget {
   }
 }
 
-class _CommissionRowCard extends StatelessWidget {
+class _CommissionRowCard extends ConsumerWidget {
   const _CommissionRowCard({required this.row});
 
   final EmployeeCommissionRow row;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final layout = context.appLayout;
     final theme = Theme.of(context);
+    final canManage = ref.watch(canManageEmployeesProvider);
 
     return AppCard(
       padding: EdgeInsets.all(layout.compactCardPadding),
@@ -360,13 +394,30 @@ class _CommissionRowCard extends StatelessWidget {
                   ],
                 ),
               ),
-              TextButton.icon(
-                onPressed: () => context.pushNamed(
-                  AppRouteNames.employeeCommissionDetail,
-                  pathParameters: {'employeeId': row.employeeId},
-                ),
-                icon: const Icon(Icons.chevron_right_rounded),
-                label: const Text('Detalhes'),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                    onPressed: () => context.pushNamed(
+                      AppRouteNames.employeeCommissionDetail,
+                      pathParameters: {'employeeId': row.employeeId},
+                    ),
+                    icon: const Icon(Icons.chevron_right_rounded),
+                    label: const Text('Detalhes'),
+                  ),
+                  if (canManage && !row.settings.commissionEnabled)
+                    TextButton.icon(
+                      onPressed: () => _openSettingsSheet(context, row),
+                      icon: const Icon(Icons.tune_rounded),
+                      label: const Text('Ativar comissão'),
+                    )
+                  else if (canManage)
+                    TextButton.icon(
+                      onPressed: () => _openSettingsSheet(context, row),
+                      icon: const Icon(Icons.tune_rounded),
+                      label: const Text('Configurar comissão'),
+                    ),
+                ],
               ),
             ],
           ),
@@ -392,6 +443,22 @@ class _CommissionRowCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _openSettingsSheet(
+    BuildContext context,
+    EmployeeCommissionRow row,
+  ) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => EmployeeCommissionSettingsSheet.forSettings(
+        employeeId: row.employeeId,
+        employeeName: row.employeeName,
+        initialSettings: row.settings,
       ),
     );
   }

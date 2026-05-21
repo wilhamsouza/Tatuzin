@@ -687,9 +687,23 @@ class _EmployeeTile extends ConsumerWidget {
 }
 
 class EmployeeCommissionSettingsSheet extends ConsumerStatefulWidget {
-  const EmployeeCommissionSettingsSheet({required this.employee, super.key});
+  EmployeeCommissionSettingsSheet({
+    required EmployeeProfile employee,
+    super.key,
+  }) : employeeId = employee.id,
+       employeeName = employee.name,
+       initialSettings = EmployeeCommissionSettings.fromEmployee(employee);
 
-  final EmployeeProfile employee;
+  const EmployeeCommissionSettingsSheet.forSettings({
+    required this.employeeId,
+    required this.employeeName,
+    required this.initialSettings,
+    super.key,
+  });
+
+  final String employeeId;
+  final String employeeName;
+  final EmployeeCommissionSettings initialSettings;
 
   @override
   ConsumerState<EmployeeCommissionSettingsSheet> createState() =>
@@ -708,7 +722,7 @@ class _EmployeeCommissionSettingsSheetState
   @override
   void initState() {
     super.initState();
-    final settings = EmployeeCommissionSettings.fromEmployee(widget.employee);
+    final settings = widget.initialSettings;
     _enabled = settings.commissionEnabled;
     _type = settings.commissionType == EmployeeCommissionType.none
         ? EmployeeCommissionType.percentage
@@ -913,7 +927,7 @@ class _EmployeeCommissionSettingsSheetState
     try {
       await ref
           .read(employeeActionControllerProvider.notifier)
-          .updateCommissionSettings(widget.employee.id, settings);
+          .updateCommissionSettings(widget.employeeId, settings);
       if (!mounted) {
         return;
       }

@@ -1022,6 +1022,9 @@ class EmployeeActivityTimelineItem {
     required this.title,
     required this.description,
     this.amountCents,
+    this.saleId,
+    this.cashSessionId,
+    this.cashEventId,
   });
 
   final String id;
@@ -1030,6 +1033,9 @@ class EmployeeActivityTimelineItem {
   final String title;
   final String description;
   final int? amountCents;
+  final String? saleId;
+  final String? cashSessionId;
+  final String? cashEventId;
 
   factory EmployeeActivityTimelineItem.fromMap(Map<String, dynamic> source) {
     return EmployeeActivityTimelineItem(
@@ -1039,6 +1045,9 @@ class EmployeeActivityTimelineItem {
       title: _readString(source['title']) ?? 'Atividade registrada',
       description: _readString(source['description']) ?? '',
       amountCents: _readInt(source['amountCents']),
+      saleId: _readString(source['saleId']),
+      cashSessionId: _readString(source['cashSessionId']),
+      cashEventId: _readString(source['cashEventId']),
     );
   }
 }

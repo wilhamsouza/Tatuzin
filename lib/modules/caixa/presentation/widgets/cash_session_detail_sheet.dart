@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/routes/route_names.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
@@ -12,13 +14,16 @@ import '../../domain/entities/cash_session_detail.dart';
 import '../providers/cash_providers.dart';
 
 class CashSessionDetailSheet extends ConsumerWidget {
-  const CashSessionDetailSheet({super.key, required this.session});
+  CashSessionDetailSheet({super.key, required CashSession session})
+    : sessionId = session.id;
 
-  final CashSession session;
+  const CashSessionDetailSheet.byId({super.key, required this.sessionId});
+
+  final int sessionId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final detailAsync = ref.watch(cashSessionDetailProvider(session.id));
+    final detailAsync = ref.watch(cashSessionDetailProvider(sessionId));
     final colorScheme = Theme.of(context).colorScheme;
 
     return FractionallySizedBox(
@@ -542,100 +547,107 @@ class _SaleSummaryTile extends StatelessWidget {
     final sale = summary.sale;
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Cupom ${sale.receiptNumber}',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w800),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        AppFormatters.shortDateTime(sale.soldAt),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => context.pushNamed(
+          AppRouteNames.saleDetail,
+          pathParameters: {'saleId': '${sale.id}'},
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Cupom ${sale.receiptNumber}',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          AppFormatters.shortDateTime(sale.soldAt),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  AppFormatters.currencyFromCents(sale.finalCents),
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                  const SizedBox(width: 12),
+                  Text(
+                    AppFormatters.currencyFromCents(sale.finalCents),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                AppStatusBadge(
-                  label: sale.saleType.label,
-                  tone: sale.saleType == SaleType.fiado
-                      ? AppStatusTone.warning
-                      : AppStatusTone.info,
-                ),
-                AppStatusBadge(
-                  label: sale.paymentDisplayLabel,
-                  tone: AppStatusTone.neutral,
-                ),
-                AppStatusBadge(
-                  label: sale.status.label,
-                  tone: sale.status == SaleStatus.cancelled
-                      ? AppStatusTone.danger
-                      : AppStatusTone.success,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _InfoLine(
-              label: 'Cliente',
-              value: sale.clientName ?? 'Não informado',
-            ),
-            const SizedBox(height: 10),
-            _InfoLine(
-              label: 'Quantidade de itens',
-              value: '${summary.itemLinesCount} item(ns)',
-            ),
-            if (sale.discountCents > 0 || sale.surchargeCents > 0) ...[
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  AppStatusBadge(
+                    label: sale.saleType.label,
+                    tone: sale.saleType == SaleType.fiado
+                        ? AppStatusTone.warning
+                        : AppStatusTone.info,
+                  ),
+                  AppStatusBadge(
+                    label: sale.paymentDisplayLabel,
+                    tone: AppStatusTone.neutral,
+                  ),
+                  AppStatusBadge(
+                    label: sale.status.label,
+                    tone: sale.status == SaleStatus.cancelled
+                        ? AppStatusTone.danger
+                        : AppStatusTone.success,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _InfoLine(
+                label: 'Cliente',
+                value: sale.clientName ?? 'Não informado',
+              ),
               const SizedBox(height: 10),
               _InfoLine(
-                label: 'Ajustes',
-                value:
-                    'Desconto ${AppFormatters.currencyFromCents(sale.discountCents)} • Acréscimo ${AppFormatters.currencyFromCents(sale.surchargeCents)}',
+                label: 'Quantidade de itens',
+                value: '${summary.itemLinesCount} item(ns)',
               ),
-            ],
-            if (summary.itemPreview.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                'Resumo dos itens',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              for (final item in summary.itemPreview)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    '${item.productName} • ${AppFormatters.quantityFromMil(item.quantityMil)} ${item.unitMeasure}',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
+              if (sale.discountCents > 0 || sale.surchargeCents > 0) ...[
+                const SizedBox(height: 10),
+                _InfoLine(
+                  label: 'Ajustes',
+                  value:
+                      'Desconto ${AppFormatters.currencyFromCents(sale.discountCents)} • Acréscimo ${AppFormatters.currencyFromCents(sale.surchargeCents)}',
                 ),
+              ],
+              if (summary.itemPreview.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Resumo dos itens',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                for (final item in summary.itemPreview)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      '${item.productName} • ${AppFormatters.quantityFromMil(item.quantityMil)} ${item.unitMeasure}',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

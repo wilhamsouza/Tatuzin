@@ -2,12 +2,15 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/entitlements/plan_entitlements.dart';
 import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
 import '../../../../app/core/session/session_provider.dart';
+import '../../../../app/core/sync/sqlite_sync_metadata_repository.dart';
+import '../../../../app/core/sync/sync_feature_keys.dart';
 import '../../data/employees_remote_data_source.dart';
 import '../../domain/employee_models.dart';
 
@@ -129,6 +132,24 @@ final employeeCommissionDetailProvider = FutureProvider.autoDispose
           .getEmployeeCommissionDetail(id, period: period);
     });
 
+final employeeActivitySaleLocalIdProvider = FutureProvider.autoDispose
+    .family<int?, String>((ref, remoteSaleId) async {
+      return _resolveLocalIdByRemoteId(
+        ref,
+        featureKey: SyncFeatureKeys.sales,
+        remoteId: remoteSaleId,
+      );
+    });
+
+final employeeActivityCashSessionLocalIdProvider = FutureProvider.autoDispose
+    .family<int?, String>((ref, remoteCashSessionId) async {
+      return _resolveLocalIdByRemoteId(
+        ref,
+        featureKey: SyncFeatureKeys.cashSessions,
+        remoteId: remoteCashSessionId,
+      );
+    });
+
 final employeeActionControllerProvider =
     AsyncNotifierProvider<EmployeeActionController, void>(
       EmployeeActionController.new,
@@ -247,4 +268,21 @@ class EmployeeActionController extends AsyncNotifier<void> {
     ref.invalidate(employeeCommissionsSummaryProvider);
     ref.invalidate(employeeActivitySummaryProvider);
   }
+}
+
+Future<int?> _resolveLocalIdByRemoteId(
+  Ref ref, {
+  required String featureKey,
+  required String remoteId,
+}) async {
+  final trimmed = remoteId.trim();
+  if (trimmed.isEmpty) {
+    return null;
+  }
+  final numericFallback = int.tryParse(trimmed);
+  final database = await ref.read(appDatabaseProvider).database;
+  final metadata = await SqliteSyncMetadataRepository(
+    ref.read(appDatabaseProvider),
+  ).findByRemoteId(database, featureKey: featureKey, remoteId: trimmed);
+  return metadata?.identity.localId ?? numericFallback;
 }

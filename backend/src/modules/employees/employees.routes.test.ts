@@ -1079,6 +1079,14 @@ describe("employees PRO module", () => {
       detailPayload.timeline.some((item) => item.metadata != null),
       false,
     );
+    assert.ok(
+      detailPayload.timeline.some((item) => item.saleId === traceableSale.id),
+    );
+    assert.ok(
+      detailPayload.timeline.some(
+        (item) => item.cashSessionId === cashSession.id,
+      ),
+    );
   });
 
   it("protects employee activity summary and allows employees to view only their own detail", async () => {
@@ -1665,6 +1673,9 @@ type EmployeeActivityDetailResponse = {
   };
   timeline: Array<{
     metadata?: unknown;
+    saleId?: string;
+    cashSessionId?: string;
+    cashEventId?: string;
   }>;
 };
 

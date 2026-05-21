@@ -617,7 +617,7 @@ void main() {
     expect(find.textContaining('custo unit'), findsNothing);
   });
 
-  testWidgets('Timeline da atividade abre resumo seguro ao tocar', (
+  testWidgets('Timeline da atividade mostra mensagem amigavel sem saleId', (
     tester,
   ) async {
     await _pumpEmployeeActivityDetailPage(
@@ -636,12 +636,10 @@ void main() {
 
     expect(
       find.text(
-        'Detalhes completos ainda nao estao disponiveis para esta acao.',
+        'Nao foi possivel abrir esta venda porque ela foi registrada em uma versao antiga.',
       ),
       findsOneWidget,
     );
-    expect(find.text('Valor'), findsOneWidget);
-    expect(find.text('R\$ 125,00'), findsWidgets);
   });
 
   testWidgets('Atividade dos funcionários mostra sem permissão', (
