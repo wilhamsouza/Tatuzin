@@ -67,6 +67,62 @@ void main() {
     );
   });
 
+  testWidgets('blocked page keeps FREE company out of owner dashboard', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: OwnerPlanBlockedPage(
+          license: OwnerLicenseSnapshot.fromMap({
+            'id': 'license-free',
+            'plan': 'FREE',
+            'status': 'ACTIVE',
+            'startsAt': '2026-05-01T00:00:00.000Z',
+            'expiresAt': null,
+            'maxDevices': 1,
+            'syncEnabled': true,
+          }),
+        ),
+      ),
+    );
+
+    expect(find.text('Painel do dono disponivel no plano PRO'), findsOneWidget);
+    expect(find.textContaining('Ative o PRO pelo app Tatuzin'), findsOneWidget);
+    expect(find.text('Dashboard'), findsNothing);
+    expect(find.text('Funcionarios'), findsNothing);
+    expect(find.text('Assinatura e cobrancas'), findsNothing);
+  });
+
+  testWidgets('blocked page shows pending Mercado Pago confirmation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: OwnerPlanBlockedPage(
+          license: OwnerLicenseSnapshot.fromMap({
+            'id': 'license-pending',
+            'plan': 'FREE',
+            'status': 'ACTIVE',
+            'startsAt': '2026-05-01T00:00:00.000Z',
+            'expiresAt': null,
+            'maxDevices': 1,
+            'syncEnabled': true,
+            'pendingPlan': 'PRO',
+            'pendingPlanRequestedAt': '2026-05-15T00:00:00.000Z',
+          }),
+        ),
+      ),
+    );
+
+    expect(find.text('Aguardando confirmacao do Mercado Pago'), findsOneWidget);
+    expect(
+      find.textContaining('o painel web sera liberado automaticamente'),
+      findsOneWidget,
+    );
+    expect(find.text('Dashboard'), findsNothing);
+    expect(find.text('Assinatura e cobrancas'), findsNothing);
+  });
+
   testWidgets('menu shows company management navigation', (tester) async {
     tester.view.physicalSize = const Size(1280, 900);
     tester.view.devicePixelRatio = 1;

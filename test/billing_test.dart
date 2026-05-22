@@ -17,10 +17,12 @@ import 'package:erp_pdv_app/modules/billing/domain/billing_models.dart';
 import 'package:erp_pdv_app/modules/billing/presentation/pages/subscription_page.dart';
 import 'package:erp_pdv_app/modules/billing/presentation/providers/billing_providers.dart';
 import 'package:erp_pdv_app/modules/billing/presentation/providers/checkout_launcher.dart';
+import 'package:erp_pdv_app/modules/billing/presentation/widgets/pro_trial_offer_gate.dart';
 import 'package:erp_pdv_app/modules/system/presentation/providers/system_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +37,8 @@ void main() {
       'maskedProviderSubscriptionId': 'prea...7890',
       'providerSubscriptionId': 'preapproval-1234567890',
       'canManageBilling': true,
+      'pendingPlan': 'PRO',
+      'pendingPlanRequestedAt': '2026-05-21T12:00:00.000Z',
       'features': <String, bool>{'employees': true},
       'limits': <String, dynamic>{
         'maxDevices': 100,
@@ -46,6 +50,8 @@ void main() {
     expect(status.plan, PlanKey.pro);
     expect(status.hasProviderSubscription, isTrue);
     expect(status.maskedProviderSubscriptionId, 'prea...7890');
+    expect(status.pendingPlan, PlanKey.pro);
+    expect(status.pendingPlanRequestedAt, DateTime.utc(2026, 5, 21, 12));
     expect(status.entitlements.hasFeature(FeatureKey.employees), isTrue);
   });
 
@@ -79,6 +85,27 @@ void main() {
     expect(find.text('Assinar plano Básico'), findsNothing);
     expect(find.text('Assinar plano Pro'), findsNothing);
     expect(find.text('Plano atual'), findsWidgets);
+  });
+
+  testWidgets('SubscriptionPage mostra pendencia e bloqueia duplicidade', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final fakeBilling = _FakeBillingRemoteDataSource(
+      status: _status(PlanEntitlements.free, pendingPlan: PlanKey.pro),
+    );
+    await _pumpSubscriptionPage(tester, fakeBilling: fakeBilling);
+
+    expect(find.text('Aguardando confirmacao do Mercado Pago'), findsWidgets);
+    expect(find.text('Aguardando confirmacao'), findsOneWidget);
+    await tester.tap(find.text('Aguardando confirmacao'));
+    await tester.pumpAndSettle();
+
+    expect(fakeBilling.subscribedPlans, isEmpty);
   });
 
   testWidgets('OWNER por membership consegue ver ação de assinatura', (
@@ -205,6 +232,29 @@ void main() {
       expect(container.read(appSessionProvider).plan, PlanKey.pro);
     },
   );
+
+  test('ProTrialOfferStorage pausa oferta por 3 dias', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final storage = ProTrialOfferStorage();
+    final now = DateTime(2026, 5, 21, 10);
+
+    expect(await storage.shouldShow('company-1', now: now), isTrue);
+    await storage.defer('company-1', now: now);
+    expect(
+      await storage.shouldShow(
+        'company-1',
+        now: now.add(const Duration(days: 2, hours: 23)),
+      ),
+      isFalse,
+    );
+    expect(
+      await storage.shouldShow(
+        'company-1',
+        now: now.add(const Duration(days: 3, minutes: 1)),
+      ),
+      isTrue,
+    );
+  });
 }
 
 Future<ProviderContainer> _pumpSubscriptionPage(
@@ -275,6 +325,7 @@ Future<ProviderContainer> _pumpSubscriptionPage(
 BillingStatus _status(
   PlanEntitlements entitlements, {
   bool canManageBilling = true,
+  PlanKey? pendingPlan,
 }) {
   return BillingStatus(
     companyId: 'company-1',
@@ -290,6 +341,10 @@ BillingStatus _status(
         : 'prea...1234',
     canManageBilling: canManageBilling,
     nextPaymentDate: null,
+    pendingPlan: pendingPlan,
+    pendingPlanRequestedAt: pendingPlan == null
+        ? null
+        : DateTime(2026, 5, 21, 12),
     entitlements: entitlements,
   );
 }

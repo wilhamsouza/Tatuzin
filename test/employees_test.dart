@@ -271,7 +271,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Ver planos'), findsOneWidget);
+    expect(find.text('Ativar teste gratis'), findsOneWidget);
     expect(find.text('Novo funcionário'), findsNothing);
   });
 
@@ -284,7 +284,7 @@ void main() {
       ),
     );
 
-    expect(find.text('Ver planos'), findsOneWidget);
+    expect(find.text('Ativar teste gratis'), findsOneWidget);
     expect(find.text('Novo funcionário'), findsNothing);
   });
 

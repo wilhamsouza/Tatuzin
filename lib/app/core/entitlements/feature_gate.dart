@@ -184,13 +184,13 @@ class UpgradePrompt extends ConsumerWidget {
               color: colorScheme.onSurfaceVariant,
             ),
           ),
-          const SizedBox(height: 10),
         ],
-        FilledButton.icon(
-          onPressed: () => context.goNamed(AppRouteNames.subscription),
-          icon: const Icon(Icons.workspace_premium_outlined),
-          label: const Text('Ver planos'),
-        ),
+        if (canManageSubscription)
+          FilledButton.icon(
+            onPressed: () => context.goNamed(AppRouteNames.subscription),
+            icon: const Icon(Icons.workspace_premium_outlined),
+            label: const Text('Ativar teste gratis'),
+          ),
       ],
     );
   }

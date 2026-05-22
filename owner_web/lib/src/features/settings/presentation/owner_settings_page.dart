@@ -6,6 +6,7 @@ import '../../../core/models/owner_models.dart';
 import '../../../core/widgets/owner_async_view.dart';
 import '../../../core/widgets/owner_formatters.dart';
 import '../../../core/widgets/owner_management_widgets.dart';
+import '../../../theme/owner_theme_controller.dart';
 
 class OwnerSettingsPage extends ConsumerWidget {
   const OwnerSettingsPage({super.key});
@@ -24,6 +25,8 @@ class OwnerSettingsPage extends ConsumerWidget {
               'Dados da empresa, plano e dispositivos conectados ao Tatuzin.',
           icon: Icons.settings_rounded,
         ),
+        const SizedBox(height: 18),
+        const _ThemeModeCard(),
         const SizedBox(height: 18),
         OwnerAsyncView(
           value: company,
@@ -126,6 +129,47 @@ class _InfoItem extends StatelessWidget {
             ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ThemeModeCard extends ConsumerWidget {
+  const _ThemeModeCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(ownerMaterialThemeModeProvider);
+    return OwnerSectionCard(
+      title: 'Tema',
+      subtitle: 'Escolha como o painel deve acompanhar seu ambiente.',
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: SegmentedButton<ThemeMode>(
+          segments: const [
+            ButtonSegment(
+              value: ThemeMode.system,
+              icon: Icon(Icons.brightness_auto_rounded),
+              label: Text('Usar tema do sistema'),
+            ),
+            ButtonSegment(
+              value: ThemeMode.light,
+              icon: Icon(Icons.light_mode_rounded),
+              label: Text('Claro'),
+            ),
+            ButtonSegment(
+              value: ThemeMode.dark,
+              icon: Icon(Icons.dark_mode_rounded),
+              label: Text('Escuro'),
+            ),
+          ],
+          selected: {mode},
+          onSelectionChanged: (selection) {
+            ref
+                .read(ownerThemeModeControllerProvider.notifier)
+                .setThemeMode(selection.single);
+          },
+        ),
       ),
     );
   }

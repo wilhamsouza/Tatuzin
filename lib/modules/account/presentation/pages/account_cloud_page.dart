@@ -547,6 +547,8 @@ BillingStatus _fallbackBillingStatus(AppSession session) {
     maskedProviderSubscriptionId: null,
     canManageBilling: session.isCompanyOwner,
     nextPaymentDate: null,
+    pendingPlan: null,
+    pendingPlanRequestedAt: null,
     entitlements: company.entitlements,
   );
 }

@@ -1,18 +1,18 @@
-import { Router } from 'express';
+import { Router } from "express";
 
-import { requireAppContext } from '../../shared/http/auth-middleware';
-import { asyncHandler } from '../../shared/http/async-handler';
-import { buildPaginatedResponse } from '../../shared/http/api-response';
-import { createRateLimit } from '../../shared/http/rate-limit';
-import { validateBody, validateQuery } from '../../shared/http/validate';
+import { requireAppContext } from "../../shared/http/auth-middleware";
+import { asyncHandler } from "../../shared/http/async-handler";
+import { buildPaginatedResponse } from "../../shared/http/api-response";
+import { createRateLimit } from "../../shared/http/rate-limit";
+import { validateBody, validateQuery } from "../../shared/http/validate";
 import {
   billingCancelSchema,
   billingChangePlanSchema,
   billingInvoicesQuerySchema,
   billingSubscribeSchema,
-} from './billing.schemas';
-import { BillingService } from './billing.service';
-import { BillingWebhookService } from './billing-webhook.service';
+} from "./billing.schemas";
+import { BillingService } from "./billing.service";
+import { BillingWebhookService } from "./billing-webhook.service";
 
 const billingService = new BillingService();
 const webhookService = new BillingWebhookService();
@@ -21,48 +21,51 @@ export const billingRouter = Router();
 export const mercadoPagoWebhookRouter = Router();
 
 billingRouter.get(
-  '/plans',
+  "/plans",
   asyncHandler(async (_request, response) => {
     response.json({ items: billingService.listPlans() });
   }),
 );
 
 billingRouter.get(
-  '/status',
+  "/status",
   requireAppContext,
   asyncHandler(async (request, response) => {
-    const status = await billingService.getStatusForContext(request.appContext!);
+    const status = await billingService.getStatusForContext(
+      request.appContext!,
+    );
     response.json(status);
   }),
 );
 
 billingRouter.post(
-  '/subscribe',
+  "/subscribe",
   requireAppContext,
   validateBody(billingSubscribeSchema),
   asyncHandler(async (request, response) => {
     const result = await billingService.subscribe(
       request.appContext!,
       request.body,
+      { requestId: request.requestId },
     );
     response.status(result.checkoutUrl == null ? 200 : 201).json(result);
   }),
 );
 
 billingRouter.post(
-  '/refresh',
+  "/refresh",
   requireAppContext,
   createRateLimit({
-    name: 'billing_refresh',
+    name: "billing_refresh",
     windowMs: 60_000,
     max: 4,
     message:
-      'Muitas atualizacoes de assinatura em pouco tempo. Aguarde um instante e tente novamente.',
-    code: 'BILLING_REFRESH_RATE_LIMITED',
+      "Muitas atualizacoes de assinatura em pouco tempo. Aguarde um instante e tente novamente.",
+    code: "BILLING_REFRESH_RATE_LIMITED",
     keyGenerator(request) {
       const auth = request.auth;
       return auth == null
-        ? request.ip ?? 'unknown-billing-refresh'
+        ? (request.ip ?? "unknown-billing-refresh")
         : `${auth.companyId}:${auth.userId}`;
     },
   }),
@@ -73,20 +76,22 @@ billingRouter.post(
 );
 
 billingRouter.get(
-  '/invoices',
+  "/invoices",
   requireAppContext,
   validateQuery(billingInvoicesQuerySchema),
   asyncHandler(async (request, response) => {
     const result = await billingService.listInvoices(
       request.appContext!,
-      request.query as unknown as Parameters<typeof billingService.listInvoices>[1],
+      request.query as unknown as Parameters<
+        typeof billingService.listInvoices
+      >[1],
     );
     response.json(buildPaginatedResponse(result));
   }),
 );
 
 billingRouter.get(
-  '/invoices/:id',
+  "/invoices/:id",
   requireAppContext,
   asyncHandler(async (request, response) => {
     const invoice = await billingService.getInvoice(
@@ -98,7 +103,7 @@ billingRouter.get(
 );
 
 billingRouter.get(
-  '/payment-method',
+  "/payment-method",
   requireAppContext,
   asyncHandler(async (request, response) => {
     const paymentMethod = await billingService.getPaymentMethod(
@@ -109,7 +114,7 @@ billingRouter.get(
 );
 
 billingRouter.post(
-  '/cancel',
+  "/cancel",
   requireAppContext,
   validateBody(billingCancelSchema),
   asyncHandler(async (request, response) => {
@@ -122,7 +127,7 @@ billingRouter.post(
 );
 
 billingRouter.post(
-  '/resume',
+  "/resume",
   requireAppContext,
   asyncHandler(async (request, response) => {
     const result = await billingService.resumeSubscription(request.appContext!);
@@ -131,7 +136,7 @@ billingRouter.post(
 );
 
 billingRouter.post(
-  '/change-plan',
+  "/change-plan",
   requireAppContext,
   validateBody(billingChangePlanSchema),
   asyncHandler(async (request, response) => {
@@ -144,7 +149,7 @@ billingRouter.post(
 );
 
 mercadoPagoWebhookRouter.post(
-  '/mercadopago',
+  "/mercadopago",
   asyncHandler(async (request, response) => {
     const result = await webhookService.handleMercadoPagoWebhook({
       body: normalizeRecord(request.body),
@@ -156,14 +161,14 @@ mercadoPagoWebhookRouter.post(
 );
 
 function normalizeRecord(value: unknown): Record<string, unknown> {
-  if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
   return value as Record<string, unknown>;
 }
 
 function readParam(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value ?? '';
+  return Array.isArray(value) ? value[0] : (value ?? "");
 }
 
 function normalizeHeaders(

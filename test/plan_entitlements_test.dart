@@ -109,7 +109,8 @@ void main() {
     );
 
     expect(find.text('Recurso bloqueado'), findsWidgets);
-    expect(find.text('Ver planos'), findsOneWidget);
+    expect(find.text('Ver planos'), findsNothing);
+    expect(find.text('Ativar teste gratis'), findsNothing);
     expect(
       find.text('Peça ao dono da empresa para alterar o plano.'),
       findsOneWidget,

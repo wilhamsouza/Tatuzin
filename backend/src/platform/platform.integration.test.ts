@@ -189,6 +189,7 @@ describe('platform backend hardening', () => {
         name: string;
         slug: string;
         license: {
+          plan: string;
           status: string;
           syncEnabled: boolean;
           expiresAt: string | null;
@@ -203,9 +204,10 @@ describe('platform backend hardening', () => {
     assert.equal(payload.user.isPlatformAdmin, false);
     assert.equal(payload.company.name, 'Tatuzin Cadastro Publico');
     assert.equal(payload.company.slug, registeredSlug);
-    assert.equal(payload.company.license?.status, 'TRIAL');
+    assert.equal(payload.company.license?.plan, 'FREE');
+    assert.equal(payload.company.license?.status, 'ACTIVE');
     assert.equal(payload.company.license?.syncEnabled, true);
-    assert.ok(payload.company.license?.expiresAt);
+    assert.equal(payload.company.license?.expiresAt, null);
     assert.equal(payload.membership.role, 'OWNER');
     assert.equal(payload.membership.isDefault, true);
     assert.equal(payload.session.clientType, baseClientPayload.clientType);
@@ -228,11 +230,46 @@ describe('platform backend hardening', () => {
       (
         currentCompany.data as {
           company?: {
-            license?: { status?: string; syncEnabled?: boolean } | null;
+            license?: {
+              plan?: string;
+              status?: string;
+              expiresAt?: string | null;
+              syncEnabled?: boolean;
+            } | null;
           };
         }
       ).company?.license?.status,
-      'TRIAL',
+      'ACTIVE',
+    );
+    assert.equal(
+      (
+        currentCompany.data as {
+          company?: {
+            license?: {
+              plan?: string;
+              status?: string;
+              expiresAt?: string | null;
+              syncEnabled?: boolean;
+            } | null;
+          };
+        }
+      ).company?.license?.plan,
+      'FREE',
+    );
+    assert.equal(
+      (
+        currentCompany.data as {
+          company?: {
+            license?: {
+              plan?: string;
+              status?: string;
+              expiresAt?: string | null;
+              syncEnabled?: boolean;
+            } | null;
+          };
+        }
+      ).company?.license?.expiresAt,
+      null,
     );
 
     const categories = await requestJson('GET', '/categories', {

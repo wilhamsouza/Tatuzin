@@ -2,7 +2,7 @@ import type {
   FeatureKey,
   PlanKey,
   PlanLimits,
-} from '../plans/plan-catalog.service';
+} from "../plans/plan-catalog.service";
 
 export type AppContextUser = {
   id: string;
@@ -47,6 +47,8 @@ export type AppContextLicense = {
   syncEnabled: boolean;
   maxDevices: number | null;
   expiresAt: string | null;
+  pendingPlan: string | null;
+  pendingPlanRequestedAt: string | null;
 };
 
 export type AppContextDevice = {

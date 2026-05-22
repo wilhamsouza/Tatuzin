@@ -1,7 +1,9 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/auth/owner_providers.dart';
+import '../core/models/owner_models.dart';
 import '../core/widgets/owner_shell_scaffold.dart';
 import '../features/auth/presentation/login_page.dart';
 import '../features/billing/presentation/owner_billing_page.dart';
@@ -58,6 +60,11 @@ final ownerRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
       ShellRoute(
         builder: (context, state, child) {
+          final session = authController.session;
+          final license = session?.company.license;
+          if (session != null && license?.isPro != true) {
+            return OwnerPlanBlockedPage(license: license);
+          }
           return OwnerShellScaffold(
             currentLocation: state.uri.path,
             title: _titleForLocation(state.uri.path),
@@ -147,4 +154,61 @@ String _titleForLocation(String location) {
     return 'Configurações';
   }
   return 'Dashboard';
+}
+
+class OwnerPlanBlockedPage extends StatelessWidget {
+  const OwnerPlanBlockedPage({super.key, required this.license});
+
+  final OwnerLicenseSnapshot? license;
+
+  @override
+  Widget build(BuildContext context) {
+    final waiting = license?.isWaitingForProConfirmation == true;
+    final colorScheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      waiting
+                          ? Icons.hourglass_top_rounded
+                          : Icons.workspace_premium_rounded,
+                      color: colorScheme.primary,
+                      size: 42,
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      waiting
+                          ? 'Aguardando confirmacao do Mercado Pago'
+                          : 'Painel do dono disponivel no plano PRO',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      waiting
+                          ? 'Assim que a assinatura for confirmada, o painel web sera liberado automaticamente.'
+                          : 'Ative o PRO pelo app Tatuzin para acessar gestao da equipe, relatorios avancados, comissoes, multi-dispositivo e painel web.',
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

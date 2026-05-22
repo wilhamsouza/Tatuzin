@@ -1,0 +1,57 @@
+warning: in the working copy of 'android/app/build.gradle.kts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'android/app/src/main/AndroidManifest.xml', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/config/env.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/admin/admin-sync-center.service.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/app/app-context.service.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/app/app-context.types.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/auth/auth.routes.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/auth/auth.service.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/billing/billing.routes.test.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/billing/billing.routes.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/billing/billing.service.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/billing/billing.types.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/modules/billing/mercado-pago.service.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend/src/platform/platform.integration.test.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'lib/app/app.dart', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'lib/app/core/entitlements/feature_gate.dart', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'lib/modules/account/presentation/pages/account_cloud_page.dart', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'owner_web/lib/src/app/owner_web_app.dart', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'owner_web/lib/src/app/owner_web_router.dart', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'owner_web/lib/src/core/auth/owner_auth_controller.dart', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'owner_web/lib/src/core/models/owner_models.dart', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'owner_web/lib/src/features/settings/presentation/owner_settings_page.dart', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'owner_web/lib/src/theme/owner_theme.dart', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'owner_web/test/owner_web_test.dart', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'test/plan_entitlements_test.dart', LF will be replaced by CRLF the next time Git touches it
+ android/app/build.gradle.kts                       |   4 [32m+[m[31m-[m
+ android/app/src/main/AndroidManifest.xml           |   2 [32m+[m[31m-[m
+ .../br/com/simples/erp_pdv_novo/MainActivity.kt    |   5 [31m-[m
+ backend/src/config/env.ts                          |   8 [32m+[m
+ .../src/modules/admin/admin-sync-center.service.ts |   3 [32m+[m
+ backend/src/modules/app/app-context.service.ts     |  91 [32m+[m[31m-[m
+ backend/src/modules/app/app-context.types.ts       |   4 [32m+[m[31m-[m
+ backend/src/modules/auth/auth.routes.ts            | 108 [32m+[m[31m--[m
+ backend/src/modules/auth/auth.service.ts           | 259 [32m+++[m[31m---[m
+ backend/src/modules/billing/billing.routes.test.ts | 984 [32m+++++++++++[m[31m----------[m
+ backend/src/modules/billing/billing.routes.ts      |  61 [32m+[m[31m-[m
+ backend/src/modules/billing/billing.service.ts     | 514 [32m++++++[m[31m-----[m
+ backend/src/modules/billing/billing.types.ts       |  21 [32m+[m[31m-[m
+ .../src/modules/billing/mercado-pago.service.ts    | 273 [32m+++[m[31m---[m
+ backend/src/platform/platform.integration.test.ts  |  45 [32m+[m[31m-[m
+ lib/app/app.dart                                   |   3 [32m+[m
+ lib/app/core/entitlements/feature_gate.dart        |  12 [32m+[m[31m-[m
+ .../presentation/pages/account_cloud_page.dart     |   2 [32m+[m
+ lib/modules/billing/domain/billing_models.dart     |  11 [32m+[m
+ .../presentation/pages/subscription_page.dart      |  27 [32m+[m[31m-[m
+ owner_web/lib/src/app/owner_web_app.dart           |   4 [32m+[m
+ owner_web/lib/src/app/owner_web_router.dart        |  64 [32m++[m
+ .../lib/src/core/auth/owner_auth_controller.dart   |  16 [32m+[m[31m-[m
+ owner_web/lib/src/core/models/owner_models.dart    |  16 [32m+[m
+ .../settings/presentation/owner_settings_page.dart |  44 [32m+[m
+ owner_web/lib/src/theme/owner_theme.dart           |  24 [32m+[m[31m-[m
+ owner_web/test/owner_web_test.dart                 |  56 [32m++[m
+ test/app_router_test.dart                          |   2 [32m+[m[31m-[m
+ test/billing_test.dart                             |  55 [32m++[m
+ test/employees_test.dart                           |   4 [32m+[m[31m-[m
+ test/plan_entitlements_test.dart                   |   3 [32m+[m[31m-[m
+ 31 files changed, 1655 insertions(+), 1070 deletions(-)

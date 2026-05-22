@@ -1,11 +1,11 @@
-import { Router } from 'express';
+import { Router } from "express";
 
-import { requireAuth } from '../../shared/http/auth-middleware';
-import { asyncHandler } from '../../shared/http/async-handler';
-import { createRateLimit } from '../../shared/http/rate-limit';
-import { validateBody } from '../../shared/http/validate';
-import { CompaniesService } from '../companies/companies.service';
-import { AuthService } from './auth.service';
+import { requireAuth } from "../../shared/http/auth-middleware";
+import { asyncHandler } from "../../shared/http/async-handler";
+import { createRateLimit } from "../../shared/http/rate-limit";
+import { validateBody } from "../../shared/http/validate";
+import { CompaniesService } from "../companies/companies.service";
+import { AuthService } from "./auth.service";
 import {
   changeInitialPasswordSchema,
   forgotPasswordSchema,
@@ -14,7 +14,7 @@ import {
   resetPasswordSchema,
   refreshSchema,
   registerInitialSchema,
-} from './auth.schemas';
+} from "./auth.schemas";
 
 const authService = new AuthService();
 const companiesService = new CompaniesService();
@@ -22,74 +22,74 @@ const companiesService = new CompaniesService();
 export const authRouter = Router();
 
 const loginRateLimit = createRateLimit({
-  name: 'auth_login',
+  name: "auth_login",
   windowMs: 60_000,
   max: 8,
   message:
-    'Muitas tentativas de login em pouco tempo. Aguarde um instante e tente novamente.',
-  code: 'AUTH_LOGIN_RATE_LIMITED',
+    "Muitas tentativas de login em pouco tempo. Aguarde um instante e tente novamente.",
+  code: "AUTH_LOGIN_RATE_LIMITED",
   keyGenerator(request) {
     const email =
-      request.body != null && typeof request.body.email === 'string'
+      request.body != null && typeof request.body.email === "string"
         ? request.body.email.trim().toLowerCase()
-        : 'unknown-email';
+        : "unknown-email";
     return `${request.ip}:${email}`;
   },
 });
 
 const refreshRateLimit = createRateLimit({
-  name: 'auth_refresh',
+  name: "auth_refresh",
   windowMs: 60_000,
   max: 30,
   message:
-    'Muitas tentativas de restaurar a sessao em pouco tempo. Tente novamente em instantes.',
-  code: 'AUTH_REFRESH_RATE_LIMITED',
+    "Muitas tentativas de restaurar a sessao em pouco tempo. Tente novamente em instantes.",
+  code: "AUTH_REFRESH_RATE_LIMITED",
   keyGenerator(request) {
     const clientInstanceId =
-      request.body != null && typeof request.body.clientInstanceId === 'string'
+      request.body != null && typeof request.body.clientInstanceId === "string"
         ? request.body.clientInstanceId.trim()
-        : 'unknown-client';
+        : "unknown-client";
     return `${request.ip}:${clientInstanceId}`;
   },
 });
 
 const registerRateLimit = createRateLimit({
-  name: 'auth_register',
+  name: "auth_register",
   windowMs: 10 * 60_000,
   max: 8,
   message:
-    'Muitas tentativas de cadastro em pouco tempo. Aguarde um instante e tente novamente.',
-  code: 'AUTH_REGISTER_RATE_LIMITED',
+    "Muitas tentativas de cadastro em pouco tempo. Aguarde um instante e tente novamente.",
+  code: "AUTH_REGISTER_RATE_LIMITED",
 });
 
 const forgotPasswordRateLimit = createRateLimit({
-  name: 'auth_forgot_password',
+  name: "auth_forgot_password",
   windowMs: 10 * 60_000,
   max: 5,
   message:
-    'Muitas tentativas de recuperacao de senha em pouco tempo. Aguarde um instante e tente novamente.',
-  code: 'AUTH_FORGOT_PASSWORD_RATE_LIMITED',
+    "Muitas tentativas de recuperacao de senha em pouco tempo. Aguarde um instante e tente novamente.",
+  code: "AUTH_FORGOT_PASSWORD_RATE_LIMITED",
 });
 
 const resetPasswordRateLimit = createRateLimit({
-  name: 'auth_reset_password',
+  name: "auth_reset_password",
   windowMs: 10 * 60_000,
   max: 10,
   message:
-    'Muitas tentativas de redefinicao de senha em pouco tempo. Aguarde um instante e tente novamente.',
-  code: 'AUTH_RESET_PASSWORD_RATE_LIMITED',
+    "Muitas tentativas de redefinicao de senha em pouco tempo. Aguarde um instante e tente novamente.",
+  code: "AUTH_RESET_PASSWORD_RATE_LIMITED",
 });
 
-authRouter.get('/health', (_request, response) => {
+authRouter.get("/health", (_request, response) => {
   response.json({
     ok: true,
-    service: 'auth',
+    service: "auth",
     timestamp: new Date().toISOString(),
   });
 });
 
 authRouter.post(
-  '/register',
+  "/register",
   registerRateLimit,
   validateBody(registerSchema),
   asyncHandler(async (request, response) => {
@@ -99,7 +99,7 @@ authRouter.post(
 );
 
 authRouter.post(
-  '/register-initial',
+  "/register-initial",
   validateBody(registerInitialSchema),
   asyncHandler(async (request, response) => {
     const payload = await authService.registerInitial(request.body);
@@ -108,7 +108,7 @@ authRouter.post(
 );
 
 authRouter.post(
-  '/login',
+  "/login",
   loginRateLimit,
   validateBody(loginSchema),
   asyncHandler(async (request, response) => {
@@ -118,7 +118,7 @@ authRouter.post(
 );
 
 authRouter.post(
-  '/refresh',
+  "/refresh",
   refreshRateLimit,
   validateBody(refreshSchema),
   asyncHandler(async (request, response) => {
@@ -128,7 +128,7 @@ authRouter.post(
 );
 
 authRouter.post(
-  '/forgot-password',
+  "/forgot-password",
   forgotPasswordRateLimit,
   validateBody(forgotPasswordSchema),
   asyncHandler(async (request, response) => {
@@ -138,7 +138,7 @@ authRouter.post(
 );
 
 authRouter.post(
-  '/reset-password',
+  "/reset-password",
   resetPasswordRateLimit,
   validateBody(resetPasswordSchema),
   asyncHandler(async (request, response) => {
@@ -148,7 +148,7 @@ authRouter.post(
 );
 
 authRouter.post(
-  '/change-initial-password',
+  "/change-initial-password",
   requireAuth,
   validateBody(changeInitialPasswordSchema),
   asyncHandler(async (request, response) => {
@@ -163,7 +163,7 @@ authRouter.post(
 );
 
 authRouter.get(
-  '/me',
+  "/me",
   requireAuth,
   asyncHandler(async (request, response) => {
     const identity = await authService.me(
@@ -176,7 +176,7 @@ authRouter.get(
 );
 
 authRouter.post(
-  '/logout',
+  "/logout",
   requireAuth,
   asyncHandler(async (request, response) => {
     await authService.logout({
@@ -189,7 +189,7 @@ authRouter.post(
 );
 
 authRouter.get(
-  '/sessions',
+  "/sessions",
   requireAuth,
   asyncHandler(async (request, response) => {
     const sessions = await authService.listMySessions(
@@ -204,7 +204,7 @@ authRouter.get(
 );
 
 authRouter.post(
-  '/sessions/:sessionId/revoke',
+  "/sessions/:sessionId/revoke",
   requireAuth,
   asyncHandler(async (request, response) => {
     const sessionId = Array.isArray(request.params.sessionId)
@@ -224,7 +224,7 @@ authRouter.post(
 export const companyRouter = Router();
 
 companyRouter.get(
-  '/current',
+  "/current",
   requireAuth,
   asyncHandler(async (request, response) => {
     const company = await companiesService.getCurrentCompanyForMembership(
@@ -247,17 +247,21 @@ companyRouter.get(
         showAddressOnReceipt: company.showAddressOnReceipt,
         showFooterMessageOnReceipt: company.showFooterMessageOnReceipt,
         slug: company.slug,
-        license: company.license == null
-          ? null
-          : {
-              id: company.license.id,
-              plan: company.license.plan,
-              status: company.license.status,
-              startsAt: company.license.startsAt.toISOString(),
-              expiresAt: company.license.expiresAt?.toISOString() ?? null,
-              maxDevices: company.license.maxDevices,
-              syncEnabled: company.license.syncEnabled,
-            },
+        license:
+          company.license == null
+            ? null
+            : {
+                id: company.license.id,
+                plan: company.license.plan,
+                status: company.license.status,
+                startsAt: company.license.startsAt.toISOString(),
+                expiresAt: company.license.expiresAt?.toISOString() ?? null,
+                maxDevices: company.license.maxDevices,
+                syncEnabled: company.license.syncEnabled,
+                pendingPlan: company.license.pendingPlan,
+                pendingPlanRequestedAt:
+                  company.license.pendingPlanRequestedAt?.toISOString() ?? null,
+              },
       },
     });
   }),

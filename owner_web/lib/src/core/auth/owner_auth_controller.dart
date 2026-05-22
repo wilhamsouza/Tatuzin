@@ -65,7 +65,7 @@ class OwnerAuthController extends ChangeNotifier {
         });
       }
       final session = await _apiService.restoreSession(accessToken.trim());
-      await _apiService.validateOwnerAccess(session.accessToken);
+      _assertOwnerShellAccess(session);
       await _authStorage.saveSessionSnapshot(session);
       _session = session;
       _errorMessage = null;
@@ -106,7 +106,7 @@ class OwnerAuthController extends ChangeNotifier {
         accessToken: session.accessToken,
         refreshToken: refreshToken,
       );
-      await _apiService.validateOwnerAccess(session.accessToken);
+      _assertOwnerShellAccess(session);
       await _authStorage.saveSessionSnapshot(session);
       _session = session;
       _errorMessage = null;
@@ -167,6 +167,18 @@ class OwnerAuthController extends ChangeNotifier {
     _errorMessage = 'Sua sessão terminou. Entre novamente.';
     notifyListeners();
   }
+}
+
+void _assertOwnerShellAccess(OwnerSession session) {
+  final role = session.membership.role.trim().toUpperCase();
+  if (role == 'OWNER' || role == 'ADMIN') {
+    return;
+  }
+  throw const OwnerApiException(
+    message: 'Voce nao tem permissao para acessar este painel.',
+    statusCode: 403,
+    code: 'OWNER_PANEL_ACCESS_REQUIRED',
+  );
 }
 
 String describeOwnerError(Object error) {

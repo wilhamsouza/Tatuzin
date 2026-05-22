@@ -16,6 +16,7 @@ import 'core/widgets/app_async_value_view.dart';
 import 'routes/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/app_theme_mode_controller.dart';
+import '../modules/billing/presentation/widgets/pro_trial_offer_gate.dart';
 
 class ErpPdvApp extends ConsumerStatefulWidget {
   const ErpPdvApp({super.key});
@@ -85,6 +86,8 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
           darkTheme: AppTheme.dark(),
           themeMode: themeMode,
           routerConfig: router,
+          builder: (context, child) =>
+              ProTrialOfferGate(child: child ?? const SizedBox.shrink()),
         );
       },
       loading: () => MaterialApp(

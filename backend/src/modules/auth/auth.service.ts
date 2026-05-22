@@ -1,21 +1,21 @@
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes } from "crypto";
 
 import {
   LicenseStatus,
   MembershipRole,
   Prisma,
   type Membership,
-} from '@prisma/client';
-import bcrypt from 'bcryptjs';
+} from "@prisma/client";
+import bcrypt from "bcryptjs";
 
-import { env } from '../../config/env';
-import { prisma } from '../../database/prisma';
-import { AppError } from '../../shared/http/app-error';
-import { logger } from '../../shared/observability/logger';
+import { env } from "../../config/env";
+import { prisma } from "../../database/prisma";
+import { AppError } from "../../shared/http/app-error";
+import { logger } from "../../shared/observability/logger";
 import {
   AuthSessionService,
   type SessionTokenBundle,
-} from './auth-session.service';
+} from "./auth-session.service";
 import type {
   ForgotPasswordInput,
   LoginInput,
@@ -25,11 +25,11 @@ import type {
   ResetPasswordInput,
   SessionClientInput,
   ChangeInitialPasswordInput,
-} from './auth.schemas';
+} from "./auth.schemas";
 import {
   ResendPasswordResetDeliveryService,
   type PasswordResetDeliveryService,
-} from './password-reset-delivery.service';
+} from "./password-reset-delivery.service";
 
 type MembershipWithRelations = Membership & {
   user: {
@@ -61,6 +61,8 @@ type MembershipWithRelations = Membership & {
       expiresAt: Date | null;
       maxDevices: number | null;
       syncEnabled: boolean;
+      pendingPlan: string | null;
+      pendingPlanRequestedAt: Date | null;
       createdAt: Date;
       updatedAt: Date;
     } | null;
@@ -73,15 +75,13 @@ type MembershipWithRelations = Membership & {
   }>;
 };
 
-const INITIAL_TRIAL_DURATION_DAYS = 15;
 const FORGOT_PASSWORD_NEUTRAL_MESSAGE =
-  'Se existir uma conta com este e-mail, enviaremos as instrucoes para redefinir sua senha.';
+  "Se existir uma conta com este e-mail, enviaremos as instrucoes para redefinir sua senha.";
 
 export class AuthService {
   constructor(
     private readonly sessionService = new AuthSessionService(),
-    private readonly passwordResetDelivery: PasswordResetDeliveryService =
-      new ResendPasswordResetDeliveryService(),
+    private readonly passwordResetDelivery: PasswordResetDeliveryService = new ResendPasswordResetDeliveryService(),
   ) {}
 
   async register(input: RegisterInput) {
@@ -111,7 +111,7 @@ export class AuthService {
       clientInput: this.toSessionClientInput(input),
     });
 
-    logger.info('auth.register.completed', {
+    logger.info("auth.register.completed", {
       userId: result.user.id,
       companyId: result.company.id,
       sessionId: sessionTokens.session.id,
@@ -129,7 +129,11 @@ export class AuthService {
     );
 
     if (!passwordMatches) {
-      throw new AppError('E-mail ou senha invalidos.', 401, 'INVALID_CREDENTIALS');
+      throw new AppError(
+        "E-mail ou senha invalidos.",
+        401,
+        "INVALID_CREDENTIALS",
+      );
     }
 
     this.assertEmployeeCanLogin(membership);
@@ -146,7 +150,7 @@ export class AuthService {
       clientInput: this.toSessionClientInput(input),
     });
 
-    logger.info('auth.login.succeeded', {
+    logger.info("auth.login.succeeded", {
       userId: membership.user.id,
       companyId: membership.company.id,
       clientType: sessionTokens.session.clientType,
@@ -173,17 +177,17 @@ export class AuthService {
 
     if (user == null || !user.isActive) {
       throw new AppError(
-        'Sessao nao encontrada. Entre novamente para continuar.',
+        "Sessao nao encontrada. Entre novamente para continuar.",
         401,
-        'SESSION_NOT_FOUND',
+        "SESSION_NOT_FOUND",
       );
     }
 
     if (!user.mustChangePassword) {
       throw new AppError(
-        'Esta conta nao precisa trocar a senha inicial.',
+        "Esta conta nao precisa trocar a senha inicial.",
         409,
-        'INITIAL_PASSWORD_CHANGE_NOT_REQUIRED',
+        "INITIAL_PASSWORD_CHANGE_NOT_REQUIRED",
       );
     }
 
@@ -192,9 +196,9 @@ export class AuthService {
       user.temporaryPasswordExpiresAt.getTime() <= Date.now()
     ) {
       throw new AppError(
-        'Essa senha expirou. Peca ao dono para gerar uma nova.',
+        "Essa senha expirou. Peca ao dono para gerar uma nova.",
         401,
-        'TEMPORARY_PASSWORD_EXPIRED',
+        "TEMPORARY_PASSWORD_EXPIRED",
       );
     }
 
@@ -215,21 +219,21 @@ export class AuthService {
           companyId: params.companyId,
           membershipId: params.membershipId,
           acceptedAt: null,
-          status: { not: 'DISABLED' },
+          status: { not: "DISABLED" },
         },
         data: {
-          status: 'ACTIVE',
+          status: "ACTIVE",
           acceptedAt: new Date(),
         },
       });
     });
 
-    logger.info('auth.initial_password.changed', {
+    logger.info("auth.initial_password.changed", {
       userId: user.id,
     });
 
     return {
-      message: 'Senha criada com sucesso. Voce ja pode continuar.',
+      message: "Senha criada com sucesso. Voce ja pode continuar.",
     };
   }
 
@@ -239,8 +243,10 @@ export class AuthService {
       clientInput: this.toSessionClientInput(input),
     });
 
-    const membership = await this.findMembershipById(sessionTokens.membershipId);
-    logger.info('auth.refresh.succeeded', {
+    const membership = await this.findMembershipById(
+      sessionTokens.membershipId,
+    );
+    logger.info("auth.refresh.succeeded", {
       userId: membership.user.id,
       companyId: membership.company.id,
       sessionId: sessionTokens.session.id,
@@ -262,7 +268,7 @@ export class AuthService {
     });
 
     if (user == null || !user.isActive) {
-      logger.info('auth.password_reset.request_accepted', {
+      logger.info("auth.password_reset.request_accepted", {
         emailFingerprint,
         matchedUser: false,
       });
@@ -299,14 +305,14 @@ export class AuthService {
         expiresAt,
       });
     } catch (error) {
-      logger.error('auth.password_reset.delivery_failed', {
+      logger.error("auth.password_reset.delivery_failed", {
         userId: user.id,
         emailFingerprint,
         error,
       });
     }
 
-    logger.info('auth.password_reset.request_accepted', {
+    logger.info("auth.password_reset.request_accepted", {
       userId: user.id,
       emailFingerprint,
       matchedUser: true,
@@ -336,49 +342,49 @@ export class AuthService {
     });
 
     if (existingToken == null) {
-      logger.warn('auth.password_reset.failed', {
-        reason: 'token_not_found',
+      logger.warn("auth.password_reset.failed", {
+        reason: "token_not_found",
       });
       throw new AppError(
-        'O token de redefinicao de senha e invalido.',
+        "O token de redefinicao de senha e invalido.",
         400,
-        'PASSWORD_RESET_TOKEN_INVALID',
+        "PASSWORD_RESET_TOKEN_INVALID",
       );
     }
 
     if (existingToken.consumedAt != null) {
-      logger.warn('auth.password_reset.failed', {
+      logger.warn("auth.password_reset.failed", {
         userId: existingToken.userId,
-        reason: 'token_already_consumed',
+        reason: "token_already_consumed",
       });
       throw new AppError(
-        'Este token de redefinicao de senha ja foi utilizado.',
+        "Este token de redefinicao de senha ja foi utilizado.",
         400,
-        'PASSWORD_RESET_TOKEN_ALREADY_USED',
+        "PASSWORD_RESET_TOKEN_ALREADY_USED",
       );
     }
 
     if (existingToken.expiresAt.getTime() <= now.getTime()) {
-      logger.warn('auth.password_reset.failed', {
+      logger.warn("auth.password_reset.failed", {
         userId: existingToken.userId,
-        reason: 'token_expired',
+        reason: "token_expired",
       });
       throw new AppError(
-        'Este token de redefinicao de senha expirou.',
+        "Este token de redefinicao de senha expirou.",
         400,
-        'PASSWORD_RESET_TOKEN_EXPIRED',
+        "PASSWORD_RESET_TOKEN_EXPIRED",
       );
     }
 
     if (!existingToken.user.isActive) {
-      logger.warn('auth.password_reset.failed', {
+      logger.warn("auth.password_reset.failed", {
         userId: existingToken.userId,
-        reason: 'user_inactive',
+        reason: "user_inactive",
       });
       throw new AppError(
-        'Nao foi possivel redefinir a senha desta conta.',
+        "Nao foi possivel redefinir a senha desta conta.",
         400,
-        'PASSWORD_RESET_NOT_ALLOWED',
+        "PASSWORD_RESET_NOT_ALLOWED",
       );
     }
 
@@ -400,9 +406,9 @@ export class AuthService {
 
       if (consumedTokens.count !== 1) {
         throw new AppError(
-          'O token de redefinicao de senha e invalido.',
+          "O token de redefinicao de senha e invalido.",
           400,
-          'PASSWORD_RESET_TOKEN_INVALID',
+          "PASSWORD_RESET_TOKEN_INVALID",
         );
       }
 
@@ -423,25 +429,30 @@ export class AuthService {
       });
     });
 
-    const revokedSessionsCount = await this.sessionService.revokeAllUserSessions({
-      userId: existingToken.userId,
-      actorUserId: existingToken.userId,
-      auditAction: 'session_revoked',
-      revokedReason: 'password_reset',
-    });
+    const revokedSessionsCount =
+      await this.sessionService.revokeAllUserSessions({
+        userId: existingToken.userId,
+        actorUserId: existingToken.userId,
+        auditAction: "session_revoked",
+        revokedReason: "password_reset",
+      });
 
-    logger.info('auth.password_reset.completed', {
+    logger.info("auth.password_reset.completed", {
       userId: existingToken.userId,
       revokedSessionsCount,
     });
 
     return {
       message:
-        'Sua senha foi redefinida com sucesso. Entre novamente para continuar.',
+        "Sua senha foi redefinida com sucesso. Entre novamente para continuar.",
     };
   }
 
-  async me(membershipId: string, sessionId?: string | null, userId?: string | null) {
+  async me(
+    membershipId: string,
+    sessionId?: string | null,
+    userId?: string | null,
+  ) {
     if (sessionId != null && sessionId.trim().length > 0) {
       await this.sessionService.recordSessionRestored(sessionId, userId);
     }
@@ -460,7 +471,7 @@ export class AuthService {
       actorUserId: input.userId,
       companyId: input.companyId,
     });
-    logger.info('auth.logout.completed', {
+    logger.info("auth.logout.completed", {
       userId: input.userId,
       companyId: input.companyId,
       sessionId: input.sessionId,
@@ -482,9 +493,9 @@ export class AuthService {
   async registerInitial(input: RegisterInitialInput) {
     if (!env.ALLOW_INITIAL_BOOTSTRAP) {
       throw new AppError(
-        'Bootstrap inicial desativado neste ambiente.',
+        "Bootstrap inicial desativado neste ambiente.",
         403,
-        'BOOTSTRAP_DISABLED',
+        "BOOTSTRAP_DISABLED",
       );
     }
 
@@ -492,9 +503,9 @@ export class AuthService {
 
     if (existingUsers > 0) {
       throw new AppError(
-        'Bootstrap inicial disponivel apenas antes do primeiro usuario.',
+        "Bootstrap inicial disponivel apenas antes do primeiro usuario.",
         409,
-        'BOOTSTRAP_ALREADY_COMPLETED',
+        "BOOTSTRAP_ALREADY_COMPLETED",
       );
     }
 
@@ -519,7 +530,7 @@ export class AuthService {
       clientInput: this.toSessionClientInput(input),
     });
 
-    logger.info('auth.bootstrap.completed', {
+    logger.info("auth.bootstrap.completed", {
       userId: result.user.id,
       companyId: result.company.id,
       sessionId: sessionTokens.session.id,
@@ -541,7 +552,7 @@ export class AuthService {
           isActive: true,
         },
       },
-      orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+      orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
       include: {
         user: true,
         employeeProfiles: {
@@ -561,7 +572,11 @@ export class AuthService {
     });
 
     if (!membership) {
-      throw new AppError('E-mail ou senha invalidos.', 401, 'INVALID_CREDENTIALS');
+      throw new AppError(
+        "E-mail ou senha invalidos.",
+        401,
+        "INVALID_CREDENTIALS",
+      );
     }
 
     return membership;
@@ -590,8 +605,12 @@ export class AuthService {
       },
     });
 
-    if (!membership || !membership.user.isActive || !membership.company.isActive) {
-      throw new AppError('Sessao nao encontrada.', 401, 'SESSION_NOT_FOUND');
+    if (
+      !membership ||
+      !membership.user.isActive ||
+      !membership.company.isActive
+    ) {
+      throw new AppError("Sessao nao encontrada.", 401, "SESSION_NOT_FOUND");
     }
 
     return membership;
@@ -599,14 +618,14 @@ export class AuthService {
 
   private assertEmployeeCanLogin(membership: MembershipWithRelations) {
     const employee = membership.employeeProfiles.find(
-      (profile) => profile.role !== 'OWNER',
+      (profile) => profile.role !== "OWNER",
     );
 
-    if (employee?.status === 'DISABLED') {
+    if (employee?.status === "DISABLED") {
       throw new AppError(
-        'Funcionario desativado. Fale com o dono da empresa.',
+        "Funcionario desativado. Fale com o dono da empresa.",
         403,
-        'EMPLOYEE_DISABLED',
+        "EMPLOYEE_DISABLED",
       );
     }
 
@@ -616,9 +635,9 @@ export class AuthService {
       membership.user.temporaryPasswordExpiresAt.getTime() <= Date.now()
     ) {
       throw new AppError(
-        'Essa senha expirou. Peca ao dono para gerar uma nova.',
+        "Essa senha expirou. Peca ao dono para gerar uma nova.",
         401,
-        'TEMPORARY_PASSWORD_EXPIRED',
+        "TEMPORARY_PASSWORD_EXPIRED",
       );
     }
   }
@@ -665,6 +684,10 @@ export class AuthService {
                   membership.company.license.expiresAt?.toISOString() ?? null,
                 maxDevices: membership.company.license.maxDevices,
                 syncEnabled: membership.company.license.syncEnabled,
+                pendingPlan: membership.company.license.pendingPlan,
+                pendingPlanRequestedAt:
+                  membership.company.license.pendingPlanRequestedAt?.toISOString() ??
+                  null,
               },
       },
       membership: {
@@ -676,11 +699,7 @@ export class AuthService {
   }
 
   private toSessionClientInput(
-      input:
-      | LoginInput
-      | RefreshInput
-      | RegisterInput
-      | RegisterInitialInput,
+    input: LoginInput | RefreshInput | RegisterInput | RegisterInitialInput,
   ): SessionClientInput {
     return {
       clientType: input.clientType,
@@ -691,15 +710,17 @@ export class AuthService {
     };
   }
 
-  private assertLicenseAllowsAppSession(license: {
-    status: string;
-    expiresAt: Date | null;
-  } | null) {
+  private assertLicenseAllowsAppSession(
+    license: {
+      status: string;
+      expiresAt: Date | null;
+    } | null,
+  ) {
     if (license == null) {
       throw new AppError(
-        'Licenca valida obrigatoria para entrar no app.',
+        "Licenca valida obrigatoria para entrar no app.",
         403,
-        'LICENSE_REQUIRED',
+        "LICENSE_REQUIRED",
       );
     }
 
@@ -707,9 +728,9 @@ export class AuthService {
       license.expiresAt != null && license.expiresAt.getTime() < Date.now();
     if (license.status === LicenseStatus.EXPIRED || expiredByDate) {
       throw new AppError(
-        'Licenca expirada para entrar no app.',
+        "Licenca expirada para entrar no app.",
         403,
-        'LICENSE_EXPIRED',
+        "LICENSE_EXPIRED",
       );
     }
 
@@ -718,9 +739,9 @@ export class AuthService {
       license.status !== LicenseStatus.TRIAL
     ) {
       throw new AppError(
-        'Licenca ativa obrigatoria para entrar no app.',
+        "Licenca ativa obrigatoria para entrar no app.",
         403,
-        'LICENSE_REQUIRED',
+        "LICENSE_REQUIRED",
       );
     }
   }
@@ -745,17 +766,17 @@ export class AuthService {
 
     if (existingUser) {
       throw new AppError(
-        'Ja existe uma conta cadastrada com este e-mail.',
+        "Ja existe uma conta cadastrada com este e-mail.",
         409,
-        'EMAIL_ALREADY_IN_USE',
+        "EMAIL_ALREADY_IN_USE",
       );
     }
 
     if (existingCompany) {
       throw new AppError(
-        'Este identificador de empresa ja esta em uso.',
+        "Este identificador de empresa ja esta em uso.",
         409,
-        'COMPANY_SLUG_ALREADY_IN_USE',
+        "COMPANY_SLUG_ALREADY_IN_USE",
       );
     }
   }
@@ -770,7 +791,6 @@ export class AuthService {
   }): Promise<MembershipWithRelations> {
     try {
       return await prisma.$transaction(async (transaction) => {
-        const trialWindow = this.buildInitialTrialWindow();
         const company = await transaction.company.create({
           data: {
             name: input.companyName.trim(),
@@ -791,10 +811,10 @@ export class AuthService {
         await transaction.license.create({
           data: {
             companyId: company.id,
-            plan: 'trial',
-            status: 'TRIAL',
-            startsAt: trialWindow.startsAt,
-            expiresAt: trialWindow.expiresAt,
+            plan: "FREE",
+            status: "ACTIVE",
+            startsAt: new Date(),
+            expiresAt: null,
             syncEnabled: true,
           },
         });
@@ -833,47 +853,34 @@ export class AuthService {
   private rethrowRegistrationConstraintError(error: unknown): never | void {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002'
+      error.code === "P2002"
     ) {
       const target = Array.isArray(error.meta?.target)
-        ? error.meta.target.join(',')
-        : `${error.meta?.target ?? ''}`;
+        ? error.meta.target.join(",")
+        : `${error.meta?.target ?? ""}`;
 
-      if (target.includes('email')) {
+      if (target.includes("email")) {
         throw new AppError(
-          'Ja existe uma conta cadastrada com este e-mail.',
+          "Ja existe uma conta cadastrada com este e-mail.",
           409,
-          'EMAIL_ALREADY_IN_USE',
+          "EMAIL_ALREADY_IN_USE",
         );
       }
 
-      if (target.includes('slug')) {
+      if (target.includes("slug")) {
         throw new AppError(
-          'Este identificador de empresa ja esta em uso.',
+          "Este identificador de empresa ja esta em uso.",
           409,
-          'COMPANY_SLUG_ALREADY_IN_USE',
+          "COMPANY_SLUG_ALREADY_IN_USE",
         );
       }
 
       throw new AppError(
-        'Nao foi possivel concluir o cadastro porque os dados informados ja estao em uso.',
+        "Nao foi possivel concluir o cadastro porque os dados informados ja estao em uso.",
         409,
-        'REGISTRATION_CONFLICT',
+        "REGISTRATION_CONFLICT",
       );
     }
-  }
-
-  private buildInitialTrialWindow() {
-    const startsAt = new Date();
-    const expiresAt = new Date(
-      startsAt.getTime() +
-        INITIAL_TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000,
-    );
-
-    return {
-      startsAt,
-      expiresAt,
-    };
   }
 
   private buildPasswordResetExpiry() {
@@ -883,14 +890,14 @@ export class AuthService {
   }
 
   private generateOpaqueToken() {
-    return randomBytes(48).toString('base64url');
+    return randomBytes(48).toString("base64url");
   }
 
   private hashOpaqueToken(token: string) {
-    return createHash('sha256').update(token).digest('hex');
+    return createHash("sha256").update(token).digest("hex");
   }
 
   private fingerprintEmail(email: string) {
-    return createHash('sha256').update(email).digest('hex');
+    return createHash("sha256").update(email).digest("hex");
   }
 }

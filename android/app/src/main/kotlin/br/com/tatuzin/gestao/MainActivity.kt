@@ -1,4 +1,4 @@
-package br.com.simples.erp_pdv_novo
+package br.com.tatuzin.gestao
 
 import io.flutter.embedding.android.FlutterActivity
 

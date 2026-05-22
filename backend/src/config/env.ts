@@ -131,6 +131,14 @@ if (isProduction) {
     parsed.data.PASSWORD_RESET_APP_BASE_URL == null
       ? 'PASSWORD_RESET_APP_BASE_URL'
       : null,
+    parsed.data.MERCADO_PAGO_ACCESS_TOKEN == null
+      ? 'MERCADO_PAGO_ACCESS_TOKEN'
+      : null,
+    parsed.data.MERCADO_PAGO_WEBHOOK_SECRET == null
+      ? 'MERCADO_PAGO_WEBHOOK_SECRET'
+      : null,
+    parsed.data.API_PUBLIC_URL == null ? 'API_PUBLIC_URL' : null,
+    parsed.data.APP_PUBLIC_URL == null ? 'APP_PUBLIC_URL' : null,
   ].filter((value): value is string => value != null);
 
   if (missingProductionEnv.length > 0) {

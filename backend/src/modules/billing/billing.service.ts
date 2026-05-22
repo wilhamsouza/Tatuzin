@@ -1,22 +1,23 @@
-import { LicenseStatus, Prisma, type BillingInvoice } from '@prisma/client';
+import { LicenseStatus, Prisma, type BillingInvoice } from "@prisma/client";
 
-import { env } from '../../config/env';
-import { prisma } from '../../database/prisma';
-import { AppError } from '../../shared/http/app-error';
-import { toPaginationParams } from '../../shared/http/pagination';
-import type { AppContext } from '../app/app-context.types';
+import { env } from "../../config/env";
+import { prisma } from "../../database/prisma";
+import { AppError } from "../../shared/http/app-error";
+import { toPaginationParams } from "../../shared/http/pagination";
+import { logger } from "../../shared/observability/logger";
+import type { AppContext } from "../app/app-context.types";
 import {
   getPlanEntitlements,
   normalizePlan,
   type PlanKey,
-} from '../plans/plan-catalog.service';
+} from "../plans/plan-catalog.service";
 import type {
   BillingCancelInput,
   BillingChangePlanInput,
   BillingInvoicesQueryInput,
   BillingSubscribeInput,
-} from './billing.schemas';
-import { maskUrl, sanitizeForAdmin } from './billing-sanitizer';
+} from "./billing.schemas";
+import { maskUrl, sanitizeForAdmin } from "./billing-sanitizer";
 import type {
   AdminBillingStatusDto,
   BillingActionResultDto,
@@ -28,21 +29,24 @@ import type {
   PaidPlanKey,
   PublicBillingPlan,
   SubscribeResultDto,
-} from './billing.types';
-import { MercadoPagoService } from './mercado-pago.service';
+} from "./billing.types";
+import { MercadoPagoService } from "./mercado-pago.service";
 
-const BILLING_PROVIDER = 'mercadopago';
-const MONTHLY = 'monthly';
+const BILLING_PROVIDER = "mercadopago";
+const MONTHLY = "monthly";
 const CHECKOUT_TTL_MS = 30 * 60 * 1000;
+const PRO_TRIAL_DAYS = 15;
+const SUBSCRIBE_UNAVAILABLE_MESSAGE =
+  "Nao foi possivel iniciar a assinatura agora. Tente novamente em alguns minutos.";
 
 type ApplyProviderResult = {
   action:
-    | 'activated'
-    | 'downgraded'
-    | 'unchanged'
-    | 'ignored_unknown'
-    | 'ignored_missing_session'
-    | 'invoice_reconciled';
+    | "activated"
+    | "downgraded"
+    | "unchanged"
+    | "ignored_unknown"
+    | "ignored_missing_session"
+    | "invoice_reconciled";
   providerStatus: string;
   companyId: string | null;
   plan: PlanKey | null;
@@ -54,42 +58,42 @@ export class BillingService {
   listPlans(): PublicBillingPlan[] {
     return [
       {
-        key: 'FREE',
-        name: 'Free',
+        key: "FREE",
+        name: "Free",
         priceCents: 0,
-        currency: 'BRL',
-        billingCycle: 'free',
-        description: 'Comece vendendo no PDV com um dispositivo.',
+        currency: "BRL",
+        billingCycle: "free",
+        description: "Comece vendendo no PDV com um dispositivo.",
         featuresSummary: [
-          'PDV, caixa e produtos',
-          'Clientes basicos e fiado no checkout',
-          'Relatorio diario simples',
+          "PDV, caixa e produtos",
+          "Clientes basicos e fiado no checkout",
+          "Relatorio diario simples",
         ],
       },
       {
-        key: 'BASIC',
-        name: 'Basico',
+        key: "BASIC",
+        name: "Basico",
         priceCents: env.BILLING_BASIC_PRICE_CENTS,
-        currency: 'BRL',
-        billingCycle: 'monthly',
-        description: 'Gestao individual completa para operar a loja.',
+        currency: "BRL",
+        billingCycle: "monthly",
+        description: "Gestao individual completa para operar a loja.",
         featuresSummary: [
-          'Fiado completo',
-          'Insumos, custos, fornecedores e compras',
-          'Estoque avancado e relatorios basicos',
+          "Fiado completo",
+          "Insumos, custos, fornecedores e compras",
+          "Estoque avancado e relatorios basicos",
         ],
       },
       {
-        key: 'PRO',
-        name: 'Pro',
+        key: "PRO",
+        name: "Pro",
         priceCents: env.BILLING_PRO_PRICE_CENTS,
-        currency: 'BRL',
-        billingCycle: 'monthly',
-        description: 'Equipe, dispositivos e relatorios avancados.',
+        currency: "BRL",
+        billingCycle: "monthly",
+        description: "Equipe, dispositivos e relatorios avancados.",
         featuresSummary: [
-          'Multi-dispositivo',
-          'Funcionarios, permissoes e comissoes',
-          'Relatorios avancados',
+          "Multi-dispositivo",
+          "Funcionarios, permissoes e comissoes",
+          "Relatorios avancados",
         ],
       },
     ];
@@ -98,7 +102,7 @@ export class BillingService {
   async getStatusForContext(context: AppContext): Promise<BillingStatusDto> {
     return this.getStatusForCompany({
       companyId: context.company.id,
-      canManageBilling: context.membership.role === 'OWNER',
+      canManageBilling: context.membership.role === "OWNER",
       includeProviderSubscriptionId: false,
     });
   }
@@ -114,9 +118,17 @@ export class BillingService {
   async subscribe(
     context: AppContext,
     input: BillingSubscribeInput,
+    options: { requestId?: string } = {},
   ): Promise<SubscribeResultDto> {
     this.assertOwner(context);
     const plan = normalizePlan(input.plan) as PaidPlanKey;
+    logger.info("billing.subscribe.started", {
+      requestId: options.requestId,
+      companyId: context.company.id,
+      userId: context.user.id,
+      plan,
+      billingCycle: input.billingCycle ?? MONTHLY,
+    });
 
     const currentPlan = normalizePlan(context.license.plan);
     if (
@@ -140,7 +152,7 @@ export class BillingService {
         userId: context.user.id,
         plan,
         billingCycle: input.billingCycle ?? MONTHLY,
-        status: 'PENDING',
+        status: "PENDING",
         provider: BILLING_PROVIDER,
         expiresAt,
       },
@@ -148,6 +160,12 @@ export class BillingService {
 
     try {
       const priceCents = this.priceCentsFor(plan);
+      logger.info("billing.subscribe.provider_preapproval.create_started", {
+        requestId: options.requestId,
+        companyId: context.company.id,
+        checkoutSessionId: checkoutSession.id,
+        plan,
+      });
       const preapproval = await this.mercadoPagoService.createPreapproval({
         plan,
         priceCents,
@@ -155,23 +173,45 @@ export class BillingService {
         payerEmail: context.user.email,
         backUrl: buildAppBackUrl(),
         notificationUrl: buildWebhookUrl(),
+        trialDays:
+          currentPlan === "FREE" && plan === "PRO" ? PRO_TRIAL_DAYS : undefined,
       });
       const checkoutUrl = preapproval.initPoint ?? preapproval.sandboxInitPoint;
       if (checkoutUrl == null) {
         throw new AppError(
-          'Mercado Pago nao retornou uma URL de checkout.',
+          "Mercado Pago nao retornou uma URL de checkout.",
           502,
-          'MERCADO_PAGO_CHECKOUT_URL_MISSING',
+          "MERCADO_PAGO_CHECKOUT_URL_MISSING",
         );
       }
 
-      const updated = await prisma.billingCheckoutSession.update({
-        where: { id: checkoutSession.id },
-        data: {
-          providerReference: preapproval.id,
-          checkoutUrl: preapproval.initPoint,
-          sandboxCheckoutUrl: preapproval.sandboxInitPoint,
-        },
+      const [updated] = await prisma.$transaction([
+        prisma.billingCheckoutSession.update({
+          where: { id: checkoutSession.id },
+          data: {
+            providerReference: preapproval.id,
+            checkoutUrl: preapproval.initPoint,
+            sandboxCheckoutUrl: preapproval.sandboxInitPoint,
+          },
+        }),
+        prisma.license.update({
+          where: { companyId: context.company.id },
+          data: {
+            pendingPlan: plan,
+            pendingPlanRequestedAt: new Date(),
+          },
+        }),
+      ]);
+
+      logger.info("billing.subscribe.checkout_created", {
+        requestId: options.requestId,
+        companyId: context.company.id,
+        checkoutSessionId: updated.id,
+        providerReference: maskProviderSubscriptionId(preapproval.id),
+        providerStatus: preapproval.status,
+        plan,
+        trialDays:
+          currentPlan === "FREE" && plan === "PRO" ? PRO_TRIAL_DAYS : undefined,
       });
 
       return {
@@ -184,9 +224,24 @@ export class BillingService {
     } catch (error) {
       await prisma.billingCheckoutSession.update({
         where: { id: checkoutSession.id },
-        data: { status: 'CANCELLED' },
+        data: { status: "CANCELLED" },
       });
-      throw error;
+      logger.warn("billing.subscribe.provider_failed", {
+        requestId: options.requestId,
+        companyId: context.company.id,
+        checkoutSessionId: checkoutSession.id,
+        plan,
+        errorCode: error instanceof AppError ? error.code : undefined,
+        errorStatus: error instanceof AppError ? error.statusCode : undefined,
+        details: sanitizeForAdmin(
+          error instanceof AppError ? error.details : null,
+        ),
+      });
+      throw new AppError(
+        SUBSCRIBE_UNAVAILABLE_MESSAGE,
+        503,
+        "BILLING_SUBSCRIBE_UNAVAILABLE",
+      );
     }
   }
 
@@ -201,17 +256,15 @@ export class BillingService {
     companyId: string,
   ): Promise<AdminBillingStatusDto> {
     const warnings: string[] = [];
-    const providerReference = await this.findRefreshProviderReference(
-      companyId,
-    );
+    const providerReference =
+      await this.findRefreshProviderReference(companyId);
     if (providerReference == null) {
       await this.applyScheduledTransitions(companyId);
       return this.getAdminStatus(companyId);
     }
 
-    const details = await this.mercadoPagoService.getSubscription(
-      providerReference,
-    );
+    const details =
+      await this.mercadoPagoService.getSubscription(providerReference);
     await this.applyMercadoPagoDetails(details, {
       fallbackCompanyId: companyId,
     });
@@ -223,7 +276,7 @@ export class BillingService {
       );
       warnings.push(...result.warnings);
     } catch {
-      warnings.push('INVOICE_RECONCILIATION_FAILED');
+      warnings.push("INVOICE_RECONCILIATION_FAILED");
     }
     const status = await this.getAdminStatus(companyId);
     return mergeWarnings(status, warnings);
@@ -238,7 +291,7 @@ export class BillingService {
         where,
         skip,
         take,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       }),
       prisma.billingInvoice.count({ where }),
     ]);
@@ -260,7 +313,11 @@ export class BillingService {
       },
     });
     if (invoice == null) {
-      throw new AppError('Fatura nao encontrada.', 404, 'BILLING_INVOICE_NOT_FOUND');
+      throw new AppError(
+        "Fatura nao encontrada.",
+        404,
+        "BILLING_INVOICE_NOT_FOUND",
+      );
     }
     return this.serializeInvoice(invoice);
   }
@@ -287,15 +344,18 @@ export class BillingService {
     }
 
     try {
-      const details =
-        await this.mercadoPagoService.getPreapproval(providerSubscriptionId);
+      const details = await this.mercadoPagoService.getPreapproval(
+        providerSubscriptionId,
+      );
       return {
         provider: BILLING_PROVIDER,
         hasPaymentMethod:
           details.paymentMethodId != null ||
           details.paymentMethodType != null ||
           details.lastFour != null,
-        paymentMethodId: maskProviderSubscriptionId(details.paymentMethodId ?? null),
+        paymentMethodId: maskProviderSubscriptionId(
+          details.paymentMethodId ?? null,
+        ),
         paymentMethodType: details.paymentMethodType ?? null,
         lastFour: details.lastFour ?? null,
         status: details.status,
@@ -303,8 +363,9 @@ export class BillingService {
           details.nextPaymentDate?.toISOString() ??
           license?.nextPaymentDate?.toISOString() ??
           null,
-        maskedProviderSubscriptionId:
-          maskProviderSubscriptionId(providerSubscriptionId),
+        maskedProviderSubscriptionId: maskProviderSubscriptionId(
+          providerSubscriptionId,
+        ),
       };
     } catch {
       return {
@@ -312,9 +373,10 @@ export class BillingService {
         hasPaymentMethod: false,
         unavailable: true,
         message:
-          'Nao foi possivel consultar o metodo de pagamento agora. Tente atualizar o status em instantes.',
-        maskedProviderSubscriptionId:
-          maskProviderSubscriptionId(providerSubscriptionId),
+          "Nao foi possivel consultar o metodo de pagamento agora. Tente atualizar o status em instantes.",
+        maskedProviderSubscriptionId: maskProviderSubscriptionId(
+          providerSubscriptionId,
+        ),
       };
     }
   }
@@ -332,7 +394,7 @@ export class BillingService {
       try {
         const details = await this.mercadoPagoService.updatePreapproval(
           license.providerSubscriptionId,
-          { status: 'cancelled' },
+          { status: "cancelled" },
         );
         providerCancelled = true;
         await this.applyMercadoPagoDetails(details, {
@@ -340,9 +402,9 @@ export class BillingService {
         });
       } catch (error) {
         throw new AppError(
-          'Nao foi possivel cancelar a assinatura no Mercado Pago agora.',
+          "Nao foi possivel cancelar a assinatura no Mercado Pago agora.",
           error instanceof AppError ? error.statusCode : 502,
-          error instanceof AppError ? error.code : 'MERCADO_PAGO_CANCEL_FAILED',
+          error instanceof AppError ? error.code : "MERCADO_PAGO_CANCEL_FAILED",
         );
       }
     }
@@ -351,7 +413,7 @@ export class BillingService {
     const hasFuturePeriod =
       current.currentPeriodEnd != null && current.currentPeriodEnd > now;
     const shouldKeepAccess =
-      input.effective === 'period_end' || hasFuturePeriod;
+      input.effective === "period_end" || hasFuturePeriod;
 
     if (shouldKeepAccess && hasFuturePeriod) {
       await prisma.license.update({
@@ -361,9 +423,9 @@ export class BillingService {
           cancelRequestedAt: now,
           canceledAt: null,
           billingSubscriptionStatus:
-            input.effective === 'now'
-              ? 'CUSTOMER_CANCEL_NOW_PERIOD_ACTIVE'
-              : 'CUSTOMER_CANCEL_PERIOD_END',
+            input.effective === "now"
+              ? "CUSTOMER_CANCEL_NOW_PERIOD_ACTIVE"
+              : "CUSTOMER_CANCEL_PERIOD_END",
         },
       });
       return {
@@ -371,12 +433,12 @@ export class BillingService {
         providerCancelled,
         effective: input.effective,
         message:
-          'Cancelamento solicitado. O acesso pago sera mantido ate o fim do periodo vigente.',
+          "Cancelamento solicitado. O acesso pago sera mantido ate o fim do periodo vigente.",
       };
     }
 
     await this.downgradeToFree(context.company.id, {
-      billingSubscriptionStatus: 'CUSTOMER_CANCELLED',
+      billingSubscriptionStatus: "CUSTOMER_CANCELLED",
       canceledAt: now,
     });
     return {
@@ -384,11 +446,13 @@ export class BillingService {
       providerCancelled,
       effective: input.effective,
       message:
-        'Assinatura cancelada. Os dados foram preservados e os recursos pagos foram bloqueados.',
+        "Assinatura cancelada. Os dados foram preservados e os recursos pagos foram bloqueados.",
     };
   }
 
-  async resumeSubscription(context: AppContext): Promise<BillingActionResultDto> {
+  async resumeSubscription(
+    context: AppContext,
+  ): Promise<BillingActionResultDto> {
     this.assertOwner(context);
     const license = await this.getRequiredLicense(context.company.id);
     if (license.providerSubscriptionId == null) {
@@ -396,18 +460,18 @@ export class BillingService {
         status: await this.getStatusForContext(context),
         requiresNewCheckout: true,
         message:
-          'Nao ha assinatura vinculada para retomar. Inicie uma nova assinatura.',
+          "Nao ha assinatura vinculada para retomar. Inicie uma nova assinatura.",
       };
     }
 
     try {
       const details = await this.mercadoPagoService.updatePreapproval(
         license.providerSubscriptionId,
-        { status: 'authorized' },
+        { status: "authorized" },
       );
       const providerStatus = normalizeProviderStatus(details.status);
       const currentPlan = normalizePlan(license.plan);
-      if (isPaidActivationStatus(providerStatus) && currentPlan !== 'FREE') {
+      if (isPaidActivationStatus(providerStatus) && currentPlan !== "FREE") {
         await prisma.license.update({
           where: { companyId: context.company.id },
           data: {
@@ -421,7 +485,7 @@ export class BillingService {
         return {
           status: await this.getStatusForContext(context),
           requiresNewCheckout: false,
-          message: 'Assinatura retomada com seguranca.',
+          message: "Assinatura retomada com seguranca.",
         };
       }
 
@@ -429,14 +493,14 @@ export class BillingService {
         status: await this.getStatusForContext(context),
         requiresNewCheckout: true,
         message:
-          'Nao foi possivel retomar a assinatura existente. Inicie um novo checkout.',
+          "Nao foi possivel retomar a assinatura existente. Inicie um novo checkout.",
       };
     } catch {
       return {
         status: await this.getStatusForContext(context),
         requiresNewCheckout: true,
         message:
-          'Mercado Pago nao permitiu retomar esta assinatura. Inicie um novo checkout.',
+          "Mercado Pago nao permitiu retomar esta assinatura. Inicie um novo checkout.",
       };
     }
   }
@@ -454,20 +518,23 @@ export class BillingService {
       return {
         status: await this.getStatusForContext(context),
         pendingPlan: null,
-        message: 'Este ja e o plano atual.',
+        message: "Este ja e o plano atual.",
       };
     }
 
-    if (requestedPlan === 'FREE') {
-      return this.cancelSubscription(context, { effective: 'period_end' });
+    if (requestedPlan === "FREE") {
+      return this.cancelSubscription(context, { effective: "period_end" });
     }
 
-    if (currentPlan === 'FREE') {
-      return this.subscribe(context, { plan: requestedPlan, billingCycle: MONTHLY });
+    if (currentPlan === "FREE") {
+      return this.subscribe(context, {
+        plan: requestedPlan,
+        billingCycle: MONTHLY,
+      });
     }
 
-    if (currentPlan === 'BASIC' && requestedPlan === 'PRO') {
-      await this.setPendingPlan(context.company.id, 'PRO');
+    if (currentPlan === "BASIC" && requestedPlan === "PRO") {
+      await this.setPendingPlan(context.company.id, "PRO");
       if (license.providerSubscriptionId != null) {
         try {
           await this.updateProviderPlanAmount(
@@ -476,13 +543,13 @@ export class BillingService {
           );
           return {
             status: await this.getStatusForContext(context),
-            pendingPlan: 'PRO',
+            pendingPlan: "PRO",
             message:
-              'Upgrade solicitado. O plano PRO sera liberado apos confirmacao do Mercado Pago.',
+              "Upgrade solicitado. O plano PRO sera liberado apos confirmacao do Mercado Pago.",
           };
         } catch {
           const checkout = await this.subscribe(context, {
-            plan: 'PRO',
+            plan: "PRO",
             billingCycle: MONTHLY,
           });
           return {
@@ -492,7 +559,7 @@ export class BillingService {
         }
       }
       const checkout = await this.subscribe(context, {
-        plan: 'PRO',
+        plan: "PRO",
         billingCycle: MONTHLY,
       });
       return {
@@ -501,8 +568,8 @@ export class BillingService {
       };
     }
 
-    if (currentPlan === 'PRO' && requestedPlan === 'BASIC') {
-      await this.setPendingPlan(context.company.id, 'BASIC');
+    if (currentPlan === "PRO" && requestedPlan === "BASIC") {
+      await this.setPendingPlan(context.company.id, "BASIC");
       if (license.providerSubscriptionId != null) {
         try {
           await this.updateProviderPlanAmount(
@@ -515,23 +582,28 @@ export class BillingService {
       }
       return {
         status: await this.getStatusForContext(context),
-        pendingPlan: 'BASIC',
+        pendingPlan: "BASIC",
         message:
-          'Downgrade para o plano Basico agendado para o fim do periodo vigente.',
+          "Downgrade para o plano Basico agendado para o fim do periodo vigente.",
       };
     }
 
     throw new AppError(
-      'Troca de plano nao suportada nesta etapa.',
+      "Troca de plano nao suportada nesta etapa.",
       422,
-      'BILLING_PLAN_CHANGE_UNSUPPORTED',
+      "BILLING_PLAN_CHANGE_UNSUPPORTED",
     );
   }
 
   async reconcileInvoicesForCompany(companyId: string) {
-    const providerReference = await this.findRefreshProviderReference(companyId);
+    const providerReference =
+      await this.findRefreshProviderReference(companyId);
     if (providerReference == null) {
-      return { upserted: 0, skipped: 0, warnings: ['NO_PROVIDER_SUBSCRIPTION'] };
+      return {
+        upserted: 0,
+        skipped: 0,
+        warnings: ["NO_PROVIDER_SUBSCRIPTION"],
+      };
     }
     return this.reconcileInvoicesForSubscription(companyId, providerReference);
   }
@@ -540,10 +612,10 @@ export class BillingService {
     companyId: string,
     providerSubscriptionId: string,
   ) {
-    const safeCompanyId = assertNonEmptyLocalId(companyId, 'companyId');
+    const safeCompanyId = assertNonEmptyLocalId(companyId, "companyId");
     const safeProviderSubscriptionId = assertNonEmptyLocalId(
       providerSubscriptionId,
-      'providerSubscriptionId',
+      "providerSubscriptionId",
     );
     const isLinked = await this.isProviderReferenceLinkedToCompany(
       safeCompanyId,
@@ -553,7 +625,7 @@ export class BillingService {
       return {
         upserted: 0,
         skipped: 0,
-        warnings: ['PROVIDER_SUBSCRIPTION_NOT_LINKED_TO_COMPANY'],
+        warnings: ["PROVIDER_SUBSCRIPTION_NOT_LINKED_TO_COMPANY"],
       };
     }
 
@@ -584,15 +656,16 @@ export class BillingService {
     companyId: string,
     authorizedPayment: MercadoPagoAuthorizedPaymentDetails,
   ) {
-    const safeCompanyId = assertNonEmptyLocalId(companyId, 'companyId');
+    const safeCompanyId = assertNonEmptyLocalId(companyId, "companyId");
     const providerInvoiceId = (
-      authorizedPayment.providerInvoiceId ?? authorizedPayment.authorizedPaymentId
+      authorizedPayment.providerInvoiceId ??
+      authorizedPayment.authorizedPaymentId
     )?.trim();
     if (providerInvoiceId == null || providerInvoiceId.length === 0) {
       return {
         skipped: true,
         invoice: null,
-        warnings: ['BILLING_INVOICE_SKIPPED_MISSING_STABLE_ID'],
+        warnings: ["BILLING_INVOICE_SKIPPED_MISSING_STABLE_ID"],
       };
     }
 
@@ -612,7 +685,7 @@ export class BillingService {
       plan,
       status,
       amountCents: authorizedPayment.amountCents,
-      currency: authorizedPayment.currency ?? 'BRL',
+      currency: authorizedPayment.currency ?? "BRL",
       periodStart: authorizedPayment.periodStart,
       periodEnd: authorizedPayment.periodEnd,
       dueAt: authorizedPayment.dueAt,
@@ -632,7 +705,7 @@ export class BillingService {
       return {
         skipped: true,
         invoice: null,
-        warnings: ['BILLING_INVOICE_PROVIDER_ID_CONFLICT'],
+        warnings: ["BILLING_INVOICE_PROVIDER_ID_CONFLICT"],
       };
     }
     const invoice =
@@ -655,7 +728,9 @@ export class BillingService {
     const companyId =
       session?.companyId ??
       options.fallbackCompanyId ??
-      (await this.resolveCompanyIdByProviderReference(details.providerReference));
+      (await this.resolveCompanyIdByProviderReference(
+        details.providerReference,
+      ));
     const currentLicense =
       companyId == null
         ? null
@@ -666,17 +741,17 @@ export class BillingService {
         ? await this.resolveCurrentPaidPlan(companyId)
         : normalizePlan(session.plan);
     const pendingUpgradeMatchesProviderAmount =
-      pendingPlan === 'PRO' &&
+      pendingPlan === "PRO" &&
       currentLicense != null &&
-      normalizePlan(currentLicense.plan) === 'BASIC' &&
-      details.amountCents === this.priceCentsFor('PRO');
+      normalizePlan(currentLicense.plan) === "BASIC" &&
+      details.amountCents === this.priceCentsFor("PRO");
     const plan = pendingUpgradeMatchesProviderAmount
-      ? 'PRO'
+      ? "PRO"
       : sessionOrCurrentPlan;
 
     if (companyId == null || plan == null) {
       return {
-        action: 'ignored_missing_session',
+        action: "ignored_missing_session",
         providerStatus,
         companyId,
         plan,
@@ -684,9 +759,9 @@ export class BillingService {
     }
 
     if (isPaidActivationStatus(providerStatus)) {
-      if (plan === 'FREE') {
+      if (plan === "FREE") {
         return {
-          action: 'ignored_unknown',
+          action: "ignored_unknown",
           providerStatus,
           companyId,
           plan,
@@ -707,7 +782,7 @@ export class BillingService {
               prisma.billingCheckoutSession.update({
                 where: { id: session.id },
                 data: {
-                  status: 'COMPLETED',
+                  status: "COMPLETED",
                   providerReference: details.providerReference,
                 },
               }),
@@ -740,23 +815,23 @@ export class BillingService {
             nextPaymentDate: details.nextPaymentDate,
             cancelAtPeriodEnd: shouldClearCancelState
               ? false
-              : currentLicense?.cancelAtPeriodEnd ?? false,
+              : (currentLicense?.cancelAtPeriodEnd ?? false),
             cancelRequestedAt: shouldClearCancelState
               ? null
-              : currentLicense?.cancelRequestedAt ?? null,
+              : (currentLicense?.cancelRequestedAt ?? null),
             canceledAt: shouldClearCancelState
               ? null
-              : currentLicense?.canceledAt ?? null,
+              : (currentLicense?.canceledAt ?? null),
             pendingPlan: shouldClearPendingPlan ? null : pendingPlan,
             pendingPlanRequestedAt: shouldClearPendingPlan
               ? null
-              : currentLicense?.pendingPlanRequestedAt ?? null,
+              : (currentLicense?.pendingPlanRequestedAt ?? null),
             billingSubscriptionStatus: providerStatus,
           },
         }),
       ]);
 
-      return { action: 'activated', providerStatus, companyId, plan };
+      return { action: "activated", providerStatus, companyId, plan };
     }
 
     if (isDowngradeStatus(providerStatus)) {
@@ -771,7 +846,7 @@ export class BillingService {
                   where: { id: session.id },
                   data: {
                     status:
-                      providerStatus === 'expired' ? 'EXPIRED' : 'CANCELLED',
+                      providerStatus === "expired" ? "EXPIRED" : "CANCELLED",
                     providerReference: details.providerReference,
                   },
                 }),
@@ -812,7 +887,7 @@ export class BillingService {
           }),
         ]);
 
-        return { action: 'unchanged', providerStatus, companyId, plan };
+        return { action: "unchanged", providerStatus, companyId, plan };
       }
 
       await prisma.$transaction([
@@ -822,7 +897,8 @@ export class BillingService {
               prisma.billingCheckoutSession.update({
                 where: { id: session.id },
                 data: {
-                  status: providerStatus === 'expired' ? 'EXPIRED' : 'CANCELLED',
+                  status:
+                    providerStatus === "expired" ? "EXPIRED" : "CANCELLED",
                   providerReference: details.providerReference,
                 },
               }),
@@ -831,7 +907,7 @@ export class BillingService {
           where: { companyId },
           create: {
             companyId,
-            plan: 'FREE',
+            plan: "FREE",
             status: LicenseStatus.ACTIVE,
             startsAt: new Date(),
             expiresAt: null,
@@ -845,7 +921,7 @@ export class BillingService {
             billingSubscriptionStatus: providerStatus,
           },
           update: {
-            plan: 'FREE',
+            plan: "FREE",
             status: LicenseStatus.ACTIVE,
             expiresAt: null,
             syncEnabled: true,
@@ -864,7 +940,7 @@ export class BillingService {
         }),
       ]);
 
-      return { action: 'downgraded', providerStatus, companyId, plan: 'FREE' };
+      return { action: "downgraded", providerStatus, companyId, plan: "FREE" };
     }
 
     if (isPausedStatus(providerStatus)) {
@@ -873,12 +949,12 @@ export class BillingService {
         await prisma.billingCheckoutSession.update({
           where: { id: session.id },
           data: {
-            status: 'PENDING',
+            status: "PENDING",
             providerReference: details.providerReference,
           },
         });
       }
-      return { action: 'unchanged', providerStatus, companyId, plan };
+      return { action: "unchanged", providerStatus, companyId, plan };
     }
 
     if (isNeutralStatus(providerStatus)) {
@@ -886,15 +962,15 @@ export class BillingService {
         await prisma.billingCheckoutSession.update({
           where: { id: session.id },
           data: {
-            status: providerStatus === 'rejected' ? 'REJECTED' : 'PENDING',
+            status: providerStatus === "rejected" ? "REJECTED" : "PENDING",
             providerReference: details.providerReference,
           },
         });
       }
-      return { action: 'unchanged', providerStatus, companyId, plan };
+      return { action: "unchanged", providerStatus, companyId, plan };
     }
 
-    return { action: 'ignored_unknown', providerStatus, companyId, plan };
+    return { action: "ignored_unknown", providerStatus, companyId, plan };
   }
 
   async applyMercadoPagoAuthorizedPayment(
@@ -904,7 +980,7 @@ export class BillingService {
     const providerSubscriptionId = details.providerSubscriptionId?.trim();
     if (providerSubscriptionId == null || providerSubscriptionId.length === 0) {
       return {
-        action: 'ignored_missing_session',
+        action: "ignored_missing_session",
         providerStatus,
         companyId: null,
         plan: null,
@@ -916,7 +992,7 @@ export class BillingService {
     );
     if (target == null) {
       return {
-        action: 'ignored_missing_session',
+        action: "ignored_missing_session",
         providerStatus,
         companyId: null,
         plan: null,
@@ -937,11 +1013,11 @@ export class BillingService {
     );
 
     if (
-      subscriptionResult.action === 'ignored_missing_session' ||
-      subscriptionResult.action === 'ignored_unknown'
+      subscriptionResult.action === "ignored_missing_session" ||
+      subscriptionResult.action === "ignored_unknown"
     ) {
       return {
-        action: 'invoice_reconciled',
+        action: "invoice_reconciled",
         providerStatus,
         companyId: target.companyId,
         plan: target.plan,
@@ -959,7 +1035,7 @@ export class BillingService {
     const license = await prisma.license.findUnique({
       where: { companyId: input.companyId },
     });
-    const entitlements = getPlanEntitlements(license?.plan ?? 'FREE');
+    const entitlements = getPlanEntitlements(license?.plan ?? "FREE");
     const providerSubscriptionId = license?.providerSubscriptionId ?? null;
     const base: BillingStatusDto = {
       companyId: input.companyId,
@@ -978,8 +1054,9 @@ export class BillingService {
       provider:
         license?.billingProvider === BILLING_PROVIDER ? BILLING_PROVIDER : null,
       hasProviderSubscription: providerSubscriptionId != null,
-      maskedProviderSubscriptionId:
-        maskProviderSubscriptionId(providerSubscriptionId),
+      maskedProviderSubscriptionId: maskProviderSubscriptionId(
+        providerSubscriptionId,
+      ),
       canManageBilling: input.canManageBilling,
       nextPaymentDate: license?.nextPaymentDate?.toISOString() ?? null,
       features: entitlements.features,
@@ -1040,7 +1117,7 @@ export class BillingService {
   private async getRequiredLicense(companyId: string) {
     const license = await prisma.license.findUnique({ where: { companyId } });
     if (license == null) {
-      throw new AppError('Licenca nao encontrada.', 404, 'LICENSE_NOT_FOUND');
+      throw new AppError("Licenca nao encontrada.", 404, "LICENSE_NOT_FOUND");
     }
     return license;
   }
@@ -1063,9 +1140,9 @@ export class BillingService {
       reason: `Tatuzin ${plan}`,
       auto_recurring: {
         frequency: 1,
-        frequency_type: 'months',
+        frequency_type: "months",
         transaction_amount: this.priceCentsFor(plan) / 100,
-        currency_id: 'BRL',
+        currency_id: "BRL",
       },
     });
   }
@@ -1079,7 +1156,7 @@ export class BillingService {
       select: { plan: true },
     });
     const licensePlan = normalizePlan(license?.plan);
-    if (licensePlan !== 'FREE') {
+    if (licensePlan !== "FREE") {
       return licensePlan;
     }
 
@@ -1092,11 +1169,11 @@ export class BillingService {
         provider: BILLING_PROVIDER,
         providerReference: providerSubscriptionId,
       },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: { updatedAt: "desc" },
       select: { plan: true },
     });
     const sessionPlan = normalizePlan(session?.plan);
-    return sessionPlan === 'FREE' ? null : sessionPlan;
+    return sessionPlan === "FREE" ? null : sessionPlan;
   }
 
   private async isProviderReferenceLinkedToCompany(
@@ -1136,7 +1213,7 @@ export class BillingService {
     if (license.cancelAtPeriodEnd && periodEnded) {
       await this.downgradeToFree(companyId, {
         billingSubscriptionStatus:
-          license.billingSubscriptionStatus ?? 'CANCELLED_PERIOD_ENDED',
+          license.billingSubscriptionStatus ?? "CANCELLED_PERIOD_ENDED",
         canceledAt: license.canceledAt ?? now,
       });
       return;
@@ -1144,21 +1221,17 @@ export class BillingService {
 
     const currentPlan = normalizePlan(license.plan);
     const pendingPlan = normalizeNullablePlan(license.pendingPlan);
-    if (
-      currentPlan === 'PRO' &&
-      pendingPlan === 'BASIC' &&
-      periodEnded
-    ) {
+    if (currentPlan === "PRO" && pendingPlan === "BASIC" && periodEnded) {
       await prisma.license.update({
         where: { companyId },
         data: {
-          plan: 'BASIC',
+          plan: "BASIC",
           status: LicenseStatus.ACTIVE,
           expiresAt: null,
           syncEnabled: true,
           pendingPlan: null,
           pendingPlanRequestedAt: null,
-          billingSubscriptionStatus: 'DOWNGRADE_EFFECTIVE',
+          billingSubscriptionStatus: "DOWNGRADE_EFFECTIVE",
         },
       });
     }
@@ -1171,7 +1244,7 @@ export class BillingService {
     await prisma.license.update({
       where: { companyId },
       data: {
-        plan: 'FREE',
+        plan: "FREE",
         status: LicenseStatus.ACTIVE,
         expiresAt: null,
         syncEnabled: true,
@@ -1191,17 +1264,17 @@ export class BillingService {
   }
 
   private assertOwner(context: AppContext) {
-    if (context.membership.role !== 'OWNER') {
+    if (context.membership.role !== "OWNER") {
       throw new AppError(
-        'Apenas o owner da empresa pode gerenciar assinatura.',
+        "Apenas o owner da empresa pode gerenciar assinatura.",
         403,
-        'BILLING_OWNER_REQUIRED',
+        "BILLING_OWNER_REQUIRED",
       );
     }
   }
 
   private priceCentsFor(plan: PaidPlanKey) {
-    return plan === 'PRO'
+    return plan === "PRO"
       ? env.BILLING_PRO_PRICE_CENTS
       : env.BILLING_BASIC_PRICE_CENTS;
   }
@@ -1220,20 +1293,22 @@ export class BillingService {
         companyId,
         provider: BILLING_PROVIDER,
         providerReference: { not: null },
-        status: { in: ['PENDING', 'COMPLETED'] },
+        status: { in: ["PENDING", "COMPLETED"] },
       },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: { updatedAt: "desc" },
     });
     return session?.providerReference ?? null;
   }
 
-  private async findCompanyForProviderSubscription(providerSubscriptionId: string) {
+  private async findCompanyForProviderSubscription(
+    providerSubscriptionId: string,
+  ) {
     const session = await prisma.billingCheckoutSession.findFirst({
       where: {
         provider: BILLING_PROVIDER,
         providerReference: providerSubscriptionId,
       },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: { updatedAt: "desc" },
       select: { companyId: true, plan: true },
     });
     if (session != null) {
@@ -1270,7 +1345,8 @@ export class BillingService {
     if (license == null) {
       return;
     }
-    const currentPeriodEnd = details.currentPeriodEnd ?? license?.currentPeriodEnd ?? null;
+    const currentPeriodEnd =
+      details.currentPeriodEnd ?? license?.currentPeriodEnd ?? null;
     const hasFuturePeriod =
       currentPeriodEnd != null && currentPeriodEnd.getTime() > Date.now();
 
@@ -1286,7 +1362,7 @@ export class BillingService {
         ...(details.nextPaymentDate == null
           ? {}
           : { nextPaymentDate: details.nextPaymentDate }),
-        billingSubscriptionStatus: 'paused',
+        billingSubscriptionStatus: "paused",
       },
     });
   }
@@ -1306,7 +1382,7 @@ export class BillingService {
         provider: BILLING_PROVIDER,
         providerReference: details.providerReference,
       },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: { updatedAt: "desc" },
     });
   }
 
@@ -1319,7 +1395,7 @@ export class BillingService {
       select: { plan: true },
     });
     const plan = normalizePlan(license?.plan);
-    return plan === 'FREE' ? null : plan;
+    return plan === "FREE" ? null : plan;
   }
 
   private async resolveCompanyIdByProviderReference(
@@ -1341,53 +1417,57 @@ export class BillingService {
 
 function normalizeProviderStatus(status: string | null) {
   const normalized = status?.trim().toLowerCase();
-  return normalized == null || normalized.length === 0 ? 'unknown' : normalized;
+  return normalized == null || normalized.length === 0 ? "unknown" : normalized;
 }
 
 function isPaidActivationStatus(status: string) {
-  return status === 'active' || status === 'authorized' || status === 'approved';
+  return (
+    status === "active" || status === "authorized" || status === "approved"
+  );
 }
 
 function isNeutralStatus(status: string) {
   return (
-    status === 'pending' || status === 'in_process' || status === 'rejected'
+    status === "pending" || status === "in_process" || status === "rejected"
   );
 }
 
 function isPausedStatus(status: string) {
-  return status === 'paused';
+  return status === "paused";
 }
 
 function isDowngradeStatus(status: string) {
-  return status === 'cancelled' || status === 'canceled' || status === 'expired';
+  return (
+    status === "cancelled" || status === "canceled" || status === "expired"
+  );
 }
 
 function mapAuthorizedPaymentStatus(status: string | null) {
   const normalized = normalizeProviderStatus(status);
   switch (normalized) {
-    case 'processed':
-      return 'processed';
-    case 'paid':
-    case 'approved':
-    case 'accredited':
-    case 'active':
-    case 'authorized':
-      return 'paid';
-    case 'pending':
-      return 'pending';
-    case 'in_process':
-      return 'in_process';
-    case 'rejected':
-    case 'failed':
-      return 'failed';
-    case 'cancelled':
-    case 'canceled':
-      return 'cancelled';
-    case 'refunded':
-    case 'charged_back':
-      return 'refunded';
+    case "processed":
+      return "processed";
+    case "paid":
+    case "approved":
+    case "accredited":
+    case "active":
+    case "authorized":
+      return "paid";
+    case "pending":
+      return "pending";
+    case "in_process":
+      return "in_process";
+    case "rejected":
+    case "failed":
+      return "failed";
+    case "cancelled":
+    case "canceled":
+      return "cancelled";
+    case "refunded":
+    case "charged_back":
+      return "refunded";
     default:
-      return 'unknown';
+      return "unknown";
   }
 }
 
@@ -1415,7 +1495,7 @@ function safeInvoiceUrl(value: string | null) {
   try {
     const parsed = new URL(value);
     if (
-      (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
+      (parsed.protocol === "https:" || parsed.protocol === "http:") &&
       parsed.username.length === 0 &&
       parsed.password.length === 0 &&
       parsed.search.length === 0 &&
@@ -1436,7 +1516,7 @@ function safePersistedInvoiceUrl(value: string | null) {
   try {
     const parsed = new URL(value);
     if (
-      (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
+      (parsed.protocol === "https:" || parsed.protocol === "http:") &&
       parsed.username.length === 0 &&
       parsed.password.length === 0 &&
       parsed.search.length === 0 &&
@@ -1453,23 +1533,28 @@ function safePersistedInvoiceUrl(value: string | null) {
 function assertNonEmptyLocalId(value: string, field: string) {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
-    throw new AppError('Identificador de billing invalido.', 400, 'BILLING_ID_INVALID', {
-      field,
-    });
+    throw new AppError(
+      "Identificador de billing invalido.",
+      400,
+      "BILLING_ID_INVALID",
+      {
+        field,
+      },
+    );
   }
   return trimmed;
 }
 
 function buildAppBackUrl() {
-  const baseUrl = env.APP_PUBLIC_URL ?? 'http://localhost:3000';
-  return `${baseUrl.replace(/\/+$/, '')}/conta/assinatura`;
+  const baseUrl = env.APP_PUBLIC_URL ?? "http://localhost:3000";
+  return `${baseUrl.replace(/\/+$/, "")}/conta/assinatura`;
 }
 
 function buildWebhookUrl() {
   if (env.API_PUBLIC_URL == null) {
     return null;
   }
-  return `${env.API_PUBLIC_URL.replace(/\/+$/, '')}/api/webhooks/mercadopago`;
+  return `${env.API_PUBLIC_URL.replace(/\/+$/, "")}/api/webhooks/mercadopago`;
 }
 
 function maskProviderSubscriptionId(value: string | null) {
@@ -1478,8 +1563,7 @@ function maskProviderSubscriptionId(value: string | null) {
   }
   const trimmed = value.trim();
   if (trimmed.length <= 8) {
-    return '****';
+    return "****";
   }
   return `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}`;
 }
-

@@ -210,6 +210,8 @@ class OwnerLicenseSnapshot {
     required this.expiresAt,
     required this.maxDevices,
     required this.syncEnabled,
+    required this.pendingPlan,
+    required this.pendingPlanRequestedAt,
   });
 
   final String id;
@@ -219,6 +221,13 @@ class OwnerLicenseSnapshot {
   final String? expiresAt;
   final int maxDevices;
   final bool syncEnabled;
+  final String? pendingPlan;
+  final String? pendingPlanRequestedAt;
+
+  bool get isPro => plan.trim().toUpperCase() == 'PRO';
+
+  bool get isWaitingForProConfirmation =>
+      pendingPlan?.trim().toUpperCase() == 'PRO' && !isPro;
 
   factory OwnerLicenseSnapshot.fromMap(Map<String, dynamic> map) {
     return OwnerLicenseSnapshot(
@@ -229,6 +238,11 @@ class OwnerLicenseSnapshot {
       expiresAt: _readOptionalString(map, 'expiresAt'),
       maxDevices: _readOptionalInt(map, 'maxDevices') ?? 1,
       syncEnabled: map['syncEnabled'] == true,
+      pendingPlan: _readOptionalString(map, 'pendingPlan'),
+      pendingPlanRequestedAt: _readOptionalString(
+        map,
+        'pendingPlanRequestedAt',
+      ),
     );
   }
 
@@ -241,6 +255,8 @@ class OwnerLicenseSnapshot {
       'expiresAt': expiresAt,
       'maxDevices': maxDevices,
       'syncEnabled': syncEnabled,
+      'pendingPlan': pendingPlan,
+      'pendingPlanRequestedAt': pendingPlanRequestedAt,
     };
   }
 }

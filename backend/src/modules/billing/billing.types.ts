@@ -1,14 +1,18 @@
-import type { FeatureKey, PlanKey, PlanLimits } from '../plans/plan-catalog.service';
+import type {
+  FeatureKey,
+  PlanKey,
+  PlanLimits,
+} from "../plans/plan-catalog.service";
 
-export type BillingCycle = 'free' | 'monthly';
-export type BillingProvider = 'mercadopago';
-export type PaidPlanKey = Exclude<PlanKey, 'FREE'>;
+export type BillingCycle = "free" | "monthly";
+export type BillingProvider = "mercadopago";
+export type PaidPlanKey = Exclude<PlanKey, "FREE">;
 
 export type PublicBillingPlan = {
   key: PlanKey;
   name: string;
   priceCents: number;
-  currency: 'BRL';
+  currency: "BRL";
   billingCycle: BillingCycle;
   description: string;
   featuresSummary: string[];
@@ -85,7 +89,7 @@ export type BillingPaymentMethodDto = {
 export type BillingActionResultDto = {
   status: BillingStatusDto;
   providerCancelled?: boolean;
-  effective?: 'period_end' | 'now';
+  effective?: "period_end" | "now";
   requiresNewCheckout?: boolean;
   message: string;
   checkoutUrl?: string | null;
@@ -100,6 +104,7 @@ export type MercadoPagoPreapprovalCreateInput = {
   payerEmail: string;
   backUrl: string;
   notificationUrl: string | null;
+  trialDays?: number;
 };
 
 export type MercadoPagoPreapprovalUpdateInput = {
@@ -107,9 +112,9 @@ export type MercadoPagoPreapprovalUpdateInput = {
   status?: string;
   auto_recurring?: {
     frequency: 1;
-    frequency_type: 'months';
+    frequency_type: "months";
     transaction_amount: number;
-    currency_id: 'BRL';
+    currency_id: "BRL";
   };
 };
 

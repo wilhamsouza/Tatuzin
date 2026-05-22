@@ -257,7 +257,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Funcionários'), findsWidgets);
-    expect(find.text('Ver planos'), findsOneWidget);
+    expect(find.text('Ativar teste gratis'), findsOneWidget);
     expect(find.textContaining('plano Pro'), findsOneWidget);
   });
 

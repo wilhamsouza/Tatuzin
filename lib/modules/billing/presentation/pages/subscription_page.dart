@@ -35,6 +35,8 @@ class SubscriptionPage extends ConsumerWidget {
       maskedProviderSubscriptionId: null,
       canManageBilling: session.isCompanyOwner,
       nextPaymentDate: null,
+      pendingPlan: null,
+      pendingPlanRequestedAt: null,
       entitlements: company.entitlements,
     );
     final status = statusAsync.valueOrNull ?? fallbackStatus;
@@ -146,7 +148,11 @@ class SubscriptionPage extends ConsumerWidget {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível iniciar assinatura: $error')),
+        const SnackBar(
+          content: Text(
+            'Nao foi possivel iniciar a assinatura agora. Tente novamente em alguns minutos.',
+          ),
+        ),
       );
     }
   }
@@ -214,6 +220,11 @@ class _BillingStatusCard extends StatelessWidget {
               label: 'Próximo pagamento',
               value: AppFormatters.shortDate(status.nextPaymentDate!),
             ),
+          if (status.pendingPlan == PlanKey.pro)
+            const _InfoRow(
+              label: 'Mercado Pago',
+              value: 'Aguardando confirmacao do Mercado Pago',
+            ),
           if (status.hasProviderSubscription)
             _InfoRow(
               label: 'Assinatura Mercado Pago',
@@ -259,6 +270,7 @@ class _PlanCards extends StatelessWidget {
                 child: _PlanCard(
                   plan: plan,
                   currentPlan: status.plan,
+                  pendingPlan: status.pendingPlan,
                   canManageBilling: canManageSubscription,
                   isBusy: isBusy,
                   onSubscribe: () => onSubscribe(plan),
@@ -275,6 +287,7 @@ class _PlanCard extends StatelessWidget {
   const _PlanCard({
     required this.plan,
     required this.currentPlan,
+    required this.pendingPlan,
     required this.canManageBilling,
     required this.isBusy,
     required this.onSubscribe,
@@ -282,6 +295,7 @@ class _PlanCard extends StatelessWidget {
 
   final BillingPlan plan;
   final PlanKey currentPlan;
+  final PlanKey? pendingPlan;
   final bool canManageBilling;
   final bool isBusy;
   final VoidCallback onSubscribe;
@@ -290,8 +304,11 @@ class _PlanCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isCurrent = plan.key == currentPlan;
+    final isPending = pendingPlan == plan.key;
     final isActionablePlan = plan.key != PlanKey.free && !isCurrent;
-    final buttonLabel = isCurrent
+    final buttonLabel = isPending
+        ? 'Aguardando confirmacao'
+        : isCurrent
         ? 'Plano atual'
         : !canManageBilling
         ? 'Apenas o dono da empresa pode alterar'
@@ -340,7 +357,11 @@ class _PlanCard extends StatelessWidget {
             label: isBusy ? 'Aguarde...' : buttonLabel,
             icon: isCurrent ? Icons.check_rounded : Icons.open_in_new_rounded,
             onPressed:
-                isBusy || isCurrent || !canManageBilling || !isActionablePlan
+                isBusy ||
+                    isCurrent ||
+                    isPending ||
+                    !canManageBilling ||
+                    !isActionablePlan
                 ? null
                 : onSubscribe,
             expand: true,

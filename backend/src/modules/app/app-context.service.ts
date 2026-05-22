@@ -1,12 +1,12 @@
-import type { Request } from 'express';
-import { CompanyDeviceStatus, LicenseStatus } from '@prisma/client';
+import type { Request } from "express";
+import { CompanyDeviceStatus, LicenseStatus } from "@prisma/client";
 
-import { prisma } from '../../database/prisma';
-import { AppError } from '../../shared/http/app-error';
-import { logger } from '../../shared/observability/logger';
-import { EmployeeContextService } from '../employees/employee-context.service';
-import { getPlanEntitlements } from '../plans/plan-catalog.service';
-import type { AppContext } from './app-context.types';
+import { prisma } from "../../database/prisma";
+import { AppError } from "../../shared/http/app-error";
+import { logger } from "../../shared/observability/logger";
+import { EmployeeContextService } from "../employees/employee-context.service";
+import { getPlanEntitlements } from "../plans/plan-catalog.service";
+import type { AppContext } from "./app-context.types";
 
 export class AppContextService {
   private readonly employeeContextService = new EmployeeContextService();
@@ -15,9 +15,9 @@ export class AppContextService {
     const auth = request.auth;
     if (auth == null) {
       throw new AppError(
-        'Contexto de aplicativo ausente.',
+        "Contexto de aplicativo ausente.",
         401,
-        'APP_CONTEXT_REQUIRED',
+        "APP_CONTEXT_REQUIRED",
       );
     }
 
@@ -27,9 +27,9 @@ export class AppContextService {
       this.isBlank(auth.membershipId)
     ) {
       throw new AppError(
-        'Sessao sem empresa, usuario ou membership valido.',
+        "Sessao sem empresa, usuario ou membership valido.",
         403,
-        'APP_CONTEXT_REQUIRED',
+        "APP_CONTEXT_REQUIRED",
       );
     }
 
@@ -61,34 +61,34 @@ export class AppContextService {
       !membership.user.isActive
     ) {
       throw new AppError(
-        'Membership ativo obrigatorio para operar no app.',
+        "Membership ativo obrigatorio para operar no app.",
         403,
-        'MEMBERSHIP_REQUIRED',
+        "MEMBERSHIP_REQUIRED",
       );
     }
 
     if (membership.user.mustChangePassword) {
       throw new AppError(
-        'Voce precisa criar uma nova senha para continuar.',
+        "Voce precisa criar uma nova senha para continuar.",
         403,
-        'INITIAL_PASSWORD_CHANGE_REQUIRED',
+        "INITIAL_PASSWORD_CHANGE_REQUIRED",
       );
     }
 
     if (!membership.company.isActive) {
       throw new AppError(
-        'Empresa ativa obrigatoria para operar no app.',
+        "Empresa ativa obrigatoria para operar no app.",
         403,
-        'COMPANY_REQUIRED',
+        "COMPANY_REQUIRED",
       );
     }
 
     const license = membership.company.license;
     if (license == null) {
       throw new AppError(
-        'Licenca valida obrigatoria para operar no app.',
+        "Licenca valida obrigatoria para operar no app.",
         403,
-        'LICENSE_REQUIRED',
+        "LICENSE_REQUIRED",
       );
     }
 
@@ -106,12 +106,12 @@ export class AppContextService {
 
     if (
       employeeContext.employee != null &&
-      !['ACTIVE', 'INVITED'].includes(employeeContext.employee.status)
+      !["ACTIVE", "INVITED"].includes(employeeContext.employee.status)
     ) {
       throw new AppError(
-        'Funcionario desativado nao pode acessar o app.',
+        "Funcionario desativado nao pode acessar o app.",
         403,
-        'EMPLOYEE_DISABLED',
+        "EMPLOYEE_DISABLED",
       );
     }
 
@@ -126,9 +126,9 @@ export class AppContextService {
 
     if (device == null) {
       throw new AppError(
-        'Aparelho autorizado obrigatorio para operar no app.',
+        "Aparelho autorizado obrigatorio para operar no app.",
         403,
-        'DEVICE_REQUIRED',
+        "DEVICE_REQUIRED",
       );
     }
 
@@ -137,21 +137,21 @@ export class AppContextService {
         break;
       case CompanyDeviceStatus.PENDING:
         throw new AppError(
-          'Este aparelho ainda aguarda aprovacao para operar nesta empresa.',
+          "Este aparelho ainda aguarda aprovacao para operar nesta empresa.",
           403,
-          'DEVICE_PENDING',
+          "DEVICE_PENDING",
         );
       case CompanyDeviceStatus.BLOCKED:
         throw new AppError(
-          'Este aparelho esta bloqueado para operar nesta empresa.',
+          "Este aparelho esta bloqueado para operar nesta empresa.",
           403,
-          'DEVICE_BLOCKED',
+          "DEVICE_BLOCKED",
         );
       case CompanyDeviceStatus.REVOKED:
         throw new AppError(
-          'Este aparelho foi revogado para esta empresa.',
+          "Este aparelho foi revogado para esta empresa.",
           403,
-          'DEVICE_REVOKED',
+          "DEVICE_REVOKED",
         );
     }
 
@@ -193,6 +193,9 @@ export class AppContextService {
         syncEnabled: license.syncEnabled,
         maxDevices: license.maxDevices,
         expiresAt: license.expiresAt?.toISOString() ?? null,
+        pendingPlan: license.pendingPlan,
+        pendingPlanRequestedAt:
+          license.pendingPlanRequestedAt?.toISOString() ?? null,
       },
       device: {
         id: device.id,
@@ -217,13 +220,13 @@ export class AppContextService {
     syncEnabled?: boolean;
   }) {
     const context = input.appContext;
-    logger.info('app.bootstrap.context', {
-      sessionState: context == null ? 'blocked' : 'authenticated',
+    logger.info("app.bootstrap.context", {
+      sessionState: context == null ? "blocked" : "authenticated",
       companyId: context?.company.id,
       userId: context?.user.id,
       deviceId: context?.device.id,
       clientInstanceId: context?.clientInstanceId,
-      dbName: 'remote_postgres',
+      dbName: "remote_postgres",
       plan: context?.plan,
       tenantReady: context?.tenantReady ?? false,
       syncEnabled: context?.license.syncEnabled ?? input.syncEnabled ?? false,
@@ -235,8 +238,8 @@ export class AppContextService {
   private resolveClientInstanceId(request: Request) {
     const clientFromSession = request.auth?.clientInstanceId;
     const clientFromHeader =
-      this.headerValue(request, 'x-client-instance-id') ??
-      this.headerValue(request, 'x-device-id');
+      this.headerValue(request, "x-client-instance-id") ??
+      this.headerValue(request, "x-device-id");
 
     if (
       clientFromSession != null &&
@@ -244,18 +247,18 @@ export class AppContextService {
       clientFromSession !== clientFromHeader
     ) {
       throw new AppError(
-        'O identificador do aparelho nao confere com a sessao.',
+        "O identificador do aparelho nao confere com a sessao.",
         401,
-        'DEVICE_REQUIRED',
+        "DEVICE_REQUIRED",
       );
     }
 
     const clientInstanceId = clientFromHeader ?? clientFromSession;
     if (clientInstanceId == null || clientInstanceId.trim().length === 0) {
       throw new AppError(
-        'Identificador do aparelho obrigatorio para operar no app.',
+        "Identificador do aparelho obrigatorio para operar no app.",
         400,
-        'DEVICE_REQUIRED',
+        "DEVICE_REQUIRED",
       );
     }
 
@@ -271,9 +274,9 @@ export class AppContextService {
 
     if (license.status === LicenseStatus.EXPIRED || expiredByDate) {
       throw new AppError(
-        'Licenca expirada para operar no app.',
+        "Licenca expirada para operar no app.",
         403,
-        'LICENSE_EXPIRED',
+        "LICENSE_EXPIRED",
       );
     }
 
@@ -282,9 +285,9 @@ export class AppContextService {
       license.status !== LicenseStatus.TRIAL
     ) {
       throw new AppError(
-        'Licenca ativa obrigatoria para operar no app.',
+        "Licenca ativa obrigatoria para operar no app.",
         403,
-        'LICENSE_REQUIRED',
+        "LICENSE_REQUIRED",
       );
     }
   }

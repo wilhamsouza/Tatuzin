@@ -1116,6 +1116,9 @@ export class AdminSyncCenterService {
         syncEnabled: license?.syncEnabled ?? true,
         maxDevices: license?.maxDevices ?? null,
         expiresAt: license?.expiresAt?.toISOString() ?? null,
+        pendingPlan: license?.pendingPlan ?? null,
+        pendingPlanRequestedAt:
+          license?.pendingPlanRequestedAt?.toISOString() ?? null,
       },
       device: {
         id: event.device.id,

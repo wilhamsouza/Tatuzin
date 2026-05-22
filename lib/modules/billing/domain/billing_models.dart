@@ -45,6 +45,8 @@ class BillingStatus {
     required this.maskedProviderSubscriptionId,
     required this.canManageBilling,
     required this.nextPaymentDate,
+    required this.pendingPlan,
+    required this.pendingPlanRequestedAt,
     required this.entitlements,
   });
 
@@ -59,6 +61,8 @@ class BillingStatus {
   final String? maskedProviderSubscriptionId;
   final bool canManageBilling;
   final DateTime? nextPaymentDate;
+  final PlanKey? pendingPlan;
+  final DateTime? pendingPlanRequestedAt;
   final PlanEntitlements entitlements;
 
   factory BillingStatus.fromMap(Map<String, dynamic> source) {
@@ -76,6 +80,8 @@ class BillingStatus {
       ),
       canManageBilling: source['canManageBilling'] == true,
       nextPaymentDate: _readDate(source['nextPaymentDate']),
+      pendingPlan: _readPlan(source['pendingPlan']),
+      pendingPlanRequestedAt: _readDate(source['pendingPlanRequestedAt']),
       entitlements: PlanEntitlements.fromJson(source),
     );
   }
@@ -131,6 +137,11 @@ int? _readInt(Object? rawValue) {
 DateTime? _readDate(Object? rawValue) {
   final value = _readString(rawValue);
   return value == null ? null : DateTime.tryParse(value);
+}
+
+PlanKey? _readPlan(Object? rawValue) {
+  final value = _readString(rawValue);
+  return value == null ? null : PlanKey.normalize(value);
 }
 
 List<String> _readStringList(Object? rawValue) {
