@@ -10,6 +10,7 @@ import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../domain/billing_models.dart';
+import '../providers/billing_checkout_return.dart';
 import '../providers/billing_providers.dart';
 import '../providers/checkout_launcher.dart';
 
@@ -136,10 +137,14 @@ class SubscriptionPage extends ConsumerWidget {
         return;
       }
 
+      await BillingCheckoutReturnStorage().markPending();
+      if (!context.mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Após o pagamento, seu plano será atualizado automaticamente.',
+            'Ao voltar do Mercado Pago, vamos tentar atualizar sua assinatura automaticamente.',
           ),
         ),
       );
@@ -171,7 +176,11 @@ class SubscriptionPage extends ConsumerWidget {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível atualizar o status: $error')),
+        const SnackBar(
+          content: Text(
+            'Nao foi possivel atualizar o status agora. Tente novamente em alguns instantes.',
+          ),
+        ),
       );
     }
   }

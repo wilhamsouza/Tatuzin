@@ -31,6 +31,29 @@ void main() {
     expect(identical(databases[0], databases[2]), isTrue);
   });
 
+  test('reabre conexao cacheada quando o banco foi fechado', () async {
+    final isolationKey =
+        'remote:tenant-reopen-${DateTime.now().microsecondsSinceEpoch}';
+    final appDatabase = AppDatabase.forIsolationKey(isolationKey);
+
+    addTearDown(() async {
+      await appDatabase.close();
+      await AppDatabase.deleteDatabaseForIsolationKeyForTesting(isolationKey);
+    });
+
+    final first = await appDatabase.database.timeout(
+      const Duration(seconds: 8),
+    );
+    await first.close();
+
+    final reopened = await appDatabase.database.timeout(
+      const Duration(seconds: 8),
+    );
+
+    expect(reopened.isOpen, isTrue);
+    expect(identical(first, reopened), isFalse);
+  });
+
   test('abertura normal registra trace pesquisavel das etapas', () async {
     final logs = <String>[];
     final previousDebugPrint = debugPrint;

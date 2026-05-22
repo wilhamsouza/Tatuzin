@@ -1173,8 +1173,16 @@ class AppDatabase {
   Future<Database>? _openingDatabase;
 
   Future<Database> get database async {
-    if (_database != null) {
-      return _database!;
+    final cachedDatabase = _database;
+    if (cachedDatabase != null && cachedDatabase.isOpen) {
+      return cachedDatabase;
+    }
+    if (cachedDatabase != null && !cachedDatabase.isOpen) {
+      AppLogger.warn(
+        '[DB] cached_database_closed_reopening | database_name=$_databaseName',
+      );
+      _database = null;
+      _openingDatabase = null;
     }
 
     final openingDatabase = _openingDatabase;

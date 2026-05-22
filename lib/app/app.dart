@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/constants/app_constants.dart';
 import 'core/database/app_database.dart';
+import 'core/providers/app_data_refresh_provider.dart';
 import 'core/session/auth_provider.dart';
 import 'core/session/session_provider.dart';
 import 'core/session/session_reset.dart';
@@ -16,7 +17,10 @@ import 'core/widgets/app_async_value_view.dart';
 import 'routes/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/app_theme_mode_controller.dart';
+import '../modules/billing/presentation/providers/billing_checkout_return.dart';
+import '../modules/billing/presentation/providers/billing_providers.dart';
 import '../modules/billing/presentation/widgets/pro_trial_offer_gate.dart';
+import '../modules/dashboard/presentation/providers/dashboard_providers.dart';
 
 class ErpPdvApp extends ConsumerStatefulWidget {
   const ErpPdvApp({super.key});
@@ -46,6 +50,32 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       ref.read(autoSyncCoordinatorProvider).onAppResumed();
+      unawaited(_refreshBillingAfterCheckoutReturn());
+    }
+  }
+
+  Future<void> _refreshBillingAfterCheckoutReturn() async {
+    try {
+      final shouldRefresh = await BillingCheckoutReturnStorage()
+          .consumePending();
+      if (!mounted || !shouldRefresh) {
+        return;
+      }
+
+      AppLogger.info('[Billing] checkout_return_resume_refresh_started');
+      await ref.read(billingControllerProvider.notifier).refreshStatus();
+      if (!mounted) {
+        return;
+      }
+      ref.read(appDataRefreshProvider.notifier).state++;
+      ref.invalidate(operationalDashboardSnapshotProvider);
+      AppLogger.info('[Billing] checkout_return_resume_refresh_finished');
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[Billing] checkout_return_resume_refresh_failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
     }
   }
 

@@ -248,6 +248,27 @@ void main() {
     expect(find.textContaining('precisam de revisão'), findsOneWidget);
   });
 
+  testWidgets('Dashboard nao exibe erro tecnico de banco fechado', (
+    tester,
+  ) async {
+    await _pumpAuthenticatedApp(
+      tester,
+      additionalOverrides: [
+        operationalDashboardSnapshotProvider.overrideWith((ref) async {
+          throw Exception('DatabaseException(error database_closed)');
+        }),
+      ],
+    );
+
+    expect(find.text('Falha ao carregar o dashboard'), findsOneWidget);
+    expect(
+      find.text('Nao foi possivel atualizar o dashboard.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('DatabaseException'), findsNothing);
+    expect(find.textContaining('database_closed'), findsNothing);
+  });
+
   testWidgets('drawer preserva versao com badge longo em tela pequena', (
     tester,
   ) async {

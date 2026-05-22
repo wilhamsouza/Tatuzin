@@ -28,6 +28,13 @@ billingRouter.get(
 );
 
 billingRouter.get(
+  "/return",
+  asyncHandler(async (_request, response) => {
+    response.status(200).type("html").send(renderBillingReturnPage());
+  }),
+);
+
+billingRouter.get(
   "/status",
   requireAppContext,
   asyncHandler(async (request, response) => {
@@ -179,4 +186,76 @@ function normalizeHeaders(
     normalized[key.toLowerCase()] = Array.isArray(value) ? value[0] : value;
   }
   return normalized;
+}
+
+function renderBillingReturnPage() {
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Assinatura recebida - Tatuzin</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0f172a;
+      --card: #111827;
+      --text: #f8fafc;
+      --muted: #cbd5e1;
+      --accent: #38bdf8;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f8fafc;
+        --card: #ffffff;
+        --text: #0f172a;
+        --muted: #475569;
+        --accent: #0284c7;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    main {
+      width: min(100%, 520px);
+      padding: 28px;
+      border-radius: 16px;
+      background: var(--card);
+      box-shadow: 0 18px 50px rgba(15, 23, 42, 0.22);
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(1.8rem, 5vw, 2.4rem);
+      line-height: 1.1;
+    }
+    p {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.55;
+    }
+    .brand {
+      margin-top: 22px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Assinatura recebida</h1>
+    <p>Volte para o app Tatuzin e toque em Atualizar status.</p>
+    <p>Se o pagamento ainda não aparecer, aguarde alguns instantes.</p>
+    <p class="brand">Tatuzin ERP</p>
+  </main>
+</body>
+</html>`;
 }

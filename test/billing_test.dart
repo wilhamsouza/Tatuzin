@@ -15,6 +15,7 @@ import 'package:erp_pdv_app/app/core/theme/app_theme.dart';
 import 'package:erp_pdv_app/modules/billing/data/billing_remote_data_source.dart';
 import 'package:erp_pdv_app/modules/billing/domain/billing_models.dart';
 import 'package:erp_pdv_app/modules/billing/presentation/pages/subscription_page.dart';
+import 'package:erp_pdv_app/modules/billing/presentation/providers/billing_checkout_return.dart';
 import 'package:erp_pdv_app/modules/billing/presentation/providers/billing_providers.dart';
 import 'package:erp_pdv_app/modules/billing/presentation/providers/checkout_launcher.dart';
 import 'package:erp_pdv_app/modules/billing/presentation/widgets/pro_trial_offer_gate.dart';
@@ -164,6 +165,7 @@ void main() {
   testWidgets('assinar chama subscribe e abre checkout externo', (
     tester,
   ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
     final fakeBilling = _FakeBillingRemoteDataSource(
       status: _status(PlanEntitlements.free),
     );
@@ -182,9 +184,12 @@ void main() {
     expect(fakeBilling.subscribedPlans, ['BASIC']);
     expect(launcher.openedUrls, ['https://checkout.tatuzin.test/basic']);
     expect(
-      find.text('Após o pagamento, seu plano será atualizado automaticamente.'),
+      find.text(
+        'Ao voltar do Mercado Pago, vamos tentar atualizar sua assinatura automaticamente.',
+      ),
       findsOneWidget,
     );
+    expect(await BillingCheckoutReturnStorage().consumePending(), isTrue);
   });
 
   testWidgets('falha ao abrir checkout mostra opcao de copiar link', (
@@ -255,6 +260,23 @@ void main() {
       isTrue,
     );
   });
+
+  test(
+    'BillingCheckoutReturnStorage consome retorno pendente uma unica vez',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final storage = BillingCheckoutReturnStorage();
+      final now = DateTime(2026, 5, 22, 10);
+
+      expect(await storage.consumePending(now: now), isFalse);
+      await storage.markPending(now: now);
+      expect(
+        await storage.consumePending(now: now.add(const Duration(minutes: 5))),
+        isTrue,
+      );
+      expect(await storage.consumePending(now: now), isFalse);
+    },
+  );
 }
 
 Future<ProviderContainer> _pumpSubscriptionPage(

@@ -303,9 +303,9 @@ class DashboardPage extends ConsumerWidget {
                   compact: true,
                 ),
               ),
-              error: (error, _) => AppSectionCard(
+              error: (_, _) => AppSectionCard(
                 title: 'Falha ao carregar o dashboard',
-                subtitle: error.toString(),
+                subtitle: 'Nao foi possivel atualizar o dashboard.',
                 tone: AppCardTone.danger,
                 child: AppStateCard(
                   title: 'Não foi possível atualizar o dashboard',

@@ -20,6 +20,7 @@ const originalEnv = {
   accessToken: env.MERCADO_PAGO_ACCESS_TOKEN,
   webhookSecret: env.MERCADO_PAGO_WEBHOOK_SECRET,
   apiPublicUrl: env.API_PUBLIC_URL,
+  mobileBillingReturnUrl: env.MOBILE_BILLING_RETURN_URL,
   isProduction: env.isProduction,
 };
 
@@ -40,6 +41,7 @@ describe("billing routes", () => {
     env.MERCADO_PAGO_ACCESS_TOKEN = "test-mercado-token";
     env.MERCADO_PAGO_WEBHOOK_SECRET = webhookSecret;
     env.API_PUBLIC_URL = originalEnv.apiPublicUrl;
+    env.MOBILE_BILLING_RETURN_URL = originalEnv.mobileBillingReturnUrl;
     env.isProduction = false;
   });
 
@@ -48,6 +50,7 @@ describe("billing routes", () => {
     env.MERCADO_PAGO_ACCESS_TOKEN = originalEnv.accessToken;
     env.MERCADO_PAGO_WEBHOOK_SECRET = originalEnv.webhookSecret;
     env.API_PUBLIC_URL = originalEnv.apiPublicUrl;
+    env.MOBILE_BILLING_RETURN_URL = originalEnv.mobileBillingReturnUrl;
     env.isProduction = originalEnv.isProduction;
     globalThis.fetch = originalFetch;
     await new Promise<void>((resolve, reject) => {
@@ -71,6 +74,20 @@ describe("billing routes", () => {
         ["PRO", 8500],
       ],
     );
+  });
+
+  it("serves a public safe billing return page", async () => {
+    const response = await fetch(`${apiBaseUrl}/billing/return`);
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /text\/html/);
+    assert.match(body, /Assinatura recebida/);
+    assert.match(body, /Volte para o app Tatuzin/);
+    assert.equal(body.includes("providerSubscriptionId"), false);
+    assert.equal(body.includes("access_token"), false);
+    assert.equal(body.includes("Authorization"), false);
+    assert.equal(body.includes("payload"), false);
   });
 
   it("returns billing status from local database without exposing full provider id", async () => {
@@ -140,6 +157,7 @@ describe("billing routes", () => {
   it("creates BASIC checkout session without changing license.plan", async () => {
     const fixture = await createFixture({ plan: "free" });
     env.API_PUBLIC_URL = "https://api.tatuzin.com.br";
+    env.MOBILE_BILLING_RETURN_URL = null;
     let capturedBody = {} as Record<string, any>;
     globalThis.fetch = jsonFetch(async (_url, init) => {
       capturedBody = JSON.parse(init.body ?? "{}") as Record<string, unknown>;
@@ -185,6 +203,11 @@ describe("billing routes", () => {
     assert.equal(subscribeBody.status, "pending");
     assert.equal(subscribeBody.external_reference, payload.checkoutSessionId);
     assert.equal(
+      subscribeBody.back_url,
+      "https://api.tatuzin.com.br/api/billing/return",
+    );
+    assert.equal(String(subscribeBody.back_url).includes("painel"), false);
+    assert.equal(
       subscribeBody.notification_url,
       "https://api.tatuzin.com.br/api/webhooks/mercadopago",
     );
@@ -206,6 +229,8 @@ describe("billing routes", () => {
 
   it("keeps BASIC while PRO upgrade checkout is pending", async () => {
     const fixture = await createFixture({ plan: "basic" });
+    env.API_PUBLIC_URL = "https://api.tatuzin.com.br";
+    env.MOBILE_BILLING_RETURN_URL = null;
     let capturedBody = {} as Record<string, any>;
     globalThis.fetch = jsonFetch(async (_url, init) => {
       capturedBody = JSON.parse(init.body ?? "{}") as Record<string, unknown>;
@@ -222,6 +247,11 @@ describe("billing routes", () => {
     });
 
     assert.equal(response.status, 201);
+    assert.equal(
+      capturedBody.back_url,
+      "https://api.tatuzin.com.br/api/billing/return",
+    );
+    assert.equal(String(capturedBody.back_url).includes("painel"), false);
     const license = await prisma.license.findUniqueOrThrow({
       where: { companyId: fixture.companyId },
     });

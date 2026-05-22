@@ -171,7 +171,7 @@ export class BillingService {
         priceCents,
         checkoutSessionId: checkoutSession.id,
         payerEmail: context.user.email,
-        backUrl: buildAppBackUrl(),
+        backUrl: buildBillingReturnUrl(),
         notificationUrl: buildWebhookUrl(),
         trialDays:
           currentPlan === "FREE" && plan === "PRO" ? PRO_TRIAL_DAYS : undefined,
@@ -1545,9 +1545,12 @@ function assertNonEmptyLocalId(value: string, field: string) {
   return trimmed;
 }
 
-function buildAppBackUrl() {
-  const baseUrl = env.APP_PUBLIC_URL ?? "http://localhost:3000";
-  return `${baseUrl.replace(/\/+$/, "")}/conta/assinatura`;
+function buildBillingReturnUrl() {
+  if (env.MOBILE_BILLING_RETURN_URL != null) {
+    return env.MOBILE_BILLING_RETURN_URL;
+  }
+  const baseUrl = env.API_PUBLIC_URL ?? "http://localhost:4000";
+  return `${baseUrl.replace(/\/+$/, "")}/api/billing/return`;
 }
 
 function buildWebhookUrl() {

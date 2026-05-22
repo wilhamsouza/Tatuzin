@@ -73,6 +73,7 @@ const envSchema = z.object({
   MERCADO_PAGO_WEBHOOK_SECRET: optionalTrimmedString,
   API_PUBLIC_URL: optionalUrlString,
   APP_PUBLIC_URL: optionalUrlString,
+  MOBILE_BILLING_RETURN_URL: optionalUrlString,
   BILLING_BASIC_PRICE_CENTS: z.coerce
     .number()
     .int()
