@@ -133,6 +133,13 @@ void main() {
       );
       expect(
         router.namedLocation(
+          AppRouteNames.orderKitchen,
+          pathParameters: {'orderId': '42'},
+        ),
+        '/pedidos/42/cozinha',
+      );
+      expect(
+        router.namedLocation(
           AppRouteNames.fiadoPaymentReceipt,
           pathParameters: {'fiadoId': '7', 'entryId': '9'},
         ),

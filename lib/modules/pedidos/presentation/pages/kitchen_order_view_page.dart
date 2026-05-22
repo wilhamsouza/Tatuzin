@@ -28,7 +28,7 @@ class KitchenOrderViewPage extends ConsumerWidget {
         title: const Text(operationalOrderSeparationModeLabel),
         actions: [
           IconButton(
-            tooltip: 'Configurar impressora',
+            tooltip: 'Configurar impressora de separacao',
             onPressed: () => _openPrinterConfig(context, ref),
             icon: const Icon(Icons.print_outlined),
           ),
@@ -64,13 +64,13 @@ class KitchenOrderViewPage extends ConsumerWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Pedido #${detail.order.id}',
+                                operationalOrderSeparationListLabel,
                                 style: Theme.of(context).textTheme.headlineSmall
                                     ?.copyWith(fontWeight: FontWeight.w800),
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                detail.order.customerLabel,
+                                '${detail.order.customerLabel} | Pedido #${detail.order.id}',
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
                               const SizedBox(height: 4),

@@ -13,7 +13,6 @@ import '../../domain/entities/operational_order_detail.dart';
 import '../providers/order_print_providers.dart';
 import '../providers/order_providers.dart';
 import '../support/order_ui_support.dart';
-import '../widgets/kitchen_printer_config_dialog.dart';
 import '../widgets/operational_order_item_card.dart';
 import '../widgets/order_item_editor_sheet.dart';
 import '../widgets/order_progress_stepper.dart';
@@ -60,7 +59,6 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     final detailAsync = ref.watch(
       operationalOrderDetailProvider(widget.orderId),
     );
-    final printerAsync = ref.watch(kitchenPrinterConfigProvider);
     final draftState = ref.watch(operationalOrderDraftControllerProvider);
     final itemState = ref.watch(operationalOrderItemControllerProvider);
     final statusState = ref.watch(operationalOrderStatusControllerProvider);
@@ -77,7 +75,14 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Pedido #${widget.orderId}'),
+        title: detailAsync.maybeWhen(
+          data: (detail) => Text(
+            detail?.order.status == OperationalOrderStatus.draft
+                ? 'Novo pedido'
+                : 'Pedido #${widget.orderId}',
+          ),
+          orElse: () => Text('Pedido #${widget.orderId}'),
+        ),
         actions: [
           IconButton(
             tooltip: operationalOrderSeparationModeLabel,
@@ -87,12 +92,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                 pathParameters: {'orderId': '${widget.orderId}'},
               );
             },
-            icon: const Icon(Icons.soup_kitchen_rounded),
-          ),
-          IconButton(
-            tooltip: operationalOrderPreviewLabel,
-            onPressed: () => _openTicketPreview(context),
-            icon: const Icon(Icons.preview_rounded),
+            icon: const Icon(Icons.inventory_2_rounded),
           ),
         ],
       ),
@@ -111,9 +111,13 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
               const SizedBox(height: 12),
               _buildItemsSection(context, detail, busy),
               const SizedBox(height: 12),
+              _buildPaymentDeliverySection(context, detail),
+              const SizedBox(height: 12),
               _buildNotesSection(context, detail, busy),
               const SizedBox(height: 12),
-              _buildSummarySection(context, detail, printerAsync),
+              _buildSummarySection(context, detail),
+              const SizedBox(height: 12),
+              _buildHistorySection(context, detail),
               const SizedBox(height: 12),
               _buildActionsSection(context, detail, busy),
             ],
@@ -155,9 +159,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     final editingEnabled = !order.isTerminal;
 
     return AppSectionCard(
-      title: 'Cabecalho do pedido',
+      title: 'Pedido #${order.id}',
       subtitle:
-          'Defina o atendimento e identifique o pedido antes de seguir o fluxo operacional.',
+          '${AppFormatters.shortDateTime(order.createdAt)} | ${operationalOrderServiceTypeLabel(order.serviceType)}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -219,8 +223,13 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
               ),
               _InfoChip(
                 icon: operationalOrderServiceTypeIcon(order.serviceType),
-                label: operationalOrderServiceTypeHint(order.serviceType),
+                label: operationalOrderServiceTypeLabel(order.serviceType),
               ),
+              if (order.customerPhone?.trim().isNotEmpty ?? false)
+                _InfoChip(
+                  icon: Icons.phone_rounded,
+                  label: order.customerPhone!.trim(),
+                ),
             ],
           ),
           const SizedBox(height: 16),
@@ -304,8 +313,8 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     return AppSectionCard(
       title: 'Itens do pedido',
       subtitle: detail.items.isEmpty
-          ? 'Monte o pedido pelos itens, nao por observacao.'
-          : '${detail.lineItemsCount} linha(s) | ${detail.totalUnits} item(ns)',
+          ? 'Busque um produto, escolha variacao e quantidade.'
+          : '${detail.lineItemsCount} produto(s) | ${detail.totalUnits} peca(s)',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -316,7 +325,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                   ? () => _addItem(context)
                   : null,
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Adicionar item'),
+              label: const Text('Adicionar produto'),
             ),
           ),
           const SizedBox(height: 12),
@@ -349,8 +358,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
   ) {
     return AppSectionCard(
       title: 'Observacao geral',
-      subtitle:
-          'Use para recados do pedido inteiro. Observacoes especificas devem ficar em cada item.',
+      subtitle: 'Recado opcional para separar ou entregar o pedido.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -380,44 +388,44 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     );
   }
 
-  Widget _buildSummarySection(
+  Widget _buildPaymentDeliverySection(
     BuildContext context,
     OperationalOrderDetail detail,
-    AsyncValue<dynamic> printerAsync,
   ) {
     final order = detail.order;
 
     return AppSectionCard(
-      title: 'Resumo financeiro',
-      subtitle:
-          'Valor parcial do pedido de venda. O faturamento comercial acontece so depois da entrega.',
+      title: 'Atendimento',
+      subtitle: 'Somente os dados que o pedido ja guarda hoje.',
       child: Column(
         children: [
           _SummaryRow(
-            label: 'Atendimento',
+            label: 'Canal',
             value: operationalOrderServiceTypeLabel(order.serviceType),
           ),
-          _SummaryRow(label: 'Itens', value: '${detail.totalUnits} item(ns)'),
-          _SummaryRow(label: 'Linhas', value: '${detail.lineItemsCount}'),
+          _SummaryRow(label: 'Cliente', value: order.customerLabel),
+          if (order.customerPhone?.trim().isNotEmpty ?? false)
+            _SummaryRow(label: 'Contato', value: order.customerPhone!.trim()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummarySection(
+    BuildContext context,
+    OperationalOrderDetail detail,
+  ) {
+    final order = detail.order;
+
+    return AppSectionCard(
+      title: 'Total',
+      subtitle: 'Resumo dos produtos deste pedido.',
+      child: Column(
+        children: [
+          _SummaryRow(label: 'Produtos', value: '${detail.lineItemsCount}'),
+          _SummaryRow(label: 'Pecas', value: '${detail.totalUnits}'),
           _SummaryRow(
-            label: operationalOrderReceiptLabel,
-            value: orderTicketDispatchStatusLabel(order.ticketMeta.status),
-          ),
-          _SummaryRow(
-            label: 'Tentativas de impressao',
-            value: '${order.ticketMeta.dispatchAttempts}',
-          ),
-          _SummaryRow(
-            label: 'Impressora',
-            value: printerAsync.maybeWhen(
-              data: (config) =>
-                  config == null ? 'Nao configurada' : config.targetLabel,
-              orElse: () => 'Carregando...',
-            ),
-          ),
-          const Divider(height: 24),
-          _SummaryRow(
-            label: 'Valor parcial',
+            label: 'Total do pedido',
             value: AppFormatters.currencyFromCents(detail.totalCents),
             emphasize: true,
           ),
@@ -463,28 +471,70 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     );
   }
 
+  Widget _buildHistorySection(
+    BuildContext context,
+    OperationalOrderDetail detail,
+  ) {
+    final order = detail.order;
+    final events = <_HistoryEvent>[
+      _HistoryEvent('Criado', order.createdAt, true),
+      _HistoryEvent(
+        'Confirmado',
+        order.sentToKitchenAt,
+        order.sentToKitchenAt != null,
+      ),
+      _HistoryEvent(
+        'Em separacao',
+        order.preparationStartedAt,
+        order.preparationStartedAt != null,
+      ),
+      _HistoryEvent('Separado', order.readyAt, order.readyAt != null),
+      _HistoryEvent('Concluido', order.deliveredAt, order.deliveredAt != null),
+      if (order.canceledAt != null)
+        _HistoryEvent('Cancelado', order.canceledAt, true),
+    ];
+
+    return AppSectionCard(
+      title: 'Historico',
+      subtitle: 'Linha do tempo simples do pedido.',
+      child: Column(
+        children: [
+          for (var index = 0; index < events.length; index++) ...[
+            _HistoryRow(event: events[index]),
+            if (index != events.length - 1) const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildActionsSection(
     BuildContext context,
     OperationalOrderDetail detail,
     bool busy,
   ) {
-    final canSend =
-        detail.order.status == OperationalOrderStatus.draft && detail.hasItems;
-    final canReprint =
+    final primary = _primaryActionFor(detail);
+    final canPrint =
         detail.order.status != OperationalOrderStatus.draft &&
         detail.order.status != OperationalOrderStatus.canceled;
-    final canInvoice =
-        detail.order.canBeInvoiced && detail.linkedSaleId == null;
 
     return AppSectionCard(
-      title: 'Acoes operacionais',
-      subtitle:
-          'Operacao primeiro, faturamento depois. A previa do comprovante fica apenas como apoio.',
+      title: 'Proximo passo',
+      subtitle: 'Uma acao principal por vez; o restante fica em apoio.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           OrderProgressStepper(status: detail.order.status),
           const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: primary == null || busy ? null : primary.onPressed,
+              icon: Icon(primary?.icon ?? Icons.check_rounded),
+              label: Text(primary?.label ?? 'Pedido encerrado'),
+            ),
+          ),
+          const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -494,92 +544,17 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                     ? () => _saveDraft(context, showFeedback: true)
                     : null,
                 icon: const Icon(Icons.save_outlined),
-                label: const Text('Salvar rascunho'),
+                label: const Text('Salvar alteracoes'),
               ),
-              FilledButton.icon(
-                onPressed: canSend && !busy
-                    ? () => _sendToKitchen(context)
-                    : null,
-                icon: const Icon(Icons.send_rounded),
-                label: const Text(operationalOrderSendToSeparationLabel),
-              ),
-              FilledButton.tonalIcon(
-                onPressed: canReprint && !busy ? () => _reprint(context) : null,
-                icon: const Icon(Icons.print_rounded),
-                label: const Text(operationalOrderPrintReceiptLabel),
-              ),
-              FilledButton.tonalIcon(
-                onPressed:
-                    detail.order.status.canTransitionTo(
-                          OperationalOrderStatus.inPreparation,
-                        ) &&
-                        !busy
-                    ? () => _updateStatus(
-                        context,
-                        OperationalOrderStatus.inPreparation,
-                      )
-                    : null,
-                icon: const Icon(Icons.inventory_2_rounded),
-                label: Text(
-                  operationalOrderActionLabel(
-                    OperationalOrderStatus.inPreparation,
-                  ),
-                ),
-              ),
-              FilledButton.tonalIcon(
-                onPressed:
-                    detail.order.status.canTransitionTo(
-                          OperationalOrderStatus.ready,
-                        ) &&
-                        !busy
-                    ? () => _updateStatus(context, OperationalOrderStatus.ready)
-                    : null,
-                icon: const Icon(Icons.notifications_active_rounded),
-                label: Text(
-                  operationalOrderActionLabel(OperationalOrderStatus.ready),
-                ),
-              ),
-              FilledButton.tonalIcon(
-                onPressed:
-                    detail.order.status.canTransitionTo(
-                          OperationalOrderStatus.delivered,
-                        ) &&
-                        !busy
-                    ? () => _updateStatus(
-                        context,
-                        OperationalOrderStatus.delivered,
-                      )
-                    : null,
-                icon: const Icon(Icons.shopping_bag_rounded),
-                label: Text(
-                  operationalOrderActionLabel(OperationalOrderStatus.delivered),
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: canInvoice && !busy
-                    ? () => _invoice(context, detail)
-                    : null,
-                icon: const Icon(Icons.point_of_sale_rounded),
-                label: const Text('Finalizar venda'),
-              ),
-              OutlinedButton.icon(
-                onPressed: !detail.order.isTerminal && !busy
-                    ? () => _confirmCancel(context)
-                    : null,
-                icon: const Icon(Icons.cancel_rounded),
-                label: const Text('Cancelar pedido'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
               OutlinedButton.icon(
                 onPressed: () => _openTicketPreview(context),
                 icon: const Icon(Icons.preview_rounded),
-                label: const Text(operationalOrderPreviewLabel),
+                label: const Text('Gerar lista'),
+              ),
+              OutlinedButton.icon(
+                onPressed: canPrint && !busy ? () => _reprint(context) : null,
+                icon: const Icon(Icons.print_rounded),
+                label: const Text('Imprimir'),
               ),
               OutlinedButton.icon(
                 onPressed: () {
@@ -588,19 +563,75 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                     pathParameters: {'orderId': '${widget.orderId}'},
                   );
                 },
-                icon: const Icon(Icons.soup_kitchen_rounded),
-                label: const Text(operationalOrderSeparationModeLabel),
+                icon: const Icon(Icons.inventory_2_rounded),
+                label: const Text(operationalOrderSeparationListLabel),
               ),
-              FilledButton.tonalIcon(
-                onPressed: busy ? null : () => _openPrinterConfig(context),
-                icon: const Icon(Icons.settings_rounded),
-                label: const Text('Impressora'),
-              ),
+              if (!detail.order.isTerminal)
+                OutlinedButton.icon(
+                  onPressed: busy ? null : () => _confirmCancel(context),
+                  icon: const Icon(Icons.cancel_rounded),
+                  label: const Text('Cancelar pedido'),
+                ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  _OrderPrimaryAction? _primaryActionFor(OperationalOrderDetail detail) {
+    final order = detail.order;
+    if (detail.linkedSaleId != null) {
+      return _OrderPrimaryAction(
+        label: 'Ver venda vinculada',
+        icon: Icons.receipt_long_rounded,
+        onPressed: () {
+          context.pushNamed(
+            AppRouteNames.saleReceipt,
+            pathParameters: {'saleId': '${detail.linkedSaleId}'},
+          );
+        },
+      );
+    }
+    switch (order.status) {
+      case OperationalOrderStatus.draft:
+        return _OrderPrimaryAction(
+          label: 'Confirmar pedido',
+          icon: Icons.check_rounded,
+          onPressed: detail.hasItems ? () => _sendToKitchen(context) : null,
+        );
+      case OperationalOrderStatus.open:
+        return _OrderPrimaryAction(
+          label: 'Enviar para separacao',
+          icon: Icons.inventory_2_rounded,
+          onPressed: () =>
+              _updateStatus(context, OperationalOrderStatus.inPreparation),
+        );
+      case OperationalOrderStatus.inPreparation:
+        return _OrderPrimaryAction(
+          label: 'Marcar separado',
+          icon: Icons.check_circle_rounded,
+          onPressed: () => _updateStatus(context, OperationalOrderStatus.ready),
+        );
+      case OperationalOrderStatus.ready:
+        return _OrderPrimaryAction(
+          label: 'Finalizar venda',
+          icon: Icons.point_of_sale_rounded,
+          onPressed: detail.hasItems
+              ? () => _finishReadyOrderAsSale(context, detail)
+              : null,
+        );
+      case OperationalOrderStatus.delivered:
+        return _OrderPrimaryAction(
+          label: 'Finalizar venda',
+          icon: Icons.point_of_sale_rounded,
+          onPressed: detail.order.canBeInvoiced && detail.hasItems
+              ? () => _invoice(context, detail)
+              : null,
+        );
+      case OperationalOrderStatus.canceled:
+        return null;
+    }
   }
 
   void _syncDraftFields(OperationalOrderDetail detail) {
@@ -953,6 +984,58 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     }
   }
 
+  Future<void> _finishReadyOrderAsSale(
+    BuildContext context,
+    OperationalOrderDetail detail,
+  ) async {
+    if (!await _persistDraftIfNeeded(context)) {
+      return;
+    }
+    if (!context.mounted) {
+      return;
+    }
+
+    final paymentMethod = await _pickImmediatePaymentMethod(context);
+    if (paymentMethod == null || !context.mounted) {
+      return;
+    }
+
+    try {
+      await ref
+          .read(operationalOrderStatusControllerProvider.notifier)
+          .updateStatus(
+            orderId: widget.orderId,
+            status: OperationalOrderStatus.delivered,
+          );
+      final refreshed = await ref.read(
+        operationalOrderDetailProvider(widget.orderId).future,
+      );
+      if (!context.mounted) {
+        return;
+      }
+      if (refreshed == null) {
+        _showMessage(context, 'Pedido nao encontrado para faturamento.');
+        return;
+      }
+      final sale = await ref
+          .read(operationalOrderBillingControllerProvider.notifier)
+          .invoice(detail: refreshed, paymentMethod: paymentMethod);
+      if (!context.mounted) {
+        return;
+      }
+      context.pushNamed(
+        AppRouteNames.saleReceipt,
+        pathParameters: {'saleId': '${sale.saleId}'},
+        extra: true,
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      _showMessage(context, 'Falha ao finalizar venda: $error');
+    }
+  }
+
   Future<PaymentMethod?> _pickImmediatePaymentMethod(
     BuildContext context,
   ) async {
@@ -989,20 +1072,6 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
         builder: (_) => OrderTicketPreviewPage(orderId: widget.orderId),
       ),
     );
-  }
-
-  Future<void> _openPrinterConfig(BuildContext context) async {
-    final config = await ref.read(kitchenPrinterConfigProvider.future);
-    if (!context.mounted) {
-      return;
-    }
-    final updated = await showDialog<bool>(
-      context: context,
-      builder: (_) => KitchenPrinterConfigDialog(initialConfig: config),
-    );
-    if (updated == true && context.mounted) {
-      _showMessage(context, 'Configuracao da impressora atualizada.');
-    }
   }
 
   String? _cleanNullable(String? value) {
@@ -1044,6 +1113,70 @@ class _InfoChip extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _OrderPrimaryAction {
+  const _OrderPrimaryAction({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+}
+
+class _HistoryEvent {
+  const _HistoryEvent(this.label, this.dateTime, this.done);
+
+  final String label;
+  final DateTime? dateTime;
+  final bool done;
+}
+
+class _HistoryRow extends StatelessWidget {
+  const _HistoryRow({required this.event});
+
+  final _HistoryEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final color = event.done
+        ? colorScheme.primary
+        : colorScheme.onSurfaceVariant.withValues(alpha: 0.55);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Icon(Icons.circle, size: 10, color: color),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            event.label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: event.done ? null : colorScheme.onSurfaceVariant,
+              fontWeight: event.done ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          event.dateTime == null
+              ? '-'
+              : AppFormatters.shortDateTime(event.dateTime!),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 }

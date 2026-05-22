@@ -5,8 +5,10 @@ import '../../domain/entities/operational_order.dart';
 import '../../../produtos/domain/entities/product.dart';
 
 const operationalOrderPanelSubtitle =
-    'Acompanhe a fila de separacao, o status dos comprovantes e o faturamento sem misturar etapas.';
-const operationalOrderSeparationModeLabel = 'Modo separacao';
+    'Crie pedidos, separe pecas e finalize como venda quando estiver tudo certo.';
+const operationalOrderSeparationModeLabel = 'Separacao';
+const operationalOrderSeparationListLabel = 'Lista de separacao';
+const operationalOrderSeparateOrderLabel = 'Separar pedido';
 const operationalOrderSendToSeparationLabel = 'Enviar para separacao';
 const operationalOrderPrintReceiptLabel = 'Imprimir comprovante';
 const operationalOrderPrintingReceiptLabel = 'Imprimindo...';
@@ -29,8 +31,7 @@ const operationalOrderInternalPreviewFooter =
     'Previa tecnica para conferencia e diagnostico da impressao.';
 const operationalOrderSendFailureMessagePrefix =
     'Pedido enviado para separacao, mas a impressao falhou:';
-const operationalOrderSendSuccessMessage =
-    'Pedido enviado para separacao e comprovante impresso.';
+const operationalOrderSendSuccessMessage = 'Pedido enviado para separacao.';
 const operationalOrderReprintFailureMessagePrefix =
     'Falha ao imprimir comprovante:';
 const operationalOrderReprintSuccessMessage =
@@ -39,15 +40,15 @@ const operationalOrderReprintSuccessMessage =
 String operationalOrderStatusLabel(OperationalOrderStatus status) {
   switch (status) {
     case OperationalOrderStatus.draft:
-      return 'Rascunho';
+      return 'Pendente';
     case OperationalOrderStatus.open:
-      return 'Aguardando separacao';
+      return 'Aberto';
     case OperationalOrderStatus.inPreparation:
-      return 'Em separacao';
+      return 'Separacao';
     case OperationalOrderStatus.ready:
-      return 'Pronto para retirada';
+      return 'Separado';
     case OperationalOrderStatus.delivered:
-      return 'Entregue';
+      return 'Concluido';
     case OperationalOrderStatus.canceled:
       return 'Cancelado';
   }
@@ -62,9 +63,9 @@ String operationalOrderStatusDescription(OperationalOrderStatus status) {
     case OperationalOrderStatus.inPreparation:
       return 'Produtos em separacao.';
     case OperationalOrderStatus.ready:
-      return 'Pedido pronto para retirada ou entrega.';
+      return 'Pedido separado e pronto para virar venda.';
     case OperationalOrderStatus.delivered:
-      return 'Pedido entregue ao cliente.';
+      return 'Pedido finalizado como venda ou entregue.';
     case OperationalOrderStatus.canceled:
       return 'Pedido cancelado.';
   }
@@ -107,11 +108,11 @@ IconData operationalOrderStatusIcon(OperationalOrderStatus status) {
 String operationalOrderActionLabel(OperationalOrderStatus status) {
   switch (status) {
     case OperationalOrderStatus.inPreparation:
-      return 'Marcar em separacao';
+      return 'Separar pedido';
     case OperationalOrderStatus.ready:
-      return 'Marcar pronto para retirada';
+      return 'Marcar separado';
     case OperationalOrderStatus.delivered:
-      return 'Marcar como entregue';
+      return 'Concluir pedido';
     case OperationalOrderStatus.draft:
     case OperationalOrderStatus.open:
     case OperationalOrderStatus.canceled:
@@ -122,11 +123,11 @@ String operationalOrderActionLabel(OperationalOrderStatus status) {
 String operationalOrderShortActionLabel(OperationalOrderStatus status) {
   switch (status) {
     case OperationalOrderStatus.inPreparation:
-      return 'Em separacao';
+      return 'Separar';
     case OperationalOrderStatus.ready:
-      return 'Pronto para retirada';
+      return 'Separado';
     case OperationalOrderStatus.delivered:
-      return 'Entregue';
+      return 'Concluir';
     case OperationalOrderStatus.draft:
     case OperationalOrderStatus.open:
     case OperationalOrderStatus.canceled:

@@ -35,8 +35,19 @@ final operationalOrderRepositoryProvider = Provider<OperationalOrderRepository>(
 
 final operationalOrderSearchQueryProvider = StateProvider<String>((ref) => '');
 
+enum OperationalOrderListFilter {
+  all,
+  pending,
+  separation,
+  fiado,
+  completed,
+  canceled,
+}
+
 final operationalOrderStatusFilterProvider =
-    StateProvider<OperationalOrderStatus>((ref) => OperationalOrderStatus.open);
+    StateProvider<OperationalOrderListFilter>(
+      (ref) => OperationalOrderListFilter.all,
+    );
 
 class OperationalOrderBoardData {
   const OperationalOrderBoardData({required this.orders});
@@ -53,8 +64,84 @@ class OperationalOrderBoardData {
         .toList(growable: false);
   }
 
+  List<OperationalOrderSummary> filterByListFilter(
+    OperationalOrderListFilter filter,
+  ) {
+    switch (filter) {
+      case OperationalOrderListFilter.all:
+        return orders;
+      case OperationalOrderListFilter.pending:
+        return orders
+            .where(
+              (summary) =>
+                  summary.order.status == OperationalOrderStatus.draft ||
+                  summary.order.status == OperationalOrderStatus.open,
+            )
+            .toList(growable: false);
+      case OperationalOrderListFilter.separation:
+        return orders
+            .where(
+              (summary) =>
+                  summary.order.status ==
+                      OperationalOrderStatus.inPreparation ||
+                  summary.order.status == OperationalOrderStatus.ready,
+            )
+            .toList(growable: false);
+      case OperationalOrderListFilter.fiado:
+        return const <OperationalOrderSummary>[];
+      case OperationalOrderListFilter.completed:
+        return orders
+            .where(
+              (summary) =>
+                  summary.order.status == OperationalOrderStatus.delivered,
+            )
+            .toList(growable: false);
+      case OperationalOrderListFilter.canceled:
+        return orders
+            .where(
+              (summary) =>
+                  summary.order.status == OperationalOrderStatus.canceled,
+            )
+            .toList(growable: false);
+    }
+  }
+
+  int countForListFilter(OperationalOrderListFilter filter) {
+    return filterByListFilter(filter).length;
+  }
+
   int get activeCount =>
       orders.where((summary) => !summary.order.isTerminal).length;
+
+  int get todayCount {
+    final now = DateTime.now();
+    return orders
+        .where(
+          (summary) =>
+              summary.order.createdAt.year == now.year &&
+              summary.order.createdAt.month == now.month &&
+              summary.order.createdAt.day == now.day,
+        )
+        .length;
+  }
+
+  int get openTotalCents => orders
+      .where((summary) => !summary.order.isTerminal)
+      .fold<int>(0, (sum, summary) => sum + summary.totalCents);
+
+  int get averageTicketCents {
+    final billable = orders
+        .where((summary) => summary.totalCents > 0)
+        .toList(growable: false);
+    if (billable.isEmpty) {
+      return 0;
+    }
+    final total = billable.fold<int>(
+      0,
+      (sum, summary) => sum + summary.totalCents,
+    );
+    return total ~/ billable.length;
+  }
 }
 
 final operationalOrderBoardProvider = FutureProvider<OperationalOrderBoardData>(

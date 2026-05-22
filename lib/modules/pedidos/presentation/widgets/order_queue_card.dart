@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
-import '../../../../app/core/widgets/app_card.dart';
-import '../../../../app/core/widgets/app_selector_chip.dart';
-import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/core/theme/app_design_tokens.dart';
+import '../../../../app/core/widgets/app_card.dart';
 import '../../domain/entities/operational_order.dart';
 import '../../domain/entities/operational_order_summary.dart';
 import '../support/order_ui_support.dart';
@@ -15,35 +13,27 @@ class OrderQueueCard extends StatelessWidget {
     super.key,
     required this.summary,
     required this.onOpen,
-    this.onSendToKitchen,
-    this.onReprint,
-    this.onMarkInPreparation,
-    this.onMarkReady,
-    this.onMarkDelivered,
-    this.onInvoice,
-    this.onCancel,
+    this.onPrimaryAction,
+    this.primaryActionLabel,
+    this.primaryActionIcon,
   });
 
   final OperationalOrderSummary summary;
   final VoidCallback onOpen;
-  final VoidCallback? onSendToKitchen;
-  final VoidCallback? onReprint;
-  final VoidCallback? onMarkInPreparation;
-  final VoidCallback? onMarkReady;
-  final VoidCallback? onMarkDelivered;
-  final VoidCallback? onInvoice;
-  final VoidCallback? onCancel;
+  final VoidCallback? onPrimaryAction;
+  final String? primaryActionLabel;
+  final IconData? primaryActionIcon;
 
   @override
   Widget build(BuildContext context) {
     final order = summary.order;
     final theme = Theme.of(context);
     final layout = context.appLayout;
-    final tokens = context.appColors;
+    final channel = operationalOrderServiceTypeLabel(order.serviceType);
 
     return AppCard(
       onTap: onOpen,
-      padding: EdgeInsets.all(layout.cardPadding),
+      padding: EdgeInsets.all(layout.compactCardPadding + 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -55,203 +45,130 @@ class OrderQueueCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Pedido #${order.id}',
+                      order.customerLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    SizedBox(height: layout.space2),
+                    SizedBox(height: layout.space2 / 2),
                     Text(
-                      order.customerLabel,
-                      style: theme.textTheme.bodyMedium?.copyWith(
+                      '#${order.id} · ${AppFormatters.shortDateTime(order.createdAt)} · $channel',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
               ),
-              SizedBox(width: layout.space6),
+              SizedBox(width: layout.space4),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  OrderStatusBadge(status: order.status),
-                  SizedBox(height: layout.space3),
-                  AppStatusBadge(
-                    label: orderTicketDispatchStatusLabel(
-                      order.ticketMeta.status,
-                    ),
-                    tone: orderTicketDispatchStatusTone(
-                      order.ticketMeta.status,
-                    ),
-                    icon: orderTicketDispatchStatusIcon(
-                      order.ticketMeta.status,
+                  Text(
+                    AppFormatters.currencyFromCents(summary.totalCents),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
+                  SizedBox(height: layout.space2),
+                  OrderStatusBadge(status: order.status),
                 ],
               ),
             ],
           ),
-          SizedBox(height: layout.sectionGap),
-          Wrap(
-            spacing: layout.space3,
-            runSpacing: layout.space3,
+          SizedBox(height: layout.space3),
+          Row(
             children: [
-              _MetaChip(
-                icon: operationalOrderServiceTypeIcon(order.serviceType),
-                label: operationalOrderServiceTypeLabel(order.serviceType),
+              Icon(
+                Icons.checkroom_rounded,
+                size: 16,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-              _MetaChip(
-                icon: Icons.schedule_rounded,
-                label: AppFormatters.shortDateTime(order.createdAt),
-              ),
-              _MetaChip(
-                icon: Icons.layers_rounded,
-                label: '${summary.totalUnits} item(ns)',
-              ),
-              _MetaChip(
-                icon: Icons.payments_outlined,
-                label: AppFormatters.currencyFromCents(summary.totalCents),
-              ),
-              _MetaChip(
-                icon: Icons.timelapse_rounded,
-                label: 'Tempo ${operationalOrderElapsedLabel(order)}',
-              ),
-              if (order.customerPhone?.trim().isNotEmpty ?? false)
-                _MetaChip(
-                  icon: Icons.phone_rounded,
-                  label: order.customerPhone!.trim(),
+              SizedBox(width: layout.space2),
+              Expanded(
+                child: Text(
+                  '${summary.totalUnits} peca(s) · ${summary.lineItemsCount} produto(s)',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
+              ),
+              if (onPrimaryAction != null && primaryActionLabel != null) ...[
+                SizedBox(width: layout.space3),
+                FilledButton.tonalIcon(
+                  onPressed: onPrimaryAction,
+                  icon: Icon(primaryActionIcon ?? Icons.arrow_forward_rounded),
+                  label: Text(primaryActionLabel!),
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
             ],
           ),
           if (order.notes?.trim().isNotEmpty ?? false) ...[
-            SizedBox(height: layout.blockGap),
+            SizedBox(height: layout.space3),
             Text(
-              operationalOrderShortNotes(order.notes),
-              style: theme.textTheme.bodyMedium?.copyWith(
+              operationalOrderShortNotes(order.notes, maxLength: 80),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ],
-          if (order.ticketMeta.hasFailure) ...[
-            SizedBox(height: layout.blockGap),
-            AppCard(
-              tone: AppCardTone.danger,
-              padding: EdgeInsets.all(layout.compactCardPadding),
-              child: Text(
-                operationalOrderShortNotes(order.ticketMeta.lastFailureMessage),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: tokens.danger.onSurface,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-          SizedBox(height: layout.sectionGap),
-          Wrap(
-            spacing: layout.space3,
-            runSpacing: layout.space3,
-            children: [
-              _ActionChip(
-                icon: Icons.open_in_new_rounded,
-                label: 'Abrir',
-                onPressed: onOpen,
-              ),
-              if (onSendToKitchen != null)
-                _ActionChip(
-                  icon: Icons.send_rounded,
-                  label: operationalOrderSendToSeparationLabel,
-                  onPressed: onSendToKitchen!,
-                ),
-              if (onReprint != null)
-                _ActionChip(
-                  icon: Icons.print_rounded,
-                  label: operationalOrderPrintReceiptLabel,
-                  onPressed: onReprint!,
-                ),
-              if (onMarkInPreparation != null)
-                _ActionChip(
-                  icon: Icons.inventory_2_rounded,
-                  label: operationalOrderShortActionLabel(
-                    OperationalOrderStatus.inPreparation,
-                  ),
-                  onPressed: onMarkInPreparation!,
-                ),
-              if (onMarkReady != null)
-                _ActionChip(
-                  icon: Icons.notifications_active_rounded,
-                  label: operationalOrderShortActionLabel(
-                    OperationalOrderStatus.ready,
-                  ),
-                  onPressed: onMarkReady!,
-                ),
-              if (onMarkDelivered != null)
-                _ActionChip(
-                  icon: Icons.shopping_bag_rounded,
-                  label: operationalOrderShortActionLabel(
-                    OperationalOrderStatus.delivered,
-                  ),
-                  onPressed: onMarkDelivered!,
-                ),
-              if (onInvoice != null)
-                _ActionChip(
-                  icon: Icons.point_of_sale_rounded,
-                  label: 'Finalizar venda',
-                  onPressed: onInvoice!,
-                  tone: AppSelectorChipTone.brand,
-                ),
-              if (onCancel != null)
-                _ActionChip(
-                  icon: Icons.cancel_rounded,
-                  label: 'Cancelar',
-                  onPressed: onCancel!,
-                  tone: AppSelectorChipTone.danger,
-                ),
-            ],
-          ),
         ],
       ),
     );
   }
 }
 
-class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppSelectorChip(
-      icon: icon,
-      label: label,
-      selected: true,
-      tone: AppSelectorChipTone.info,
-    );
+String? operationalOrderListPrimaryActionLabel(
+  OperationalOrderSummary summary,
+) {
+  final order = summary.order;
+  if (order.status == OperationalOrderStatus.draft && summary.totalUnits > 0) {
+    return 'Confirmar';
   }
+  if (order.status == OperationalOrderStatus.open) {
+    return 'Separar';
+  }
+  if (order.status == OperationalOrderStatus.inPreparation) {
+    return 'Separado';
+  }
+  if (order.status == OperationalOrderStatus.ready) {
+    return 'Concluir';
+  }
+  if (order.status == OperationalOrderStatus.delivered &&
+      summary.linkedSaleId != null) {
+    return 'Ver venda';
+  }
+  return null;
 }
 
-class _ActionChip extends StatelessWidget {
-  const _ActionChip({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-    this.tone = AppSelectorChipTone.neutral,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-  final AppSelectorChipTone tone;
-
-  @override
-  Widget build(BuildContext context) {
-    return AppSelectorChip(
-      icon: icon,
-      label: label,
-      selected: true,
-      tone: tone,
-      onSelected: (_) => onPressed(),
-    );
+IconData? operationalOrderListPrimaryActionIcon(
+  OperationalOrderSummary summary,
+) {
+  switch (summary.order.status) {
+    case OperationalOrderStatus.draft:
+      return Icons.check_rounded;
+    case OperationalOrderStatus.open:
+      return Icons.inventory_2_rounded;
+    case OperationalOrderStatus.inPreparation:
+      return Icons.check_circle_rounded;
+    case OperationalOrderStatus.ready:
+      return Icons.point_of_sale_rounded;
+    case OperationalOrderStatus.delivered:
+      return Icons.receipt_long_rounded;
+    case OperationalOrderStatus.canceled:
+      return null;
   }
 }
