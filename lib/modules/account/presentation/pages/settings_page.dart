@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
+import '../../../../app/core/theme/app_theme_mode_controller.dart';
 import '../../../../app/routes/route_names.dart';
 import '../providers/account_cloud_providers.dart';
 
@@ -14,6 +15,8 @@ class SettingsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final internalAccess = ref.watch(internalMobileSurfaceAccessProvider);
+    final themeModeAsync = ref.watch(appThemeModeControllerProvider);
+    final selectedThemeMode = themeModeAsync.valueOrNull ?? AppThemeMode.system;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Configurações')),
@@ -27,6 +30,45 @@ class SettingsPage extends ConsumerWidget {
             badgeLabel: 'Sistema',
             badgeIcon: Icons.settings_rounded,
             emphasized: true,
+          ),
+          const SizedBox(height: 18),
+          AppSectionCard(
+            title: 'Apar\u00eancia',
+            subtitle: 'Escolha como o Tatuzin aparece neste dispositivo.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Tema do app',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                RadioGroup<AppThemeMode>(
+                  groupValue: selectedThemeMode,
+                  onChanged: (value) {
+                    if (value == null) {
+                      return;
+                    }
+                    ref
+                        .read(appThemeModeControllerProvider.notifier)
+                        .setThemeMode(value);
+                  },
+                  child: Column(
+                    children: AppThemeMode.values
+                        .map(
+                          (mode) => RadioListTile<AppThemeMode>(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(mode.label),
+                            value: mode,
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 18),
           AppSectionCard(

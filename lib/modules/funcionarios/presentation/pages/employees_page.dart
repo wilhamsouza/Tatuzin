@@ -10,7 +10,6 @@ import '../../../../app/core/utils/money_parser.dart';
 import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_input.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
-import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
@@ -61,21 +60,6 @@ class _EmployeesPageState extends ConsumerState<EmployeesPage> {
           : null,
       body: Column(
         children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              layout.pagePadding,
-              layout.space4,
-              layout.pagePadding,
-              layout.space3,
-            ),
-            child: const AppPageHeader(
-              title: 'Funcionários',
-              subtitle:
-                  'Gerencie acessos de caixas, vendedores e gerentes sem misturar com o dono da empresa.',
-              badgeLabel: 'Plano PRO',
-              badgeIcon: Icons.badge_outlined,
-            ),
-          ),
           if (!canManage)
             Expanded(
               child: Center(
@@ -132,48 +116,12 @@ class _EmployeesContent extends ConsumerWidget {
 
     return Column(
       children: [
-        if (canViewActivity)
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              layout.pagePadding,
-              0,
-              layout.pagePadding,
-              layout.space3,
-            ),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () =>
-                    context.pushNamed(AppRouteNames.employeeActivity),
-                icon: const Icon(Icons.manage_search_rounded),
-                label: const Text('Ver atividade da equipe'),
-              ),
-            ),
-          ),
-        if (canViewCommissions)
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              layout.pagePadding,
-              0,
-              layout.pagePadding,
-              layout.space3,
-            ),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () =>
-                    context.pushNamed(AppRouteNames.employeeCommissions),
-                icon: const Icon(Icons.payments_outlined),
-                label: const Text('Ver comissões'),
-              ),
-            ),
-          ),
         Padding(
           padding: EdgeInsets.fromLTRB(
             layout.pagePadding,
-            0,
-            layout.pagePadding,
             layout.space3,
+            layout.pagePadding,
+            layout.space2,
           ),
           child: AppInput(
             controller: searchController,
@@ -190,17 +138,30 @@ class _EmployeesContent extends ConsumerWidget {
             layout.pagePadding,
             0,
             layout.pagePadding,
-            layout.space3,
+            layout.space2,
           ),
           child: _EmployeeFilters(),
         ),
+        if (canViewActivity || canViewCommissions)
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              layout.pagePadding,
+              0,
+              layout.pagePadding,
+              layout.space2,
+            ),
+            child: _EmployeeTopShortcuts(
+              canViewActivity: canViewActivity,
+              canViewCommissions: canViewCommissions,
+            ),
+          ),
         if (page != null)
           Padding(
             padding: EdgeInsets.fromLTRB(
               layout.pagePadding,
               0,
               layout.pagePadding,
-              layout.space3,
+              layout.space2,
             ),
             child: _EmployeeSummary(page: page),
           ),
@@ -285,6 +246,78 @@ class _EmployeesContent extends ConsumerWidget {
   }
 }
 
+class _EmployeeTopShortcuts extends StatelessWidget {
+  const _EmployeeTopShortcuts({
+    required this.canViewActivity,
+    required this.canViewCommissions,
+  });
+
+  final bool canViewActivity;
+  final bool canViewCommissions;
+
+  @override
+  Widget build(BuildContext context) {
+    final shortcuts = <_EmployeeShortcutButton>[
+      if (canViewActivity)
+        _EmployeeShortcutButton(
+          icon: Icons.manage_search_rounded,
+          label: 'Atividade',
+          onPressed: () => context.pushNamed(AppRouteNames.employeeActivity),
+        ),
+      if (canViewCommissions)
+        _EmployeeShortcutButton(
+          icon: Icons.payments_outlined,
+          label: 'Comissões',
+          onPressed: () => context.pushNamed(AppRouteNames.employeeCommissions),
+        ),
+    ];
+
+    if (shortcuts.length == 1) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: SizedBox(width: 176, child: shortcuts.single),
+      );
+    }
+
+    return Row(
+      children: [
+        for (var index = 0; index < shortcuts.length; index++) ...[
+          if (index > 0) const SizedBox(width: 8),
+          Expanded(child: shortcuts[index]),
+        ],
+      ],
+    );
+  }
+}
+
+class _EmployeeShortcutButton extends StatelessWidget {
+  const _EmployeeShortcutButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 44,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18),
+        label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          visualDensity: VisualDensity.compact,
+        ),
+      ),
+    );
+  }
+}
+
 class _EmployeeFilters extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -354,7 +387,10 @@ class _EmployeeSummary extends StatelessWidget {
         .length;
 
     return AppCard(
-      padding: EdgeInsets.all(layout.compactCardPadding),
+      padding: EdgeInsets.symmetric(
+        horizontal: layout.compactCardPadding,
+        vertical: 8,
+      ),
       child: Row(
         children: [
           Expanded(

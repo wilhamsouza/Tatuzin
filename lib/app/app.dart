@@ -15,6 +15,7 @@ import 'core/utils/app_logger.dart';
 import 'core/widgets/app_async_value_view.dart';
 import 'routes/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/app_theme_mode_controller.dart';
 
 class ErpPdvApp extends ConsumerStatefulWidget {
   const ErpPdvApp({super.key});
@@ -50,6 +51,7 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
   @override
   Widget build(BuildContext context) {
     final startup = ref.watch(appStartupProvider);
+    final themeMode = ref.watch(appMaterialThemeModeProvider);
 
     return startup.when(
       data: (startupState) {
@@ -58,6 +60,8 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
             title: AppConstants.appName,
             debugShowCheckedModeBanner: false,
             theme: AppTheme.light(),
+            darkTheme: AppTheme.dark(),
+            themeMode: themeMode,
             home: AppAsyncValueView.error(
               title: startupState.title,
               message: startupState.message,
@@ -78,6 +82,8 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
           title: AppConstants.appName,
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: themeMode,
           routerConfig: router,
         );
       },
@@ -85,6 +91,8 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
         title: AppConstants.appName,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
+        themeMode: themeMode,
         home: const AppAsyncValueView.loading(
           title: 'Preparando o Tatuzin',
           message:
@@ -95,6 +103,8 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
         title: AppConstants.appName,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
+        themeMode: themeMode,
         home: AppAsyncValueView.error(
           title: 'Falha ao iniciar o Tatuzin',
           message:

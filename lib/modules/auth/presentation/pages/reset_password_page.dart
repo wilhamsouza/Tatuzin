@@ -78,7 +78,7 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
             colors: [
               AppTheme.primary.withValues(alpha: 0.08),
               colorScheme.surface,
-              Colors.white,
+              colorScheme.surfaceContainerLowest,
             ],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,

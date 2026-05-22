@@ -11,6 +11,7 @@ import 'package:erp_pdv_app/app/core/session/company_context.dart';
 import 'package:erp_pdv_app/app/core/session/session_provider.dart';
 import 'package:erp_pdv_app/app/core/session/session_reset.dart';
 import 'package:erp_pdv_app/app/core/sync/sync_queue_feature_summary.dart';
+import 'package:erp_pdv_app/app/core/widgets/app_main_drawer.dart';
 import 'package:erp_pdv_app/modules/dashboard/domain/entities/operational_dashboard_snapshot.dart';
 import 'package:erp_pdv_app/modules/dashboard/presentation/pages/dashboard_page.dart';
 import 'package:erp_pdv_app/modules/dashboard/presentation/providers/dashboard_providers.dart';
@@ -25,12 +26,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
 
   testWidgets('app abre shell somente com sessão tenant válida', (
     tester,
@@ -42,15 +48,11 @@ void main() {
     expect(find.text('Nova venda'), findsAtLeastNWidgets(1));
     expect(find.text('Vendas de hoje'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.menu).first);
-    await tester.pumpAndSettle();
+    await _openMainDrawer(tester);
 
     expect(find.byType(Drawer), findsOneWidget);
 
-    final drawerScrollable = find.descendant(
-      of: find.byType(Drawer),
-      matching: find.byType(Scrollable),
-    );
+    final drawerScrollable = _mainDrawerScrollable();
 
     await tester.scrollUntilVisible(
       find.text('Produtos'),
@@ -127,13 +129,9 @@ void main() {
 
     expect(find.byType(DashboardPage), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.menu).first);
-    await tester.pumpAndSettle();
+    await _openMainDrawer(tester);
 
-    final drawerScrollable = find.descendant(
-      of: find.byType(Drawer),
-      matching: find.byType(Scrollable),
-    );
+    final drawerScrollable = _mainDrawerScrollable();
 
     await tester.scrollUntilVisible(
       find.text('Produtos'),
@@ -154,13 +152,9 @@ void main() {
   testWidgets('Configurações no drawer abre tela própria', (tester) async {
     await _pumpAuthenticatedApp(tester);
 
-    await tester.tap(find.byIcon(Icons.menu).first);
-    await tester.pumpAndSettle();
+    await _openMainDrawer(tester);
 
-    final drawerScrollable = find.descendant(
-      of: find.byType(Drawer),
-      matching: find.byType(Scrollable),
-    );
+    final drawerScrollable = _mainDrawerScrollable();
 
     await tester.scrollUntilVisible(
       find.text('Configurações'),
@@ -286,8 +280,7 @@ void main() {
       ],
     );
 
-    await tester.tap(find.byIcon(Icons.menu).first);
-    await tester.pumpAndSettle();
+    await _openMainDrawer(tester);
 
     expect(find.byType(Drawer), findsOneWidget);
     expect(find.textContaining('Tatuzin v'), findsOneWidget);
@@ -311,13 +304,9 @@ void main() {
       ],
     );
 
-    await tester.tap(find.byIcon(Icons.menu).first);
-    await tester.pumpAndSettle();
+    await _openMainDrawer(tester);
 
-    final drawerScrollable = find.descendant(
-      of: find.byType(Drawer),
-      matching: find.byType(Scrollable),
-    );
+    final drawerScrollable = _mainDrawerScrollable();
 
     await tester.scrollUntilVisible(
       find.text('Inventário físico'),
@@ -422,6 +411,10 @@ Future<void> _pumpAuthenticatedApp(
           entitlements: PlanEntitlements.basic,
         ),
         clientInstanceId: 'device-1',
+        membership: const AppMembershipContext(
+          role: 'OWNER',
+          permissions: <String>{},
+        ),
       );
 
   await tester.pumpWidget(
@@ -431,6 +424,22 @@ Future<void> _pumpAuthenticatedApp(
   await tester.pumpAndSettle();
 
   expect(find.text('Continuar offline'), findsNothing);
+}
+
+Future<void> _openMainDrawer(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.menu).first);
+  await tester.pumpAndSettle();
+
+  expect(find.byType(AppMainDrawer), findsOneWidget);
+}
+
+Finder _mainDrawerScrollable() {
+  final drawerScrollable = find.descendant(
+    of: find.byType(AppMainDrawer),
+    matching: find.byType(Scrollable),
+  );
+  expect(drawerScrollable, findsOneWidget);
+  return drawerScrollable;
 }
 
 class _NoSessionGateway implements AuthGateway {

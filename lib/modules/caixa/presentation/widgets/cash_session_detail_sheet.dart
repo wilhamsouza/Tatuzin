@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
@@ -400,26 +401,26 @@ class _ZeroingStatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final colors = context.appColors;
     final (
       title,
       description,
-      toneColor,
+      palette,
     ) = switch (detail.session.finalBalanceCents) {
       > 0 => (
         'Caixa acima de zero',
         'Falta retirar ${AppFormatters.currencyFromCents(detail.amountToZeroCents)} para o caixa ficar zerado.',
-        const Color(0xFFFEF3C7),
+        colors.warning,
       ),
       < 0 => (
         'Caixa abaixo de zero',
         'O caixa está abaixo do zero em ${AppFormatters.currencyFromCents(detail.amountToZeroCents)}.',
-        colorScheme.errorContainer,
+        colors.danger,
       ),
       _ => (
         'Caixa zerado',
         'O saldo consolidado desta sessão está zerado.',
-        const Color(0xFFDCFCE7),
+        colors.success,
       ),
     };
 
@@ -427,8 +428,9 @@ class _ZeroingStatusCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: toneColor,
+        color: palette.surface,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -436,11 +438,17 @@ class _ZeroingStatusCard extends StatelessWidget {
           Text(
             title,
             style: theme.textTheme.titleMedium?.copyWith(
+              color: palette.onSurface,
               fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 6),
-          Text(description, style: theme.textTheme.bodyMedium),
+          Text(
+            description,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: palette.onSurface,
+            ),
+          ),
         ],
       ),
     );

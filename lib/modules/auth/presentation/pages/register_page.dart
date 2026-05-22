@@ -61,7 +61,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
             colors: [
               AppTheme.primary.withValues(alpha: 0.1),
               colorScheme.surface,
-              Colors.white,
+              colorScheme.surfaceContainerLowest,
             ],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,

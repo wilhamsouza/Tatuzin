@@ -328,8 +328,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Caixa Principal'), findsOneWidget);
     expect(find.text('Acesso ativo'), findsOneWidget);
-    expect(find.text('Ver atividade da equipe'), findsOneWidget);
-    expect(find.text('Ver comissões'), findsOneWidget);
+    expect(find.text('Atividade'), findsOneWidget);
+    expect(find.text('Comissões'), findsOneWidget);
     expect(find.text('Ver atividade'), findsWidgets);
     expect(find.text('Comissão desativada'), findsWidgets);
     expect(find.byType(PopupMenuButton<String>), findsWidgets);
