@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/theme/app_design_tokens.dart';
-import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_search_field.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
@@ -125,8 +123,6 @@ class _OrdersPageState extends ConsumerState<OrdersPage> {
                       96,
                     ),
                     children: [
-                      _OrdersSummary(board: board),
-                      SizedBox(height: layout.blockGap),
                       for (var index = 0; index < orders.length; index++) ...[
                         OrderQueueCard(
                           summary: orders[index],
@@ -218,118 +214,6 @@ class _OrdersPageState extends ConsumerState<OrdersPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
-  }
-}
-
-class _OrdersSummary extends StatelessWidget {
-  const _OrdersSummary({required this.board});
-
-  final OperationalOrderBoardData board;
-
-  @override
-  Widget build(BuildContext context) {
-    final layout = context.appLayout;
-    final inSeparation =
-        board.countFor(OperationalOrderStatus.inPreparation) +
-        board.countFor(OperationalOrderStatus.ready);
-
-    return GridView.count(
-      crossAxisCount: MediaQuery.sizeOf(context).width < 380 ? 2 : 4,
-      childAspectRatio: MediaQuery.sizeOf(context).width < 380 ? 1.65 : 1.35,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: layout.gridGap,
-      mainAxisSpacing: layout.gridGap,
-      children: [
-        _MiniSummaryCard(
-          label: 'Hoje',
-          value: '${board.todayCount}',
-          caption: 'pedidos',
-          icon: Icons.today_rounded,
-        ),
-        _MiniSummaryCard(
-          label: 'Em separacao',
-          value: '$inSeparation',
-          caption: 'pecas na fila',
-          icon: Icons.inventory_2_rounded,
-        ),
-        _MiniSummaryCard(
-          label: 'Total aberto',
-          value: AppFormatters.currencyFromCents(board.openTotalCents),
-          caption: 'nao concluido',
-          icon: Icons.payments_outlined,
-        ),
-        _MiniSummaryCard(
-          label: 'Ticket medio',
-          value: AppFormatters.currencyFromCents(board.averageTicketCents),
-          caption: 'pedidos com total',
-          icon: Icons.bar_chart_rounded,
-        ),
-      ],
-    );
-  }
-}
-
-class _MiniSummaryCard extends StatelessWidget {
-  const _MiniSummaryCard({
-    required this.label,
-    required this.value,
-    required this.caption,
-    required this.icon,
-  });
-
-  final String label;
-  final String value;
-  final String caption;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final layout = context.appLayout;
-
-    return AppCard(
-      padding: EdgeInsets.all(layout.compactCardPadding),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: theme.colorScheme.primary),
-              SizedBox(width: layout.space2),
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          Text(
-            caption,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
