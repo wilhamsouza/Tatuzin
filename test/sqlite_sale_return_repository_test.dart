@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite/sqflite.dart';
 
-import 'package:erp_pdv_app/modules/historico_vendas/domain/entities/sale_return.dart';
-import 'package:erp_pdv_app/modules/vendas/domain/entities/checkout_input.dart';
-import 'package:erp_pdv_app/modules/vendas/domain/entities/sale_enums.dart';
+import 'package:tatuzin/modules/historico_vendas/domain/entities/sale_return.dart';
+import 'package:tatuzin/modules/vendas/domain/entities/checkout_input.dart';
+import 'package:tatuzin/modules/vendas/domain/entities/sale_enums.dart';
 
 import 'support/sale_inventory_test_support.dart';
 

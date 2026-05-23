@@ -1,7 +1,7 @@
-import 'package:erp_pdv_app/app/core/errors/app_exceptions.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_batch_result.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_error_info.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_error_type.dart';
+import 'package:tatuzin/app/core/errors/app_exceptions.dart';
+import 'package:tatuzin/app/core/sync/sync_batch_result.dart';
+import 'package:tatuzin/app/core/sync/sync_error_info.dart';
+import 'package:tatuzin/app/core/sync/sync_error_type.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

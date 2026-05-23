@@ -1,8 +1,8 @@
-import 'package:erp_pdv_app/app/core/database/app_database.dart';
-import 'package:erp_pdv_app/modules/clientes/data/sqlite_client_repository.dart';
-import 'package:erp_pdv_app/modules/clientes/domain/entities/client.dart';
-import 'package:erp_pdv_app/modules/clientes/domain/repositories/client_repository.dart';
-import 'package:erp_pdv_app/modules/clientes/presentation/providers/client_providers.dart';
+import 'package:tatuzin/app/core/database/app_database.dart';
+import 'package:tatuzin/modules/clientes/data/sqlite_client_repository.dart';
+import 'package:tatuzin/modules/clientes/domain/entities/client.dart';
+import 'package:tatuzin/modules/clientes/domain/repositories/client_repository.dart';
+import 'package:tatuzin/modules/clientes/presentation/providers/client_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 

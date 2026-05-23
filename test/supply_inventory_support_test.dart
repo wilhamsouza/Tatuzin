@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'package:erp_pdv_app/app/core/database/table_names.dart';
-import 'package:erp_pdv_app/modules/carrinho/domain/entities/cart_item.dart';
-import 'package:erp_pdv_app/modules/compras/data/models/purchase_item_model.dart';
-import 'package:erp_pdv_app/modules/compras/domain/entities/purchase_item.dart';
-import 'package:erp_pdv_app/modules/insumos/data/support/supply_inventory_support.dart';
-import 'package:erp_pdv_app/modules/insumos/domain/entities/supply_inventory.dart';
+import 'package:tatuzin/app/core/database/table_names.dart';
+import 'package:tatuzin/modules/carrinho/domain/entities/cart_item.dart';
+import 'package:tatuzin/modules/compras/data/models/purchase_item_model.dart';
+import 'package:tatuzin/modules/compras/domain/entities/purchase_item.dart';
+import 'package:tatuzin/modules/insumos/data/support/supply_inventory_support.dart';
+import 'package:tatuzin/modules/insumos/domain/entities/supply_inventory.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

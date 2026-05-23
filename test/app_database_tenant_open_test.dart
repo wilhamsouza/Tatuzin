@@ -1,4 +1,4 @@
-import 'package:erp_pdv_app/app/core/database/app_database.dart';
+import 'package:tatuzin/app/core/database/app_database.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';

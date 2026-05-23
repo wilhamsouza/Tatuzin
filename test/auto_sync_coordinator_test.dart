@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:erp_pdv_app/app/core/sync/auto_sync_coordinator.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_batch_result.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_queue_feature_summary.dart';
+import 'package:tatuzin/app/core/sync/auto_sync_coordinator.dart';
+import 'package:tatuzin/app/core/sync/sync_batch_result.dart';
+import 'package:tatuzin/app/core/sync/sync_queue_feature_summary.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

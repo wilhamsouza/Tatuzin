@@ -1,15 +1,15 @@
 import 'dart:async';
 
-import 'package:erp_pdv_app/app/core/database/app_database.dart';
-import 'package:erp_pdv_app/app/core/providers/provider_guard.dart';
-import 'package:erp_pdv_app/app/core/session/app_session.dart';
-import 'package:erp_pdv_app/app/core/session/app_user.dart';
-import 'package:erp_pdv_app/app/core/session/company_context.dart';
-import 'package:erp_pdv_app/app/core/session/session_provider.dart';
-import 'package:erp_pdv_app/app/core/sync/operational_sync_queue_repository.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_providers.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_queue_feature_summary.dart';
-import 'package:erp_pdv_app/modules/system/presentation/providers/system_providers.dart';
+import 'package:tatuzin/app/core/database/app_database.dart';
+import 'package:tatuzin/app/core/providers/provider_guard.dart';
+import 'package:tatuzin/app/core/session/app_session.dart';
+import 'package:tatuzin/app/core/session/app_user.dart';
+import 'package:tatuzin/app/core/session/company_context.dart';
+import 'package:tatuzin/app/core/session/session_provider.dart';
+import 'package:tatuzin/app/core/sync/operational_sync_queue_repository.dart';
+import 'package:tatuzin/app/core/sync/sync_providers.dart';
+import 'package:tatuzin/app/core/sync/sync_queue_feature_summary.dart';
+import 'package:tatuzin/modules/system/presentation/providers/system_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 

@@ -1,9 +1,9 @@
-import 'package:erp_pdv_app/modules/categorias/domain/entities/category.dart';
-import 'package:erp_pdv_app/modules/categorias/domain/repositories/category_repository.dart';
-import 'package:erp_pdv_app/modules/categorias/presentation/providers/category_providers.dart';
-import 'package:erp_pdv_app/modules/fornecedores/domain/entities/supplier.dart';
-import 'package:erp_pdv_app/modules/fornecedores/domain/repositories/supplier_repository.dart';
-import 'package:erp_pdv_app/modules/fornecedores/presentation/providers/supplier_providers.dart';
+import 'package:tatuzin/modules/categorias/domain/entities/category.dart';
+import 'package:tatuzin/modules/categorias/domain/repositories/category_repository.dart';
+import 'package:tatuzin/modules/categorias/presentation/providers/category_providers.dart';
+import 'package:tatuzin/modules/fornecedores/domain/entities/supplier.dart';
+import 'package:tatuzin/modules/fornecedores/domain/repositories/supplier_repository.dart';
+import 'package:tatuzin/modules/fornecedores/presentation/providers/supplier_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 

@@ -1,8 +1,8 @@
-import 'package:erp_pdv_app/app/core/database/app_database.dart';
-import 'package:erp_pdv_app/app/core/database/table_names.dart';
-import 'package:erp_pdv_app/app/core/sync/operational_sync_projection_applier.dart';
-import 'package:erp_pdv_app/app/core/sync/operational_sync_remote_datasource.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_feature_keys.dart';
+import 'package:tatuzin/app/core/database/app_database.dart';
+import 'package:tatuzin/app/core/database/table_names.dart';
+import 'package:tatuzin/app/core/sync/operational_sync_projection_applier.dart';
+import 'package:tatuzin/app/core/sync/operational_sync_remote_datasource.dart';
+import 'package:tatuzin/app/core/sync/sync_feature_keys.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 

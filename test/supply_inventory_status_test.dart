@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:erp_pdv_app/modules/insumos/domain/entities/supply.dart';
-import 'package:erp_pdv_app/modules/insumos/domain/entities/supply_inventory.dart';
-import 'package:erp_pdv_app/modules/insumos/domain/services/supply_inventory_math.dart';
+import 'package:tatuzin/modules/insumos/domain/entities/supply.dart';
+import 'package:tatuzin/modules/insumos/domain/entities/supply_inventory.dart';
+import 'package:tatuzin/modules/insumos/domain/services/supply_inventory_math.dart';
 
 void main() {
   group('Saldo / alerta', () {

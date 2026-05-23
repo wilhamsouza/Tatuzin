@@ -227,7 +227,7 @@ class AuthController extends AsyncNotifier<void> {
       final session = await ref
           .read(remoteAuthGatewayProvider)
           .refreshSession();
-      await _applySession(session);
+      await _applySession(session, preserveRuntimeWhenSamePrincipal: true);
       state = const AsyncData(null);
       return session;
     } catch (error, stackTrace) {
@@ -362,7 +362,10 @@ class AuthController extends AsyncNotifier<void> {
     state = const AsyncData(null);
   }
 
-  Future<void> _applySession(AppSession session) async {
+  Future<void> _applySession(
+    AppSession session, {
+    bool preserveRuntimeWhenSamePrincipal = false,
+  }) async {
     ref.read(autoSyncCoordinatorProvider).cancelPending();
     ref
         .read(appSessionProvider.notifier)
@@ -374,6 +377,7 @@ class AuthController extends AsyncNotifier<void> {
           clientInstanceId: session.clientInstanceId,
           membership: session.membership,
           employee: session.employee,
+          preserveRuntimeWhenSamePrincipal: preserveRuntimeWhenSamePrincipal,
         );
 
     await _ensureStartupReady();

@@ -1,25 +1,26 @@
-import 'package:erp_pdv_app/app/core/config/app_data_mode.dart';
-import 'package:erp_pdv_app/app/core/config/app_environment.dart';
-import 'package:erp_pdv_app/app/core/database/app_database.dart';
-import 'package:erp_pdv_app/app/core/entitlements/plan_entitlements.dart';
-import 'package:erp_pdv_app/app/core/network/contracts/api_client_contract.dart';
-import 'package:erp_pdv_app/app/core/network/contracts/auth_gateway.dart';
-import 'package:erp_pdv_app/app/core/session/app_session.dart';
-import 'package:erp_pdv_app/app/core/session/app_user.dart';
-import 'package:erp_pdv_app/app/core/session/auth_provider.dart';
-import 'package:erp_pdv_app/app/core/session/auth_token_storage.dart';
-import 'package:erp_pdv_app/app/core/session/company_context.dart';
-import 'package:erp_pdv_app/app/core/session/session_provider.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_queue_feature_summary.dart';
-import 'package:erp_pdv_app/app/core/theme/app_theme.dart';
-import 'package:erp_pdv_app/modules/billing/data/billing_remote_data_source.dart';
-import 'package:erp_pdv_app/modules/billing/domain/billing_models.dart';
-import 'package:erp_pdv_app/modules/billing/presentation/pages/subscription_page.dart';
-import 'package:erp_pdv_app/modules/billing/presentation/providers/billing_checkout_return.dart';
-import 'package:erp_pdv_app/modules/billing/presentation/providers/billing_providers.dart';
-import 'package:erp_pdv_app/modules/billing/presentation/providers/checkout_launcher.dart';
-import 'package:erp_pdv_app/modules/billing/presentation/widgets/pro_trial_offer_gate.dart';
-import 'package:erp_pdv_app/modules/system/presentation/providers/system_providers.dart';
+import 'package:tatuzin/app/core/config/app_data_mode.dart';
+import 'package:tatuzin/app/core/config/app_environment.dart';
+import 'package:tatuzin/app/core/database/app_database.dart';
+import 'package:tatuzin/app/core/entitlements/plan_entitlements.dart';
+import 'package:tatuzin/app/core/network/contracts/api_client_contract.dart';
+import 'package:tatuzin/app/core/network/contracts/auth_gateway.dart';
+import 'package:tatuzin/app/core/providers/app_data_refresh_provider.dart';
+import 'package:tatuzin/app/core/session/app_session.dart';
+import 'package:tatuzin/app/core/session/app_user.dart';
+import 'package:tatuzin/app/core/session/auth_provider.dart';
+import 'package:tatuzin/app/core/session/auth_token_storage.dart';
+import 'package:tatuzin/app/core/session/company_context.dart';
+import 'package:tatuzin/app/core/session/session_provider.dart';
+import 'package:tatuzin/app/core/sync/sync_queue_feature_summary.dart';
+import 'package:tatuzin/app/core/theme/app_theme.dart';
+import 'package:tatuzin/modules/billing/data/billing_remote_data_source.dart';
+import 'package:tatuzin/modules/billing/domain/billing_models.dart';
+import 'package:tatuzin/modules/billing/presentation/pages/subscription_page.dart';
+import 'package:tatuzin/modules/billing/presentation/providers/billing_checkout_return.dart';
+import 'package:tatuzin/modules/billing/presentation/providers/billing_providers.dart';
+import 'package:tatuzin/modules/billing/presentation/providers/checkout_launcher.dart';
+import 'package:tatuzin/modules/billing/presentation/widgets/pro_trial_offer_gate.dart';
+import 'package:tatuzin/modules/system/presentation/providers/system_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -229,12 +230,16 @@ void main() {
           refreshSession: _session(PlanEntitlements.pro),
         ),
       );
+      final runtimeKeyBefore = container.read(sessionRuntimeKeyProvider);
+      final refreshKeyBefore = container.read(appDataRefreshProvider);
 
       await tester.tap(find.text('Atualizar status'));
       await tester.pumpAndSettle();
 
       expect(fakeBilling.refreshCount, 1);
       expect(container.read(appSessionProvider).plan, PlanKey.pro);
+      expect(container.read(sessionRuntimeKeyProvider), runtimeKeyBefore);
+      expect(container.read(appDataRefreshProvider), refreshKeyBefore + 1);
     },
   );
 

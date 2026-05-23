@@ -1,11 +1,11 @@
-import 'package:erp_pdv_app/app/core/database/app_database.dart';
-import 'package:erp_pdv_app/app/core/database/table_names.dart';
-import 'package:erp_pdv_app/app/core/errors/app_exceptions.dart';
-import 'package:erp_pdv_app/modules/estoque/data/sqlite_stock_availability_repository.dart';
-import 'package:erp_pdv_app/modules/estoque/domain/entities/stock_reservation.dart';
-import 'package:erp_pdv_app/modules/pedidos/data/sqlite_operational_order_repository.dart';
-import 'package:erp_pdv_app/modules/pedidos/domain/entities/operational_order.dart';
-import 'package:erp_pdv_app/modules/pedidos/domain/entities/operational_order_item.dart';
+import 'package:tatuzin/app/core/database/app_database.dart';
+import 'package:tatuzin/app/core/database/table_names.dart';
+import 'package:tatuzin/app/core/errors/app_exceptions.dart';
+import 'package:tatuzin/modules/estoque/data/sqlite_stock_availability_repository.dart';
+import 'package:tatuzin/modules/estoque/domain/entities/stock_reservation.dart';
+import 'package:tatuzin/modules/pedidos/data/sqlite_operational_order_repository.dart';
+import 'package:tatuzin/modules/pedidos/domain/entities/operational_order.dart';
+import 'package:tatuzin/modules/pedidos/domain/entities/operational_order_item.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 

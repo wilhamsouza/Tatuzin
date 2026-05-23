@@ -1,5 +1,5 @@
-import 'package:erp_pdv_app/app/core/errors/app_exceptions.dart';
-import 'package:erp_pdv_app/app/core/session/session_feedback.dart';
+import 'package:tatuzin/app/core/errors/app_exceptions.dart';
+import 'package:tatuzin/app/core/session/session_feedback.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

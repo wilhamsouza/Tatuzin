@@ -1,11 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
 import '../../../../app/core/entitlements/plan_entitlements.dart';
 import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/session/auth_provider.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
+import '../../../../app/core/utils/app_logger.dart';
+import '../../../dashboard/presentation/providers/dashboard_providers.dart';
 import '../../data/billing_remote_data_source.dart';
 import '../../domain/billing_models.dart';
 import 'checkout_launcher.dart';
@@ -64,7 +67,7 @@ class BillingController extends AsyncNotifier<void> {
       await ref
           .read(authControllerProvider.notifier)
           .refreshAuthenticatedSession();
-      ref.invalidate(billingStatusProvider);
+      await _reloadAppStateAfterBillingRefresh();
       state = const AsyncData(null);
       return status;
     } catch (error, stackTrace) {
@@ -87,5 +90,23 @@ class BillingController extends AsyncNotifier<void> {
       }
       return action();
     }
+  }
+
+  Future<void> _reloadAppStateAfterBillingRefresh() async {
+    AppLogger.info('[Billing] post_refresh_app_reload_started');
+    ref.invalidate(appStartupProvider);
+    try {
+      await ref.read(appStartupProvider.future);
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[Billing] post_refresh_bootstrap_reload_failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+    ref.invalidate(billingStatusProvider);
+    ref.read(appDataRefreshProvider.notifier).state++;
+    ref.invalidate(operationalDashboardSnapshotProvider);
+    AppLogger.info('[Billing] post_refresh_app_reload_finished');
   }
 }

@@ -1,9 +1,9 @@
-import 'package:erp_pdv_app/app/app.dart';
-import 'package:erp_pdv_app/app/core/database/app_database.dart';
-import 'package:erp_pdv_app/app/core/theme/app_theme.dart';
-import 'package:erp_pdv_app/app/core/theme/app_theme_mode_controller.dart';
-import 'package:erp_pdv_app/modules/account/presentation/pages/settings_page.dart';
-import 'package:erp_pdv_app/modules/account/presentation/providers/account_cloud_providers.dart';
+import 'package:tatuzin/app/app.dart';
+import 'package:tatuzin/app/core/database/app_database.dart';
+import 'package:tatuzin/app/core/theme/app_theme.dart';
+import 'package:tatuzin/app/core/theme/app_theme_mode_controller.dart';
+import 'package:tatuzin/modules/account/presentation/pages/settings_page.dart';
+import 'package:tatuzin/modules/account/presentation/providers/account_cloud_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

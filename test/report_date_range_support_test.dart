@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:erp_pdv_app/modules/relatorios/data/support/report_date_range_support.dart';
-import 'package:erp_pdv_app/modules/relatorios/domain/entities/report_period.dart';
+import 'package:tatuzin/modules/relatorios/data/support/report_date_range_support.dart';
+import 'package:tatuzin/modules/relatorios/domain/entities/report_period.dart';
 
 void main() {
   group('ReportDateRangeSupport', () {

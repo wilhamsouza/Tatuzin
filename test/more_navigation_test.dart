@@ -1,6 +1,6 @@
-import 'package:erp_pdv_app/app/core/theme/app_theme.dart';
-import 'package:erp_pdv_app/app/routes/route_names.dart';
-import 'package:erp_pdv_app/modules/more/presentation/pages/more_page.dart';
+import 'package:tatuzin/app/core/theme/app_theme.dart';
+import 'package:tatuzin/app/routes/route_names.dart';
+import 'package:tatuzin/modules/more/presentation/pages/more_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';

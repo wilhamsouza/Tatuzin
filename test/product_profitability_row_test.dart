@@ -1,6 +1,6 @@
-import 'package:erp_pdv_app/app/core/sync/sync_status.dart';
-import 'package:erp_pdv_app/modules/produtos/domain/entities/product.dart';
-import 'package:erp_pdv_app/modules/produtos/domain/entities/product_profitability_row.dart';
+import 'package:tatuzin/app/core/sync/sync_status.dart';
+import 'package:tatuzin/modules/produtos/domain/entities/product.dart';
+import 'package:tatuzin/modules/produtos/domain/entities/product_profitability_row.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

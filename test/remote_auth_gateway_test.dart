@@ -1,10 +1,10 @@
 import 'dart:async';
 
-import 'package:erp_pdv_app/app/core/entitlements/plan_entitlements.dart';
-import 'package:erp_pdv_app/app/core/errors/app_exceptions.dart';
-import 'package:erp_pdv_app/app/core/network/contracts/api_client_contract.dart';
-import 'package:erp_pdv_app/app/core/network/real/remote_auth_gateway.dart';
-import 'package:erp_pdv_app/app/core/session/auth_token_storage.dart';
+import 'package:tatuzin/app/core/entitlements/plan_entitlements.dart';
+import 'package:tatuzin/app/core/errors/app_exceptions.dart';
+import 'package:tatuzin/app/core/network/contracts/api_client_contract.dart';
+import 'package:tatuzin/app/core/network/real/remote_auth_gateway.dart';
+import 'package:tatuzin/app/core/session/auth_token_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

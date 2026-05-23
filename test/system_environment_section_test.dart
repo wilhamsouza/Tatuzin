@@ -1,8 +1,8 @@
-import 'package:erp_pdv_app/app/core/config/app_environment.dart';
-import 'package:erp_pdv_app/app/core/network/endpoint_config.dart';
-import 'package:erp_pdv_app/app/core/session/session_provider.dart';
-import 'package:erp_pdv_app/app/theme/app_theme.dart';
-import 'package:erp_pdv_app/modules/system/presentation/widgets/system_environment_section.dart';
+import 'package:tatuzin/app/core/config/app_environment.dart';
+import 'package:tatuzin/app/core/network/endpoint_config.dart';
+import 'package:tatuzin/app/core/session/session_provider.dart';
+import 'package:tatuzin/app/theme/app_theme.dart';
+import 'package:tatuzin/modules/system/presentation/widgets/system_environment_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

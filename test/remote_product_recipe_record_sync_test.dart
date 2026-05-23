@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:erp_pdv_app/app/core/sync/sync_status.dart';
-import 'package:erp_pdv_app/modules/produtos/data/models/product_recipe_sync_payload.dart';
-import 'package:erp_pdv_app/modules/produtos/data/models/remote_product_recipe_record.dart';
+import 'package:tatuzin/app/core/sync/sync_status.dart';
+import 'package:tatuzin/modules/produtos/data/models/product_recipe_sync_payload.dart';
+import 'package:tatuzin/modules/produtos/data/models/remote_product_recipe_record.dart';
 
 void main() {
   test('product recipe sync payload stays atomic by product', () {

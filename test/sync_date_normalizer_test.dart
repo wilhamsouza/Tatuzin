@@ -1,14 +1,14 @@
-import 'package:erp_pdv_app/app/core/sync/sync_date_normalizer.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_status.dart';
-import 'package:erp_pdv_app/app/core/sync/remote_financial_event_record.dart';
-import 'package:erp_pdv_app/modules/caixa/data/models/cash_event_sync_payload.dart';
-import 'package:erp_pdv_app/modules/caixa/data/models/remote_cash_event_record.dart';
-import 'package:erp_pdv_app/modules/caixa/domain/entities/cash_enums.dart';
-import 'package:erp_pdv_app/modules/fiado/data/models/fiado_payment_sync_payload.dart';
-import 'package:erp_pdv_app/modules/fiado/data/models/remote_fiado_payment_record.dart';
-import 'package:erp_pdv_app/modules/vendas/data/models/remote_sale_record.dart';
-import 'package:erp_pdv_app/modules/vendas/data/models/sale_sync_payload.dart';
-import 'package:erp_pdv_app/modules/vendas/domain/entities/sale_enums.dart';
+import 'package:tatuzin/app/core/sync/sync_date_normalizer.dart';
+import 'package:tatuzin/app/core/sync/sync_status.dart';
+import 'package:tatuzin/app/core/sync/remote_financial_event_record.dart';
+import 'package:tatuzin/modules/caixa/data/models/cash_event_sync_payload.dart';
+import 'package:tatuzin/modules/caixa/data/models/remote_cash_event_record.dart';
+import 'package:tatuzin/modules/caixa/domain/entities/cash_enums.dart';
+import 'package:tatuzin/modules/fiado/data/models/fiado_payment_sync_payload.dart';
+import 'package:tatuzin/modules/fiado/data/models/remote_fiado_payment_record.dart';
+import 'package:tatuzin/modules/vendas/data/models/remote_sale_record.dart';
+import 'package:tatuzin/modules/vendas/data/models/sale_sync_payload.dart';
+import 'package:tatuzin/modules/vendas/domain/entities/sale_enums.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

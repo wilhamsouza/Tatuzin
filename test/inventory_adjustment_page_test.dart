@@ -1,10 +1,10 @@
-import 'package:erp_pdv_app/app/core/theme/app_theme.dart';
-import 'package:erp_pdv_app/modules/estoque/domain/entities/inventory_adjustment_input.dart';
-import 'package:erp_pdv_app/modules/estoque/domain/entities/inventory_item.dart';
-import 'package:erp_pdv_app/modules/estoque/domain/entities/inventory_movement.dart';
-import 'package:erp_pdv_app/modules/estoque/domain/repositories/inventory_repository.dart';
-import 'package:erp_pdv_app/modules/estoque/presentation/pages/inventory_adjustment_page.dart';
-import 'package:erp_pdv_app/modules/estoque/presentation/providers/inventory_providers.dart';
+import 'package:tatuzin/app/core/theme/app_theme.dart';
+import 'package:tatuzin/modules/estoque/domain/entities/inventory_adjustment_input.dart';
+import 'package:tatuzin/modules/estoque/domain/entities/inventory_item.dart';
+import 'package:tatuzin/modules/estoque/domain/entities/inventory_movement.dart';
+import 'package:tatuzin/modules/estoque/domain/repositories/inventory_repository.dart';
+import 'package:tatuzin/modules/estoque/presentation/pages/inventory_adjustment_page.dart';
+import 'package:tatuzin/modules/estoque/presentation/providers/inventory_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'package:erp_pdv_app/app/core/database/table_names.dart';
-import 'package:erp_pdv_app/app/core/utils/payment_method_note_codec.dart';
-import 'package:erp_pdv_app/modules/clientes/domain/entities/customer_credit_transaction.dart';
-import 'package:erp_pdv_app/modules/relatorios/data/sqlite_report_repository.dart';
-import 'package:erp_pdv_app/modules/relatorios/domain/entities/report_filter.dart';
-import 'package:erp_pdv_app/modules/vendas/domain/entities/sale_enums.dart';
+import 'package:tatuzin/app/core/database/table_names.dart';
+import 'package:tatuzin/app/core/utils/payment_method_note_codec.dart';
+import 'package:tatuzin/modules/clientes/domain/entities/customer_credit_transaction.dart';
+import 'package:tatuzin/modules/relatorios/data/sqlite_report_repository.dart';
+import 'package:tatuzin/modules/relatorios/domain/entities/report_filter.dart';
+import 'package:tatuzin/modules/vendas/domain/entities/sale_enums.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

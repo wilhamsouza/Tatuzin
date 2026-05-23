@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:erp_pdv_app/app/core/sync/sync_status.dart';
-import 'package:erp_pdv_app/modules/insumos/data/models/remote_supply_record.dart';
-import 'package:erp_pdv_app/modules/insumos/data/models/supply_sync_payload.dart';
+import 'package:tatuzin/app/core/sync/sync_status.dart';
+import 'package:tatuzin/modules/insumos/data/models/remote_supply_record.dart';
+import 'package:tatuzin/modules/insumos/data/models/supply_sync_payload.dart';
 
 void main() {
   test('supply sync payload keeps remote audit references in cost history', () {

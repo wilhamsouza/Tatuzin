@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'package:erp_pdv_app/app/core/database/table_names.dart';
-import 'package:erp_pdv_app/modules/relatorios/data/sqlite_report_repository.dart';
-import 'package:erp_pdv_app/modules/relatorios/domain/entities/report_period.dart';
+import 'package:tatuzin/app/core/database/table_names.dart';
+import 'package:tatuzin/modules/relatorios/data/sqlite_report_repository.dart';
+import 'package:tatuzin/modules/relatorios/domain/entities/report_period.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

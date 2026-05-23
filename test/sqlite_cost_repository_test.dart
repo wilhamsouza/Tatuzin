@@ -1,9 +1,9 @@
-import 'package:erp_pdv_app/app/core/app_context/app_operational_context.dart';
-import 'package:erp_pdv_app/app/core/config/app_environment.dart';
-import 'package:erp_pdv_app/app/core/database/table_names.dart';
-import 'package:erp_pdv_app/app/core/session/app_session.dart';
-import 'package:erp_pdv_app/modules/custos/data/sqlite_cost_repository.dart';
-import 'package:erp_pdv_app/modules/custos/domain/entities/cost_type.dart';
+import 'package:tatuzin/app/core/app_context/app_operational_context.dart';
+import 'package:tatuzin/app/core/config/app_environment.dart';
+import 'package:tatuzin/app/core/database/table_names.dart';
+import 'package:tatuzin/app/core/session/app_session.dart';
+import 'package:tatuzin/modules/custos/data/sqlite_cost_repository.dart';
+import 'package:tatuzin/modules/custos/domain/entities/cost_type.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 

@@ -1,15 +1,15 @@
-import 'package:erp_pdv_app/modules/relatorios/data/support/report_export_csv_support.dart';
-import 'package:erp_pdv_app/modules/relatorios/data/support/report_export_mapper.dart';
-import 'package:erp_pdv_app/modules/relatorios/data/support/report_export_pdf_support.dart';
-import 'package:erp_pdv_app/modules/relatorios/data/support/report_filter_preset_support.dart';
-import 'package:erp_pdv_app/modules/relatorios/domain/entities/report_filter.dart';
-import 'package:erp_pdv_app/modules/relatorios/domain/entities/report_overview_summary.dart';
-import 'package:erp_pdv_app/modules/relatorios/domain/entities/report_payment_summary.dart';
-import 'package:erp_pdv_app/modules/relatorios/domain/entities/report_profitability_row.dart';
-import 'package:erp_pdv_app/modules/relatorios/domain/entities/report_sales_trend_point.dart';
-import 'package:erp_pdv_app/modules/relatorios/domain/entities/report_sold_product_summary.dart';
-import 'package:erp_pdv_app/modules/relatorios/domain/entities/report_variant_summary.dart';
-import 'package:erp_pdv_app/modules/vendas/domain/entities/sale_enums.dart';
+import 'package:tatuzin/modules/relatorios/data/support/report_export_csv_support.dart';
+import 'package:tatuzin/modules/relatorios/data/support/report_export_mapper.dart';
+import 'package:tatuzin/modules/relatorios/data/support/report_export_pdf_support.dart';
+import 'package:tatuzin/modules/relatorios/data/support/report_filter_preset_support.dart';
+import 'package:tatuzin/modules/relatorios/domain/entities/report_filter.dart';
+import 'package:tatuzin/modules/relatorios/domain/entities/report_overview_summary.dart';
+import 'package:tatuzin/modules/relatorios/domain/entities/report_payment_summary.dart';
+import 'package:tatuzin/modules/relatorios/domain/entities/report_profitability_row.dart';
+import 'package:tatuzin/modules/relatorios/domain/entities/report_sales_trend_point.dart';
+import 'package:tatuzin/modules/relatorios/domain/entities/report_sold_product_summary.dart';
+import 'package:tatuzin/modules/relatorios/domain/entities/report_variant_summary.dart';
+import 'package:tatuzin/modules/vendas/domain/entities/sale_enums.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

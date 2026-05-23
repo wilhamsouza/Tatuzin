@@ -60,13 +60,26 @@ class SessionController extends Notifier<AppSession> {
     String? clientInstanceId,
     AppMembershipContext? membership,
     AppEmployeeContext? employee,
+    bool preserveRuntimeWhenSamePrincipal = false,
   }) {
-    final oldRuntimeKey = _safeRuntimeKeyFor(state);
+    final previousState = state;
+    final oldRuntimeKey = _safeRuntimeKeyFor(previousState);
+    final nextStartedAt =
+        _shouldPreserveRuntime(
+          previousState: previousState,
+          scope: scope,
+          user: user,
+          company: company,
+          clientInstanceId: clientInstanceId,
+          preserveRuntimeWhenSamePrincipal: preserveRuntimeWhenSamePrincipal,
+        )
+        ? previousState.startedAt
+        : DateTime.now();
     final nextState = state.copyWith(
       scope: scope,
       user: user,
       company: company,
-      startedAt: DateTime.now(),
+      startedAt: nextStartedAt,
       isOfflineFallback: isOfflineFallback,
       clientInstanceId: clientInstanceId,
       clearClientInstanceId: clientInstanceId == null,
@@ -93,7 +106,14 @@ class SessionController extends Notifier<AppSession> {
   }
 
   void updateCompany(CompanyContext company) {
-    state = state.copyWith(company: company, startedAt: DateTime.now());
+    final previousState = state;
+    final nextState = previousState.copyWith(company: company);
+    if (_safeIsolationKeyFor(previousState) !=
+        _safeIsolationKeyFor(nextState)) {
+      state = nextState.copyWith(startedAt: DateTime.now());
+      return;
+    }
+    state = nextState;
   }
 
   String _safeRuntimeKeyFor(AppSession session) {
@@ -101,6 +121,41 @@ class SessionController extends Notifier<AppSession> {
       return SessionIsolation.runtimeKeyFor(session);
     } catch (_) {
       return 'invalid_session_runtime_key';
+    }
+  }
+
+  bool _shouldPreserveRuntime({
+    required AppSession previousState,
+    required SessionScope scope,
+    required AppUser user,
+    required CompanyContext company,
+    required String? clientInstanceId,
+    required bool preserveRuntimeWhenSamePrincipal,
+  }) {
+    if (!preserveRuntimeWhenSamePrincipal) {
+      return false;
+    }
+    final previousIsolationKey = _safeIsolationKeyFor(previousState);
+    final nextPreview = previousState.copyWith(
+      scope: scope,
+      user: user,
+      company: company,
+      clientInstanceId: clientInstanceId,
+      clearClientInstanceId: clientInstanceId == null,
+    );
+    return previousState.hasOperationalIdentity &&
+        previousState.scope == scope &&
+        previousState.user.remoteId == user.remoteId &&
+        previousState.clientInstanceId == clientInstanceId &&
+        previousIsolationKey != null &&
+        previousIsolationKey == _safeIsolationKeyFor(nextPreview);
+  }
+
+  String? _safeIsolationKeyFor(AppSession session) {
+    try {
+      return SessionIsolation.keyFor(session);
+    } catch (_) {
+      return null;
     }
   }
 }

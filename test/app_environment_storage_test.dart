@@ -1,6 +1,6 @@
-import 'package:erp_pdv_app/app/core/config/app_data_mode.dart';
-import 'package:erp_pdv_app/app/core/config/app_environment.dart';
-import 'package:erp_pdv_app/app/core/network/endpoint_config.dart';
+import 'package:tatuzin/app/core/config/app_data_mode.dart';
+import 'package:tatuzin/app/core/config/app_environment.dart';
+import 'package:tatuzin/app/core/network/endpoint_config.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

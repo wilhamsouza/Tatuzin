@@ -1,7 +1,7 @@
-import 'package:erp_pdv_app/app/theme/app_theme.dart';
-import 'package:erp_pdv_app/modules/categorias/domain/entities/category.dart';
-import 'package:erp_pdv_app/modules/produtos/domain/entities/product.dart';
-import 'package:erp_pdv_app/modules/produtos/presentation/widgets/product_form/product_base_info_section.dart';
+import 'package:tatuzin/app/theme/app_theme.dart';
+import 'package:tatuzin/modules/categorias/domain/entities/category.dart';
+import 'package:tatuzin/modules/produtos/domain/entities/product.dart';
+import 'package:tatuzin/modules/produtos/presentation/widgets/product_form/product_base_info_section.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

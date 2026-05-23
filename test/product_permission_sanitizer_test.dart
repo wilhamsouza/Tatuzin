@@ -1,5 +1,5 @@
-import 'package:erp_pdv_app/modules/produtos/domain/entities/product.dart';
-import 'package:erp_pdv_app/modules/produtos/domain/services/product_permission_sanitizer.dart';
+import 'package:tatuzin/modules/produtos/domain/entities/product.dart';
+import 'package:tatuzin/modules/produtos/domain/services/product_permission_sanitizer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,4 +1,4 @@
-import 'package:erp_pdv_app/modules/produtos/domain/services/product_cost_calculator.dart';
+import 'package:tatuzin/modules/produtos/domain/services/product_cost_calculator.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

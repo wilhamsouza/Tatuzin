@@ -1,23 +1,23 @@
 import 'dart:async';
 
-import 'package:erp_pdv_app/app/core/app_context/app_operational_context.dart';
-import 'package:erp_pdv_app/app/core/app_context/data_access_policy.dart';
-import 'package:erp_pdv_app/app/core/config/app_data_mode.dart';
-import 'package:erp_pdv_app/app/core/config/app_environment.dart';
-import 'package:erp_pdv_app/app/core/network/endpoint_config.dart';
-import 'package:erp_pdv_app/app/core/network/remote_feature_diagnostic.dart';
-import 'package:erp_pdv_app/app/core/session/app_session.dart';
-import 'package:erp_pdv_app/app/core/session/app_user.dart';
-import 'package:erp_pdv_app/app/core/session/company_context.dart';
-import 'package:erp_pdv_app/modules/fiado/data/datasources/fiado_remote_datasource.dart';
-import 'package:erp_pdv_app/modules/fiado/data/fiado_repository_impl.dart';
-import 'package:erp_pdv_app/modules/fiado/data/models/remote_fiado_payment_record.dart';
-import 'package:erp_pdv_app/modules/fiado/domain/entities/fiado_account.dart';
-import 'package:erp_pdv_app/modules/fiado/domain/entities/fiado_detail.dart';
-import 'package:erp_pdv_app/modules/fiado/domain/entities/fiado_payment_entry.dart';
-import 'package:erp_pdv_app/modules/fiado/domain/entities/fiado_payment_input.dart';
-import 'package:erp_pdv_app/modules/fiado/domain/repositories/fiado_repository.dart';
-import 'package:erp_pdv_app/modules/vendas/domain/entities/sale_enums.dart';
+import 'package:tatuzin/app/core/app_context/app_operational_context.dart';
+import 'package:tatuzin/app/core/app_context/data_access_policy.dart';
+import 'package:tatuzin/app/core/config/app_data_mode.dart';
+import 'package:tatuzin/app/core/config/app_environment.dart';
+import 'package:tatuzin/app/core/network/endpoint_config.dart';
+import 'package:tatuzin/app/core/network/remote_feature_diagnostic.dart';
+import 'package:tatuzin/app/core/session/app_session.dart';
+import 'package:tatuzin/app/core/session/app_user.dart';
+import 'package:tatuzin/app/core/session/company_context.dart';
+import 'package:tatuzin/modules/fiado/data/datasources/fiado_remote_datasource.dart';
+import 'package:tatuzin/modules/fiado/data/fiado_repository_impl.dart';
+import 'package:tatuzin/modules/fiado/data/models/remote_fiado_payment_record.dart';
+import 'package:tatuzin/modules/fiado/domain/entities/fiado_account.dart';
+import 'package:tatuzin/modules/fiado/domain/entities/fiado_detail.dart';
+import 'package:tatuzin/modules/fiado/domain/entities/fiado_payment_entry.dart';
+import 'package:tatuzin/modules/fiado/domain/entities/fiado_payment_input.dart';
+import 'package:tatuzin/modules/fiado/domain/repositories/fiado_repository.dart';
+import 'package:tatuzin/modules/vendas/domain/entities/sale_enums.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:erp_pdv_app/modules/produtos/data/models/remote_product_record.dart';
-import 'package:erp_pdv_app/modules/produtos/domain/entities/product.dart';
+import 'package:tatuzin/modules/produtos/data/models/remote_product_record.dart';
+import 'package:tatuzin/modules/produtos/domain/entities/product.dart';
 
 void main() {
   test('remote product json keeps cost source and snapshots explicit', () {

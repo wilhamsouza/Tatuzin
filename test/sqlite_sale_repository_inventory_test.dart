@@ -1,18 +1,18 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite/sqflite.dart';
 
-import 'package:erp_pdv_app/app/core/app_context/app_operational_context.dart';
-import 'package:erp_pdv_app/app/core/config/app_environment.dart';
-import 'package:erp_pdv_app/app/core/database/table_names.dart';
-import 'package:erp_pdv_app/app/core/errors/app_exceptions.dart';
-import 'package:erp_pdv_app/app/core/session/app_session.dart';
-import 'package:erp_pdv_app/app/core/sync/operational_sync_event.dart';
-import 'package:erp_pdv_app/app/core/sync/operational_sync_queue_item.dart';
-import 'package:erp_pdv_app/app/core/sync/operational_sync_queue_repository.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_feature_keys.dart';
-import 'package:erp_pdv_app/modules/vendas/data/sqlite_sale_repository.dart';
-import 'package:erp_pdv_app/modules/vendas/domain/entities/checkout_input.dart';
-import 'package:erp_pdv_app/modules/vendas/domain/entities/sale_enums.dart';
+import 'package:tatuzin/app/core/app_context/app_operational_context.dart';
+import 'package:tatuzin/app/core/config/app_environment.dart';
+import 'package:tatuzin/app/core/database/table_names.dart';
+import 'package:tatuzin/app/core/errors/app_exceptions.dart';
+import 'package:tatuzin/app/core/session/app_session.dart';
+import 'package:tatuzin/app/core/sync/operational_sync_event.dart';
+import 'package:tatuzin/app/core/sync/operational_sync_queue_item.dart';
+import 'package:tatuzin/app/core/sync/operational_sync_queue_repository.dart';
+import 'package:tatuzin/app/core/sync/sync_feature_keys.dart';
+import 'package:tatuzin/modules/vendas/data/sqlite_sale_repository.dart';
+import 'package:tatuzin/modules/vendas/domain/entities/checkout_input.dart';
+import 'package:tatuzin/modules/vendas/domain/entities/sale_enums.dart';
 
 import 'support/sale_inventory_test_support.dart';
 

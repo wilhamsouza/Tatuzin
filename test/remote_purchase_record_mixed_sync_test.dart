@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:erp_pdv_app/app/core/sync/sync_status.dart';
-import 'package:erp_pdv_app/modules/compras/data/models/purchase_sync_payload.dart';
-import 'package:erp_pdv_app/modules/compras/data/models/remote_purchase_record.dart';
-import 'package:erp_pdv_app/modules/compras/domain/entities/purchase_item.dart';
-import 'package:erp_pdv_app/modules/compras/domain/entities/purchase_status.dart';
-import 'package:erp_pdv_app/modules/vendas/domain/entities/sale_enums.dart';
+import 'package:tatuzin/app/core/sync/sync_status.dart';
+import 'package:tatuzin/modules/compras/data/models/purchase_sync_payload.dart';
+import 'package:tatuzin/modules/compras/data/models/remote_purchase_record.dart';
+import 'package:tatuzin/modules/compras/domain/entities/purchase_item.dart';
+import 'package:tatuzin/modules/compras/domain/entities/purchase_status.dart';
+import 'package:tatuzin/modules/vendas/domain/entities/sale_enums.dart';
 
 void main() {
   test('mixed purchase sync payload keeps product and supply references', () {

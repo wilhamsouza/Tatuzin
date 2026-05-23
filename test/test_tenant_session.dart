@@ -1,8 +1,8 @@
-import 'package:erp_pdv_app/app/core/database/app_database.dart';
-import 'package:erp_pdv_app/app/core/session/app_session.dart';
-import 'package:erp_pdv_app/app/core/session/app_user.dart';
-import 'package:erp_pdv_app/app/core/session/company_context.dart';
-import 'package:erp_pdv_app/app/core/session/session_provider.dart';
+import 'package:tatuzin/app/core/database/app_database.dart';
+import 'package:tatuzin/app/core/session/app_session.dart';
+import 'package:tatuzin/app/core/session/app_user.dart';
+import 'package:tatuzin/app/core/session/company_context.dart';
+import 'package:tatuzin/app/core/session/session_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 List<Override> testTenantBootstrapOverrides() {

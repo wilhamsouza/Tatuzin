@@ -1,8 +1,8 @@
-import 'package:erp_pdv_app/app/core/database/app_database.dart';
-import 'package:erp_pdv_app/app/core/database/table_names.dart';
-import 'package:erp_pdv_app/modules/estoque/domain/entities/stock_reservation.dart';
-import 'package:erp_pdv_app/modules/pedidos/domain/entities/operational_order.dart';
-import 'package:erp_pdv_app/modules/vendas/presentation/providers/sales_providers.dart';
+import 'package:tatuzin/app/core/database/app_database.dart';
+import 'package:tatuzin/app/core/database/table_names.dart';
+import 'package:tatuzin/modules/estoque/domain/entities/stock_reservation.dart';
+import 'package:tatuzin/modules/pedidos/domain/entities/operational_order.dart';
+import 'package:tatuzin/modules/vendas/presentation/providers/sales_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';

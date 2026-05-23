@@ -1,11 +1,11 @@
-import 'package:erp_pdv_app/app/core/app_context/record_identity.dart';
-import 'package:erp_pdv_app/app/core/database/app_database.dart';
-import 'package:erp_pdv_app/app/core/database/table_names.dart';
-import 'package:erp_pdv_app/app/core/sync/sqlite_sync_metadata_repository.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_feature_keys.dart';
-import 'package:erp_pdv_app/modules/produtos/data/models/remote_product_record.dart';
-import 'package:erp_pdv_app/modules/produtos/data/sqlite_product_repository.dart';
-import 'package:erp_pdv_app/modules/produtos/domain/entities/product.dart';
+import 'package:tatuzin/app/core/app_context/record_identity.dart';
+import 'package:tatuzin/app/core/database/app_database.dart';
+import 'package:tatuzin/app/core/database/table_names.dart';
+import 'package:tatuzin/app/core/sync/sqlite_sync_metadata_repository.dart';
+import 'package:tatuzin/app/core/sync/sync_feature_keys.dart';
+import 'package:tatuzin/modules/produtos/data/models/remote_product_record.dart';
+import 'package:tatuzin/modules/produtos/data/sqlite_product_repository.dart';
+import 'package:tatuzin/modules/produtos/domain/entities/product.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 

@@ -186,8 +186,10 @@ class _AppStartupTrace {
 }
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
-  final session = ref.watch(appSessionProvider);
-  if (!session.hasOperationalIdentity) {
+  final hasOperationalIdentity = ref.watch(
+    appSessionProvider.select((session) => session.hasOperationalIdentity),
+  );
+  if (!hasOperationalIdentity) {
     throw const AppStartupException(
       'Sessao operacional invalida. Entre com uma conta vinculada a uma empresa antes de abrir o banco local.',
       cause: 'missing_company_user_or_client_instance',

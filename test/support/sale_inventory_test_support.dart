@@ -1,19 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'package:erp_pdv_app/app/core/app_context/app_operational_context.dart';
-import 'package:erp_pdv_app/app/core/config/app_environment.dart';
-import 'package:erp_pdv_app/app/core/database/app_database.dart';
-import 'package:erp_pdv_app/app/core/database/table_names.dart';
-import 'package:erp_pdv_app/app/core/session/app_session.dart';
-import 'package:erp_pdv_app/app/core/sync/sqlite_sync_metadata_repository.dart';
-import 'package:erp_pdv_app/app/core/sync/sqlite_sync_queue_repository.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_metadata.dart';
-import 'package:erp_pdv_app/app/core/sync/sync_queue_operation.dart';
-import 'package:erp_pdv_app/modules/carrinho/domain/entities/cart_item.dart';
-import 'package:erp_pdv_app/modules/estoque/domain/entities/inventory_movement.dart';
-import 'package:erp_pdv_app/modules/historico_vendas/data/sqlite_sale_return_repository.dart';
-import 'package:erp_pdv_app/modules/vendas/data/sqlite_sale_repository.dart';
+import 'package:tatuzin/app/core/app_context/app_operational_context.dart';
+import 'package:tatuzin/app/core/config/app_environment.dart';
+import 'package:tatuzin/app/core/database/app_database.dart';
+import 'package:tatuzin/app/core/database/table_names.dart';
+import 'package:tatuzin/app/core/session/app_session.dart';
+import 'package:tatuzin/app/core/sync/sqlite_sync_metadata_repository.dart';
+import 'package:tatuzin/app/core/sync/sqlite_sync_queue_repository.dart';
+import 'package:tatuzin/app/core/sync/sync_metadata.dart';
+import 'package:tatuzin/app/core/sync/sync_queue_operation.dart';
+import 'package:tatuzin/modules/carrinho/domain/entities/cart_item.dart';
+import 'package:tatuzin/modules/estoque/domain/entities/inventory_movement.dart';
+import 'package:tatuzin/modules/historico_vendas/data/sqlite_sale_return_repository.dart';
+import 'package:tatuzin/modules/vendas/data/sqlite_sale_repository.dart';
 
 void initializeSaleInventoryTestSupport() {
   TestWidgetsFlutterBinding.ensureInitialized();

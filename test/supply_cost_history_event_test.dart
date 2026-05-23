@@ -1,4 +1,4 @@
-import 'package:erp_pdv_app/modules/insumos/domain/entities/supply_cost_history_entry.dart';
+import 'package:tatuzin/modules/insumos/domain/entities/supply_cost_history_entry.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,6 +1,6 @@
-import 'package:erp_pdv_app/app/theme/app_theme.dart';
-import 'package:erp_pdv_app/modules/relatorios/presentation/widgets/report_donut_chart_card.dart';
-import 'package:erp_pdv_app/modules/relatorios/domain/entities/report_donut_slice.dart';
+import 'package:tatuzin/app/theme/app_theme.dart';
+import 'package:tatuzin/modules/relatorios/presentation/widgets/report_donut_chart_card.dart';
+import 'package:tatuzin/modules/relatorios/domain/entities/report_donut_slice.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

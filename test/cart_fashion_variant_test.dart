@@ -1,9 +1,9 @@
-import 'package:erp_pdv_app/modules/carrinho/presentation/providers/cart_provider.dart';
-import 'package:erp_pdv_app/modules/estoque/domain/entities/stock_availability.dart';
-import 'package:erp_pdv_app/modules/estoque/domain/entities/stock_reservation.dart';
-import 'package:erp_pdv_app/modules/estoque/domain/repositories/stock_availability_repository.dart';
-import 'package:erp_pdv_app/modules/estoque/presentation/providers/inventory_providers.dart';
-import 'package:erp_pdv_app/modules/produtos/domain/entities/product.dart';
+import 'package:tatuzin/modules/carrinho/presentation/providers/cart_provider.dart';
+import 'package:tatuzin/modules/estoque/domain/entities/stock_availability.dart';
+import 'package:tatuzin/modules/estoque/domain/entities/stock_reservation.dart';
+import 'package:tatuzin/modules/estoque/domain/repositories/stock_availability_repository.dart';
+import 'package:tatuzin/modules/estoque/presentation/providers/inventory_providers.dart';
+import 'package:tatuzin/modules/produtos/domain/entities/product.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
