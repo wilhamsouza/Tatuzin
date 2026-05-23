@@ -871,9 +871,8 @@ describe("operational local-first sync routes", () => {
       }),
     ]);
 
-    const rejected = (
-      response.data as { rejected: Array<{ code: string }> }
-    ).rejected;
+    const rejected = (response.data as { rejected: Array<{ code: string }> })
+      .rejected;
     assert.equal(rejected[0]?.code, "CASH_SESSION_INVALID_STATUS");
     const failedCount = await prisma.syncEvent.count({
       where: {
@@ -1582,14 +1581,15 @@ describe("operational local-first sync routes", () => {
       "PRODUCT_VARIANT_REMOTE_ID_REQUIRED",
     );
 
-    const [updatedProduct, updatedVariant, deductionsCount] =
-      await Promise.all([
+    const [updatedProduct, updatedVariant, deductionsCount] = await Promise.all(
+      [
         prisma.product.findUniqueOrThrow({ where: { id: product.id } }),
         prisma.productVariant.findUniqueOrThrow({ where: { id: variant.id } }),
         prisma.stockDeduction.count({
           where: { companyId: fixture.companyId },
         }),
-      ]);
+      ],
+    );
     assert.equal(updatedProduct.stockMil, 10_000);
     assert.equal(updatedVariant.stockMil, 5_000);
     assert.equal(deductionsCount, 0);
@@ -2093,7 +2093,55 @@ describe("operational local-first sync routes", () => {
     assert.equal(item.totalCents, 1500);
   });
 
-  it("creates OPERATIONAL_ORDER_NOT_FOUND for item without order", async () => {
+  it("defers operationalOrderItem before parent and materializes after operationalOrder arrives", async () => {
+    const fixture = await createFixture();
+    const orderLocalId = `${runId}-order-item-deferred-order`;
+    const itemLocalId = `${runId}-order-item-deferred`;
+
+    const response = await push(fixture, [
+      buildEvent("order-item-deferred-create", "operationalOrderItem", {
+        entityLocalId: itemLocalId,
+        payload: {
+          operationalOrderLocalId: orderLocalId,
+          description: "Item em espera",
+          quantityMil: 1000,
+          unitPriceCents: 12500,
+          totalCents: 12500,
+        },
+      }),
+      buildEvent("order-item-deferred-order-create", "operationalOrder", {
+        entityLocalId: orderLocalId,
+        payload: { status: "open", totalCents: 12500 },
+      }),
+    ]);
+
+    assert.equal(response.status, 202);
+    assert.equal(
+      (response.data as { summary: { conflicts: number } }).summary.conflicts,
+      0,
+    );
+
+    const item = await prisma.operationalOrderItem.findUniqueOrThrow({
+      where: {
+        companyId_localUuid: {
+          companyId: fixture.companyId,
+          localUuid: itemLocalId,
+        },
+      },
+    });
+    assert.equal(item.description, "Item em espera");
+
+    const pending = await prisma.syncEvent.count({
+      where: {
+        companyId: fixture.companyId,
+        eventId: "order-item-deferred-create",
+        status: "PENDING",
+      },
+    });
+    assert.equal(pending, 0);
+  });
+
+  it("keeps operationalOrderItem with missing local parent pending instead of final conflict", async () => {
     const fixture = await createFixture();
 
     const response = await push(fixture, [
@@ -2109,9 +2157,82 @@ describe("operational local-first sync routes", () => {
     ]);
 
     assert.equal(
+      (response.data as { summary: { conflicts: number; accepted: number } })
+        .summary.conflicts,
+      0,
+    );
+    assert.equal(
+      (response.data as { summary: { conflicts: number; accepted: number } })
+        .summary.accepted,
+      1,
+    );
+
+    const pending = await prisma.syncEvent.findFirstOrThrow({
+      where: {
+        companyId: fixture.companyId,
+        eventId: "order-item-without-order",
+      },
+    });
+    assert.equal(pending.status, "PENDING");
+    assert.equal(pending.rejectionCode, "OPERATIONAL_ORDER_NOT_FOUND");
+  });
+
+  it("creates a clear conflict when operationalOrderItem has no order reference", async () => {
+    const fixture = await createFixture();
+
+    const response = await push(fixture, [
+      buildEvent("order-item-no-order-reference", "operationalOrderItem", {
+        entityLocalId: `${runId}-order-item-no-order-reference`,
+        payload: {
+          description: "Item sem pedido",
+          quantityMil: 1000,
+          totalCents: 1000,
+        },
+      }),
+    ]);
+
+    assert.equal(
       (response.data as { conflicts: Array<{ code: string }> }).conflicts[0]
         ?.code,
-      "OPERATIONAL_ORDER_NOT_FOUND",
+      "OPERATIONAL_ORDER_REFERENCE_REQUIRED",
+    );
+  });
+
+  it("blocks operationalOrderItem that references another company order", async () => {
+    const fixture = await createFixture();
+    const otherFixture = await createFixture();
+    const otherOrderLocalId = `${runId}-other-company-order`;
+    await push(otherFixture, [
+      buildEvent("other-company-order-create", "operationalOrder", {
+        entityLocalId: otherOrderLocalId,
+        payload: { status: "open", totalCents: 1000 },
+      }),
+    ]);
+    const otherOrder = await prisma.operationalOrder.findUniqueOrThrow({
+      where: {
+        companyId_localUuid: {
+          companyId: otherFixture.companyId,
+          localUuid: otherOrderLocalId,
+        },
+      },
+    });
+
+    const response = await push(fixture, [
+      buildEvent("order-item-other-company-order", "operationalOrderItem", {
+        entityLocalId: `${runId}-order-item-other-company-order`,
+        payload: {
+          operationalOrderId: otherOrder.id,
+          description: "Item cruzado",
+          quantityMil: 1000,
+          totalCents: 1000,
+        },
+      }),
+    ]);
+
+    assert.equal(
+      (response.data as { conflicts: Array<{ code: string }> }).conflicts[0]
+        ?.code,
+      "OPERATIONAL_ORDER_COMPANY_MISMATCH",
     );
   });
 
@@ -2690,6 +2811,83 @@ describe("operational local-first sync routes", () => {
       (response.data as { conflict: { status: string } }).conflict.status,
       "RESOLVED",
     );
+  });
+
+  it("reprocesses existing OPERATIONAL_ORDER_NOT_FOUND when parent order exists", async () => {
+    const fixture = await createFixture();
+    const orderLocalUuid = `${runId}-reprocess-order`;
+    const legacyOrderLocalId = 4;
+    await push(fixture, [
+      buildEvent("reprocess-order-create", "operationalOrder", {
+        entityLocalId: orderLocalUuid,
+        payload: {
+          localId: legacyOrderLocalId,
+          uuid: orderLocalUuid,
+          status: "open",
+          totalCents: 12500,
+        },
+      }),
+    ]);
+
+    const syncEvent = await prisma.syncEvent.create({
+      data: {
+        companyId: fixture.companyId,
+        deviceId: fixture.deviceId,
+        userId: fixture.userId,
+        eventId: "reprocess-order-item-conflict",
+        feature: "pdv",
+        entity: "operationalOrderItem",
+        operation: "create",
+        entityLocalId: `${runId}-reprocess-order-item`,
+        occurredAt: new Date(),
+        payload: {
+          uuid: `${runId}-reprocess-order-item`,
+          operationalOrderId: legacyOrderLocalId,
+          description: "Item legado",
+          quantityMil: 1000,
+          totalCents: 12500,
+        },
+        status: "CONFLICT",
+        serverVersion: BigInt(99),
+      },
+    });
+    const conflict = await prisma.syncConflict.create({
+      data: {
+        companyId: fixture.companyId,
+        deviceId: fixture.deviceId,
+        userId: fixture.userId,
+        syncEventId: syncEvent.id,
+        entity: "operationalOrderItem",
+        entityLocalId: `${runId}-reprocess-order-item`,
+        code: "OPERATIONAL_ORDER_NOT_FOUND",
+        message: "Pedido operacional nao encontrado para materializar item.",
+        payload: { operationalOrderId: legacyOrderLocalId },
+      },
+    });
+
+    const response = await requestJson(
+      "POST",
+      `/sync/conflicts/${conflict.id}/reprocess`,
+      { token: fixture.token },
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal((response.data as { status: string }).status, "reprocessed");
+
+    const item = await prisma.operationalOrderItem.findUniqueOrThrow({
+      where: {
+        companyId_localUuid: {
+          companyId: fixture.companyId,
+          localUuid: `${runId}-reprocess-order-item`,
+        },
+      },
+    });
+    assert.equal(item.totalCents, 12500);
+
+    const resolved = await prisma.syncConflict.findUniqueOrThrow({
+      where: { id: conflict.id },
+    });
+    assert.equal(resolved.status, "RESOLVED");
   });
 
   it("enforces the initial 100 events per push limit", async () => {

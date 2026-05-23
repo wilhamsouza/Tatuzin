@@ -1,3 +1,5 @@
+import { SyncEventStatus } from "@prisma/client";
+
 import {
   domainIdentityFor,
   firstDate,
@@ -95,10 +97,10 @@ export class OperationalOrderMaterializer {
         ? localIdentityFor(input.event, input.payload)
         : null);
     if (localUuid == null) {
-      return null;
+      return this.findOrderByLegacyLocalId(input);
     }
 
-    return input.tx.operationalOrder.findUnique({
+    const order = await input.tx.operationalOrder.findUnique({
       where: {
         companyId_localUuid: {
           companyId: input.context.company.id,
@@ -106,6 +108,7 @@ export class OperationalOrderMaterializer {
         },
       },
     });
+    return order ?? this.findOrderByLegacyLocalId(input);
   }
 
   async convertToSale(
@@ -364,10 +367,15 @@ export class OperationalOrderMaterializer {
 
     const order = existing?.operationalOrder ?? (await this.findOrder(input));
     if (order == null) {
+      const missingOrder = await this.missingOrderResult(input);
+      if (missingOrder != null) {
+        return missingOrder;
+      }
       return {
-        outcome: "conflict",
+        outcome: "deferred",
         code: "OPERATIONAL_ORDER_NOT_FOUND",
-        message: "Pedido operacional nao encontrado para materializar item.",
+        message:
+          "Pedido operacional ainda nao foi materializado para este item.",
         payload: this.orderLookupPayload(input),
       };
     }
@@ -761,6 +769,7 @@ export class OperationalOrderMaterializer {
       "operationalOrderLocalUuid",
       "orderLocalId",
       "orderUuid",
+      "operationalOrderUuid",
     ]);
   }
 
@@ -773,7 +782,104 @@ export class OperationalOrderMaterializer {
         "operationalOrderServerId",
       ]),
       operationalOrderLocalId: this.orderLocalIdentity(input),
+      legacyOperationalOrderLocalId: this.legacyOrderLocalId(input),
     };
+  }
+
+  private async missingOrderResult(input: SyncMaterializerInput) {
+    const serverId = firstUuid(input.payload, [
+      "operationalOrderId",
+      "operationalOrderServerId",
+      "orderServerId",
+    ]);
+    if (serverId != null) {
+      const orderInAnotherCompany = await input.tx.operationalOrder.findFirst({
+        where: {
+          id: serverId,
+          companyId: {
+            not: input.context.company.id,
+          },
+        },
+        select: { id: true, companyId: true },
+      });
+      return {
+        outcome: "conflict" as const,
+        code:
+          orderInAnotherCompany == null
+            ? "OPERATIONAL_ORDER_NOT_FOUND"
+            : "OPERATIONAL_ORDER_COMPANY_MISMATCH",
+        message:
+          orderInAnotherCompany == null
+            ? "Pedido operacional remoto nao encontrado para materializar item."
+            : "Pedido operacional pertence a outra empresa.",
+        payload: this.orderLookupPayload(input),
+      };
+    }
+
+    if (
+      this.orderLocalIdentity(input) == null &&
+      this.legacyOrderLocalId(input) == null
+    ) {
+      return {
+        outcome: "conflict" as const,
+        code: "OPERATIONAL_ORDER_REFERENCE_REQUIRED",
+        message:
+          "operationalOrderItem precisa referenciar o pedido por UUID local ou ID remoto.",
+        payload: this.orderLookupPayload(input),
+      };
+    }
+
+    return null;
+  }
+
+  private legacyOrderLocalId(input: SyncMaterializerInput) {
+    const legacy = firstIdentity(input.payload, ["operationalOrderId"]);
+    return legacy != null && !isUuid(legacy) ? legacy : null;
+  }
+
+  private async findOrderByLegacyLocalId(input: SyncMaterializerInput) {
+    const legacyLocalId = this.legacyOrderLocalId(input);
+    if (legacyLocalId == null) {
+      return null;
+    }
+
+    const parentEvents = await input.tx.syncEvent.findMany({
+      where: {
+        companyId: input.context.company.id,
+        deviceId: input.sourceDeviceId ?? input.context.device.id,
+        entity: "operationalOrder",
+        status: SyncEventStatus.ACCEPTED,
+        entityServerId: {
+          not: null,
+        },
+      },
+      orderBy: [{ createdAt: "desc" }],
+      take: 200,
+      select: {
+        entityServerId: true,
+        payload: true,
+      },
+    });
+
+    for (const event of parentEvents) {
+      const payload = event.payload;
+      if (
+        payload != null &&
+        typeof payload === "object" &&
+        !Array.isArray(payload) &&
+        String((payload as Record<string, unknown>).localId ?? "") ===
+          legacyLocalId
+      ) {
+        return input.tx.operationalOrder.findFirst({
+          where: {
+            id: event.entityServerId!,
+            companyId: input.context.company.id,
+          },
+        });
+      }
+    }
+
+    return null;
   }
 
   private immutable(order: OperationalOrderLike, message: string) {

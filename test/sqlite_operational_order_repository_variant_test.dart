@@ -202,10 +202,25 @@ void main() {
         fixture.database,
         entity: 'operationalOrderItem',
       );
+      final orderEvent = await _loadLatestOperationalPayload(
+        fixture.database,
+        entity: 'operationalOrder',
+      );
       expect(itemEvent['productId'], productRemoteId);
       expect(itemEvent['productLocalId'], 1);
       expect(itemEvent['productVariantId'], variantRemoteId);
       expect(itemEvent['productVariantLocalId'], 10);
+      expect(itemEvent['operationalOrderLocalId'], orderEvent['uuid']);
+      expect(itemEvent['operationalOrderLocalUuid'], orderEvent['uuid']);
+      expect(itemEvent['orderUuid'], orderEvent['uuid']);
+
+      final eventEntities = await _loadOperationalEventEntities(
+        fixture.database,
+      );
+      expect(
+        eventEntities.indexOf('operationalOrder'),
+        lessThan(eventEntities.indexOf('operationalOrderItem')),
+      );
 
       await fixture.repository.sendToKitchen(orderId);
       final reservationEvent = await _loadLatestOperationalPayload(
@@ -216,6 +231,12 @@ void main() {
       expect(reservationEvent['productLocalId'], 1);
       expect(reservationEvent['productVariantId'], variantRemoteId);
       expect(reservationEvent['productVariantLocalId'], 10);
+      expect(reservationEvent['operationalOrderLocalId'], orderEvent['uuid']);
+      expect(reservationEvent['orderUuid'], orderEvent['uuid']);
+      expect(
+        reservationEvent['operationalOrderItemLocalId'],
+        itemEvent['uuid'],
+      );
     },
   );
 
@@ -709,6 +730,15 @@ Future<Map<String, dynamic>> _loadLatestOperationalPayload(
   expect(rows, isNotEmpty);
   return jsonDecode(rows.single['payload_json'] as String)
       as Map<String, dynamic>;
+}
+
+Future<List<String>> _loadOperationalEventEntities(DatabaseExecutor db) async {
+  final rows = await db.query(
+    TableNames.operationalSyncEvents,
+    columns: const ['entity'],
+    orderBy: 'created_at ASC, id ASC',
+  );
+  return rows.map((row) => row['entity'] as String).toList(growable: false);
 }
 
 Future<int> _insertLegacyOrder(DatabaseExecutor db) {

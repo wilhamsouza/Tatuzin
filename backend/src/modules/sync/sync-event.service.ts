@@ -1,4 +1,4 @@
-import { Prisma, SyncEventStatus } from "@prisma/client";
+import { Prisma, SyncConflictStatus, SyncEventStatus } from "@prisma/client";
 import { ZodError } from "zod";
 
 import { prisma } from "../../database/prisma";
@@ -61,6 +61,19 @@ type PullSyncEvent = {
   serverVersion: bigint | null;
   materializedAt: Date | null;
   createdAt: Date;
+};
+
+type StoredSyncEvent = {
+  id: string;
+  deviceId: string;
+  eventId: string;
+  feature: string;
+  entity: string;
+  operation: string;
+  entityLocalId: string | null;
+  entityServerId: string | null;
+  occurredAt: Date;
+  payload: Prisma.JsonValue;
 };
 
 export class SyncEventService {
@@ -440,6 +453,38 @@ export class SyncEventService {
           };
         }
 
+        if (materialized.outcome === "deferred") {
+          const syncEvent = await tx.syncEvent.create({
+            data: {
+              companyId: context.company.id,
+              deviceId: context.device.id,
+              userId: context.user.id,
+              eventId: event.eventId,
+              feature: event.feature,
+              entity: event.entity,
+              operation: event.operation,
+              entityLocalId: event.entityLocalId,
+              entityServerId: event.entityServerId,
+              occurredAt: new Date(event.occurredAt),
+              payload: event.payload as Prisma.InputJsonValue,
+              status: SyncEventStatus.PENDING,
+              rejectionCode: materialized.code,
+              rejectionMessage: materialized.message,
+            },
+          });
+
+          return {
+            bucket: "accepted" as const,
+            item: {
+              eventId: syncEvent.eventId,
+              entity: syncEvent.entity,
+              operation: syncEvent.operation,
+              serverVersion: null,
+              entityServerId: syncEvent.entityServerId,
+            },
+          };
+        }
+
         if (materialized.outcome === "conflict") {
           const serverVersion = await this.versionService.nextCompanyVersion(
             tx,
@@ -547,6 +592,10 @@ export class SyncEventService {
           serverVersion,
         });
 
+        if (event.entity === "operationalOrder") {
+          await this.reprocessPendingOperationalOrderDependents(tx, context);
+        }
+
         return {
           bucket: "accepted" as const,
           item: {
@@ -562,6 +611,231 @@ export class SyncEventService {
       const item = await this.failEvent(context, event, error);
       return { bucket: "rejected" as const, item };
     }
+  }
+
+  async reprocessConflict(context: AppContext, conflictId: string) {
+    const conflict = await prisma.syncConflict.findFirst({
+      where: {
+        id: conflictId,
+        companyId: context.company.id,
+      },
+      include: {
+        syncEvent: true,
+      },
+    });
+
+    if (conflict == null) {
+      throw new AppError(
+        "Conflito de sincronizacao nao encontrado.",
+        404,
+        "SYNC_CONFLICT_NOT_FOUND",
+      );
+    }
+
+    if (
+      conflict.status !== SyncConflictStatus.OPEN ||
+      conflict.code !== "OPERATIONAL_ORDER_NOT_FOUND"
+    ) {
+      return {
+        ok: false,
+        status: "not_reprocessable",
+        conflictId: conflict.id,
+        code: conflict.code,
+      };
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const result = await this.materializeStoredEvent(
+        tx,
+        context,
+        conflict.syncEvent,
+        { createConflict: false },
+      );
+
+      if (result === "accepted" || result === "duplicate") {
+        const resolved = await tx.syncConflict.update({
+          where: { id: conflict.id },
+          data: {
+            status: SyncConflictStatus.RESOLVED,
+            resolvedAt: new Date(),
+            resolvedByUserId: context.user.id,
+            resolution: {
+              action: "reprocess",
+              outcome: result,
+            },
+          },
+        });
+        return {
+          ok: true,
+          status: "reprocessed",
+          conflict: {
+            id: resolved.id,
+            status: resolved.status,
+            resolvedAt: resolved.resolvedAt?.toISOString() ?? null,
+          },
+        };
+      }
+
+      return {
+        ok: false,
+        status: result,
+        conflictId: conflict.id,
+        code: conflict.code,
+      };
+    });
+  }
+
+  private async reprocessPendingOperationalOrderDependents(
+    tx: Prisma.TransactionClient,
+    context: AppContext,
+  ) {
+    const pendingItems = await tx.syncEvent.findMany({
+      where: {
+        companyId: context.company.id,
+        deviceId: context.device.id,
+        entity: "operationalOrderItem",
+        status: SyncEventStatus.PENDING,
+      },
+      orderBy: [{ createdAt: "asc" }],
+      take: 100,
+    });
+
+    for (const pending of pendingItems) {
+      await this.materializeStoredEvent(tx, context, pending);
+    }
+  }
+
+  private async materializeStoredEvent(
+    tx: Prisma.TransactionClient,
+    context: AppContext,
+    stored: StoredSyncEvent,
+    options: { createConflict?: boolean } = {},
+  ): Promise<"accepted" | "duplicate" | "conflict" | "rejected" | "deferred"> {
+    const payload = asPayloadRecord(stored.payload);
+    const event: SyncPushEventInput = {
+      eventId: stored.eventId,
+      feature: stored.feature,
+      entity: stored.entity,
+      operation: stored.operation,
+      entityLocalId: stored.entityLocalId ?? undefined,
+      entityServerId: stored.entityServerId ?? undefined,
+      occurredAt: stored.occurredAt.toISOString(),
+      payload,
+    };
+    const materialized = await this.materializer.materialize({
+      tx,
+      context,
+      event,
+      payload,
+      sourceDeviceId: stored.deviceId,
+    });
+
+    if (materialized.outcome === "deferred") {
+      await tx.syncEvent.update({
+        where: { id: stored.id },
+        data: {
+          rejectionCode: materialized.code,
+          rejectionMessage: materialized.message,
+        },
+      });
+      return "deferred";
+    }
+
+    if (materialized.outcome === "duplicate") {
+      await tx.syncEvent.update({
+        where: { id: stored.id },
+        data: {
+          status: SyncEventStatus.DUPLICATE,
+          entityServerId: materialized.entityServerId ?? stored.entityServerId,
+          rejectionCode: null,
+          rejectionMessage: null,
+        },
+      });
+      return "duplicate";
+    }
+
+    if (materialized.outcome === "rejected") {
+      await tx.syncEvent.update({
+        where: { id: stored.id },
+        data: {
+          status: SyncEventStatus.REJECTED,
+          rejectionCode: materialized.code,
+          rejectionMessage: materialized.message,
+        },
+      });
+      return "rejected";
+    }
+
+    if (materialized.outcome === "conflict") {
+      const serverVersion = await this.versionService.nextCompanyVersion(
+        tx,
+        context.company.id,
+      );
+      const syncEvent = await tx.syncEvent.update({
+        where: { id: stored.id },
+        data: {
+          status: SyncEventStatus.CONFLICT,
+          serverVersion,
+          rejectionCode: null,
+          rejectionMessage: null,
+        },
+      });
+
+      if (options.createConflict !== false) {
+        await this.conflictService.createConflict({
+          tx,
+          companyId: context.company.id,
+          deviceId: syncEvent.deviceId,
+          userId: syncEvent.userId,
+          syncEventId: syncEvent.id,
+          entity: syncEvent.entity,
+          entityLocalId: syncEvent.entityLocalId,
+          entityServerId: syncEvent.entityServerId,
+          code: materialized.code,
+          message: materialized.message,
+          payload: materialized.payload ?? {},
+        });
+      }
+
+      await this.checkpointService.recordPush({
+        tx,
+        companyId: context.company.id,
+        deviceId: syncEvent.deviceId,
+        feature: syncEvent.feature,
+        serverVersion,
+      });
+
+      return "conflict";
+    }
+
+    const serverVersion = await this.versionService.nextCompanyVersion(
+      tx,
+      context.company.id,
+    );
+    const syncEvent = await tx.syncEvent.update({
+      where: { id: stored.id },
+      data: {
+        status: SyncEventStatus.ACCEPTED,
+        entityServerId: materialized.entityServerId ?? stored.entityServerId,
+        serverVersion,
+        materializedAt:
+          materialized.materializedAt === undefined
+            ? new Date()
+            : materialized.materializedAt,
+        rejectionCode: null,
+        rejectionMessage: null,
+      },
+    });
+
+    await this.checkpointService.recordPush({
+      tx,
+      companyId: context.company.id,
+      deviceId: syncEvent.deviceId,
+      feature: syncEvent.feature,
+      serverVersion,
+    });
+
+    return "accepted";
   }
 
   private async rejectMalformedEvent(

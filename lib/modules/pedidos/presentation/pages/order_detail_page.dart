@@ -1114,7 +1114,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     AccountCloudStatusSnapshot accountCloud,
   ) {
     return accountCloud.conflictCount > 0 &&
-        detail.order.status == OperationalOrderStatus.delivered;
+        detail.order.status != OperationalOrderStatus.canceled;
   }
 
   Widget _buildSyncConflictNotice(
@@ -1134,7 +1134,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
         ),
       ),
       child: Text(
-        'Este pedido foi concluido, mas ha conflito de sincronizacao. Seus dados locais estao preservados. ${accountCloud.conflictCount} conflito(s) pendente(s) precisam de revisao.',
+        'Ha pedidos aguardando sincronizacao. Seus dados locais estao preservados. ${accountCloud.conflictCount} conflito(s) pendente(s) precisam de revisao.',
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
           color: Theme.of(context).colorScheme.onErrorContainer,
           fontWeight: FontWeight.w600,

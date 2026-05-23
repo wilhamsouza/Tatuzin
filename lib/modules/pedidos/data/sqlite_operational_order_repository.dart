@@ -866,6 +866,7 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       productVariantId: item.productVariantId,
       context: 'operationalOrderItem/$operation:${item.uuid}',
     );
+    final orderUuid = await _loadOrderUuid(database, item.orderId);
     await _operationalSyncQueueRepository.enqueue(
       database,
       event: OperationalSyncEvent(
@@ -883,6 +884,10 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
           'localId': item.id,
           'uuid': item.uuid,
           'operationalOrderId': item.orderId,
+          'operationalOrderLocalId': orderUuid,
+          'operationalOrderLocalUuid': orderUuid,
+          'operationalOrderUuid': orderUuid,
+          'orderUuid': orderUuid,
           'productId': productIdentity.productRemoteId,
           'productServerId': productIdentity.productRemoteId,
           'productLocalId': item.productId,
@@ -920,6 +925,14 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
       productVariantId: reservation.productVariantId,
       context: 'stockReservation/$operation:${reservation.uuid}',
     );
+    final orderUuid = await _loadOrderUuid(
+      database,
+      reservation.operationalOrderId,
+    );
+    final orderItemUuid = await _loadOrderItemUuid(
+      database,
+      reservation.operationalOrderItemId,
+    );
     await _operationalSyncQueueRepository.enqueue(
       database,
       event: OperationalSyncEvent(
@@ -937,7 +950,14 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
           'localId': reservation.id,
           'uuid': reservation.uuid,
           'operationalOrderId': reservation.operationalOrderId,
+          'operationalOrderLocalId': orderUuid,
+          'operationalOrderLocalUuid': orderUuid,
+          'operationalOrderUuid': orderUuid,
+          'orderUuid': orderUuid,
           'operationalOrderItemId': reservation.operationalOrderItemId,
+          'operationalOrderItemLocalId': orderItemUuid,
+          'operationalOrderItemLocalUuid': orderItemUuid,
+          'operationalOrderItemUuid': orderItemUuid,
           'productId': productIdentity.productRemoteId,
           'productServerId': productIdentity.productRemoteId,
           'productLocalId': reservation.productId,
@@ -954,6 +974,41 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
         },
       ),
     );
+  }
+
+  Future<String> _loadOrderUuid(DatabaseExecutor database, int orderId) async {
+    final rows = await database.query(
+      TableNames.pedidosOperacionais,
+      columns: const ['uuid'],
+      where: 'id = ?',
+      whereArgs: [orderId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw const ValidationException(
+        'Pedido operacional nao encontrado para sincronizar item.',
+      );
+    }
+    return rows.single['uuid'] as String;
+  }
+
+  Future<String> _loadOrderItemUuid(
+    DatabaseExecutor database,
+    int orderItemId,
+  ) async {
+    final rows = await database.query(
+      TableNames.pedidosOperacionaisItens,
+      columns: const ['uuid'],
+      where: 'id = ?',
+      whereArgs: [orderItemId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw const ValidationException(
+        'Item de pedido operacional nao encontrado para sincronizar reserva.',
+      );
+    }
+    return rows.single['uuid'] as String;
   }
 
   Future<_OperationalProductRemoteIdentity>
