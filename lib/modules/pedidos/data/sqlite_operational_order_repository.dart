@@ -469,6 +469,8 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
         'Nao e permitido adicionar itens neste pedido.',
       );
     }
+    _validateItemAmounts(input);
+    final totalCents = _normalizedItemTotalCents(input);
 
     return database.transaction<int>((txn) async {
       final now = DateTime.now();
@@ -497,7 +499,7 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
         'tamanho_variante_snapshot': _cleanNullable(input.variantSizeSnapshot),
         'quantidade_mil': input.quantityMil,
         'valor_unitario_centavos': input.unitPriceCents,
-        'subtotal_centavos': input.subtotalCents,
+        'subtotal_centavos': totalCents,
         'observacao': _cleanNullable(input.notes),
         'criado_em': nowIso,
         'atualizado_em': nowIso,
@@ -530,6 +532,8 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
         'Nao e permitido editar itens neste pedido.',
       );
     }
+    _validateItemAmounts(input);
+    final totalCents = _normalizedItemTotalCents(input);
 
     await database.transaction((txn) async {
       final now = DateTime.now();
@@ -559,7 +563,7 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
           ),
           'quantidade_mil': input.quantityMil,
           'valor_unitario_centavos': input.unitPriceCents,
-          'subtotal_centavos': input.subtotalCents,
+          'subtotal_centavos': totalCents,
           'observacao': _cleanNullable(input.notes),
           'atualizado_em': nowIso,
         },
@@ -777,6 +781,25 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
     return DateTime.parse(raw);
   }
 
+  void _validateItemAmounts(OperationalOrderItemInput input) {
+    if (input.quantityMil <= 0) {
+      throw const ValidationException(
+        'A quantidade do item precisa ser maior que zero.',
+      );
+    }
+    if (input.unitPriceCents < 0) {
+      throw const ValidationException(
+        'O valor unitario do item nao pode ser negativo.',
+      );
+    }
+  }
+
+  int _normalizedItemTotalCents(OperationalOrderItemInput input) {
+    return _nonNegativeCents(input.subtotalCents);
+  }
+
+  int _nonNegativeCents(int value) => value < 0 ? 0 : value;
+
   Future<void> _touchOrder(
     DatabaseExecutor db, {
     required int orderId,
@@ -902,6 +925,7 @@ class SqliteOperationalOrderRepository implements OperationalOrderRepository {
           'quantityMil': item.quantityMil,
           'unitPriceCents': item.unitPriceCents,
           'subtotalCents': item.subtotalCents,
+          'totalCents': _nonNegativeCents(item.subtotalCents),
           'notes': item.notes,
           'createdAt': item.createdAt.toIso8601String(),
           'updatedAt': item.updatedAt.toIso8601String(),

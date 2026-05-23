@@ -213,6 +213,8 @@ void main() {
       expect(itemEvent['operationalOrderLocalId'], orderEvent['uuid']);
       expect(itemEvent['operationalOrderLocalUuid'], orderEvent['uuid']);
       expect(itemEvent['orderUuid'], orderEvent['uuid']);
+      expect(itemEvent['subtotalCents'], 9900);
+      expect(itemEvent['totalCents'], 9900);
 
       final eventEntities = await _loadOperationalEventEntities(
         fixture.database,
@@ -293,6 +295,66 @@ void main() {
     expect(input.variantSkuSnapshot, 'CAM-BASIC-PRETA-G');
     expect(input.variantColorSnapshot, 'Preta');
     expect(input.variantSizeSnapshot, 'G');
+    expect(input.subtotalCents, 19800);
+  });
+
+  test('sync operacional de item gratis envia totalCents zero', () async {
+    final fixture = await _openRepositoryFixture();
+    addTearDown(fixture.dispose);
+
+    await _insertProduct(fixture.database);
+
+    final orderId = await fixture.repository.create(
+      const OperationalOrderInput(),
+    );
+    await fixture.repository.addItem(
+      orderId,
+      const OperationalOrderItemInput(
+        productId: 1,
+        productNameSnapshot: 'Brinde',
+        quantityMil: 1000,
+        unitPriceCents: 0,
+        subtotalCents: 0,
+      ),
+    );
+
+    final itemEvent = await _loadLatestOperationalPayload(
+      fixture.database,
+      entity: 'operationalOrderItem',
+    );
+
+    expect(itemEvent['subtotalCents'], 0);
+    expect(itemEvent['totalCents'], 0);
+  });
+
+  test('sync operacional normaliza totalCents negativo para zero', () async {
+    final fixture = await _openRepositoryFixture();
+    addTearDown(fixture.dispose);
+
+    await _insertProduct(fixture.database);
+
+    final orderId = await fixture.repository.create(
+      const OperationalOrderInput(),
+    );
+    await fixture.repository.addItem(
+      orderId,
+      const OperationalOrderItemInput(
+        productId: 1,
+        productNameSnapshot: 'Desconto integral',
+        quantityMil: 1000,
+        unitPriceCents: 1800,
+        subtotalCents: -50,
+      ),
+    );
+
+    final items = await fixture.repository.listItems(orderId);
+    final itemEvent = await _loadLatestOperationalPayload(
+      fixture.database,
+      entity: 'operationalOrderItem',
+    );
+
+    expect(items.single.subtotalCents, 0);
+    expect(itemEvent['totalCents'], 0);
   });
 
   test('controller de item manual preserva variante selecionada', () async {

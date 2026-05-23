@@ -4,6 +4,7 @@ import {
   domainIdentityFor,
   firstDate,
   firstIdentity,
+  firstInt,
   firstString,
   firstUuid,
   invalidRemoteIdentity,
@@ -410,15 +411,21 @@ export class OperationalOrderMaterializer {
       };
     }
 
-    const totalCents =
-      nonNegativeInt(input.payload, ["totalCents", "totalPriceCents"]) ??
-      existing?.totalCents;
-    if (totalCents == null || totalCents < 0) {
+    const totalCentsResult = this.resolveOperationalOrderItemTotalCents(
+      input,
+      quantityMil,
+      existing?.totalCents,
+    );
+    if (totalCentsResult.outcome === "rejected") {
+      return totalCentsResult;
+    }
+    const totalCents = totalCentsResult.totalCents;
+    if (totalCents == null) {
       return {
         outcome: "rejected",
         code: "INVALID_TOTAL",
         message:
-          "operationalOrderItem precisa de totalCents maior ou igual a zero.",
+          "operationalOrderItem precisa de totalCents ou dados suficientes para calcular o total.",
       };
     }
 
@@ -523,6 +530,75 @@ export class OperationalOrderMaterializer {
       entityServerId: updated.id,
       materializedAt: updated.updatedAt,
     };
+  }
+
+  private resolveOperationalOrderItemTotalCents(
+    input: SyncMaterializerInput,
+    quantityMil: number,
+    existingTotalCents: number | null | undefined,
+  ):
+    | { outcome: "accepted"; totalCents: number | null }
+    | Extract<SyncMaterializerResult, { outcome: "rejected" }> {
+    const explicitTotal = firstInt(input.payload, [
+      "totalCents",
+      "totalPriceCents",
+      "finalCents",
+    ]);
+    if (explicitTotal != null) {
+      if (explicitTotal < 0) {
+        return {
+          outcome: "rejected",
+          code: "INVALID_TOTAL",
+          message:
+            "operationalOrderItem precisa de totalCents maior ou igual a zero.",
+        };
+      }
+      return { outcome: "accepted", totalCents: explicitTotal };
+    }
+
+    const subtotal = firstInt(input.payload, [
+      "subtotalCents",
+      "subtotalPriceCents",
+    ]);
+    if (subtotal != null) {
+      if (subtotal < 0) {
+        return {
+          outcome: "rejected",
+          code: "INVALID_TOTAL",
+          message:
+            "operationalOrderItem precisa de subtotalCents maior ou igual a zero.",
+        };
+      }
+      return { outcome: "accepted", totalCents: subtotal };
+    }
+
+    if (existingTotalCents != null) {
+      return { outcome: "accepted", totalCents: existingTotalCents };
+    }
+
+    const unitPriceCents = nonNegativeInt(input.payload, [
+      "unitPriceCents",
+      "priceCents",
+    ]);
+    if (unitPriceCents == null) {
+      return { outcome: "accepted", totalCents: null };
+    }
+
+    const discountCents =
+      nonNegativeInt(input.payload, ["discountCents", "itemDiscountCents"]) ??
+      0;
+    const derivedTotalCents =
+      Math.round((unitPriceCents * quantityMil) / 1000) - discountCents;
+    if (derivedTotalCents < 0) {
+      return {
+        outcome: "rejected",
+        code: "INVALID_TOTAL",
+        message:
+          "operationalOrderItem nao pode ter totalCents negativo apos desconto.",
+      };
+    }
+
+    return { outcome: "accepted", totalCents: derivedTotalCents };
   }
 
   private immutableIfNeeded(

@@ -2093,6 +2093,99 @@ describe("operational local-first sync routes", () => {
     assert.equal(item.totalCents, 1500);
   });
 
+  it("normalizes legacy operationalOrderItem/create without totalCents", async () => {
+    const fixture = await createFixture();
+    const orderLocalId = `${runId}-order-item-legacy-total-order`;
+    const itemLocalId = `${runId}-order-item-legacy-total`;
+    await push(fixture, [
+      buildEvent("order-item-legacy-total-order-create", "operationalOrder", {
+        entityLocalId: orderLocalId,
+        payload: { status: "open", totalCents: 1800 },
+      }),
+    ]);
+
+    const response = await push(fixture, [
+      buildEvent("order-item-legacy-total-create", "operationalOrderItem", {
+        entityLocalId: itemLocalId,
+        payload: {
+          operationalOrderLocalId: orderLocalId,
+          description: "Produto legado",
+          quantityMil: 1000,
+          unitPriceCents: 1800,
+        },
+      }),
+    ]);
+
+    assert.equal(response.status, 202);
+    const item = await prisma.operationalOrderItem.findUniqueOrThrow({
+      where: {
+        companyId_localUuid: {
+          companyId: fixture.companyId,
+          localUuid: itemLocalId,
+        },
+      },
+    });
+    assert.equal(item.totalCents, 1800);
+  });
+
+  it("rejects operationalOrderItem/create with negative totalCents", async () => {
+    const fixture = await createFixture();
+    const orderLocalId = `${runId}-order-item-negative-total-order`;
+    await push(fixture, [
+      buildEvent("order-item-negative-total-order-create", "operationalOrder", {
+        entityLocalId: orderLocalId,
+        payload: { status: "open", totalCents: 1000 },
+      }),
+    ]);
+
+    const response = await push(fixture, [
+      buildEvent("order-item-negative-total-create", "operationalOrderItem", {
+        entityLocalId: `${runId}-order-item-negative-total`,
+        payload: {
+          operationalOrderLocalId: orderLocalId,
+          description: "Total invalido",
+          quantityMil: 1000,
+          unitPriceCents: 1000,
+          totalCents: -1,
+        },
+      }),
+    ]);
+
+    const payload = response.data as {
+      rejected: Array<{ code: string; message: string }>;
+    };
+    assert.equal(payload.rejected[0]?.code, "INVALID_TOTAL");
+    assert.match(payload.rejected[0]?.message ?? "", /maior ou igual a zero/);
+  });
+
+  it("rejects operationalOrderItem/create without enough data to derive totalCents", async () => {
+    const fixture = await createFixture();
+    const orderLocalId = `${runId}-order-item-missing-total-order`;
+    await push(fixture, [
+      buildEvent("order-item-missing-total-order-create", "operationalOrder", {
+        entityLocalId: orderLocalId,
+        payload: { status: "open", totalCents: 1000 },
+      }),
+    ]);
+
+    const response = await push(fixture, [
+      buildEvent("order-item-missing-total-create", "operationalOrderItem", {
+        entityLocalId: `${runId}-order-item-missing-total`,
+        payload: {
+          operationalOrderLocalId: orderLocalId,
+          description: "Sem total",
+          quantityMil: 1000,
+        },
+      }),
+    ]);
+
+    const payload = response.data as {
+      rejected: Array<{ code: string; message: string }>;
+    };
+    assert.equal(payload.rejected[0]?.code, "INVALID_TOTAL");
+    assert.match(payload.rejected[0]?.message ?? "", /dados suficientes/);
+  });
+
   it("defers operationalOrderItem before parent and materializes after operationalOrder arrives", async () => {
     const fixture = await createFixture();
     const orderLocalId = `${runId}-order-item-deferred-order`;
