@@ -662,10 +662,21 @@ export class AdminSyncCenterService {
     input: AdminSyncCenterDryRunBodyInput,
   ) {
     const conflict = await this.requireConflict(conflictId, input.companyId);
+    if (conflict.status !== SyncConflictStatus.OPEN) {
+      return {
+        wouldArchive: false,
+        classification: "ALREADY_HANDLED",
+        expectedConfirmationText: "ARQUIVAR",
+        blockers: ["Este conflito ja foi tratado."],
+        risks: [],
+        message: "Este conflito ja foi tratado.",
+      };
+    }
     const diagnostic = await this.classifyConflict(conflict);
     return {
       wouldArchive: diagnostic.canArchive,
       classification: diagnostic.classification,
+      expectedConfirmationText: "ARQUIVAR",
       blockers: diagnostic.canArchive ? [] : diagnostic.blockers,
       risks: diagnostic.risks,
       message: diagnostic.canArchive
@@ -680,6 +691,22 @@ export class AdminSyncCenterService {
     action: AdminActionContext,
   ) {
     const conflict = await this.requireConflict(conflictId, input.companyId);
+    if (input.confirmationText !== "ARQUIVAR") {
+      throw new AppError(
+        "Digite ARQUIVAR para confirmar.",
+        422,
+        "SYNC_CONFLICT_CONFIRMATION_REQUIRED",
+        { expectedConfirmationText: "ARQUIVAR" },
+      );
+    }
+    if (conflict.status !== SyncConflictStatus.OPEN) {
+      throw new AppError(
+        "Este conflito ja foi tratado.",
+        409,
+        "SYNC_CONFLICT_ALREADY_HANDLED",
+        { status: conflict.status },
+      );
+    }
     const diagnostic = await this.classifyConflict(conflict);
     if (!diagnostic.canArchive) {
       throw new AppError(
@@ -695,12 +722,13 @@ export class AdminSyncCenterService {
 
     const before = this.conflictAuditSnapshot(conflict);
     const resolution = {
+      action: "archive",
       strategy: "archived_legacy_event",
       reason: input.reason,
       reviewedBy: action.actorUserId,
       reviewedAt: new Date().toISOString(),
       note: input.note ?? null,
-      source: "admin_sync_center",
+      source: "admin_web",
     };
     const archived = await prisma.syncConflict.update({
       where: { id: conflict.id },

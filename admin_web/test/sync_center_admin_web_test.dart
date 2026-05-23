@@ -311,6 +311,7 @@ void main() {
     await tester.tap(find.text('Arquivar legado'));
     await tester.pumpAndSettle();
 
+    expect(find.text('Digite ARQUIVAR para confirmar.'), findsOneWidget);
     expect(find.text('Motivo obrigatório'), findsOneWidget);
     expect(find.text('Texto de confirmação'), findsOneWidget);
     expect(
@@ -332,6 +333,19 @@ void main() {
       isFalse,
     );
 
+    await tester.enterText(find.byType(TextField).at(1), 'ERRADO');
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Digite ARQUIVAR para liberar a confirmacao.'),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Confirmar'))
+          .enabled,
+      isFalse,
+    );
+
     await tester.enterText(find.byType(TextField).at(1), 'ARQUIVAR');
     await tester.pumpAndSettle();
     expect(
@@ -346,6 +360,42 @@ void main() {
 
     expect(service.archiveCalls, 1);
     expect(service.lastArchiveReason, 'evento legado de teste');
+  });
+
+  testWidgets('dry-run bloqueado mostra motivo e nao libera arquivamento', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeSyncApiService(archiveDryRunAllowed: false);
+    await tester.pumpWidget(
+      _adminTestApp(
+        service: service,
+        child: const SyncConflictDetailPage(
+          companyId: 'company-1',
+          conflictId: 'conflict-legacy',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Dry-run arquivar'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byType(TextField).first,
+      'avaliar conflito legado',
+    );
+    await tester.tap(find.text('Continuar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Resultado do dry-run'), findsOneWidget);
+    expect(find.text('Conflito bloqueado para arquivamento.'), findsWidgets);
+    await tester.tap(find.text('Fechar'));
+    await tester.pumpAndSettle();
+
+    final archiveButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Arquivar legado'),
+    );
+    expect(archiveButton.enabled, isFalse);
   });
 }
 
@@ -429,7 +479,7 @@ Widget _adminRouterTestApp({
 }
 
 class _FakeSyncApiService extends AdminApiService {
-  _FakeSyncApiService()
+  _FakeSyncApiService({this.archiveDryRunAllowed = true})
     : super(
         apiClient: AdminApiClient(
           baseUrl: 'https://api.test/api',
@@ -440,6 +490,8 @@ class _FakeSyncApiService extends AdminApiService {
         ),
         authStorage: AdminAuthStorage(),
       );
+
+  final bool archiveDryRunAllowed;
 
   int archiveCalls = 0;
   int dryRunArchiveCalls = 0;
@@ -677,11 +729,16 @@ class _FakeSyncApiService extends AdminApiService {
   }) async {
     dryRunArchiveCalls += 1;
     return AdminSyncCenterDryRunResult.fromMap({
-      'wouldArchive': true,
+      'wouldArchive': archiveDryRunAllowed,
       'classification': 'IRRECOVERABLE_LEGACY_EVENT',
-      'blockers': const [],
+      'expectedConfirmationText': 'ARQUIVAR',
+      'blockers': archiveDryRunAllowed
+          ? const []
+          : const ['Conflito bloqueado para arquivamento.'],
       'risks': ['Nenhum dado operacional será alterado.'],
-      'message': 'Conflito pode ser arquivado com auditoria.',
+      'message': archiveDryRunAllowed
+          ? 'Conflito pode ser arquivado com auditoria.'
+          : 'Conflito bloqueado para arquivamento.',
     });
   }
 

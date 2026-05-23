@@ -536,6 +536,29 @@ describe("admin sync center routes", () => {
     );
     assert.equal(dryRun.status, 200);
     assert.equal((dryRun.data as { wouldArchive: boolean }).wouldArchive, true);
+    assert.equal(
+      (dryRun.data as { expectedConfirmationText?: string })
+        .expectedConfirmationText,
+      "ARQUIVAR",
+    );
+
+    const wrongConfirmation = await requestJson(
+      "POST",
+      `/admin/sync/conflicts/${fixture.legacyConflictId}/archive`,
+      {
+        token: fixture.adminToken,
+        body: {
+          companyId: fixture.companyId,
+          reason: "evento legado de teste",
+          confirmationText: "ARCHIVED",
+        },
+      },
+    );
+    assert.equal(wrongConfirmation.status, 422);
+    assert.equal(
+      (wrongConfirmation.data as { message?: string }).message,
+      "Digite ARQUIVAR para confirmar.",
+    );
 
     const response = await requestJson(
       "POST",
@@ -570,11 +593,33 @@ describe("admin sync center routes", () => {
       }),
     ]);
     assert.equal(conflict.status, "RESOLVED");
+    assert.ok(conflict.resolvedAt);
+    assert.equal(conflict.resolvedByUserId, fixture.adminUserId);
     assert.equal(event.status, "CONFLICT");
     assert.equal(incident.syncEventId, fixture.legacyEventId);
-    assert.match(JSON.stringify(conflict.resolution), /admin_sync_center/);
+    assert.match(JSON.stringify(conflict.resolution), /"action":"archive"/);
+    assert.match(JSON.stringify(conflict.resolution), /"source":"admin_web"/);
     assert.match(JSON.stringify(conflict.resolution), /evento legado de teste/);
+    assert.match(JSON.stringify(conflict.resolution), /revisado pelo suporte/);
     assert.match(JSON.stringify(audit.details), /SyncConflict/);
+
+    const repeated = await requestJson(
+      "POST",
+      `/admin/sync/conflicts/${fixture.legacyConflictId}/archive`,
+      {
+        token: fixture.adminToken,
+        body: {
+          companyId: fixture.companyId,
+          reason: "nao tratar de novo",
+          confirmationText: "ARQUIVAR",
+        },
+      },
+    );
+    assert.equal(repeated.status, 409);
+    assert.equal(
+      (repeated.data as { message?: string }).message,
+      "Este conflito ja foi tratado.",
+    );
   });
 
   it("keeps manual stock adjustment write disabled when no audited mechanism exists", async () => {
@@ -917,6 +962,7 @@ async function createFixture() {
     legacyIncidentId: legacyIncident.id,
     cashSessionEventId: cashSessionEvent.id,
     sensitiveEventId: sensitiveEvent.id,
+    adminUserId: adminUser.id,
     deviceId: device.id,
     operatorUserId: operatorUser.id,
   };

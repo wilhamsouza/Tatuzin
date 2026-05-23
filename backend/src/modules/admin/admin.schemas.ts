@@ -234,11 +234,7 @@ export const adminSyncCenterReprocessBodySchema =
 
 export const adminSyncCenterArchiveBodySchema =
   adminSyncCenterDryRunBodySchema.extend({
-    confirmationText: z.literal('ARQUIVAR', {
-      errorMap: () => ({
-        message: 'confirmationText precisa ser ARQUIVAR.',
-      }),
-    }),
+    confirmationText: requiredBodyString('confirmationText', 80),
     note: optionalQueryString(1000),
   });
 

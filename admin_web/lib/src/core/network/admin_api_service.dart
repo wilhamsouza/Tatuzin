@@ -719,7 +719,7 @@ class AdminApiService {
     final confirmation = confirmationText.trim();
     if (confirmation != 'ARQUIVAR') {
       throw const AdminApiException(
-        message: 'Digite ARQUIVAR para confirmar.',
+        message: 'Digite ARQUIVAR para liberar a confirmacao.',
         code: 'ADMIN_CONFIRMATION_REQUIRED',
       );
     }

@@ -715,6 +715,7 @@ class AdminSyncCenterDryRunResult {
     required this.canCreateManualStockAdjustment,
     required this.classification,
     required this.expectedAction,
+    required this.expectedConfirmationText,
     required this.blockers,
     required this.risks,
     required this.message,
@@ -725,6 +726,7 @@ class AdminSyncCenterDryRunResult {
   final bool canCreateManualStockAdjustment;
   final String classification;
   final String? expectedAction;
+  final String? expectedConfirmationText;
   final List<String> blockers;
   final List<String> risks;
   final String message;
@@ -737,6 +739,10 @@ class AdminSyncCenterDryRunResult {
           map['canCreateManualStockAdjustment'] == true,
       classification: _readString(map, 'classification', fallback: 'UNKNOWN'),
       expectedAction: _readOptionalString(map, 'expectedAction'),
+      expectedConfirmationText: _readOptionalString(
+        map,
+        'expectedConfirmationText',
+      ),
       blockers: _readStringList(map['blockers']),
       risks: _readStringList(map['risks']),
       message: _readString(map, 'message', fallback: ''),

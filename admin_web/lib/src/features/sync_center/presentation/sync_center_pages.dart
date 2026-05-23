@@ -489,6 +489,7 @@ class _SyncConflictDetailPageState
     extends ConsumerState<SyncConflictDetailPage> {
   bool _isRunning = false;
   bool _archiveDryRunApproved = false;
+  String? _archiveExpectedConfirmationText;
 
   @override
   Widget build(BuildContext context) {
@@ -580,14 +581,19 @@ class _SyncConflictDetailPageState
             reason: reason,
           );
       if (mounted) {
-        setState(() => _archiveDryRunApproved = result.wouldArchive);
+        setState(() {
+          _archiveDryRunApproved = result.wouldArchive;
+          _archiveExpectedConfirmationText = result.wouldArchive
+              ? result.expectedConfirmationText ?? 'ARQUIVAR'
+              : null;
+        });
         await _showDryRunResultDialog(context, result);
       }
     } on AdminApiException catch (error) {
       if (!mounted) {
         return;
       }
-      _showActionError(context, error.message);
+      _showActionError(context, _friendlySyncActionError(error));
     } finally {
       if (mounted) {
         setState(() => _isRunning = false);
@@ -608,7 +614,7 @@ class _SyncConflictDetailPageState
       title: 'Arquivar conflito',
       warning:
           'Arquivar não apaga evento, venda, produto ou incidente. A ação registra auditoria.',
-      expectedConfirmation: 'ARQUIVAR',
+      expectedConfirmation: _archiveExpectedConfirmationText ?? 'ARQUIVAR',
       includeNote: true,
     );
     if (input == null || !mounted) {
@@ -631,7 +637,10 @@ class _SyncConflictDetailPageState
       ),
     );
     if (mounted) {
-      setState(() => _archiveDryRunApproved = false);
+      setState(() {
+        _archiveDryRunApproved = false;
+        _archiveExpectedConfirmationText = null;
+      });
     }
   }
 
@@ -1183,6 +1192,8 @@ class _ConflictsTab extends ConsumerStatefulWidget {
 
 class _ConflictsTabState extends ConsumerState<_ConflictsTab> {
   final Set<String> _approvedArchiveDryRuns = <String>{};
+  final Map<String, String> _archiveExpectedConfirmationTexts =
+      <String, String>{};
   final Set<String> _runningConflicts = <String>{};
 
   @override
@@ -1241,14 +1252,17 @@ class _ConflictsTabState extends ConsumerState<_ConflictsTab> {
       setState(() {
         if (result.wouldArchive) {
           _approvedArchiveDryRuns.add(conflict.conflictId);
+          _archiveExpectedConfirmationTexts[conflict.conflictId] =
+              result.expectedConfirmationText ?? 'ARQUIVAR';
         } else {
           _approvedArchiveDryRuns.remove(conflict.conflictId);
+          _archiveExpectedConfirmationTexts.remove(conflict.conflictId);
         }
       });
       await _showDryRunResultDialog(context, result);
     } on AdminApiException catch (error) {
       if (mounted) {
-        _showActionError(context, error.message);
+        _showActionError(context, _friendlySyncActionError(error));
       }
     } finally {
       if (mounted) {
@@ -1270,7 +1284,8 @@ class _ConflictsTabState extends ConsumerState<_ConflictsTab> {
       title: 'Arquivar conflito',
       warning:
           'Arquivar não apaga evento, venda, produto ou incidente. A ação registra auditoria.',
-      expectedConfirmation: 'ARQUIVAR',
+      expectedConfirmation:
+          _archiveExpectedConfirmationTexts[conflict.conflictId] ?? 'ARQUIVAR',
       includeNote: true,
     );
     if (input == null || !mounted) {
@@ -1288,6 +1303,7 @@ class _ConflictsTabState extends ConsumerState<_ConflictsTab> {
             note: input.note,
           );
       _approvedArchiveDryRuns.remove(conflict.conflictId);
+      _archiveExpectedConfirmationTexts.remove(conflict.conflictId);
       ref.read(adminRefreshTickProvider.notifier).state++;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1296,7 +1312,7 @@ class _ConflictsTabState extends ConsumerState<_ConflictsTab> {
       }
     } on AdminApiException catch (error) {
       if (mounted) {
-        _showActionError(context, error.message);
+        _showActionError(context, _friendlySyncActionError(error));
       }
     } finally {
       if (mounted) {
@@ -2161,6 +2177,16 @@ void _showActionError(BuildContext context, String message) {
   );
 }
 
+String _friendlySyncActionError(AdminApiException error) {
+  if (error.statusCode == 403) {
+    return 'Voce nao tem permissao para tratar este conflito.';
+  }
+  if (error.code == 'SYNC_CONFLICT_ALREADY_HANDLED') {
+    return 'Este conflito ja foi tratado.';
+  }
+  return error.message;
+}
+
 Future<void> _showDryRunResultDialog(
   BuildContext context,
   AdminSyncCenterDryRunResult result,
@@ -2190,6 +2216,8 @@ Future<void> _showDryRunResultDialog(
                     'Ação esperada': adminSyncCenterActionLabel(
                       result.expectedAction!,
                     ),
+                  if (result.expectedConfirmationText != null)
+                    'Texto de confirmacao': result.expectedConfirmationText!,
                 },
               ),
               const SizedBox(height: 16),
@@ -2341,6 +2369,11 @@ class _SyncWriteDialogState extends State<_SyncWriteDialog> {
     final confirmation = _confirmationController.text.trim();
     final canSubmit =
         reason.isNotEmpty && confirmation == widget.expectedConfirmation;
+    final confirmationTyped = confirmation.isNotEmpty;
+    final confirmationMismatch =
+        confirmationTyped && confirmation != widget.expectedConfirmation;
+    final confirmationInstruction =
+        'Digite ${widget.expectedConfirmation} para confirmar.';
 
     return AlertDialog(
       title: Text(widget.title),
@@ -2368,6 +2401,12 @@ class _SyncWriteDialogState extends State<_SyncWriteDialog> {
                 decoration: InputDecoration(
                   labelText: 'Texto de confirmação',
                   hintText: widget.expectedConfirmation,
+                  helperText: confirmationTyped
+                      ? null
+                      : confirmationInstruction,
+                  errorText: confirmationMismatch
+                      ? 'Digite ${widget.expectedConfirmation} para liberar a confirmacao.'
+                      : null,
                 ),
               ),
               if (widget.includeNote) ...[
