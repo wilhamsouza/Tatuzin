@@ -23,7 +23,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 void main() {
-  testWidgets('tela Pedidos mostra busca, chips e cards compactos', (
+  testWidgets('tela Pedidos mostra busca, filtros e lista sem resumo', (
     tester,
   ) async {
     await _pumpOrdersApp(tester);
@@ -35,6 +35,10 @@ void main() {
     expect(find.textContaining('Pendente/Aberto'), findsOneWidget);
     expect(find.text('Separacao'), findsWidgets);
     expect(find.textContaining('Fiado'), findsOneWidget);
+    expect(find.text('Hoje'), findsNothing);
+    expect(find.text('Em separacao'), findsNothing);
+    expect(find.text('Total aberto'), findsNothing);
+    expect(find.text('Ticket medio'), findsNothing);
 
     await tester.drag(find.byType(ListView).first, const Offset(-500, 0));
     await tester.pumpAndSettle();
@@ -47,6 +51,34 @@ void main() {
     expect(find.text('Cancelar pedido'), findsNothing);
     expect(find.text('Finalizar venda'), findsNothing);
     expect(find.text('Imprimir'), findsNothing);
+  });
+
+  testWidgets('busca e filtros de Pedidos continuam filtrando a lista', (
+    tester,
+  ) async {
+    await _pumpOrdersApp(tester);
+
+    await tester.enterText(find.byType(TextField), 'sem resultado');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mariana Costa'), findsNothing);
+    expect(find.text('Nenhum pedido encontrado'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'Mariana');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mariana Costa'), findsOneWidget);
+
+    await tester.tap(find.textContaining('Pendente/Aberto'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mariana Costa'), findsNothing);
+    expect(find.text('Nenhum pedido encontrado'), findsOneWidget);
+
+    await tester.tap(find.textContaining('Todos'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mariana Costa'), findsOneWidget);
   });
 
   testWidgets('pedido pronto mostra acao clara para finalizar venda', (
@@ -371,9 +403,19 @@ Future<void> _pumpPrinterDialog(
 List<Override> _overrides({OperationalOrderDetail? detail}) {
   final orderDetail = detail ?? _detail();
   return [
-    operationalOrderBoardProvider.overrideWith(
-      (ref) async => OperationalOrderBoardData(orders: [_summary(orderDetail)]),
-    ),
+    operationalOrderBoardProvider.overrideWith((ref) async {
+      final query = ref
+          .watch(operationalOrderSearchQueryProvider)
+          .trim()
+          .toLowerCase();
+      final summary = _summary(orderDetail);
+      if (query.isEmpty ||
+          summary.order.id.toString().contains(query) ||
+          summary.order.customerLabel.toLowerCase().contains(query)) {
+        return OperationalOrderBoardData(orders: [summary]);
+      }
+      return const OperationalOrderBoardData(orders: []);
+    }),
     operationalOrderDetailProvider.overrideWith(
       (ref, orderId) async =>
           orderId == orderDetail.order.id ? orderDetail : null,
