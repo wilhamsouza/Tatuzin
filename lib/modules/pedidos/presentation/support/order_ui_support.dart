@@ -48,7 +48,7 @@ String operationalOrderStatusLabel(OperationalOrderStatus status) {
     case OperationalOrderStatus.ready:
       return 'Separado';
     case OperationalOrderStatus.delivered:
-      return 'Concluido';
+      return 'Vendido';
     case OperationalOrderStatus.canceled:
       return 'Cancelado';
   }
@@ -65,7 +65,7 @@ String operationalOrderStatusDescription(OperationalOrderStatus status) {
     case OperationalOrderStatus.ready:
       return 'Pedido separado e pronto para virar venda.';
     case OperationalOrderStatus.delivered:
-      return 'Pedido finalizado como venda ou entregue.';
+      return 'Pedido convertido em venda.';
     case OperationalOrderStatus.canceled:
       return 'Pedido cancelado.';
   }
@@ -112,7 +112,7 @@ String operationalOrderActionLabel(OperationalOrderStatus status) {
     case OperationalOrderStatus.ready:
       return 'Marcar separado';
     case OperationalOrderStatus.delivered:
-      return 'Concluir pedido';
+      return 'Venda concluida';
     case OperationalOrderStatus.draft:
     case OperationalOrderStatus.open:
     case OperationalOrderStatus.canceled:
@@ -127,7 +127,7 @@ String operationalOrderShortActionLabel(OperationalOrderStatus status) {
     case OperationalOrderStatus.ready:
       return 'Separado';
     case OperationalOrderStatus.delivered:
-      return 'Concluir';
+      return 'Vendido';
     case OperationalOrderStatus.draft:
     case OperationalOrderStatus.open:
     case OperationalOrderStatus.canceled:

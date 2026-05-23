@@ -7,6 +7,7 @@ import '../../../../app/core/widgets/app_input.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
+import '../../../account/presentation/providers/account_cloud_providers.dart';
 import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../domain/entities/operational_order.dart';
 import '../../domain/entities/operational_order_detail.dart';
@@ -65,6 +66,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     final dispatchState = ref.watch(orderKitchenDispatchControllerProvider);
     final reprintState = ref.watch(orderTicketReprintControllerProvider);
     final billingState = ref.watch(operationalOrderBillingControllerProvider);
+    final accountCloud = ref.watch(accountCloudStatusProvider);
     final busy =
         draftState.isLoading ||
         itemState.isLoading ||
@@ -108,6 +110,10 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
             children: [
               _buildHeaderSection(context, detail, busy),
+              if (_showOrderSyncConflictNotice(detail, accountCloud)) ...[
+                const SizedBox(height: 12),
+                _buildSyncConflictNotice(context, accountCloud),
+              ],
               const SizedBox(height: 12),
               _buildItemsSection(context, detail, busy),
               const SizedBox(height: 12),
@@ -182,7 +188,21 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        OrderStatusBadge(status: order.status),
+                        OrderStatusBadge(
+                          status: order.status,
+                          label:
+                              order.status ==
+                                      OperationalOrderStatus.delivered &&
+                                  detail.linkedSaleId == null
+                              ? 'Pronto para venda'
+                              : null,
+                        ),
+                        if (detail.linkedSaleId != null)
+                          const AppStatusBadge(
+                            label: 'Venda gerada',
+                            tone: AppStatusTone.success,
+                            icon: Icons.point_of_sale_rounded,
+                          ),
                         AppStatusBadge(
                           label: orderTicketDispatchStatusLabel(
                             order.ticketMeta.status,
@@ -433,15 +453,31 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerLeft,
-              child: FilledButton.tonalIcon(
-                onPressed: () {
-                  context.pushNamed(
-                    AppRouteNames.saleReceipt,
-                    pathParameters: {'saleId': '${detail.linkedSaleId}'},
-                  );
-                },
-                icon: const Icon(Icons.receipt_long_rounded),
-                label: Text('Abrir venda #${detail.linkedSaleId}'),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: () {
+                      context.pushNamed(
+                        AppRouteNames.saleDetail,
+                        pathParameters: {'saleId': '${detail.linkedSaleId}'},
+                      );
+                    },
+                    icon: const Icon(Icons.point_of_sale_rounded),
+                    label: Text('Ver venda #${detail.linkedSaleId}'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      context.pushNamed(
+                        AppRouteNames.saleReceipt,
+                        pathParameters: {'saleId': '${detail.linkedSaleId}'},
+                      );
+                    },
+                    icon: const Icon(Icons.receipt_long_rounded),
+                    label: const Text('Ver comprovante'),
+                  ),
+                ],
               ),
             ),
           ],
@@ -489,7 +525,11 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
         order.preparationStartedAt != null,
       ),
       _HistoryEvent('Separado', order.readyAt, order.readyAt != null),
-      _HistoryEvent('Concluido', order.deliveredAt, order.deliveredAt != null),
+      _HistoryEvent(
+        detail.linkedSaleId == null ? 'Pronto para venda' : 'Venda gerada',
+        order.deliveredAt,
+        order.deliveredAt != null,
+      ),
       if (order.canceledAt != null)
         _HistoryEvent('Cancelado', order.canceledAt, true),
     ];
@@ -584,10 +624,10 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     if (detail.linkedSaleId != null) {
       return _OrderPrimaryAction(
         label: 'Ver venda vinculada',
-        icon: Icons.receipt_long_rounded,
+        icon: Icons.point_of_sale_rounded,
         onPressed: () {
           context.pushNamed(
-            AppRouteNames.saleReceipt,
+            AppRouteNames.saleDetail,
             pathParameters: {'saleId': '${detail.linkedSaleId}'},
           );
         },
@@ -1001,25 +1041,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     }
 
     try {
-      await ref
-          .read(operationalOrderStatusControllerProvider.notifier)
-          .updateStatus(
-            orderId: widget.orderId,
-            status: OperationalOrderStatus.delivered,
-          );
-      final refreshed = await ref.read(
-        operationalOrderDetailProvider(widget.orderId).future,
-      );
-      if (!context.mounted) {
-        return;
-      }
-      if (refreshed == null) {
-        _showMessage(context, 'Pedido nao encontrado para faturamento.');
-        return;
-      }
       final sale = await ref
           .read(operationalOrderBillingControllerProvider.notifier)
-          .invoice(detail: refreshed, paymentMethod: paymentMethod);
+          .invoice(detail: detail, paymentMethod: paymentMethod);
       if (!context.mounted) {
         return;
       }
@@ -1083,6 +1107,40 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  bool _showOrderSyncConflictNotice(
+    OperationalOrderDetail detail,
+    AccountCloudStatusSnapshot accountCloud,
+  ) {
+    return accountCloud.conflictCount > 0 &&
+        detail.order.status == OperationalOrderStatus.delivered;
+  }
+
+  Widget _buildSyncConflictNotice(
+    BuildContext context,
+    AccountCloudStatusSnapshot accountCloud,
+  ) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(
+          context,
+        ).colorScheme.errorContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.error.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Text(
+        'Este pedido foi concluido, mas ha conflito de sincronizacao. Seus dados locais estao preservados. ${accountCloud.conflictCount} conflito(s) pendente(s) precisam de revisao.',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.onErrorContainer,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
   }
 }
 

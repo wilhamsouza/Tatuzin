@@ -81,7 +81,15 @@ class KitchenOrderViewPage extends ConsumerWidget {
                             ],
                           ),
                         ),
-                        OrderStatusBadge(status: detail.order.status),
+                        OrderStatusBadge(
+                          status: detail.order.status,
+                          label:
+                              detail.order.status ==
+                                      OperationalOrderStatus.delivered &&
+                                  detail.linkedSaleId == null
+                              ? 'Pronto para venda'
+                              : null,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 14),
@@ -209,23 +217,6 @@ class KitchenOrderViewPage extends ConsumerWidget {
                               context,
                               ref,
                               OperationalOrderStatus.ready,
-                            )
-                          : null,
-                    ),
-                    _KitchenActionButton(
-                      label: operationalOrderShortActionLabel(
-                        OperationalOrderStatus.delivered,
-                      ),
-                      icon: Icons.shopping_bag_rounded,
-                      onPressed:
-                          detail.order.status.canTransitionTo(
-                                OperationalOrderStatus.delivered,
-                              ) &&
-                              !isBusy
-                          ? () => _updateStatus(
-                              context,
-                              ref,
-                              OperationalOrderStatus.delivered,
                             )
                           : null,
                     ),

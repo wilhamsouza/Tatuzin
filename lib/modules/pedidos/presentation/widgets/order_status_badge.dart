@@ -9,15 +9,17 @@ class OrderStatusBadge extends StatelessWidget {
     super.key,
     required this.status,
     this.showIcon = true,
+    this.label,
   });
 
   final OperationalOrderStatus status;
   final bool showIcon;
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
     return AppStatusBadge(
-      label: operationalOrderStatusLabel(status),
+      label: label ?? operationalOrderStatusLabel(status),
       tone: operationalOrderStatusTone(status),
       icon: showIcon ? operationalOrderStatusIcon(status) : null,
     );

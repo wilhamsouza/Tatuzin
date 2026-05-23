@@ -153,9 +153,9 @@ class SaleValidationSupport {
         'Pedido de venda #$orderId esta cancelado e nao pode ser convertido.',
       );
     }
-    if (status != 'delivered') {
+    if (status != 'ready' && status != 'delivered') {
       throw ValidationException(
-        'Pedido de venda #$orderId ainda nao foi entregue e nao pode ser faturado.',
+        'Pedido de venda #$orderId ainda nao esta separado e nao pode ser faturado.',
       );
     }
   }

@@ -76,7 +76,10 @@ class OrderQueueCard extends StatelessWidget {
                     ),
                   ),
                   SizedBox(height: layout.space2),
-                  OrderStatusBadge(status: order.status),
+                  OrderStatusBadge(
+                    status: order.status,
+                    label: _statusLabel(summary),
+                  ),
                 ],
               ),
             ],
@@ -107,6 +110,7 @@ class OrderQueueCard extends StatelessWidget {
                   icon: Icon(primaryActionIcon ?? Icons.arrow_forward_rounded),
                   label: Text(primaryActionLabel!),
                   style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 36),
                     visualDensity: VisualDensity.compact,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -145,11 +149,15 @@ String? operationalOrderListPrimaryActionLabel(
     return 'Separado';
   }
   if (order.status == OperationalOrderStatus.ready) {
-    return 'Concluir';
+    return 'Finalizar venda';
   }
   if (order.status == OperationalOrderStatus.delivered &&
       summary.linkedSaleId != null) {
     return 'Ver venda';
+  }
+  if (order.status == OperationalOrderStatus.delivered &&
+      summary.linkedSaleId == null) {
+    return 'Finalizar venda';
   }
   return null;
 }
@@ -171,4 +179,12 @@ IconData? operationalOrderListPrimaryActionIcon(
     case OperationalOrderStatus.canceled:
       return null;
   }
+}
+
+String _statusLabel(OperationalOrderSummary summary) {
+  if (summary.order.status == OperationalOrderStatus.delivered &&
+      summary.linkedSaleId == null) {
+    return 'Pronto para venda';
+  }
+  return operationalOrderStatusLabel(summary.order.status);
 }

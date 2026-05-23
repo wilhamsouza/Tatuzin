@@ -197,7 +197,9 @@ class OperationalOrder {
 
   bool get isTerminal => status.isTerminal;
   bool get allowsItemChanges => status.allowsItemChanges;
-  bool get canBeInvoiced => status == OperationalOrderStatus.delivered;
+  bool get canBeInvoiced =>
+      status == OperationalOrderStatus.ready ||
+      status == OperationalOrderStatus.delivered;
 
   String get customerLabel {
     final trimmed = customerIdentifier?.trim();

@@ -39,7 +39,8 @@ abstract final class OperationalOrderFlow {
     required bool hasItems,
     required bool hasLinkedSale,
   }) {
-    return status == OperationalOrderStatus.delivered &&
+    return (status == OperationalOrderStatus.ready ||
+            status == OperationalOrderStatus.delivered) &&
         hasItems &&
         !hasLinkedSale;
   }

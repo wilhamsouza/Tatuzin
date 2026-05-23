@@ -1,6 +1,8 @@
 import 'package:tatuzin/app/core/database/app_database.dart';
 import 'package:tatuzin/app/core/database/table_names.dart';
 import 'package:tatuzin/app/core/errors/app_exceptions.dart';
+import 'package:tatuzin/modules/dashboard/data/sqlite_operational_dashboard_repository.dart';
+import 'package:tatuzin/modules/historico_vendas/data/sqlite_sale_history_repository.dart';
 import 'package:tatuzin/modules/carrinho/domain/entities/cart_item.dart';
 import 'package:tatuzin/modules/estoque/domain/entities/stock_reservation.dart';
 import 'package:tatuzin/modules/pedidos/data/sqlite_operational_order_repository.dart';
@@ -23,6 +25,43 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
+
+  test(
+    'faturar pedido separado gera venda local visivel no historico e dashboard',
+    () async {
+      final fixture = await _openFixture();
+      addTearDown(fixture.dispose);
+      await fixture.insertSimpleProduct(stockMil: 5000);
+      final orderId = await fixture.createDraftOrder();
+      await fixture.addSimpleItem(orderId, quantityMil: 1000);
+      await fixture.prepareReadyOrder(orderId);
+
+      final sale = await fixture.saleRepository.completeCashSale(
+        input: fixture.checkoutInput(
+          orderId: orderId,
+          items: [_simpleCartItem(quantityMil: 1000, availableStockMil: 5000)],
+        ),
+      );
+
+      expect(await fixture.orderStatus(orderId), 'delivered');
+      expect(await fixture.linkedSaleId(orderId), sale.saleId);
+
+      final history = await SqliteSaleHistoryRepository(
+        fixture.appDatabase,
+      ).search(query: '$orderId');
+      expect(history, hasLength(1));
+      expect(history.single.id, sale.saleId);
+      expect(history.single.operationalOrderId, orderId);
+
+      final dashboard = await SqliteOperationalDashboardRepository(
+        fixture.appDatabase,
+      ).fetchSnapshot();
+      expect(dashboard.soldTodayCents, greaterThanOrEqualTo(9900));
+      expect(dashboard.recentMovements, isNotEmpty);
+      expect(dashboard.recentMovements.first.label, 'Venda recebida');
+      expect(dashboard.recentMovements.first.amountCents, 9900);
+    },
+  );
 
   test(
     'faturar pedido simples com reserva active converte reserva e baixa estoque uma vez',
@@ -230,7 +269,7 @@ void main() {
       await fixture.insertSimpleProduct(stockMil: 1000);
       final orderId = await fixture.createDraftOrder();
       await fixture.addSimpleItem(orderId, quantityMil: 1000);
-      await fixture.prepareDeliveredOrder(orderId);
+      await fixture.prepareReadyOrder(orderId);
       await fixture.setProductStock(0);
 
       await expectLater(
@@ -249,6 +288,7 @@ void main() {
       expect(reservation['status'], StockReservationStatus.active.storageValue);
       expect(reservation['venda_id'], isNull);
       expect(await fixture.salesCount(), 0);
+      expect(await fixture.orderStatus(orderId), 'ready');
       expect(await loadProductStock(fixture.database, 1), 0);
     },
   );
@@ -451,16 +491,20 @@ class _BillingReservationFixture {
   }
 
   Future<void> prepareDeliveredOrder(int orderId) async {
+    await prepareReadyOrder(orderId);
+    await orderRepository.updateStatus(
+      orderId,
+      OperationalOrderStatus.delivered,
+    );
+  }
+
+  Future<void> prepareReadyOrder(int orderId) async {
     await orderRepository.sendToKitchen(orderId);
     await orderRepository.updateStatus(
       orderId,
       OperationalOrderStatus.inPreparation,
     );
     await orderRepository.updateStatus(orderId, OperationalOrderStatus.ready);
-    await orderRepository.updateStatus(
-      orderId,
-      OperationalOrderStatus.delivered,
-    );
   }
 
   Future<void> prepareCanceledOrder(int orderId) async {
@@ -573,6 +617,28 @@ class _BillingReservationFixture {
       'SELECT COUNT(*) AS total FROM ${TableNames.vendas}',
     );
     return rows.single['total'] as int? ?? 0;
+  }
+
+  Future<String?> orderStatus(int orderId) async {
+    final rows = await database.query(
+      TableNames.pedidosOperacionais,
+      columns: const ['status'],
+      where: 'id = ?',
+      whereArgs: [orderId],
+      limit: 1,
+    );
+    return rows.single['status'] as String?;
+  }
+
+  Future<int?> linkedSaleId(int orderId) async {
+    final rows = await database.query(
+      TableNames.vendasPedidosOperacionais,
+      columns: const ['venda_id'],
+      where: 'pedido_operacional_id = ?',
+      whereArgs: [orderId],
+      limit: 1,
+    );
+    return rows.single['venda_id'] as int?;
   }
 
   Future<void> dispose() async {

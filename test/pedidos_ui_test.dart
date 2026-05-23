@@ -39,7 +39,7 @@ void main() {
     await tester.drag(find.byType(ListView).first, const Offset(-500, 0));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Concluido'), findsWidgets);
+    expect(find.textContaining('Vendidos'), findsWidgets);
     expect(find.textContaining('Cancelado'), findsOneWidget);
 
     expect(find.text('Mariana Costa'), findsOneWidget);
@@ -47,6 +47,18 @@ void main() {
     expect(find.text('Cancelar pedido'), findsNothing);
     expect(find.text('Finalizar venda'), findsNothing);
     expect(find.text('Imprimir'), findsNothing);
+  });
+
+  testWidgets('pedido pronto mostra acao clara para finalizar venda', (
+    tester,
+  ) async {
+    await _pumpOrdersApp(
+      tester,
+      detail: _detail(status: OperationalOrderStatus.ready),
+    );
+
+    expect(find.text('Finalizar venda'), findsOneWidget);
+    expect(find.text('Separado'), findsWidgets);
   });
 
   testWidgets('tocar no card abre detalhe do pedido', (tester) async {
@@ -252,6 +264,7 @@ void main() {
 Future<void> _pumpOrdersApp(
   WidgetTester tester, {
   ThemeMode themeMode = ThemeMode.light,
+  OperationalOrderDetail? detail,
 }) async {
   final router = GoRouter(
     initialLocation: AppRoutePaths.orders,
@@ -280,7 +293,7 @@ Future<void> _pumpOrdersApp(
 
   await tester.pumpWidget(
     ProviderScope(
-      overrides: _overrides(),
+      overrides: _overrides(detail: detail),
       child: MaterialApp.router(
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
@@ -359,7 +372,7 @@ List<Override> _overrides({OperationalOrderDetail? detail}) {
   final orderDetail = detail ?? _detail();
   return [
     operationalOrderBoardProvider.overrideWith(
-      (ref) async => OperationalOrderBoardData(orders: [_summary()]),
+      (ref) async => OperationalOrderBoardData(orders: [_summary(orderDetail)]),
     ),
     operationalOrderDetailProvider.overrideWith(
       (ref, orderId) async =>
@@ -368,8 +381,8 @@ List<Override> _overrides({OperationalOrderDetail? detail}) {
   ];
 }
 
-OperationalOrderSummary _summary() {
-  final detail = _detail();
+OperationalOrderSummary _summary([OperationalOrderDetail? source]) {
+  final detail = source ?? _detail();
   return OperationalOrderSummary(
     order: detail.order,
     lineItemsCount: detail.lineItemsCount,

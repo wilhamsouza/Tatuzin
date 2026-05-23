@@ -63,7 +63,7 @@ String _label(OperationalOrderListFilter filter) {
     case OperationalOrderListFilter.fiado:
       return 'Fiado';
     case OperationalOrderListFilter.completed:
-      return 'Concluido';
+      return 'Vendidos';
     case OperationalOrderListFilter.canceled:
       return 'Cancelado';
   }

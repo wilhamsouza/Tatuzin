@@ -10,6 +10,7 @@ import '../../../../app/core/widgets/app_search_field.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../domain/entities/operational_order.dart';
+import '../../domain/entities/operational_order_summary.dart';
 import '../providers/order_providers.dart';
 import '../widgets/order_queue_card.dart';
 import '../widgets/order_status_tabs.dart';
@@ -131,6 +132,16 @@ class _OrdersPageState extends ConsumerState<OrdersPage> {
                           summary: orders[index],
                           onOpen: () =>
                               _openOrder(context, orders[index].order.id),
+                          primaryActionLabel:
+                              operationalOrderListPrimaryActionLabel(
+                                orders[index],
+                              ),
+                          primaryActionIcon:
+                              operationalOrderListPrimaryActionIcon(
+                                orders[index],
+                              ),
+                          onPrimaryAction: () =>
+                              _runOrderPrimaryAction(context, orders[index]),
                         ),
                         if (index != orders.length - 1)
                           SizedBox(height: layout.blockGap),
@@ -179,6 +190,22 @@ class _OrdersPageState extends ConsumerState<OrdersPage> {
       AppRouteNames.orderDetail,
       pathParameters: {'orderId': '$orderId'},
     );
+  }
+
+  void _runOrderPrimaryAction(
+    BuildContext context,
+    OperationalOrderSummary summary,
+  ) {
+    final linkedSaleId = summary.linkedSaleId;
+    if (summary.order.status == OperationalOrderStatus.delivered &&
+        linkedSaleId != null) {
+      context.pushNamed(
+        AppRouteNames.saleDetail,
+        pathParameters: {'saleId': '$linkedSaleId'},
+      );
+      return;
+    }
+    _openOrder(context, summary.order.id);
   }
 
   void _clearSearch() {
@@ -351,7 +378,7 @@ class _OrdersEmptyState extends StatelessWidget {
       case OperationalOrderListFilter.fiado:
         return 'Fiado continua no modulo proprio; pedidos ainda nao guardam essa informacao.';
       case OperationalOrderListFilter.completed:
-        return 'Nenhum pedido concluido nesse filtro.';
+        return 'Nenhum pedido vendido nesse filtro.';
       case OperationalOrderListFilter.canceled:
         return 'Nenhum pedido cancelado nesse filtro.';
     }
