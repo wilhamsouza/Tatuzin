@@ -1341,6 +1341,207 @@ describe("billing routes", () => {
     assert.equal(license.plan, "BASIC");
     assert.equal(license.pendingPlan, "PRO");
   });
+
+  it("refresh promotes BASIC to PRO from the latest authorized pending checkout and cancels the old subscription", async () => {
+    const fixture = await createFixture({
+      plan: "basic",
+      providerSubscriptionId: "mp-basic-authorized-old",
+    });
+    await prisma.license.update({
+      where: { companyId: fixture.companyId },
+      data: {
+        billingSubscriptionStatus: "authorized",
+        pendingPlan: "PRO",
+        pendingPlanRequestedAt: new Date(),
+      },
+    });
+    const checkout = await createCheckoutSession(
+      fixture,
+      "PRO",
+      "mp-pro-authorized-new",
+    );
+    let cancelledOldSubscription = false;
+
+    globalThis.fetch = jsonFetch(async (url, init) => {
+      if (url.includes("/authorized_payments/search")) {
+        return { results: [] };
+      }
+      if (url.includes("/preapproval/mp-basic-authorized-old")) {
+        assert.equal(init.method, "PUT");
+        cancelledOldSubscription = true;
+        return { id: "mp-basic-authorized-old", status: "cancelled" };
+      }
+      if (url.includes("/preapproval/mp-pro-authorized-new")) {
+        return {
+          id: "mp-pro-authorized-new",
+          status: "authorized",
+          external_reference: checkout.id,
+          date_created: "2026-05-22T10:00:00.000Z",
+          next_payment_date: "2026-06-22T10:00:00.000Z",
+          auto_recurring: { transaction_amount: 85 },
+        };
+      }
+      throw new Error(`unexpected Mercado Pago URL: ${url}`);
+    });
+
+    const response = await requestJson("POST", "/billing/refresh", {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      plan: string;
+      pendingPlan?: string | null;
+      providerSubscriptionId?: string;
+      maskedProviderSubscriptionId?: string | null;
+      billingSubscriptionStatus?: string | null;
+    };
+    assert.equal(payload.plan, "PRO");
+    assert.equal(payload.pendingPlan, null);
+    assert.equal(payload.providerSubscriptionId, undefined);
+    assert.notEqual(
+      payload.maskedProviderSubscriptionId,
+      "mp-pro-authorized-new",
+    );
+    assert.equal(payload.billingSubscriptionStatus, "authorized");
+    assert.equal(cancelledOldSubscription, true);
+
+    const [license, updatedCheckout] = await Promise.all([
+      prisma.license.findUniqueOrThrow({
+        where: { companyId: fixture.companyId },
+      }),
+      prisma.billingCheckoutSession.findUniqueOrThrow({
+        where: { id: checkout.id },
+      }),
+    ]);
+    assert.equal(license.plan, "PRO");
+    assert.equal(license.pendingPlan, null);
+    assert.equal(license.providerSubscriptionId, "mp-pro-authorized-new");
+    assert.equal(license.billingSubscriptionStatus, "authorized");
+    assert.equal(updatedCheckout.status, "COMPLETED");
+  });
+
+  it("refresh keeps BASIC when the PRO pending checkout is still pending", async () => {
+    const fixture = await createFixture({
+      plan: "basic",
+      providerSubscriptionId: "mp-basic-still-active",
+    });
+    await prisma.license.update({
+      where: { companyId: fixture.companyId },
+      data: {
+        billingSubscriptionStatus: "authorized",
+        pendingPlan: "PRO",
+        pendingPlanRequestedAt: new Date(),
+      },
+    });
+    const checkout = await createCheckoutSession(
+      fixture,
+      "PRO",
+      "mp-pro-still-pending",
+    );
+    let oldSubscriptionTouched = false;
+
+    globalThis.fetch = jsonFetch(async (url) => {
+      if (url.includes("/preapproval/mp-basic-still-active")) {
+        oldSubscriptionTouched = true;
+      }
+      if (url.includes("/preapproval/mp-pro-still-pending")) {
+        return {
+          id: "mp-pro-still-pending",
+          status: "pending",
+          external_reference: checkout.id,
+        };
+      }
+      throw new Error(`unexpected Mercado Pago URL: ${url}`);
+    });
+
+    const response = await requestJson("POST", "/billing/refresh", {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      plan: string;
+      pendingPlan?: string | null;
+      features: Record<string, boolean>;
+    };
+    assert.equal(payload.plan, "BASIC");
+    assert.equal(payload.pendingPlan, "PRO");
+    assert.equal(payload.features.employees, false);
+    assert.equal(oldSubscriptionTouched, false);
+
+    const [license, updatedCheckout] = await Promise.all([
+      prisma.license.findUniqueOrThrow({
+        where: { companyId: fixture.companyId },
+      }),
+      prisma.billingCheckoutSession.findUniqueOrThrow({
+        where: { id: checkout.id },
+      }),
+    ]);
+    assert.equal(license.plan, "basic");
+    assert.equal(license.pendingPlan, "PRO");
+    assert.equal(license.providerSubscriptionId, "mp-basic-still-active");
+    assert.equal(updatedCheckout.status, "PENDING");
+  });
+
+  it("refresh keeps BASIC and clears the pending attempt when the PRO checkout is rejected", async () => {
+    const fixture = await createFixture({
+      plan: "basic",
+      providerSubscriptionId: "mp-basic-after-rejected",
+    });
+    await prisma.license.update({
+      where: { companyId: fixture.companyId },
+      data: {
+        billingSubscriptionStatus: "authorized",
+        pendingPlan: "PRO",
+        pendingPlanRequestedAt: new Date(),
+      },
+    });
+    const checkout = await createCheckoutSession(
+      fixture,
+      "PRO",
+      "mp-pro-rejected",
+    );
+
+    globalThis.fetch = jsonFetch(async (url) => {
+      if (url.includes("/preapproval/mp-pro-rejected")) {
+        return {
+          id: "mp-pro-rejected",
+          status: "rejected",
+          external_reference: checkout.id,
+        };
+      }
+      throw new Error(`unexpected Mercado Pago URL: ${url}`);
+    });
+
+    const response = await requestJson("POST", "/billing/refresh", {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      plan: string;
+      pendingPlan?: string | null;
+      providerSubscriptionId?: string;
+    };
+    assert.equal(payload.plan, "BASIC");
+    assert.equal(payload.pendingPlan, null);
+    assert.equal(payload.providerSubscriptionId, undefined);
+
+    const [license, updatedCheckout] = await Promise.all([
+      prisma.license.findUniqueOrThrow({
+        where: { companyId: fixture.companyId },
+      }),
+      prisma.billingCheckoutSession.findUniqueOrThrow({
+        where: { id: checkout.id },
+      }),
+    ]);
+    assert.equal(license.plan, "basic");
+    assert.equal(license.pendingPlan, null);
+    assert.equal(license.providerSubscriptionId, "mp-basic-after-rejected");
+    assert.equal(license.billingSubscriptionStatus, "authorized");
+    assert.equal(updatedCheckout.status, "FAILED");
+  });
 });
 
 async function createFixture(options?: {

@@ -256,6 +256,83 @@ export class BillingService {
     companyId: string,
   ): Promise<AdminBillingStatusDto> {
     const warnings: string[] = [];
+    const pendingSession =
+      await this.findPendingRefreshCheckoutSession(companyId);
+    if (pendingSession?.providerReference != null) {
+      const previousProviderReference =
+        await this.findCurrentProviderReference(companyId);
+      const details = await this.mercadoPagoService.getSubscription(
+        pendingSession.providerReference,
+      );
+      const providerStatus = normalizeProviderStatus(details.status);
+      logger.info("billing.refresh.pending_checkout.checked", {
+        companyId,
+        checkoutSessionId: pendingSession.id,
+        providerReference: maskProviderSubscriptionId(
+          pendingSession.providerReference,
+        ),
+        providerStatus,
+      });
+
+      const applyResult = await this.applyMercadoPagoDetails(details, {
+        fallbackCompanyId: companyId,
+      });
+      logger.info("billing.refresh.pending_checkout.decision", {
+        companyId,
+        checkoutSessionId: pendingSession.id,
+        providerReference: maskProviderSubscriptionId(
+          pendingSession.providerReference,
+        ),
+        providerStatus: applyResult.providerStatus,
+        decision: applyResult.action,
+        plan: applyResult.plan,
+      });
+
+      if (
+        applyResult.action === "activated" &&
+        previousProviderReference != null &&
+        previousProviderReference !== details.providerReference
+      ) {
+        try {
+          await this.cancelSupersededProviderSubscription({
+            companyId,
+            checkoutSessionId: pendingSession.id,
+            previousProviderReference,
+            newProviderReference: details.providerReference,
+          });
+        } catch (error) {
+          logger.warn("billing.refresh.superseded_subscription.cancel_failed", {
+            companyId,
+            checkoutSessionId: pendingSession.id,
+            previousProviderReference: maskProviderSubscriptionId(
+              previousProviderReference,
+            ),
+            newProviderReference: maskProviderSubscriptionId(
+              details.providerReference,
+            ),
+            errorCode: error instanceof AppError ? error.code : "UNKNOWN",
+          });
+          warnings.push("PREVIOUS_SUBSCRIPTION_CANCEL_FAILED");
+        }
+      }
+
+      await this.applyScheduledTransitions(companyId);
+      if (applyResult.action === "activated") {
+        try {
+          const result = await this.reconcileInvoicesForSubscription(
+            companyId,
+            details.providerReference,
+          );
+          warnings.push(...result.warnings);
+        } catch {
+          warnings.push("INVOICE_RECONCILIATION_FAILED");
+        }
+      }
+
+      const status = await this.getAdminStatus(companyId);
+      return mergeWarnings(status, warnings);
+    }
+
     const providerReference =
       await this.findRefreshProviderReference(companyId);
     if (providerReference == null) {
@@ -736,10 +813,28 @@ export class BillingService {
         ? null
         : await prisma.license.findUnique({ where: { companyId } });
     const pendingPlan = normalizeNullablePlan(currentLicense?.pendingPlan);
+    const currentPlan = normalizePlan(currentLicense?.plan);
+    const sessionPlan = session == null ? null : normalizePlan(session.plan);
+    const currentProviderReference =
+      currentLicense?.providerSubscriptionId ?? null;
+    const isDifferentProviderSession =
+      session != null &&
+      currentProviderReference != null &&
+      currentProviderReference !== details.providerReference;
+    const sessionStatus = session?.status.trim().toUpperCase() ?? null;
+    const isPendingSessionAttempt =
+      session != null && sessionStatus === "PENDING";
+    const sessionMatchesPendingPlan =
+      pendingPlan != null && sessionPlan === pendingPlan;
+    const canActivateDifferentProviderSession =
+      isPendingSessionAttempt &&
+      (sessionMatchesPendingPlan ||
+        currentProviderReference == null ||
+        (currentPlan === "BASIC" && sessionPlan === "PRO"));
     const sessionOrCurrentPlan =
       session == null
         ? await this.resolveCurrentPaidPlan(companyId)
-        : normalizePlan(session.plan);
+        : sessionPlan;
     const pendingUpgradeMatchesProviderAmount =
       pendingPlan === "PRO" &&
       currentLicense != null &&
@@ -759,6 +854,15 @@ export class BillingService {
     }
 
     if (isPaidActivationStatus(providerStatus)) {
+      if (isDifferentProviderSession && !canActivateDifferentProviderSession) {
+        return {
+          action: "ignored_unknown",
+          providerStatus,
+          companyId,
+          plan: currentPlan,
+        };
+      }
+
       if (plan === "FREE") {
         return {
           action: "ignored_unknown",
@@ -832,6 +936,40 @@ export class BillingService {
       ]);
 
       return { action: "activated", providerStatus, companyId, plan };
+    }
+
+    if (
+      session != null &&
+      (providerStatus === "rejected" ||
+        ((isDowngradeStatus(providerStatus) || providerStatus === "failed") &&
+          (isDifferentProviderSession ||
+            sessionMatchesPendingPlan ||
+            currentProviderReference == null)))
+    ) {
+      await prisma.$transaction([
+        prisma.billingCheckoutSession.update({
+          where: { id: session.id },
+          data: {
+            status: failedCheckoutStatusFor(providerStatus),
+            providerReference: details.providerReference,
+          },
+        }),
+        ...(currentLicense == null
+          ? []
+          : [
+              prisma.license.update({
+                where: { companyId },
+                data: {
+                  pendingPlan: sessionMatchesPendingPlan ? null : pendingPlan,
+                  pendingPlanRequestedAt: sessionMatchesPendingPlan
+                    ? null
+                    : currentLicense.pendingPlanRequestedAt,
+                },
+              }),
+            ]),
+      ]);
+
+      return { action: "unchanged", providerStatus, companyId, plan };
     }
 
     if (isDowngradeStatus(providerStatus)) {
@@ -1300,6 +1438,64 @@ export class BillingService {
     return session?.providerReference ?? null;
   }
 
+  private async findCurrentProviderReference(companyId: string) {
+    const license = await prisma.license.findUnique({
+      where: { companyId },
+      select: { providerSubscriptionId: true },
+    });
+    return license?.providerSubscriptionId ?? null;
+  }
+
+  private async findPendingRefreshCheckoutSession(companyId: string) {
+    return prisma.billingCheckoutSession.findFirst({
+      where: {
+        companyId,
+        provider: BILLING_PROVIDER,
+        providerReference: { not: null },
+        status: "PENDING",
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        providerReference: true,
+      },
+    });
+  }
+
+  private async cancelSupersededProviderSubscription(input: {
+    companyId: string;
+    checkoutSessionId: string;
+    previousProviderReference: string;
+    newProviderReference: string;
+  }) {
+    logger.info("billing.refresh.superseded_subscription.cancel_started", {
+      companyId: input.companyId,
+      checkoutSessionId: input.checkoutSessionId,
+      previousProviderReference: maskProviderSubscriptionId(
+        input.previousProviderReference,
+      ),
+      newProviderReference: maskProviderSubscriptionId(
+        input.newProviderReference,
+      ),
+    });
+
+    await this.mercadoPagoService.updatePreapproval(
+      input.previousProviderReference,
+      { status: "cancelled" },
+    );
+
+    logger.info("billing.refresh.superseded_subscription.cancel_finished", {
+      companyId: input.companyId,
+      checkoutSessionId: input.checkoutSessionId,
+      previousProviderReference: maskProviderSubscriptionId(
+        input.previousProviderReference,
+      ),
+      newProviderReference: maskProviderSubscriptionId(
+        input.newProviderReference,
+      ),
+    });
+  }
+
   private async findCompanyForProviderSubscription(
     providerSubscriptionId: string,
   ) {
@@ -1440,6 +1636,16 @@ function isDowngradeStatus(status: string) {
   return (
     status === "cancelled" || status === "canceled" || status === "expired"
   );
+}
+
+function failedCheckoutStatusFor(status: string) {
+  if (status === "expired") {
+    return "EXPIRED";
+  }
+  if (status === "cancelled" || status === "canceled") {
+    return "CANCELLED";
+  }
+  return "FAILED";
 }
 
 function mapAuthorizedPaymentStatus(status: string | null) {
