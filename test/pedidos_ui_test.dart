@@ -1,13 +1,22 @@
 import 'package:tatuzin/app/core/theme/app_theme.dart';
+import 'package:tatuzin/app/core/errors/app_exceptions.dart';
 import 'package:tatuzin/app/routes/route_names.dart';
+import 'package:tatuzin/modules/pedidos/domain/entities/bluetooth_printer_device.dart';
+import 'package:tatuzin/modules/pedidos/domain/entities/kitchen_printer_config.dart';
 import 'package:tatuzin/modules/pedidos/domain/entities/operational_order.dart';
 import 'package:tatuzin/modules/pedidos/domain/entities/operational_order_detail.dart';
 import 'package:tatuzin/modules/pedidos/domain/entities/operational_order_item.dart';
 import 'package:tatuzin/modules/pedidos/domain/entities/operational_order_summary.dart';
+import 'package:tatuzin/modules/pedidos/domain/entities/order_ticket_document.dart';
+import 'package:tatuzin/modules/pedidos/domain/repositories/bluetooth_printer_discovery_repository.dart';
+import 'package:tatuzin/modules/pedidos/domain/repositories/kitchen_printer_settings_repository.dart';
+import 'package:tatuzin/modules/pedidos/domain/services/kitchen_print_service.dart';
 import 'package:tatuzin/modules/pedidos/presentation/pages/kitchen_order_view_page.dart';
 import 'package:tatuzin/modules/pedidos/presentation/pages/order_detail_page.dart';
 import 'package:tatuzin/modules/pedidos/presentation/pages/orders_page.dart';
+import 'package:tatuzin/modules/pedidos/presentation/providers/order_print_providers.dart';
 import 'package:tatuzin/modules/pedidos/presentation/providers/order_providers.dart';
+import 'package:tatuzin/modules/pedidos/presentation/widgets/kitchen_printer_config_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -117,6 +126,127 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('Mariana Costa'), findsOneWidget);
   });
+
+  testWidgets('modal de impressora renderiza Bluetooth e Rede', (tester) async {
+    await _pumpPrinterDialog(tester);
+
+    expect(find.text('Configurar impressora'), findsOneWidget);
+    expect(
+      find.text('Escolha como o Tatuzin deve enviar as impressoes.'),
+      findsOneWidget,
+    );
+    expect(find.text('Bluetooth'), findsOneWidget);
+    expect(find.text('Rede Wi-Fi'), findsOneWidget);
+    expect(find.text('Procurar impressoras Bluetooth'), findsOneWidget);
+    expect(
+      find.textContaining('informar endereco manualmente'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Rede Wi-Fi'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('IP da impressora'), findsOneWidget);
+    expect(find.text('Porta'), findsOneWidget);
+    expect(find.text('Procurar na rede'), findsOneWidget);
+    expect(find.text('Testar impressao'), findsOneWidget);
+  });
+
+  testWidgets('selecionar Bluetooth preenche dados e salva', (tester) async {
+    final settings = _FakeKitchenPrinterSettingsRepository();
+    await _pumpPrinterDialog(
+      tester,
+      overrides: [
+        kitchenPrinterSettingsRepositoryProvider.overrideWithValue(settings),
+        bluetoothPrinterDiscoveryRepositoryProvider.overrideWithValue(
+          const _FakeBluetoothPrinterDiscoveryRepository([
+            BluetoothPrinterDevice(
+              name: 'Tatuzin BT 58',
+              address: '00:11:22:33:44:55',
+            ),
+          ]),
+        ),
+      ],
+    );
+
+    await tester.tap(find.text('Procurar impressoras Bluetooth'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Tatuzin BT 58'));
+    await tester.tap(find.widgetWithText(ListTile, 'Tatuzin BT 58'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.textContaining('informar endereco manualmente'),
+    );
+    await tester.tap(find.textContaining('informar endereco manualmente'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('00:11:22:33:44:55'), findsWidgets);
+
+    await tester.tap(find.text('Salvar'));
+    await tester.pumpAndSettle();
+
+    expect(settings.saved?.displayName, 'Tatuzin BT 58');
+    expect(
+      settings.saved?.connectionType,
+      KitchenPrinterConnectionType.bluetooth,
+    );
+    expect(settings.saved?.bluetoothAddress, '00:11:22:33:44:55');
+  });
+
+  testWidgets('busca Bluetooth vazia mostra mensagem amigavel', (tester) async {
+    await _pumpPrinterDialog(
+      tester,
+      overrides: [
+        bluetoothPrinterDiscoveryRepositoryProvider.overrideWithValue(
+          const _FakeBluetoothPrinterDiscoveryRepository([]),
+        ),
+      ],
+    );
+
+    await tester.tap(find.text('Procurar impressoras Bluetooth'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Nenhuma impressora Bluetooth encontrada.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('ligada e pareada'), findsOneWidget);
+    expect(
+      find.textContaining('informar endereco manualmente'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('teste de impressao trata sucesso e erro amigavel', (
+    tester,
+  ) async {
+    final printService = _FakeKitchenPrintService();
+    await _pumpPrinterDialog(
+      tester,
+      initialConfig: const KitchenPrinterConfig(
+        displayName: 'Rede Balcao',
+        connectionType: KitchenPrinterConnectionType.network,
+        host: '192.168.0.120',
+      ),
+      overrides: [kitchenPrintServiceProvider.overrideWithValue(printService)],
+    );
+
+    await tester.tap(find.text('Testar impressao'));
+    await tester.pumpAndSettle();
+
+    expect(printService.tested?.host, '192.168.0.120');
+    expect(find.text('Teste de impressao enviado.'), findsOneWidget);
+
+    printService.fail = true;
+    await tester.tap(find.text('Testar impressao'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Falha no teste:'), findsOneWidget);
+    expect(
+      find.textContaining('Verifique se a impressora esta ligada'),
+      findsOneWidget,
+    );
+  });
 }
 
 Future<void> _pumpOrdersApp(
@@ -188,6 +318,40 @@ Future<void> _pumpSeparationApp(WidgetTester tester) async {
       ),
     ),
   );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _pumpPrinterDialog(
+  WidgetTester tester, {
+  KitchenPrinterConfig? initialConfig,
+  List<Override> overrides = const [],
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: overrides,
+      child: MaterialApp(
+        theme: AppTheme.light(),
+        home: Builder(
+          builder: (context) {
+            return Scaffold(
+              body: Center(
+                child: FilledButton(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => KitchenPrinterConfigDialog(
+                      initialConfig: initialConfig,
+                    ),
+                  ),
+                  child: const Text('Abrir configuracao'),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.text('Abrir configuracao'));
   await tester.pumpAndSettle();
 }
 
@@ -270,4 +434,61 @@ OperationalOrderDetail _detail({
     items: [OperationalOrderItemDetail(item: item, modifiers: const [])],
     linkedSaleId: null,
   );
+}
+
+class _FakeBluetoothPrinterDiscoveryRepository
+    implements BluetoothPrinterDiscoveryRepository {
+  const _FakeBluetoothPrinterDiscoveryRepository(this.devices);
+
+  final List<BluetoothPrinterDevice> devices;
+
+  @override
+  Future<BluetoothPrinterDiscoveryResult> listPrinters() async {
+    return BluetoothPrinterDiscoveryResult(
+      status: BluetoothPrinterDiscoveryStatus.available,
+      devices: devices,
+      message: devices.isEmpty
+          ? 'Nenhuma impressora Bluetooth encontrada.'
+          : '${devices.length} impressora(s) Bluetooth encontrada(s).',
+    );
+  }
+}
+
+class _FakeKitchenPrinterSettingsRepository
+    implements KitchenPrinterSettingsRepository {
+  KitchenPrinterConfig? saved;
+
+  @override
+  Future<void> clearDefault() async {
+    saved = null;
+  }
+
+  @override
+  Future<KitchenPrinterConfig?> loadDefault() async => saved;
+
+  @override
+  Future<void> saveDefault(KitchenPrinterConfig config) async {
+    saved = config;
+  }
+}
+
+class _FakeKitchenPrintService implements KitchenPrintService {
+  KitchenPrinterConfig? tested;
+  bool fail = false;
+
+  @override
+  Future<void> print({
+    required KitchenPrinterConfig printer,
+    required OrderTicketDocument ticket,
+  }) async {}
+
+  @override
+  Future<void> printTest({required KitchenPrinterConfig printer}) async {
+    tested = printer;
+    if (fail) {
+      throw const ValidationException(
+        'Verifique se a impressora esta ligada e pareada.',
+      );
+    }
+  }
 }

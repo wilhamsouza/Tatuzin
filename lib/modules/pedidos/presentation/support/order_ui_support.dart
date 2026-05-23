@@ -10,19 +10,19 @@ const operationalOrderSeparationModeLabel = 'Separacao';
 const operationalOrderSeparationListLabel = 'Lista de separacao';
 const operationalOrderSeparateOrderLabel = 'Separar pedido';
 const operationalOrderSendToSeparationLabel = 'Enviar para separacao';
-const operationalOrderPrintReceiptLabel = 'Imprimir comprovante';
+const operationalOrderPrintReceiptLabel = 'Imprimir lista';
 const operationalOrderPrintingReceiptLabel = 'Imprimindo...';
-const operationalOrderPreviewTitle = 'Previa do comprovante';
-const operationalOrderPreviewLabel = 'Previa do comprovante';
-const operationalOrderReceiptLabel = 'Comprovante';
-const operationalOrderReceiptFailureSummaryLabel = 'Falhas comprovante';
-const operationalOrderReceiptHeaderLabel = 'Cabecalho do comprovante';
+const operationalOrderPreviewTitle = 'Previa da lista de separacao';
+const operationalOrderPreviewLabel = 'Previa da lista de separacao';
+const operationalOrderReceiptLabel = 'Lista de separacao';
+const operationalOrderReceiptFailureSummaryLabel = 'Falhas de impressao';
+const operationalOrderReceiptHeaderLabel = 'Dados da lista';
 const operationalOrderReceiptProfileLabel = 'Separacao';
 const operationalOrderInternalProfileLabel = 'Interno';
 const operationalOrderPrinterNameLabel = 'Impressora de pedidos';
-const operationalOrderPrinterDialogTitle = 'Impressora de separacao';
+const operationalOrderPrinterDialogTitle = 'Configurar impressora';
 const operationalOrderPrinterUpdatedMessage =
-    'Impressora de separacao atualizada.';
+    'Impressora de pedidos atualizada.';
 const operationalOrderSeparationManifestTitle = 'ROMANEIO DE SEPARACAO';
 const operationalOrderInternalPreviewTitle = 'PREVIEW OPERACIONAL';
 const operationalOrderSeparationManifestFooter =
@@ -32,10 +32,10 @@ const operationalOrderInternalPreviewFooter =
 const operationalOrderSendFailureMessagePrefix =
     'Pedido enviado para separacao, mas a impressao falhou:';
 const operationalOrderSendSuccessMessage = 'Pedido enviado para separacao.';
-const operationalOrderReprintFailureMessagePrefix =
-    'Falha ao imprimir comprovante:';
-const operationalOrderReprintSuccessMessage =
-    'Comprovante impresso com sucesso.';
+const operationalOrderReprintFailureMessagePrefix = 'Falha ao imprimir lista:';
+const operationalOrderReprintSuccessMessage = 'Lista impressa com sucesso.';
+const operationalOrderPrintFailureFallbackMessage =
+    'Falha ao imprimir lista de separacao.';
 
 String operationalOrderStatusLabel(OperationalOrderStatus status) {
   switch (status) {

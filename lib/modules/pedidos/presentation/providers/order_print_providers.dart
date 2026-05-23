@@ -5,11 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
+import '../../data/method_channel_bluetooth_printer_discovery_repository.dart';
 import '../../data/services/default_order_ticket_builder.dart';
 import '../../data/services/escpos_kitchen_print_service.dart';
 import '../../data/shared_preferences_kitchen_printer_settings_repository.dart';
 import '../../domain/entities/kitchen_printer_config.dart';
 import '../../domain/entities/order_ticket_document.dart';
+import '../../domain/repositories/bluetooth_printer_discovery_repository.dart';
 import '../../domain/entities/operational_order.dart';
 import '../../domain/repositories/kitchen_printer_settings_repository.dart';
 import '../../domain/services/kitchen_print_service.dart';
@@ -19,6 +21,11 @@ import 'order_providers.dart';
 final kitchenPrinterSettingsRepositoryProvider =
     Provider<KitchenPrinterSettingsRepository>((ref) {
       return SharedPreferencesKitchenPrinterSettingsRepository();
+    });
+
+final bluetoothPrinterDiscoveryRepositoryProvider =
+    Provider<BluetoothPrinterDiscoveryRepository>((ref) {
+      return MethodChannelBluetoothPrinterDiscoveryRepository();
     });
 
 final orderTicketBuilderProvider = Provider<OrderTicketBuilder>((ref) {

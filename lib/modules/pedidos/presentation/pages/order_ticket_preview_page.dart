@@ -57,14 +57,14 @@ class _OrderTicketPreviewPageState
                     return const SizedBox.shrink();
                   }
                   return AppSectionCard(
-                    title: 'Uso deste preview',
+                    title: 'Uso desta previa',
                     subtitle:
-                        'Apoio visual para conferencia e comparacao com a impressao real.',
+                        'Apoio visual para conferencia da lista impressa na separacao.',
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Status do comprovante: ${orderTicketDispatchStatusLabel(detail.order.ticketMeta.status)}',
+                          'Status da impressao: ${orderTicketDispatchStatusLabel(detail.order.ticketMeta.status)}',
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -301,7 +301,7 @@ class _OrderTicketPreviewPageState
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) =>
-            Center(child: Text('Falha ao montar comprovante: $error')),
+            Center(child: Text('Falha ao montar lista de separacao: $error')),
       ),
       bottomNavigationBar: _profile == OrderTicketProfile.kitchen
           ? SafeArea(

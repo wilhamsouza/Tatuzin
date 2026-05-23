@@ -29,7 +29,7 @@ class EscPosKitchenPrintService implements KitchenPrintService {
         );
       case KitchenPrinterConnectionType.bluetooth:
         throw const ValidationException(
-          'Fluxo Bluetooth preparado, mas a camada nativa de envio termico ainda nao foi conectada nesta versao.',
+          'Impressora Bluetooth configurada, mas o envio Bluetooth ainda nao esta disponivel nesta versao. Para imprimir agora, use uma impressora de rede Wi-Fi.',
         );
     }
   }
@@ -48,7 +48,7 @@ class EscPosKitchenPrintService implements KitchenPrintService {
         );
       case KitchenPrinterConnectionType.bluetooth:
         throw const ValidationException(
-          'Configuracao Bluetooth salva. Falta apenas conectar o adaptador nativo para teste real de impressao.',
+          'Impressora Bluetooth configurada, mas o teste Bluetooth ainda nao esta disponivel nesta versao. Para teste real, use uma impressora de rede Wi-Fi.',
         );
     }
   }
@@ -86,7 +86,7 @@ class EscPosKitchenPrintService implements KitchenPrintService {
       );
     } catch (error) {
       throw ValidationException(
-        'Falha ao enviar o comprovante para a impressora termica.',
+        'Falha ao enviar a lista de separacao para a impressora termica.',
         cause: error,
       );
     } finally {
@@ -201,7 +201,7 @@ class EscPosKitchenPrintService implements KitchenPrintService {
     writer.feed();
     writer.left();
     writer.text(
-      'Se este comprovante saiu completo, a configuracao basica esta funcionando.',
+      'Se esta lista saiu completa, a configuracao basica esta funcionando.',
     );
     writer.text(AppFormatters.shortDateTime(DateTime.now()));
     writer.feed(lines: 4);

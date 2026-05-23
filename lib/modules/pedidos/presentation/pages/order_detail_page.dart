@@ -458,7 +458,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
               ),
               child: Text(
                 order.ticketMeta.lastFailureMessage ??
-                    'Falha ao imprimir comprovante.',
+                    operationalOrderPrintFailureFallbackMessage,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onErrorContainer,
                   fontWeight: FontWeight.w600,
@@ -554,7 +554,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
               OutlinedButton.icon(
                 onPressed: canPrint && !busy ? () => _reprint(context) : null,
                 icon: const Icon(Icons.print_rounded),
-                label: const Text('Imprimir'),
+                label: const Text(operationalOrderPrintReceiptLabel),
               ),
               OutlinedButton.icon(
                 onPressed: () {
