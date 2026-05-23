@@ -73,6 +73,34 @@ export const ownerReceivablesQuerySchema = paginationQuerySchema.extend({
 
 export const ownerEmployeesReportQuerySchema = ownerTopListQuerySchema;
 
+export const ownerCashSessionsQuerySchema = withValidDateRange(
+  paginationQuerySchema.extend({
+    ...ownerDateRangeFields,
+    employeeId: z.string().trim().max(120).optional(),
+    search: z.string().trim().max(120).default(''),
+    status: z
+      .enum(['all', 'open', 'closed', 'with_difference'])
+      .default('all'),
+  }),
+);
+
+export const ownerSaleReturnSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+  returnToStock: z.coerce.boolean().default(false),
+  items: z
+    .array(
+      z.object({
+        saleItemId: z.string().trim().min(1).max(120),
+        quantityMil: z.coerce.number().int().positive(),
+      }),
+    )
+    .min(1),
+});
+
+export const ownerSaleCancelSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+});
+
 export const ownerCommissionsQuerySchema = withMaxDateRangeDays(
   withValidDateRange(z.object(ownerDateRangeFields)),
   MAX_OWNER_EMPLOYEE_RANGE_DAYS,
@@ -117,6 +145,11 @@ export type OwnerReceivablesQueryInput = z.infer<
 export type OwnerEmployeesReportQueryInput = z.infer<
   typeof ownerEmployeesReportQuerySchema
 >;
+export type OwnerCashSessionsQueryInput = z.infer<
+  typeof ownerCashSessionsQuerySchema
+>;
+export type OwnerSaleReturnInput = z.infer<typeof ownerSaleReturnSchema>;
+export type OwnerSaleCancelInput = z.infer<typeof ownerSaleCancelSchema>;
 export type OwnerCommissionsQueryInput = z.infer<
   typeof ownerCommissionsQuerySchema
 >;

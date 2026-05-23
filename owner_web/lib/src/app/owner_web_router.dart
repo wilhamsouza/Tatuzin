@@ -14,6 +14,7 @@ import '../features/devices/presentation/owner_devices_page.dart';
 import '../features/employees/presentation/owner_employees_page.dart';
 import '../features/finance/presentation/owner_finance_page.dart';
 import '../features/products/presentation/owner_products_page.dart';
+import '../features/reports/presentation/owner_cash_report_page.dart';
 import '../features/reports/presentation/owner_reports_page.dart';
 import '../features/sales/presentation/owner_sales_page.dart';
 import '../features/settings/presentation/owner_settings_page.dart';
@@ -27,6 +28,7 @@ const ownerRoutePaths = <String>[
   '/finance',
   '/products',
   '/reports',
+  '/reports/cash',
   '/company',
   '/billing',
   '/employees',
@@ -95,6 +97,10 @@ final ownerRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/reports',
             builder: (context, state) => const OwnerReportsPage(),
+          ),
+          GoRoute(
+            path: '/reports/cash',
+            builder: (context, state) => const OwnerCashReportPage(),
           ),
           GoRoute(
             path: '/company',

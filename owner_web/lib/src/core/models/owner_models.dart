@@ -1600,6 +1600,372 @@ class OwnerRecentSale {
   }
 }
 
+class OwnerCashSessionsReport {
+  const OwnerCashSessionsReport({
+    required this.period,
+    required this.summary,
+    required this.items,
+  });
+
+  final OwnerReportPeriod period;
+  final OwnerCashSessionsSummary summary;
+  final OwnerCashSessionsPage items;
+
+  factory OwnerCashSessionsReport.fromMap(Map<String, dynamic> map) {
+    return OwnerCashSessionsReport(
+      period: OwnerReportPeriod.fromMap(_readMap(map, 'period')),
+      summary: OwnerCashSessionsSummary.fromMap(_readMap(map, 'summary')),
+      items: OwnerCashSessionsPage.fromMap(_readMap(map, 'items')),
+    );
+  }
+}
+
+class OwnerCashSessionsSummary {
+  const OwnerCashSessionsSummary({
+    required this.totalSoldCents,
+    required this.totalSessions,
+    required this.sessionsWithDifference,
+    required this.totalCashInflowCents,
+    required this.totalCashOutflowCents,
+    required this.averageTicketCents,
+    required this.salesCount,
+    required this.byPaymentMethod,
+  });
+
+  final int totalSoldCents;
+  final int totalSessions;
+  final int sessionsWithDifference;
+  final int totalCashInflowCents;
+  final int totalCashOutflowCents;
+  final int averageTicketCents;
+  final int salesCount;
+  final List<OwnerPaymentMethodSummary> byPaymentMethod;
+
+  factory OwnerCashSessionsSummary.fromMap(Map<String, dynamic> map) {
+    return OwnerCashSessionsSummary(
+      totalSoldCents: _readOptionalInt(map, 'totalSoldCents') ?? 0,
+      totalSessions: _readOptionalInt(map, 'totalSessions') ?? 0,
+      sessionsWithDifference:
+          _readOptionalInt(map, 'sessionsWithDifference') ?? 0,
+      totalCashInflowCents: _readOptionalInt(map, 'totalCashInflowCents') ?? 0,
+      totalCashOutflowCents:
+          _readOptionalInt(map, 'totalCashOutflowCents') ?? 0,
+      averageTicketCents: _readOptionalInt(map, 'averageTicketCents') ?? 0,
+      salesCount: _readOptionalInt(map, 'salesCount') ?? 0,
+      byPaymentMethod: _readMapList(
+        map['byPaymentMethod'],
+      ).map(OwnerPaymentMethodSummary.fromMap).toList(growable: false),
+    );
+  }
+}
+
+class OwnerCashSessionsPage {
+  const OwnerCashSessionsPage({
+    required this.items,
+    required this.page,
+    required this.pageSize,
+    required this.total,
+    required this.count,
+  });
+
+  final List<OwnerCashSessionItem> items;
+  final int page;
+  final int pageSize;
+  final int total;
+  final int count;
+
+  factory OwnerCashSessionsPage.fromMap(Map<String, dynamic> map) {
+    return OwnerCashSessionsPage(
+      items: _readMapList(
+        map['items'],
+      ).map(OwnerCashSessionItem.fromMap).toList(growable: false),
+      page: _readOptionalInt(map, 'page') ?? 1,
+      pageSize: _readOptionalInt(map, 'pageSize') ?? 20,
+      total: _readOptionalInt(map, 'total') ?? 0,
+      count: _readOptionalInt(map, 'count') ?? 0,
+    );
+  }
+}
+
+class OwnerCashSessionItem {
+  const OwnerCashSessionItem({
+    required this.id,
+    required this.shortId,
+    required this.openedAt,
+    required this.closedAt,
+    required this.employee,
+    required this.status,
+    required this.statusLabel,
+    required this.totalSoldCents,
+    required this.totalCashCents,
+    required this.totalCardCents,
+    required this.totalPixCents,
+    required this.totalOtherCents,
+    required this.cashInflowCents,
+    required this.cashOutflowCents,
+    required this.differenceCents,
+    required this.salesCount,
+    required this.notes,
+  });
+
+  final String id;
+  final String shortId;
+  final String? openedAt;
+  final String? closedAt;
+  final OwnerCashSessionEmployee employee;
+  final String status;
+  final String statusLabel;
+  final int totalSoldCents;
+  final int totalCashCents;
+  final int totalCardCents;
+  final int totalPixCents;
+  final int totalOtherCents;
+  final int cashInflowCents;
+  final int cashOutflowCents;
+  final int differenceCents;
+  final int salesCount;
+  final String? notes;
+
+  factory OwnerCashSessionItem.fromMap(Map<String, dynamic> map) {
+    return OwnerCashSessionItem(
+      id: _readString(map, 'id'),
+      shortId: _readString(map, 'shortId', fallback: 'Caixa'),
+      openedAt: _readOptionalString(map, 'openedAt'),
+      closedAt: _readOptionalString(map, 'closedAt'),
+      employee: OwnerCashSessionEmployee.fromMap(_readMap(map, 'employee')),
+      status: _readString(map, 'status', fallback: 'open'),
+      statusLabel: _readString(map, 'statusLabel', fallback: 'Aberto'),
+      totalSoldCents: _readOptionalInt(map, 'totalSoldCents') ?? 0,
+      totalCashCents: _readOptionalInt(map, 'totalCashCents') ?? 0,
+      totalCardCents: _readOptionalInt(map, 'totalCardCents') ?? 0,
+      totalPixCents: _readOptionalInt(map, 'totalPixCents') ?? 0,
+      totalOtherCents: _readOptionalInt(map, 'totalOtherCents') ?? 0,
+      cashInflowCents: _readOptionalInt(map, 'cashInflowCents') ?? 0,
+      cashOutflowCents: _readOptionalInt(map, 'cashOutflowCents') ?? 0,
+      differenceCents: _readOptionalInt(map, 'differenceCents') ?? 0,
+      salesCount: _readOptionalInt(map, 'salesCount') ?? 0,
+      notes: _readOptionalString(map, 'notes'),
+    );
+  }
+}
+
+class OwnerCashSessionEmployee {
+  const OwnerCashSessionEmployee({
+    required this.id,
+    required this.name,
+    required this.email,
+  });
+
+  final String? id;
+  final String name;
+  final String? email;
+
+  factory OwnerCashSessionEmployee.fromMap(Map<String, dynamic> map) {
+    return OwnerCashSessionEmployee(
+      id: _readOptionalString(map, 'id'),
+      name: _readString(map, 'name', fallback: 'Funcionario nao identificado'),
+      email: _readOptionalString(map, 'email'),
+    );
+  }
+}
+
+class OwnerCashSessionDetail {
+  const OwnerCashSessionDetail({
+    required this.session,
+    required this.employee,
+    required this.values,
+    required this.movements,
+    required this.sales,
+  });
+
+  final OwnerCashSessionItem session;
+  final OwnerCashSessionEmployee employee;
+  final OwnerCashSessionValues values;
+  final List<OwnerCashMovement> movements;
+  final OwnerCashSessionSalesPage sales;
+
+  factory OwnerCashSessionDetail.fromMap(Map<String, dynamic> map) {
+    return OwnerCashSessionDetail(
+      session: OwnerCashSessionItem.fromMap(_readMap(map, 'session')),
+      employee: OwnerCashSessionEmployee.fromMap(_readMap(map, 'employee')),
+      values: OwnerCashSessionValues.fromMap(_readMap(map, 'values')),
+      movements: _readMapList(
+        map['movements'],
+      ).map(OwnerCashMovement.fromMap).toList(growable: false),
+      sales: OwnerCashSessionSalesPage.fromMap(_readMap(map, 'sales')),
+    );
+  }
+}
+
+class OwnerCashSessionValues {
+  const OwnerCashSessionValues({
+    required this.openingBalanceCents,
+    required this.closingBalanceCents,
+    required this.expectedBalanceCents,
+    required this.differenceCents,
+  });
+
+  final int openingBalanceCents;
+  final int? closingBalanceCents;
+  final int? expectedBalanceCents;
+  final int differenceCents;
+
+  factory OwnerCashSessionValues.fromMap(Map<String, dynamic> map) {
+    return OwnerCashSessionValues(
+      openingBalanceCents: _readOptionalInt(map, 'openingBalanceCents') ?? 0,
+      closingBalanceCents: _readOptionalInt(map, 'closingBalanceCents'),
+      expectedBalanceCents: _readOptionalInt(map, 'expectedBalanceCents'),
+      differenceCents: _readOptionalInt(map, 'differenceCents') ?? 0,
+    );
+  }
+}
+
+class OwnerCashMovement {
+  const OwnerCashMovement({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.amountCents,
+    required this.paymentMethod,
+    required this.notes,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String type;
+  final String title;
+  final int amountCents;
+  final String paymentMethod;
+  final String? notes;
+  final String? createdAt;
+
+  factory OwnerCashMovement.fromMap(Map<String, dynamic> map) {
+    return OwnerCashMovement(
+      id: _readString(map, 'id'),
+      type: _readString(map, 'type'),
+      title: _readString(map, 'title', fallback: 'Movimento'),
+      amountCents: _readOptionalInt(map, 'amountCents') ?? 0,
+      paymentMethod: _friendlyPaymentMethodLabel(
+        _readString(map, 'paymentMethod', fallback: 'Outro'),
+      ),
+      notes: _readOptionalString(map, 'notes'),
+      createdAt: _readOptionalString(map, 'createdAt'),
+    );
+  }
+}
+
+class OwnerCashSessionSalesPage {
+  const OwnerCashSessionSalesPage({required this.items, required this.total});
+
+  final List<OwnerCashSessionSale> items;
+  final int total;
+
+  factory OwnerCashSessionSalesPage.fromMap(Map<String, dynamic> map) {
+    return OwnerCashSessionSalesPage(
+      items: _readMapList(
+        map['items'],
+      ).map(OwnerCashSessionSale.fromMap).toList(growable: false),
+      total: _readOptionalInt(map, 'total') ?? 0,
+    );
+  }
+}
+
+class OwnerCashSessionSale {
+  const OwnerCashSessionSale({
+    required this.id,
+    required this.shortId,
+    required this.receiptNumber,
+    required this.customerName,
+    required this.totalAmountCents,
+    required this.returnedAmountCents,
+    required this.status,
+    required this.statusLabel,
+    required this.paymentMethod,
+    required this.soldAt,
+    required this.canceledAt,
+    required this.canCancel,
+    required this.canReturn,
+    required this.items,
+    required this.actions,
+  });
+
+  final String id;
+  final String shortId;
+  final String? receiptNumber;
+  final String? customerName;
+  final int totalAmountCents;
+  final int returnedAmountCents;
+  final String status;
+  final String statusLabel;
+  final String paymentMethod;
+  final String? soldAt;
+  final String? canceledAt;
+  final bool canCancel;
+  final bool canReturn;
+  final List<OwnerCashSessionSaleItem> items;
+  final List<OwnerCashMovement> actions;
+
+  factory OwnerCashSessionSale.fromMap(Map<String, dynamic> map) {
+    return OwnerCashSessionSale(
+      id: _readString(map, 'id'),
+      shortId: _readString(map, 'shortId', fallback: 'Venda'),
+      receiptNumber: _safeReceiptNumber(
+        _readOptionalString(map, 'receiptNumber'),
+      ),
+      customerName: _readOptionalString(map, 'customerName'),
+      totalAmountCents: _readOptionalInt(map, 'totalAmountCents') ?? 0,
+      returnedAmountCents: _readOptionalInt(map, 'returnedAmountCents') ?? 0,
+      status: _readString(map, 'status', fallback: 'active'),
+      statusLabel: _readString(map, 'statusLabel', fallback: 'Ativa'),
+      paymentMethod: _friendlyPaymentMethodLabel(
+        _readString(map, 'paymentMethod', fallback: 'Outro'),
+      ),
+      soldAt: _readOptionalString(map, 'soldAt'),
+      canceledAt: _readOptionalString(map, 'canceledAt'),
+      canCancel: map['canCancel'] == true,
+      canReturn: map['canReturn'] == true,
+      items: _readMapList(
+        map['items'],
+      ).map(OwnerCashSessionSaleItem.fromMap).toList(growable: false),
+      actions: _readMapList(
+        map['actions'],
+      ).map(OwnerCashMovement.fromMap).toList(growable: false),
+    );
+  }
+}
+
+class OwnerCashSessionSaleItem {
+  const OwnerCashSessionSaleItem({
+    required this.id,
+    required this.productId,
+    required this.productName,
+    required this.quantityMil,
+    required this.unitPriceCents,
+    required this.totalPriceCents,
+    required this.unitMeasure,
+  });
+
+  final String id;
+  final String? productId;
+  final String productName;
+  final int quantityMil;
+  final int unitPriceCents;
+  final int totalPriceCents;
+  final String? unitMeasure;
+
+  factory OwnerCashSessionSaleItem.fromMap(Map<String, dynamic> map) {
+    return OwnerCashSessionSaleItem(
+      id: _readString(map, 'id'),
+      productId: _readOptionalString(map, 'productId'),
+      productName: _readString(map, 'productName', fallback: 'Produto'),
+      quantityMil: _readOptionalInt(map, 'quantityMil') ?? 0,
+      unitPriceCents: _readOptionalInt(map, 'unitPriceCents') ?? 0,
+      totalPriceCents: _readOptionalInt(map, 'totalPriceCents') ?? 0,
+      unitMeasure: _readOptionalString(map, 'unitMeasure'),
+    );
+  }
+}
+
 class OwnerProductsReport {
   const OwnerProductsReport({
     required this.period,

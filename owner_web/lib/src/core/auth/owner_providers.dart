@@ -196,6 +196,42 @@ final ownerReportsCatalogProvider = FutureProvider<OwnerReportsCatalog>((
   return ref.watch(ownerApiServiceProvider).getReportsCatalog();
 });
 
+final ownerCashSessionsStatusProvider = StateProvider<String>((ref) => 'all');
+final ownerCashSessionsSearchProvider = StateProvider<String>((ref) => '');
+final ownerCashSessionsPageProvider = StateProvider<int>((ref) => 1);
+final ownerSelectedCashSessionIdProvider = StateProvider<String?>(
+  (ref) => null,
+);
+
+final ownerCashSessionsProvider = FutureProvider<OwnerCashSessionsReport>((
+  ref,
+) async {
+  ref.watch(ownerRefreshTickProvider);
+  final startDate = ref.watch(ownerReportStartDateProvider);
+  final endDate = ref.watch(ownerReportEndDateProvider);
+  final status = ref.watch(ownerCashSessionsStatusProvider);
+  final search = ref.watch(ownerCashSessionsSearchProvider);
+  final page = ref.watch(ownerCashSessionsPageProvider);
+  return ref
+      .watch(ownerApiServiceProvider)
+      .getCashSessions(
+        query: OwnerCashSessionsQuery(
+          startDate: startDate,
+          endDate: endDate,
+          status: status,
+          search: search,
+          page: page,
+          pageSize: 20,
+        ),
+      );
+});
+
+final ownerCashSessionDetailProvider =
+    FutureProvider.family<OwnerCashSessionDetail, String>((ref, id) async {
+      ref.watch(ownerRefreshTickProvider);
+      return ref.watch(ownerApiServiceProvider).getCashSessionDetail(id);
+    });
+
 final ownerBillingStatusProvider = FutureProvider<OwnerBillingStatus>((
   ref,
 ) async {

@@ -149,6 +149,41 @@ class OwnerEmployeesReportQuery extends OwnerDateReportQuery {
   });
 }
 
+class OwnerCashSessionsQuery {
+  const OwnerCashSessionsQuery({
+    this.startDate,
+    this.endDate,
+    this.status = 'all',
+    this.search,
+    this.employeeId,
+    this.page = 1,
+    this.pageSize = 20,
+  });
+
+  final String? startDate;
+  final String? endDate;
+  final String status;
+  final String? search;
+  final String? employeeId;
+  final int page;
+  final int pageSize;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      if (startDate != null && startDate!.trim().isNotEmpty)
+        'startDate': startDate!.trim(),
+      if (endDate != null && endDate!.trim().isNotEmpty)
+        'endDate': endDate!.trim(),
+      if (employeeId != null && employeeId!.trim().isNotEmpty)
+        'employeeId': employeeId!.trim(),
+      if (search != null && search!.trim().isNotEmpty) 'search': search!.trim(),
+      'status': status,
+      'page': '$page',
+      'pageSize': '$pageSize',
+    };
+  }
+}
+
 class OwnerApiService {
   const OwnerApiService({
     required OwnerApiClient apiClient,
@@ -412,6 +447,57 @@ class OwnerApiService {
       );
     }
     return OwnerReportsCatalog.fromMap(response);
+  }
+
+  Future<OwnerCashSessionsReport> getCashSessions({
+    OwnerCashSessionsQuery query = const OwnerCashSessionsQuery(),
+  }) async {
+    final response = await _apiClient.getJson(
+      '/owner/reports/cash-sessions',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou os caixas no formato esperado.',
+      );
+    }
+    return OwnerCashSessionsReport.fromMap(response);
+  }
+
+  Future<OwnerCashSessionDetail> getCashSessionDetail(String id) async {
+    final response = await _apiClient.getJson(
+      '/owner/reports/cash-sessions/${Uri.encodeComponent(id)}',
+      accessToken: await _readRequiredToken(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'A API nao retornou o caixa no formato esperado.',
+      );
+    }
+    return OwnerCashSessionDetail.fromMap(response);
+  }
+
+  Future<Map<String, dynamic>> registerSaleReturn({
+    required String cashSessionId,
+    required String saleId,
+    required Map<String, dynamic> body,
+  }) async {
+    return _writeMap(
+      '/owner/reports/cash-sessions/${Uri.encodeComponent(cashSessionId)}/sales/${Uri.encodeComponent(saleId)}/return',
+      body,
+    );
+  }
+
+  Future<Map<String, dynamic>> cancelCashSessionSale({
+    required String cashSessionId,
+    required String saleId,
+    required String reason,
+  }) async {
+    return _writeMap(
+      '/owner/reports/cash-sessions/${Uri.encodeComponent(cashSessionId)}/sales/${Uri.encodeComponent(saleId)}/cancel',
+      <String, dynamic>{'reason': reason},
+    );
   }
 
   Future<OwnerBillingStatus> getBillingStatus() async {

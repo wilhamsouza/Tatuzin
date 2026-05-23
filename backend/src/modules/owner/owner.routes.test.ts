@@ -983,6 +983,127 @@ describe("owner routes", () => {
     );
   });
 
+  it("returns cash sessions, sales and administrative post-sale actions safely", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
+    const business = await createBusinessData(fixture);
+    const otherFixture = await createFixture({ plan: "PRO", role: "OWNER" });
+    const otherBusiness = await createBusinessData(otherFixture);
+
+    const blockedFree = await createFixture({ plan: "FREE", role: "OWNER" });
+    const freeResponse = await requestJson(
+      "GET",
+      "/owner/reports/cash-sessions",
+      { token: blockedFree.token },
+    );
+    assert.equal(freeResponse.status, 403);
+    assert.equal(
+      (freeResponse.data as { code?: string }).code,
+      "FEATURE_NOT_AVAILABLE",
+    );
+
+    const list = await requestJson(
+      "GET",
+      `/owner/reports/cash-sessions?startDate=${todayDate()}&endDate=${todayDate()}&status=all&page=1&pageSize=10`,
+      { token: fixture.token },
+    );
+    assert.equal(list.status, 200);
+    const listPayload = list.data as {
+      summary: { totalSessions: number; totalSoldCents: number; salesCount: number };
+      items: { items: Array<{ id: string; employee: { name: string } }> };
+    };
+    assert.equal(listPayload.summary.totalSessions, 1);
+    assert.equal(listPayload.summary.totalSoldCents, 16000);
+    assert.equal(listPayload.summary.salesCount, 3);
+    assert.equal(listPayload.items.items[0]?.id, business.cashSessionId);
+    assert.equal(listPayload.items.items[0]?.employee.name, "Owner Routes User");
+
+    const detail = await requestJson(
+      "GET",
+      `/owner/reports/cash-sessions/${business.cashSessionId}`,
+      { token: fixture.token },
+    );
+    assert.equal(detail.status, 200);
+    const detailPayload = detail.data as {
+      sales: { items: Array<{ id: string; items: Array<{ id: string }> }> };
+      movements: Array<{ title: string; notes?: string }>;
+    };
+    assert.equal(detailPayload.sales.items.length, 3);
+    assert.equal(
+      JSON.stringify(detailPayload).includes("other-token"),
+      false,
+    );
+
+    const crossCompany = await requestJson(
+      "GET",
+      `/owner/reports/cash-sessions/${otherBusiness.cashSessionId}`,
+      { token: fixture.token },
+    );
+    assert.equal(crossCompany.status, 404);
+    assert.equal(
+      (crossCompany.data as { code?: string }).code,
+      "OWNER_CASH_SESSION_NOT_FOUND",
+    );
+
+    const saleReturn = await requestJson(
+      "POST",
+      `/owner/reports/cash-sessions/${business.cashSessionId}/sales/${business.cashSaleId}/return`,
+      {
+        token: fixture.token,
+        body: {
+          reason: "Cliente solicitou troca administrativa",
+          returnToStock: true,
+          items: [
+            {
+              saleItemId: business.cashSaleItemId,
+              quantityMil: 1000,
+            },
+          ],
+        },
+      },
+    );
+    assert.equal(saleReturn.status, 201);
+    const returnPayload = saleReturn.data as {
+      action: { title: string; amountCents: number; notes: string };
+    };
+    assert.equal(returnPayload.action.title, "Troca/devolucao administrativa");
+    assert.equal(returnPayload.action.amountCents, -5000);
+    assert.equal(returnPayload.action.notes, "Cliente solicitou troca administrativa");
+
+    const cancelOtherCompanySale = await requestJson(
+      "POST",
+      `/owner/reports/cash-sessions/${business.cashSessionId}/sales/${otherBusiness.cashSaleId}/cancel`,
+      {
+        token: fixture.token,
+        body: { reason: "Tentativa cruzada" },
+      },
+    );
+    assert.equal(cancelOtherCompanySale.status, 404);
+
+    const cancelSale = await requestJson(
+      "POST",
+      `/owner/reports/cash-sessions/${business.cashSessionId}/sales/${business.cashSaleId}/cancel`,
+      {
+        token: fixture.token,
+        body: { reason: "Cancelamento administrativo solicitado" },
+      },
+    );
+    assert.equal(cancelSale.status, 200);
+    const canceled = await prisma.sale.findUniqueOrThrow({
+      where: { id: business.cashSaleId },
+    });
+    assert.equal(canceled.status, "canceled");
+
+    const duplicateCancel = await requestJson(
+      "POST",
+      `/owner/reports/cash-sessions/${business.cashSessionId}/sales/${business.cashSaleId}/cancel`,
+      {
+        token: fixture.token,
+        body: { reason: "Duplicidade" },
+      },
+    );
+    assert.equal(duplicateCancel.status, 409);
+  });
+
   it("keeps owner APIs free from admin API usage", () => {
     const routesSource = readFileSync(
       "src/modules/owner/owner.routes.ts",
@@ -1229,6 +1350,9 @@ async function createBusinessData(fixture: {
         ],
       },
     },
+    include: {
+      items: true,
+    },
   });
 
   const openFiadoSale = await prisma.sale.create({
@@ -1318,7 +1442,9 @@ async function createBusinessData(fixture: {
     aliceCustomerId: alice.id,
     bobCustomerId: bob.id,
     inactiveCustomerId: inactive.id,
+    cashSessionId: cashSession.id,
     cashSaleId: cashSale.id,
+    cashSaleItemId: cashSale.items[0].id,
   };
 }
 

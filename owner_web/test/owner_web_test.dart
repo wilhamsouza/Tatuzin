@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tatuzin_owner_web/src/app/owner_web_app.dart';
@@ -23,6 +24,7 @@ import 'package:tatuzin_owner_web/src/features/devices/presentation/owner_device
 import 'package:tatuzin_owner_web/src/features/employees/presentation/owner_employees_page.dart';
 import 'package:tatuzin_owner_web/src/features/finance/presentation/owner_finance_page.dart';
 import 'package:tatuzin_owner_web/src/features/products/presentation/owner_products_page.dart';
+import 'package:tatuzin_owner_web/src/features/reports/presentation/owner_cash_report_page.dart';
 import 'package:tatuzin_owner_web/src/features/reports/presentation/owner_reports_page.dart';
 import 'package:tatuzin_owner_web/src/features/sales/presentation/owner_sales_page.dart';
 import 'package:tatuzin_owner_web/src/features/settings/presentation/owner_settings_page.dart';
@@ -42,6 +44,7 @@ void main() {
     expect(ownerRoutePaths, contains('/finance'));
     expect(ownerRoutePaths, contains('/products'));
     expect(ownerRoutePaths, contains('/reports'));
+    expect(ownerRoutePaths, contains('/reports/cash'));
     expect(ownerRoutePaths, contains('/billing'));
     expect(ownerRoutePaths, contains('/employees'));
     expect(ownerRoutePaths, contains('/settings'));
@@ -295,6 +298,10 @@ void main() {
           return _jsonResponse(_receivablesPayload());
         case '/api/owner/reports/employees':
           return _jsonResponse(_employeeReportsPayload());
+        case '/api/owner/reports/cash-sessions':
+          return _jsonResponse(_cashSessionsPayload());
+        case '/api/owner/reports/cash-sessions/cash-session-1':
+          return _jsonResponse(_cashSessionDetailPayload());
         case '/api/owner/commissions':
           return _jsonResponse(_commissionsPayload());
         case '/api/owner/reports/catalog':
@@ -339,6 +346,8 @@ void main() {
     await service.getCrmCustomer('customer-1');
     await service.getReceivables();
     await service.getEmployeeReports();
+    await service.getCashSessions();
+    await service.getCashSessionDetail('cash-session-1');
     await service.getCommissions();
     await service.getReportsCatalog();
     await service.getBillingStatus();
@@ -364,6 +373,8 @@ void main() {
     expect(paths, contains('/api/owner/crm/customers/customer-1'));
     expect(paths, contains('/api/owner/financial/receivables'));
     expect(paths, contains('/api/owner/reports/employees'));
+    expect(paths, contains('/api/owner/reports/cash-sessions'));
+    expect(paths, contains('/api/owner/reports/cash-sessions/cash-session-1'));
     expect(paths, contains('/api/owner/commissions'));
     expect(paths, contains('/api/owner/reports/catalog'));
     expect(paths, contains('/api/owner/billing/status'));
@@ -678,6 +689,92 @@ void main() {
     );
     expect(find.textContaining('PURCHASE_REPORTS_NOT_AVAILABLE'), findsNothing);
     expect(find.textContaining('EMPLOYEE_REPORTS_NOT_AVAILABLE'), findsNothing);
+  });
+
+  testWidgets('cash report card navigates to cash report instead of fiado', (
+    tester,
+  ) async {
+    final router = GoRouter(
+      initialLocation: '/reports',
+      routes: [
+        GoRoute(
+          path: '/reports',
+          builder: (context, state) => const Scaffold(
+            body: SingleChildScrollView(child: OwnerReportsPage()),
+          ),
+        ),
+        GoRoute(
+          path: '/reports/cash',
+          builder: (context, state) =>
+              const Scaffold(body: Text('Tela de relatorios de caixa')),
+        ),
+        GoRoute(
+          path: '/finance',
+          builder: (context, state) => const Scaffold(body: Text('Fiados')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          ownerReportsCatalogProvider.overrideWith((ref) async {
+            return OwnerReportsCatalog.fromMap(_reportsCatalogPayload());
+          }),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Caixa'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Tela de relatorios de caixa'), findsOneWidget);
+    expect(find.text('Fiados'), findsNothing);
+  });
+
+  testWidgets('cash report page renders filters, sessions and sale actions', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _withProviders(
+        overrides: [
+          ownerCashSessionsProvider.overrideWith((ref) async {
+            return OwnerCashSessionsReport.fromMap(_cashSessionsPayload());
+          }),
+          ownerCashSessionDetailProvider.overrideWith((ref, id) async {
+            return OwnerCashSessionDetail.fromMap(_cashSessionDetailPayload());
+          }),
+        ],
+        child: const OwnerCashReportPage(),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Relatorios de caixa'), findsOneWidget);
+    expect(find.text('Filtros'), findsOneWidget);
+    expect(find.text('CX-001 - Ana Caixa'), findsOneWidget);
+
+    await tester.tap(find.text('Ver detalhes'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Detalhe do caixa'), findsOneWidget);
+    expect(find.text('Vendas do caixa'), findsOneWidget);
+
+    await tester.tap(find.text('Venda F-100'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Registrar troca/devolucao'), findsOneWidget);
+    expect(find.text('Cancelar venda'), findsOneWidget);
+    expect(find.textContaining('payload'), findsNothing);
+    expect(find.textContaining('token'), findsNothing);
   });
 
   testWidgets('billing page hides full provider id and payload', (
@@ -1525,6 +1622,134 @@ Map<String, dynamic> _employeeReportsPayload({bool available = true}) {
             },
           ]
         : [],
+  };
+}
+
+Map<String, dynamic> _cashSessionsPayload() {
+  return {
+    'period': {
+      'startDate': '2026-05-01',
+      'endDate': '2026-05-30',
+      'timezone': 'UTC',
+    },
+    'summary': {
+      'totalSoldCents': 19850,
+      'totalSessions': 1,
+      'sessionsWithDifference': 0,
+      'totalCashInflowCents': 5000,
+      'totalCashOutflowCents': 1000,
+      'averageTicketCents': 9925,
+      'salesCount': 2,
+      'byPaymentMethod': [
+        {
+          'key': 'dinheiro',
+          'label': 'Dinheiro',
+          'amountCents': 10000,
+          'count': 1,
+        },
+        {'key': 'pix', 'label': 'Pix', 'amountCents': 9850, 'count': 1},
+      ],
+    },
+    'items': {
+      'items': [_cashSessionItemPayload()],
+      'page': 1,
+      'pageSize': 20,
+      'total': 1,
+      'count': 1,
+      'hasNext': false,
+      'hasPrevious': false,
+    },
+  };
+}
+
+Map<String, dynamic> _cashSessionDetailPayload() {
+  return {
+    'session': _cashSessionItemPayload(),
+    'employee': {
+      'id': 'user-1',
+      'name': 'Ana Caixa',
+      'email': 'ana@tatuzin.test',
+    },
+    'values': {
+      'openingBalanceCents': 10000,
+      'closingBalanceCents': 29850,
+      'expectedBalanceCents': 29850,
+      'differenceCents': 0,
+    },
+    'movements': [
+      {
+        'id': 'movement-1',
+        'type': 'sangria',
+        'title': 'Sangria',
+        'amountCents': -1000,
+        'paymentMethod': 'Dinheiro',
+        'notes': 'Retirada conferida',
+        'createdAt': '2026-05-10T10:00:00.000Z',
+      },
+    ],
+    'sales': {
+      'items': [_cashSessionSalePayload()],
+      'page': 1,
+      'pageSize': 25,
+      'total': 1,
+      'count': 1,
+    },
+  };
+}
+
+Map<String, dynamic> _cashSessionItemPayload() {
+  return {
+    'id': 'cash-session-1',
+    'shortId': 'CX-001',
+    'openedAt': '2026-05-10T08:00:00.000Z',
+    'closedAt': '2026-05-10T18:00:00.000Z',
+    'employee': {
+      'id': 'user-1',
+      'name': 'Ana Caixa',
+      'email': 'ana@tatuzin.test',
+    },
+    'status': 'closed',
+    'statusLabel': 'Fechado',
+    'totalSoldCents': 19850,
+    'totalCashCents': 10000,
+    'totalCardCents': 0,
+    'totalPixCents': 9850,
+    'totalOtherCents': 0,
+    'cashInflowCents': 5000,
+    'cashOutflowCents': 1000,
+    'differenceCents': 0,
+    'salesCount': 2,
+    'notes': 'Fechamento conferido',
+  };
+}
+
+Map<String, dynamic> _cashSessionSalePayload() {
+  return {
+    'id': 'sale-1',
+    'shortId': 'F-100',
+    'receiptNumber': 'F-100',
+    'customerName': 'Cliente Maria',
+    'totalAmountCents': 10000,
+    'returnedAmountCents': 0,
+    'status': 'active',
+    'statusLabel': 'Ativa',
+    'paymentMethod': 'Dinheiro',
+    'soldAt': '2026-05-10T09:00:00.000Z',
+    'canceledAt': null,
+    'canCancel': true,
+    'canReturn': true,
+    'actions': [],
+    'items': [
+      {
+        'id': 'sale-item-1',
+        'productId': 'product-1',
+        'productName': 'Produto A',
+        'quantityMil': 1000,
+        'unitPriceCents': 10000,
+        'totalPriceCents': 10000,
+        'unitMeasure': 'un',
+      },
+    ],
   };
 }
 

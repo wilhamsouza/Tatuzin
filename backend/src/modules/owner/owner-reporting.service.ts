@@ -8,7 +8,10 @@ import type { AppContext } from '../app/app-context.types';
 import type {
   OwnerCrmCustomersQueryInput,
   OwnerCrmSummaryQueryInput,
+  OwnerCashSessionsQueryInput,
   OwnerEmployeesReportQueryInput,
+  OwnerSaleCancelInput,
+  OwnerSaleReturnInput,
   OwnerProductsReportQueryInput,
   OwnerReceivablesQueryInput,
   OwnerSalesSummaryQueryInput,
@@ -426,7 +429,9 @@ export class OwnerReportingService {
         right.summary.totalPurchasedCents - left.summary.totalPurchasedCents ||
         left.name.localeCompare(right.name, 'pt-BR'),
     );
-    const { skip, take } = toPaginationParams(query);
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const { skip, take } = toPaginationParams({ page, pageSize });
     const items = customers
       .slice(skip, skip + take)
       .map((customer) => this.toOwnerCustomerListItem(customer, inactiveCutoff));
@@ -533,7 +538,9 @@ export class OwnerReportingService {
         right.openAmountCents - left.openAmountCents ||
         left.customerName.localeCompare(right.customerName, 'pt-BR'),
     );
-    const { skip, take } = toPaginationParams(query);
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const { skip, take } = toPaginationParams({ page, pageSize });
 
     return {
       summary: {
@@ -542,8 +549,8 @@ export class OwnerReportingService {
       },
       items: buildPaginatedResponse({
         items: filtered.slice(skip, skip + take),
-        page: query.page,
-        pageSize: query.pageSize,
+        page,
+        pageSize,
         total: filtered.length,
       }),
     };
@@ -728,6 +735,254 @@ export class OwnerReportingService {
         topEmployees.length > 0 ? null : 'EMPLOYEE_REPORTS_NOT_AVAILABLE',
       period: this.serializePeriod(period),
       topEmployees,
+    };
+  }
+
+  async listCashSessions(
+    context: AppContext,
+    query: OwnerCashSessionsQueryInput,
+  ) {
+    const period = this.resolveDateRange(query);
+    const sessions = await this.loadCashSessions(context.company.id, period, {
+      employeeId: safeName(query.employeeId),
+      search: query.search,
+    });
+    const filtered = filterCashSessionsByStatus(sessions, query.status);
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const { skip, take } = toPaginationParams({ page, pageSize });
+    const items = filtered.slice(skip, skip + take).map(serializeCashSessionRow);
+
+    return {
+      period: this.serializePeriod(period),
+      summary: buildCashSessionsSummary(filtered),
+      items: buildPaginatedResponse({
+        items,
+        page,
+        pageSize,
+        total: filtered.length,
+      }),
+    };
+  }
+
+  async getCashSessionDetail(context: AppContext, cashSessionId: string) {
+    const session = await prisma.cashSession.findFirst({
+      where: {
+        id: cashSessionId,
+        companyId: context.company.id,
+      },
+      include: cashSessionDetailInclude,
+    });
+    if (session == null) {
+      throw new AppError('Caixa nao encontrado.', 404, 'OWNER_CASH_SESSION_NOT_FOUND');
+    }
+
+    const sales = await this.loadCashSessionSales(context.company.id, cashSessionId);
+    const saleIds = sales.map((sale) => sale.id);
+    const postSaleActions =
+      saleIds.length === 0
+        ? []
+        : await prisma.financialEvent.findMany({
+            where: {
+              companyId: context.company.id,
+              saleId: { in: saleIds },
+              eventType: { in: ['sale_return_admin', 'sale_canceled_admin'] },
+            },
+            orderBy: [{ createdAt: 'desc' }, { updatedAt: 'desc' }],
+          });
+
+    return {
+      session: serializeCashSessionRow(session),
+      employee: serializeCashSessionEmployee(session.user),
+      values: serializeCashSessionValues(session),
+      movements: [
+        ...session.cashEvents.map(serializeCashEvent),
+        ...postSaleActions.map(serializePostSaleFinancialEvent),
+      ].sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+      sales: buildPaginatedResponse({
+        items: sales.slice(0, 25).map((sale) => serializeCashSessionSale(sale, context)),
+        page: 1,
+        pageSize: 25,
+        total: sales.length,
+      }),
+    };
+  }
+
+  async listCashSessionSales(context: AppContext, cashSessionId: string) {
+    await this.ensureCashSessionForCompany(context.company.id, cashSessionId);
+    const sales = await this.loadCashSessionSales(context.company.id, cashSessionId);
+    return buildPaginatedResponse({
+      items: sales.map((sale) => serializeCashSessionSale(sale, context)),
+      page: 1,
+      pageSize: Math.max(sales.length, 1),
+      total: sales.length,
+    });
+  }
+
+  async registerSaleReturn(
+    context: AppContext,
+    cashSessionId: string,
+    saleId: string,
+    input: OwnerSaleReturnInput,
+  ) {
+    const now = new Date();
+    const result = await prisma.$transaction(async (tx) => {
+      const sale = await tx.sale.findFirst({
+        where: {
+          id: saleId,
+          companyId: context.company.id,
+          cashSessionId,
+        },
+        include: {
+          items: { orderBy: { createdAt: 'asc' } },
+        },
+      });
+      if (sale == null) {
+        throw new AppError('Venda nao encontrada neste caixa.', 404, 'OWNER_SALE_NOT_FOUND');
+      }
+      if (sale.status === 'canceled' || sale.status === 'refunded') {
+        throw new AppError(
+          'Esta venda ja foi cancelada ou devolvida integralmente.',
+          409,
+          'OWNER_SALE_ALREADY_CLOSED',
+        );
+      }
+
+      const existingReturns = await tx.financialEvent.aggregate({
+        where: {
+          companyId: context.company.id,
+          saleId,
+          eventType: 'sale_return_admin',
+        },
+        _sum: { amountCents: true },
+      });
+      const alreadyReturnedCents = Math.abs(existingReturns._sum.amountCents ?? 0);
+      const selected = resolveReturnItems(sale.items, input.items);
+      const returnAmountCents = selected.reduce(
+        (total, item) => total + item.returnAmountCents,
+        0,
+      );
+      if (returnAmountCents <= 0) {
+        throw new AppError('Selecione itens validos para devolucao.', 422, 'OWNER_RETURN_INVALID');
+      }
+      if (alreadyReturnedCents + returnAmountCents > sale.totalAmountCents) {
+        throw new AppError(
+          'A devolucao excede o valor original da venda.',
+          409,
+          'OWNER_RETURN_EXCEEDS_SALE',
+        );
+      }
+
+      if (input.returnToStock) {
+        for (const item of selected) {
+          if (item.productId == null) {
+            continue;
+          }
+          await tx.product.updateMany({
+            where: { id: item.productId, companyId: context.company.id },
+            data: { stockMil: { increment: item.quantityMil } },
+          });
+        }
+      }
+
+      const fullReturn =
+        alreadyReturnedCents + returnAmountCents >= sale.totalAmountCents;
+      const updatedSale = fullReturn
+        ? await tx.sale.update({
+            where: { id: sale.id },
+            data: { status: 'refunded' },
+            include: { items: { orderBy: { createdAt: 'asc' } } },
+          })
+        : sale;
+
+      const event = await tx.financialEvent.create({
+        data: {
+          companyId: context.company.id,
+          saleId: sale.id,
+          eventType: 'sale_return_admin',
+          localUuid: `owner-return:${sale.id}:${now.getTime()}`,
+          amountCents: -returnAmountCents,
+          paymentType: sale.paymentType,
+          metadata: {
+            source: 'owner_web',
+            actorUserId: context.user.id,
+            cashSessionId,
+            reason: input.reason,
+            returnToStock: input.returnToStock,
+            items: selected.map((item) => ({
+              saleItemId: item.id,
+              productId: item.productId,
+              productName: item.productNameSnapshot,
+              quantityMil: item.quantityMil,
+              amountCents: item.returnAmountCents,
+            })),
+          } satisfies Prisma.InputJsonValue,
+          createdAt: now,
+        },
+      });
+
+      return { sale: updatedSale, event };
+    });
+
+    return {
+      sale: serializeOwnerSaleDetail(result.sale),
+      action: serializePostSaleFinancialEvent(result.event),
+      message: 'Troca/devolucao registrada com auditoria.',
+    };
+  }
+
+  async cancelCashSessionSale(
+    context: AppContext,
+    cashSessionId: string,
+    saleId: string,
+    input: OwnerSaleCancelInput,
+  ) {
+    const now = new Date();
+    const result = await prisma.$transaction(async (tx) => {
+      const sale = await tx.sale.findFirst({
+        where: {
+          id: saleId,
+          companyId: context.company.id,
+          cashSessionId,
+        },
+        include: { items: { orderBy: { createdAt: 'asc' } } },
+      });
+      if (sale == null) {
+        throw new AppError('Venda nao encontrada neste caixa.', 404, 'OWNER_SALE_NOT_FOUND');
+      }
+      if (sale.status === 'canceled') {
+        throw new AppError('Esta venda ja esta cancelada.', 409, 'OWNER_SALE_ALREADY_CANCELED');
+      }
+
+      const canceled = await tx.sale.update({
+        where: { id: sale.id },
+        data: { status: 'canceled', canceledAt: now },
+        include: { items: { orderBy: { createdAt: 'asc' } } },
+      });
+      const event = await tx.financialEvent.create({
+        data: {
+          companyId: context.company.id,
+          saleId: sale.id,
+          eventType: 'sale_canceled_admin',
+          localUuid: `owner-cancel:${sale.id}:${now.getTime()}`,
+          amountCents: -sale.totalAmountCents,
+          paymentType: sale.paymentType,
+          metadata: {
+            source: 'owner_web',
+            actorUserId: context.user.id,
+            cashSessionId,
+            reason: input.reason,
+          } satisfies Prisma.InputJsonValue,
+          createdAt: now,
+        },
+      });
+      return { sale: canceled, event };
+    });
+
+    return {
+      sale: serializeOwnerSaleDetail(result.sale),
+      action: serializePostSaleFinancialEvent(result.event),
+      message: 'Venda cancelada com auditoria.',
     };
   }
 
@@ -1100,6 +1355,73 @@ export class OwnerReportingService {
     return items;
   }
 
+  private async ensureCashSessionForCompany(companyId: string, cashSessionId: string) {
+    const session = await prisma.cashSession.findFirst({
+      where: { id: cashSessionId, companyId },
+      select: { id: true },
+    });
+    if (session == null) {
+      throw new AppError('Caixa nao encontrado.', 404, 'OWNER_CASH_SESSION_NOT_FOUND');
+    }
+  }
+
+  private async loadCashSessions(
+    companyId: string,
+    period: Pick<OwnerDateRange, 'start' | 'endExclusive'>,
+    filters: { employeeId: string | null; search: string },
+  ) {
+    const search = filters.search.trim().toLocaleLowerCase('pt-BR');
+    const rows = await prisma.cashSession.findMany({
+      where: {
+        companyId,
+        ...(filters.employeeId == null ? {} : { userId: filters.employeeId }),
+        OR: [
+          { openedAt: { gte: period.start, lt: period.endExclusive } },
+          { closedAt: { gte: period.start, lt: period.endExclusive } },
+          { createdAt: { gte: period.start, lt: period.endExclusive } },
+        ],
+      },
+      include: cashSessionDetailInclude,
+      orderBy: [{ openedAt: 'desc' }, { createdAt: 'desc' }],
+      take: 250,
+    });
+
+    if (search.length === 0) {
+      return rows;
+    }
+    return rows.filter((session) => {
+      const haystack = [
+        session.localId,
+        session.localUuid,
+        session.notes,
+        session.user?.name,
+        session.user?.email,
+      ]
+        .filter((value): value is string => value != null)
+        .join(' ')
+        .toLocaleLowerCase('pt-BR');
+      return haystack.includes(search);
+    });
+  }
+
+  private async loadCashSessionSales(companyId: string, cashSessionId: string) {
+    return prisma.sale.findMany({
+      where: { companyId, cashSessionId },
+      include: {
+        customer: { select: { id: true, name: true } },
+        items: { orderBy: { createdAt: 'asc' } },
+        financialEvents: {
+          where: {
+            eventType: { in: ['sale_return_admin', 'sale_canceled_admin'] },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+      orderBy: [{ soldAt: 'desc' }, { updatedAt: 'desc' }],
+      take: 100,
+    });
+  }
+
   private async buildReceivablesSummary(companyId: string) {
     return summarizeReceivableItems(await this.buildReceivableItems(companyId));
   }
@@ -1396,6 +1718,46 @@ const customerSummarySelect = {
   },
 } satisfies Prisma.CustomerSelect;
 
+const cashSessionDetailInclude = {
+  user: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  },
+  sales: {
+    select: {
+      id: true,
+      status: true,
+      paymentMethod: true,
+      paymentType: true,
+      totalAmountCents: true,
+      soldAt: true,
+    },
+  },
+  cashEvents: {
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+  },
+} satisfies Prisma.CashSessionInclude;
+
+type OwnerCashSessionRow = Prisma.CashSessionGetPayload<{
+  include: typeof cashSessionDetailInclude;
+}>;
+
+type OwnerCashSessionSale = Prisma.SaleGetPayload<{
+  include: {
+    customer: { select: { id: true; name: true } };
+    items: true;
+    financialEvents: true;
+  };
+}>;
+
+type OwnerSaleWithItems = Prisma.SaleGetPayload<{
+  include: { items: true };
+}>;
+
 function aggregateSaleItemsByProduct(
   saleItems: Array<{
     productId: string | null;
@@ -1466,6 +1828,302 @@ function reportCatalogItem(
     available,
     reason: available ? null : reason ?? 'REPORT_NOT_AVAILABLE',
   };
+}
+
+function filterCashSessionsByStatus(
+  sessions: OwnerCashSessionRow[],
+  status: 'all' | 'open' | 'closed' | 'with_difference',
+) {
+  if (status === 'all') {
+    return sessions;
+  }
+  return sessions.filter((session) => {
+    if (status === 'with_difference') {
+      return cashDifferenceCents(session) !== 0;
+    }
+    return normalizeCashSessionStatus(session) === status;
+  });
+}
+
+function buildCashSessionsSummary(sessions: OwnerCashSessionRow[]) {
+  const paymentTotals = new Map<string, { label: string; amountCents: number; count: number }>();
+  let totalSoldCents = 0;
+  let salesCount = 0;
+  let cashInflowCents = 0;
+  let cashOutflowCents = 0;
+
+  for (const session of sessions) {
+    for (const sale of session.sales) {
+      if (sale.status !== 'active') {
+        continue;
+      }
+      totalSoldCents += sale.totalAmountCents;
+      salesCount += 1;
+      const key = normalizePaymentKey(sale.paymentMethod);
+      const current = paymentTotals.get(key) ?? {
+        label: friendlyPaymentMethod(sale.paymentMethod),
+        amountCents: 0,
+        count: 0,
+      };
+      current.amountCents += sale.totalAmountCents;
+      current.count += 1;
+      paymentTotals.set(key, current);
+    }
+    for (const event of session.cashEvents) {
+      if (event.amountCents >= 0) {
+        cashInflowCents += event.amountCents;
+      } else {
+        cashOutflowCents += Math.abs(event.amountCents);
+      }
+    }
+  }
+
+  return {
+    totalSoldCents,
+    totalSessions: sessions.length,
+    sessionsWithDifference: sessions.filter((session) => cashDifferenceCents(session) !== 0).length,
+    totalCashInflowCents: cashInflowCents,
+    totalCashOutflowCents: cashOutflowCents,
+    averageTicketCents: averageCents(totalSoldCents, salesCount),
+    salesCount,
+    byPaymentMethod: [...paymentTotals.entries()].map(([key, value]) => ({
+      key,
+      ...value,
+    })),
+  };
+}
+
+function serializeCashSessionRow(session: OwnerCashSessionRow) {
+  const totals = buildCashSessionsSummary([session]);
+  return {
+    id: session.id,
+    shortId: shortIdentifier(session.localId ?? session.localUuid ?? session.id),
+    localId: safeName(session.localId),
+    openedAt: session.openedAt?.toISOString() ?? session.createdAt.toISOString(),
+    closedAt: session.closedAt?.toISOString() ?? null,
+    employee: serializeCashSessionEmployee(session.user),
+    status: normalizeCashSessionStatus(session),
+    statusLabel: cashStatusLabel(session),
+    totalSoldCents: totals.totalSoldCents,
+    totalCashCents: totals.byPaymentMethod.find((item) => item.key === 'dinheiro')?.amountCents ?? 0,
+    totalCardCents: totals.byPaymentMethod
+      .filter((item) => item.key.includes('cartao'))
+      .reduce((total, item) => total + item.amountCents, 0),
+    totalPixCents: totals.byPaymentMethod.find((item) => item.key === 'pix')?.amountCents ?? 0,
+    totalOtherCents: totals.byPaymentMethod
+      .filter((item) => !['dinheiro', 'pix'].includes(item.key) && !item.key.includes('cartao'))
+      .reduce((total, item) => total + item.amountCents, 0),
+    cashInflowCents: totals.totalCashInflowCents,
+    cashOutflowCents: totals.totalCashOutflowCents,
+    differenceCents: cashDifferenceCents(session),
+    salesCount: totals.salesCount,
+    notes: safeName(session.notes),
+  };
+}
+
+function serializeCashSessionEmployee(
+  user: { id: string; name: string | null; email: string } | null,
+) {
+  return {
+    id: user?.id ?? null,
+    name: safeName(user?.name) ?? user?.email ?? 'Funcionario nao identificado',
+    email: user?.email ?? null,
+  };
+}
+
+function serializeCashSessionValues(session: OwnerCashSessionRow) {
+  return {
+    openingBalanceCents: session.openingBalanceCents,
+    closingBalanceCents: session.closingBalanceCents,
+    expectedBalanceCents: session.expectedBalanceCents,
+    differenceCents: cashDifferenceCents(session),
+  };
+}
+
+function serializeCashEvent(event: Prisma.CashEventGetPayload<{}>) {
+  return {
+    id: event.id,
+    type: event.eventType,
+    title: cashEventTitle(event.eventType),
+    amountCents: event.amountCents,
+    paymentMethod: friendlyPaymentMethod(event.paymentMethod),
+    notes: safeName(event.notes),
+    createdAt: event.createdAt.toISOString(),
+  };
+}
+
+function serializePostSaleFinancialEvent(event: Prisma.FinancialEventGetPayload<{}>) {
+  return {
+    id: event.id,
+    type: event.eventType,
+    title:
+      event.eventType === 'sale_canceled_admin'
+        ? 'Cancelamento administrativo'
+        : 'Troca/devolucao administrativa',
+    amountCents: event.amountCents,
+    paymentMethod: friendlyPaymentMethod(event.paymentType),
+    notes: safeMetadataReason(event.metadata),
+    createdAt: event.createdAt.toISOString(),
+  };
+}
+
+function serializeCashSessionSale(sale: OwnerCashSessionSale, context: AppContext) {
+  const returnedAmountCents = sale.financialEvents
+    .filter((event) => event.eventType === 'sale_return_admin')
+    .reduce((total, event) => total + Math.abs(event.amountCents), 0);
+  return {
+    id: sale.id,
+    shortId: shortIdentifier(sale.receiptNumber ?? sale.localUuid ?? sale.id),
+    receiptNumber: safeReceiptNumber(sale.receiptNumber),
+    customerName: safeName(sale.customer?.name),
+    sellerName: null,
+    totalAmountCents: sale.totalAmountCents,
+    returnedAmountCents,
+    status: sale.status,
+    statusLabel: saleStatusLabel(sale.status),
+    paymentMethod: friendlyPaymentMethod(sale.paymentMethod),
+    soldAt: sale.soldAt.toISOString(),
+    canceledAt: sale.canceledAt?.toISOString() ?? null,
+    canCancel: canPerformPostSaleAction(context, sale.status),
+    canReturn: canPerformPostSaleAction(context, sale.status),
+    actions: sale.financialEvents.map(serializePostSaleFinancialEvent),
+    items: sale.items.map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      productName: item.productNameSnapshot,
+      quantityMil: item.quantityMil,
+      unitPriceCents: item.unitPriceCents,
+      totalPriceCents: item.totalPriceCents,
+      unitMeasure: item.unitMeasure,
+    })),
+  };
+}
+
+function serializeOwnerSaleDetail(sale: OwnerSaleWithItems) {
+  return {
+    id: sale.id,
+    receiptNumber: safeReceiptNumber(sale.receiptNumber),
+    status: sale.status,
+    statusLabel: saleStatusLabel(sale.status),
+    totalAmountCents: sale.totalAmountCents,
+    soldAt: sale.soldAt.toISOString(),
+    canceledAt: sale.canceledAt?.toISOString() ?? null,
+    items: sale.items.map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      productName: item.productNameSnapshot,
+      quantityMil: item.quantityMil,
+      totalPriceCents: item.totalPriceCents,
+    })),
+  };
+}
+
+function resolveReturnItems(
+  saleItems: OwnerSaleWithItems['items'],
+  inputItems: OwnerSaleReturnInput['items'],
+) {
+  const saleItemById = new Map(saleItems.map((item) => [item.id, item]));
+  return inputItems.map((input) => {
+    const item = saleItemById.get(input.saleItemId);
+    if (item == null) {
+      throw new AppError('Item da venda nao encontrado.', 404, 'OWNER_SALE_ITEM_NOT_FOUND');
+    }
+    if (input.quantityMil > item.quantityMil) {
+      throw new AppError('Quantidade maior que a venda original.', 422, 'OWNER_RETURN_QUANTITY_INVALID');
+    }
+    return {
+      ...item,
+      quantityMil: input.quantityMil,
+      returnAmountCents: Math.round((item.unitPriceCents * input.quantityMil) / 1000),
+    };
+  });
+}
+
+function cashDifferenceCents(session: {
+  closingBalanceCents: number | null;
+  expectedBalanceCents: number | null;
+  payload: Prisma.JsonValue | null;
+}) {
+  if (session.closingBalanceCents != null && session.expectedBalanceCents != null) {
+    return session.closingBalanceCents - session.expectedBalanceCents;
+  }
+  if (session.payload != null && typeof session.payload === 'object' && !Array.isArray(session.payload)) {
+    const value = (session.payload as Record<string, unknown>).differenceCents;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return Math.trunc(value);
+    }
+  }
+  return 0;
+}
+
+function normalizeCashSessionStatus(session: { status: string; closedAt: Date | null }) {
+  if (session.closedAt != null || session.status === 'closed') {
+    return 'closed';
+  }
+  return 'open';
+}
+
+function cashStatusLabel(session: OwnerCashSessionRow) {
+  if (cashDifferenceCents(session) !== 0) {
+    return 'Com diferenca';
+  }
+  return normalizeCashSessionStatus(session) === 'closed' ? 'Fechado' : 'Aberto';
+}
+
+function saleStatusLabel(status: string) {
+  switch (status) {
+    case 'canceled':
+      return 'Cancelada';
+    case 'refunded':
+      return 'Devolvida';
+    default:
+      return 'Ativa';
+  }
+}
+
+function cashEventTitle(type: string) {
+  const normalized = type.toLowerCase();
+  if (normalized.includes('sangria') || normalized.includes('withdraw')) {
+    return 'Sangria';
+  }
+  if (normalized.includes('supply') || normalized.includes('suprimento')) {
+    return 'Suprimento';
+  }
+  if (normalized.includes('sale')) {
+    return 'Venda';
+  }
+  return 'Movimento de caixa';
+}
+
+function canPerformPostSaleAction(context: AppContext, status: string) {
+  if (status === 'canceled' || status === 'refunded') {
+    return false;
+  }
+  return (
+    context.membership.role === 'OWNER' ||
+    hasPermission(context.membership.permissions, 'sales.cancel') ||
+    hasPermission(context.membership.permissions, 'reports.advanced')
+  );
+}
+
+function hasPermission(permissions: string[], permission: string) {
+  return permissions.includes(permission);
+}
+
+function safeMetadataReason(metadata: Prisma.JsonValue | null) {
+  if (metadata == null || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return null;
+  }
+  const value = (metadata as Record<string, unknown>).reason;
+  return typeof value === 'string' ? safeName(value) : null;
+}
+
+function shortIdentifier(value: string) {
+  const trimmed = value.trim();
+  if (trimmed.length <= 12) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}`;
 }
 
 function emptyCustomerSummary(customerId: string): CustomerCommercialSummary {

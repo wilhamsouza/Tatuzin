@@ -25,6 +25,7 @@ import {
 import { EmployeesService } from "../employees/employees.service";
 import {
   ownerCommissionsQuerySchema,
+  ownerCashSessionsQuerySchema,
   ownerCrmCustomersQuerySchema,
   ownerCrmSummaryQuerySchema,
   ownerEmployeeActivityQuerySchema,
@@ -33,9 +34,12 @@ import {
   ownerInvoicesQuerySchema,
   ownerProductsReportQuerySchema,
   ownerReceivablesQuerySchema,
+  ownerSaleCancelSchema,
+  ownerSaleReturnSchema,
   ownerSalesSummaryQuerySchema,
   ownerStockSummaryQuerySchema,
   type OwnerCommissionsQueryInput,
+  type OwnerCashSessionsQueryInput,
   type OwnerCrmCustomersQueryInput,
   type OwnerCrmSummaryQueryInput,
   type OwnerEmployeeActivityQueryInput,
@@ -43,6 +47,8 @@ import {
   type OwnerInvoicesQueryInput,
   type OwnerProductsReportQueryInput,
   type OwnerReceivablesQueryInput,
+  type OwnerSaleCancelInput,
+  type OwnerSaleReturnInput,
   type OwnerSalesSummaryQueryInput,
   type OwnerStockSummaryQueryInput,
 } from "./owner.schemas";
@@ -383,6 +389,78 @@ ownerRouter.get(
       await ownerService.getEmployeeReports(
         request.appContext!,
         request.query as unknown as OwnerEmployeesReportQueryInput,
+      ),
+    );
+  }),
+);
+
+ownerRouter.get(
+  "/reports/cash-sessions",
+  requireAnyEmployeePermission(["reports.advanced"]),
+  validateQuery(ownerCashSessionsQuerySchema),
+  asyncHandler(async (request, response) => {
+    response.json(
+      await ownerService.listCashSessions(
+        request.appContext!,
+        request.query as unknown as OwnerCashSessionsQueryInput,
+      ),
+    );
+  }),
+);
+
+ownerRouter.get(
+  "/reports/cash-sessions/:id",
+  requireAnyEmployeePermission(["reports.advanced"]),
+  asyncHandler(async (request, response) => {
+    const { id } = ownerIdParamSchema.parse(request.params);
+    response.json(await ownerService.getCashSessionDetail(request.appContext!, id));
+  }),
+);
+
+ownerRouter.get(
+  "/reports/cash-sessions/:id/sales",
+  requireAnyEmployeePermission(["reports.advanced"]),
+  asyncHandler(async (request, response) => {
+    const { id } = ownerIdParamSchema.parse(request.params);
+    response.json(await ownerService.listCashSessionSales(request.appContext!, id));
+  }),
+);
+
+ownerRouter.post(
+  "/reports/cash-sessions/:id/sales/:saleId/return",
+  requireAnyEmployeePermission(["sales.cancel", "reports.advanced"]),
+  validateBody(ownerSaleReturnSchema),
+  asyncHandler(async (request, response) => {
+    const { id } = ownerIdParamSchema.parse(request.params);
+    const { id: saleId } = ownerIdParamSchema.parse({
+      id: request.params.saleId,
+    });
+    response.status(201).json(
+      await ownerService.registerSaleReturn(
+        request.appContext!,
+        id,
+        saleId,
+        request.body as OwnerSaleReturnInput,
+      ),
+    );
+  }),
+);
+
+ownerRouter.post(
+  "/reports/cash-sessions/:id/sales/:saleId/cancel",
+  requireAnyEmployeePermission(["sales.cancel", "reports.advanced"]),
+  validateBody(ownerSaleCancelSchema),
+  asyncHandler(async (request, response) => {
+    const { id } = ownerIdParamSchema.parse(request.params);
+    const { id: saleId } = ownerIdParamSchema.parse({
+      id: request.params.saleId,
+    });
+    response.json(
+      await ownerService.cancelCashSessionSale(
+        request.appContext!,
+        id,
+        saleId,
+        request.body as OwnerSaleCancelInput,
       ),
     );
   }),

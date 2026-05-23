@@ -15,6 +15,7 @@ import { getPlanEntitlements } from "../plans/plan-catalog.service";
 import { OwnerReportingService } from "./owner-reporting.service";
 import type {
   OwnerCommissionsQueryInput,
+  OwnerCashSessionsQueryInput,
   OwnerCrmCustomersQueryInput,
   OwnerCrmSummaryQueryInput,
   OwnerEmployeeActivityQueryInput,
@@ -22,6 +23,8 @@ import type {
   OwnerInvoicesQueryInput,
   OwnerProductsReportQueryInput,
   OwnerReceivablesQueryInput,
+  OwnerSaleCancelInput,
+  OwnerSaleReturnInput,
   OwnerSalesSummaryQueryInput,
   OwnerStockSummaryQueryInput,
 } from "./owner.schemas";
@@ -363,6 +366,49 @@ export class OwnerService {
     query: OwnerEmployeesReportQueryInput,
   ) {
     return this.reportingService.getEmployeeReports(context, query);
+  }
+
+  async listCashSessions(
+    context: AppContext,
+    query: OwnerCashSessionsQueryInput,
+  ) {
+    return this.reportingService.listCashSessions(context, query);
+  }
+
+  async getCashSessionDetail(context: AppContext, cashSessionId: string) {
+    return this.reportingService.getCashSessionDetail(context, cashSessionId);
+  }
+
+  async listCashSessionSales(context: AppContext, cashSessionId: string) {
+    return this.reportingService.listCashSessionSales(context, cashSessionId);
+  }
+
+  async registerSaleReturn(
+    context: AppContext,
+    cashSessionId: string,
+    saleId: string,
+    input: OwnerSaleReturnInput,
+  ) {
+    return this.reportingService.registerSaleReturn(
+      context,
+      cashSessionId,
+      saleId,
+      input,
+    );
+  }
+
+  async cancelCashSessionSale(
+    context: AppContext,
+    cashSessionId: string,
+    saleId: string,
+    input: OwnerSaleCancelInput,
+  ) {
+    return this.reportingService.cancelCashSessionSale(
+      context,
+      cashSessionId,
+      saleId,
+      input,
+    );
   }
 
   async getCommissions(context: AppContext, query: OwnerCommissionsQueryInput) {

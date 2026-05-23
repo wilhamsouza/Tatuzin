@@ -95,7 +95,7 @@ String? _routeForReport(String key) {
     case 'stock':
       return '/products';
     case 'cash':
-      return '/finance';
+      return '/reports/cash';
     case 'customers':
       return '/clients';
     case 'employees':
