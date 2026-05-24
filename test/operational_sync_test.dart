@@ -368,6 +368,11 @@ void main() {
           failedAt: DateTime(2026, 5, 5, 11),
           nextRetryAt: null,
         );
+        final failedSummary = (await repository.listFeatureSummaries()).single;
+        final failedDiagnostic = await repository.buildDiagnosticReport();
+        expect(failedSummary.errorCount, 1);
+        expect(failedDiagnostic.failedCount, failedSummary.errorCount);
+        expect(failedDiagnostic.lastLocalError, contains('totalCents'));
         final failedRow = (await database.query(
           TableNames.operationalSyncEvents,
           where: 'event_id = ?',
@@ -588,42 +593,47 @@ void main() {
       expect(report.ignoredConflictCount, 1);
     });
 
-    test('diagnostico limpa cache local de conflitos ja tratados no backend', () async {
-      final queue = _MemoryOperationalSyncQueueRepository()
-        ..clearedConflicts = 2;
-      final remote = _FakeOperationalSyncRemoteDataSource(
-        conflicts: const <OperationalSyncConflict>[
-          OperationalSyncConflict(
-            id: 'resolved-1',
-            entity: 'operationalOrderItem',
-            code: 'OPERATIONAL_ORDER_NOT_FOUND',
-            message: 'resolvido',
-            status: 'RESOLVED',
+    test(
+      'diagnostico limpa cache local de conflitos ja tratados no backend',
+      () async {
+        final queue = _MemoryOperationalSyncQueueRepository()
+          ..clearedConflicts = 2;
+        final remote = _FakeOperationalSyncRemoteDataSource(
+          conflicts: const <OperationalSyncConflict>[
+            OperationalSyncConflict(
+              id: 'resolved-1',
+              entity: 'operationalOrderItem',
+              code: 'OPERATIONAL_ORDER_NOT_FOUND',
+              message: 'resolvido',
+              status: 'RESOLVED',
+            ),
+            OperationalSyncConflict(
+              id: 'ignored-1',
+              entity: 'operationalOrderItem',
+              code: 'OPERATIONAL_ORDER_NOT_FOUND',
+              message: 'ignorado',
+              status: 'IGNORED',
+            ),
+          ],
+        );
+        var snapshotChanges = 0;
+        final runner = OperationalSyncRunner(
+          queueRepository: queue,
+          remoteDataSource: remote,
+          snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+            version: '1',
           ),
-          OperationalSyncConflict(
-            id: 'ignored-1',
-            entity: 'operationalOrderItem',
-            code: 'OPERATIONAL_ORDER_NOT_FOUND',
-            message: 'ignorado',
-            status: 'IGNORED',
-          ),
-        ],
-      );
-      final runner = OperationalSyncRunner(
-        queueRepository: queue,
-        remoteDataSource: remote,
-        snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
-          version: '1',
-        ),
-        shouldContinue: () => true,
-        onCacheSnapshotChanged: () {},
-      );
+          shouldContinue: () => true,
+          onCacheSnapshotChanged: () => snapshotChanges++,
+        );
 
-      await runner.run(retryOnly: false);
+        await runner.run(retryOnly: false);
 
-      expect(queue.clearResolvedConflictCalls, greaterThanOrEqualTo(1));
-      expect(remote.diagnostics.last.openConflictCount, 0);
-    });
+        expect(queue.clearResolvedConflictCalls, greaterThanOrEqualTo(1));
+        expect(remote.diagnostics.last.openConflictCount, 0);
+        expect(snapshotChanges, greaterThanOrEqualTo(1));
+      },
+    );
 
     test('executa comando de reparo e reporta resultado ao backend', () async {
       final queue = _MemoryOperationalSyncQueueRepository()..repairedEvents = 3;
@@ -643,7 +653,7 @@ void main() {
           version: '1',
         ),
         shouldContinue: () => true,
-        onCacheSnapshotChanged: () {},
+        onCacheSnapshotChanged: () => queue.cacheRefreshSignals++,
       );
 
       await runner.run(retryOnly: false);
@@ -653,6 +663,7 @@ void main() {
         3,
       );
       expect(remote.failedSupportCommands, isEmpty);
+      expect(queue.cacheRefreshSignals, greaterThanOrEqualTo(1));
     });
 
     test('limpa cache local de conflitos resolvidos por comando', () async {
@@ -685,7 +696,7 @@ void main() {
           version: '1',
         ),
         shouldContinue: () => true,
-        onCacheSnapshotChanged: () {},
+        onCacheSnapshotChanged: () => queue.cacheRefreshSignals++,
       );
 
       await runner.run(retryOnly: false);
@@ -694,17 +705,18 @@ void main() {
         remote.completedSupportCommands['cmd-clear']?['clearedConflicts'],
         4,
       );
+      expect(queue.cacheRefreshSignals, greaterThanOrEqualTo(1));
     });
 
-    test('force sync pull reporta comando como falha quando pull falha', () async {
+    test('recalcular status invalida snapshot visual local', () async {
       final queue = _MemoryOperationalSyncQueueRepository();
-      final remote = _FakeOperationalSyncRemoteDataSource(failPull: true)
+      final remote = _FakeOperationalSyncRemoteDataSource()
         ..supportCommands = const <OperationalSyncSupportCommand>[
           OperationalSyncSupportCommand(
-            id: 'cmd-force-pull',
-            command: 'FORCE_SYNC_PULL',
+            id: 'cmd-refresh',
+            command: 'REFRESH_SYNC_STATUS',
             status: 'RUNNING',
-            reason: 'forcar atualizacao',
+            reason: 'recalcular status visual',
           ),
         ];
       final runner = OperationalSyncRunner(
@@ -714,22 +726,54 @@ void main() {
           version: '1',
         ),
         shouldContinue: () => true,
-        onCacheSnapshotChanged: () {},
+        onCacheSnapshotChanged: () => queue.cacheRefreshSignals++,
       );
 
       await runner.run(retryOnly: false);
 
-      expect(remote.completedSupportCommands, isNot(contains('cmd-force-pull')));
-      expect(
-        remote.failedSupportCommands['cmd-force-pull'],
-        'Nao foi possivel atualizar os dados da nuvem.',
-      );
-      expect(
-        remote.failedSupportCommandResults['cmd-force-pull']?['pullFailed'],
-        isTrue,
-      );
+      expect(remote.completedSupportCommands, contains('cmd-refresh'));
+      expect(queue.cacheRefreshSignals, greaterThanOrEqualTo(1));
     });
 
+    test(
+      'force sync pull reporta comando como falha quando pull falha',
+      () async {
+        final queue = _MemoryOperationalSyncQueueRepository();
+        final remote = _FakeOperationalSyncRemoteDataSource(failPull: true)
+          ..supportCommands = const <OperationalSyncSupportCommand>[
+            OperationalSyncSupportCommand(
+              id: 'cmd-force-pull',
+              command: 'FORCE_SYNC_PULL',
+              status: 'RUNNING',
+              reason: 'forcar atualizacao',
+            ),
+          ];
+        final runner = OperationalSyncRunner(
+          queueRepository: queue,
+          remoteDataSource: remote,
+          snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+            version: '1',
+          ),
+          shouldContinue: () => true,
+          onCacheSnapshotChanged: () {},
+        );
+
+        await runner.run(retryOnly: false);
+
+        expect(
+          remote.completedSupportCommands,
+          isNot(contains('cmd-force-pull')),
+        );
+        expect(
+          remote.failedSupportCommands['cmd-force-pull'],
+          'Nao foi possivel atualizar os dados da nuvem.',
+        );
+        expect(
+          remote.failedSupportCommandResults['cmd-force-pull']?['pullFailed'],
+          isTrue,
+        );
+      },
+    );
 
     test('batch limita 100 eventos por push', () async {
       final queue = _MemoryOperationalSyncQueueRepository(

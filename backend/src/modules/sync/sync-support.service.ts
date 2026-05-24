@@ -131,7 +131,10 @@ export class SyncSupportService {
       where: { id: { in: ids } },
       orderBy: { requestedAt: "asc" },
     });
-    return { ok: true, items: running.map((command) => this.commandDto(command)) };
+    return {
+      ok: true,
+      items: running.map((command) => this.commandDto(command)),
+    };
   }
 
   async startCommand(context: AppContext, commandId: string) {
@@ -152,7 +155,10 @@ export class SyncSupportService {
     }
     const running = await prisma.syncSupportCommand.update({
       where: { id: command.id },
-      data: { status: SyncSupportCommandStatus.RUNNING, pickedUpAt: new Date() },
+      data: {
+        status: SyncSupportCommandStatus.RUNNING,
+        pickedUpAt: new Date(),
+      },
     });
     return { ok: true, command: this.commandDto(running) };
   }
@@ -282,7 +288,9 @@ export class SyncSupportService {
           where: {
             companyId,
             deviceId,
-            status: { in: [SyncConflictStatus.RESOLVED, SyncConflictStatus.IGNORED] },
+            status: {
+              in: [SyncConflictStatus.RESOLVED, SyncConflictStatus.IGNORED],
+            },
           },
           orderBy: { updatedAt: "desc" },
           take: 20,
@@ -319,7 +327,9 @@ export class SyncSupportService {
         updatedAt: event.updatedAt.toISOString(),
         payloadSummary: summarizeJson(event.payload),
       })),
-      openConflicts: openConflicts.map((conflict) => this.conflictDto(conflict)),
+      openConflicts: openConflicts.map((conflict) =>
+        this.conflictDto(conflict),
+      ),
       resolvedConflicts: resolvedConflicts.map((conflict) =>
         this.conflictDto(conflict),
       ),
@@ -334,7 +344,10 @@ export class SyncSupportService {
       orderBy: { requestedAt: "desc" },
       take: 50,
     });
-    return { ok: true, items: commands.map((command) => this.commandDto(command)) };
+    return {
+      ok: true,
+      items: commands.map((command) => this.commandDto(command)),
+    };
   }
 
   async adminDryRun(
@@ -431,18 +444,28 @@ export class SyncSupportService {
     command: SyncSupportCommandType,
   ) {
     const diagnostic = await prisma.deviceSyncDiagnostic.findUnique({
-      where: { companyId_deviceId: { companyId: device.companyId, deviceId: device.id } },
+      where: {
+        companyId_deviceId: {
+          companyId: device.companyId,
+          deviceId: device.id,
+        },
+      },
     });
     const blockers: string[] = [];
     const risks = [
       "O comando sera executado pelo app no proprio dispositivo.",
       "Nenhuma venda, pedido ou estoque sera apagado pelo backend.",
     ];
-    if (diagnostic == null) {
+    const requiresReportedFailure =
+      command ===
+        SyncSupportCommandType.REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS ||
+      command === SyncSupportCommandType.RETRY_FAILED_SYNC_EVENTS;
+    if (diagnostic == null && requiresReportedFailure) {
       blockers.push("Este dispositivo ainda nao reportou diagnostico local.");
     }
     if (
-      command === SyncSupportCommandType.REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS &&
+      command ===
+        SyncSupportCommandType.REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS &&
       (diagnostic?.failedCount ?? 0) === 0
     ) {
       blockers.push("Nao ha falhas locais reportadas para reparar.");
@@ -453,12 +476,18 @@ export class SyncSupportService {
     ) {
       blockers.push("Nao ha eventos locais com falha reportados.");
     }
+    if (command === SyncSupportCommandType.CLEAR_RESOLVED_CONFLICT_CACHE) {
+      risks.push(
+        "Mesmo com diagnostico zerado, o app vai conferir o cache local e limpar apenas conflitos resolvidos ou ignorados.",
+      );
+    }
     if (
-      command === SyncSupportCommandType.CLEAR_RESOLVED_CONFLICT_CACHE &&
-      (diagnostic?.resolvedConflictCount ?? 0) === 0 &&
-      (diagnostic?.ignoredConflictCount ?? 0) === 0
+      command === SyncSupportCommandType.FORCE_SYNC_PULL ||
+      command === SyncSupportCommandType.REFRESH_SYNC_STATUS
     ) {
-      blockers.push("Nao ha conflito resolvido/ignorado reportado no cache local.");
+      risks.push(
+        "Acao segura para realinhar o status visual do app com a nuvem.",
+      );
     }
     return {
       allowed: blockers.length === 0,
@@ -467,16 +496,23 @@ export class SyncSupportService {
       expectedConfirmationText: confirmationByCommand[command],
       blockers,
       risks,
-      summary: blockers.length === 0
-        ? "Comando pode ser enviado com seguranca para execucao local."
-        : "Comando bloqueado ate o diagnostico indicar um caso aplicavel.",
+      summary:
+        blockers.length === 0
+          ? "Comando pode ser enviado com seguranca para execucao local."
+          : "Comando bloqueado ate o diagnostico indicar um caso aplicavel.",
     };
   }
 
   private async requireCompany(companyId: string) {
-    const company = await prisma.company.findUnique({ where: { id: companyId } });
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+    });
     if (company == null) {
-      throw new AppError("Empresa nao encontrada.", 404, "ADMIN_COMPANY_NOT_FOUND");
+      throw new AppError(
+        "Empresa nao encontrada.",
+        404,
+        "ADMIN_COMPANY_NOT_FOUND",
+      );
     }
     return company;
   }
@@ -523,7 +559,12 @@ export class SyncSupportService {
       where: {
         companyId,
         ...(deviceId == null ? {} : { deviceId }),
-        status: { in: [SyncSupportCommandStatus.PENDING, SyncSupportCommandStatus.RUNNING] },
+        status: {
+          in: [
+            SyncSupportCommandStatus.PENDING,
+            SyncSupportCommandStatus.RUNNING,
+          ],
+        },
         expiresAt: { lte: new Date() },
       },
       data: { status: SyncSupportCommandStatus.EXPIRED },
@@ -585,7 +626,10 @@ export class SyncSupportService {
         lastLocalError: string | null;
         reportedAt: Date;
       } | null;
-      syncCheckpoints?: Array<{ lastPushedAt: Date | null; lastPulledAt: Date | null }>;
+      syncCheckpoints?: Array<{
+        lastPushedAt: Date | null;
+        lastPulledAt: Date | null;
+      }>;
     },
     conflictCounts: {
       openConflictCount: number;
@@ -594,10 +638,12 @@ export class SyncSupportService {
     },
   ) {
     const lastPushAt = latestDate(
-      device.syncCheckpoints?.map((checkpoint) => checkpoint.lastPushedAt) ?? [],
+      device.syncCheckpoints?.map((checkpoint) => checkpoint.lastPushedAt) ??
+        [],
     );
     const lastPullAt = latestDate(
-      device.syncCheckpoints?.map((checkpoint) => checkpoint.lastPulledAt) ?? [],
+      device.syncCheckpoints?.map((checkpoint) => checkpoint.lastPulledAt) ??
+        [],
     );
     const diagnostic = device.syncDiagnostic;
     const failedCount = diagnostic?.failedCount ?? 0;
@@ -609,7 +655,9 @@ export class SyncSupportService {
       clientInstanceId: maskId(device.clientInstanceId),
       deviceLabel: device.deviceLabel,
       platform: device.platform,
-      appVersion: diagnostic?.reportedAt ? device.appVersion : device.appVersion,
+      appVersion: diagnostic?.reportedAt
+        ? device.appVersion
+        : device.appVersion,
       status: classifyDeviceStatus({ failedCount, openConflictCount }),
       deviceStatus: device.status.toLowerCase(),
       lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
@@ -672,7 +720,8 @@ export class SyncSupportService {
       lastLocalErrorEntity: diagnostic.lastLocalErrorEntity,
       lastPushAt: diagnostic.lastPushAt?.toISOString() ?? null,
       lastPullAt: diagnostic.lastPullAt?.toISOString() ?? null,
-      lastSuccessfulSyncAt: diagnostic.lastSuccessfulSyncAt?.toISOString() ?? null,
+      lastSuccessfulSyncAt:
+        diagnostic.lastSuccessfulSyncAt?.toISOString() ?? null,
       safeDetails: sanitizeJson(diagnostic.safeDetails ?? {}),
       reportedAt: diagnostic.reportedAt.toISOString(),
     };

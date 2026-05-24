@@ -375,6 +375,67 @@ describe("admin sync center routes", () => {
     assert.notEqual(audit, null);
   });
 
+  it("allows safe device realignment commands even when diagnostic is empty", async () => {
+    const fixture = await createFixture();
+
+    const clearDryRun = await requestJson(
+      "POST",
+      `/admin/sync/companies/${fixture.companyId}/devices/${fixture.deviceId}/support-actions/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: {
+          command: "CLEAR_RESOLVED_CONFLICT_CACHE",
+          reason: "app ainda mostra alerta antigo",
+        },
+      },
+    );
+    assert.equal(clearDryRun.status, 200);
+    assert.equal((clearDryRun.data as { allowed: boolean }).allowed, true);
+    assert.equal(
+      (clearDryRun.data as { expectedConfirmationText: string })
+        .expectedConfirmationText,
+      "LIMPAR",
+    );
+
+    const created = await requestJson(
+      "POST",
+      `/admin/sync/companies/${fixture.companyId}/devices/${fixture.deviceId}/support-actions`,
+      {
+        token: fixture.adminToken,
+        body: {
+          command: "REFRESH_SYNC_STATUS",
+          reason: "realinhar status visual do app",
+          confirmationText: "RECALCULAR",
+        },
+      },
+    );
+    assert.equal(created.status, 200);
+    assert.equal(
+      (created.data as { command: { command: string; status: string } }).command
+        .command,
+      "REFRESH_SYNC_STATUS",
+    );
+    assert.equal(
+      (created.data as { command: { command: string; status: string } }).command
+        .status,
+      "PENDING",
+    );
+
+    const repairDryRun = await requestJson(
+      "POST",
+      `/admin/sync/companies/${fixture.companyId}/devices/${fixture.deviceId}/support-actions/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: {
+          command: "REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS",
+          reason: "sem falha reportada",
+        },
+      },
+    );
+    assert.equal(repairDryRun.status, 200);
+    assert.equal((repairDryRun.data as { allowed: boolean }).allowed, false);
+  });
+
   it("classifies cafe oliveira legacy stockDeduction as not automatically reprocessable", async () => {
     const fixture = await createFixture();
 

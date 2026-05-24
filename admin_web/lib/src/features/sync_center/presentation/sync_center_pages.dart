@@ -1691,6 +1691,7 @@ class _DevicesTable extends StatelessWidget {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: DataTable(
+        showCheckboxColumn: false,
         columns: const [
           DataColumn(label: Text('Dispositivo')),
           DataColumn(label: Text('Usuario')),
@@ -1704,6 +1705,7 @@ class _DevicesTable extends StatelessWidget {
         rows: devices
             .map(
               (device) => DataRow(
+                onSelectChanged: (_) => onOpen(device),
                 cells: [
                   DataCell(
                     Column(
@@ -1735,10 +1737,21 @@ class _DevicesTable extends StatelessWidget {
                     ),
                   ),
                   DataCell(
-                    FilledButton.tonalIcon(
-                      onPressed: () => onOpen(device),
-                      icon: const Icon(Icons.manage_search_rounded),
-                      label: const Text('Ver diagnostico'),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        FilledButton.tonalIcon(
+                          onPressed: () => onOpen(device),
+                          icon: const Icon(Icons.manage_search_rounded),
+                          label: const Text('Detalhes'),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton.icon(
+                          onPressed: () => onOpen(device),
+                          icon: const Icon(Icons.support_agent_rounded),
+                          label: const Text('Suporte'),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -1795,49 +1808,69 @@ class _DeviceDetailPanel extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          const _NoticeBox(
-            message:
-                'Executar reparo nao apaga vendas, pedidos ou estoque. O comando fica pendente ate o app deste dispositivo sincronizar.',
-          ),
-          const SizedBox(height: 16),
-          _DetailGrid(
-            rows: {
-              'Status': _deviceStatusLabel(detail.device.status),
-              'Pendentes locais': '${diagnostic?.pendingCount ?? 0}',
-              'Falhas locais': '${diagnostic?.failedCount ?? 0}',
-              'Conflitos OPEN': '${diagnostic?.openConflictCount ?? 0}',
-              'Resolvidos/Ignorados':
-                  '${diagnostic?.resolvedConflictCount ?? 0}/${diagnostic?.ignoredConflictCount ?? 0}',
-              'Ultimo push': AdminFormatters.formatDateTime(
-                diagnostic?.lastPushAt ?? detail.device.lastPushAt,
-              ),
-              'Ultimo pull': AdminFormatters.formatDateTime(
-                diagnostic?.lastPullAt ?? detail.device.lastPullAt,
-              ),
-              'Versao app':
-                  diagnostic?.appVersion ?? detail.device.appVersion ?? '-',
-            },
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: _supportActions
-                .map(
-                  (action) => FilledButton.tonalIcon(
-                    onPressed: () => onAction(action),
-                    icon: Icon(action.icon),
-                    label: Text(action.label),
-                  ),
-                )
-                .toList(growable: false),
-          ),
-          const SizedBox(height: 16),
           Expanded(
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const _NoticeBox(
+                    message:
+                        'Executar reparo nao apaga vendas, pedidos ou estoque. O comando fica pendente ate o app deste dispositivo sincronizar.',
+                  ),
+                  const SizedBox(height: 8),
+                  const _NoticeBox(
+                    message:
+                        'Use estas acoes quando o app ainda mostra atencao na nuvem, mas os conflitos remotos ja foram resolvidos.',
+                  ),
+                  const SizedBox(height: 16),
+                  _DetailGrid(
+                    rows: {
+                      'Status': _deviceStatusLabel(detail.device.status),
+                      'Device ID': detail.device.maskedDeviceId,
+                      'Usuario': detail.device.user?.email ?? 'Nao informado',
+                      'Client instance': detail.device.clientInstanceId,
+                      'Pendentes locais': '${diagnostic?.pendingCount ?? 0}',
+                      'Falhas locais': '${diagnostic?.failedCount ?? 0}',
+                      'Conflitos OPEN': '${diagnostic?.openConflictCount ?? 0}',
+                      'Resolvidos/Ignorados':
+                          '${diagnostic?.resolvedConflictCount ?? 0}/${diagnostic?.ignoredConflictCount ?? 0}',
+                      'Ultimo push': AdminFormatters.formatDateTime(
+                        diagnostic?.lastPushAt ?? detail.device.lastPushAt,
+                      ),
+                      'Ultimo pull': AdminFormatters.formatDateTime(
+                        diagnostic?.lastPullAt ?? detail.device.lastPullAt,
+                      ),
+                      'Ultimo sync ok': AdminFormatters.formatDateTime(
+                        diagnostic?.lastSuccessfulSyncAt,
+                      ),
+                      'Ultimo diagnostico': AdminFormatters.formatDateTime(
+                        diagnostic?.reportedAt ??
+                            detail.device.diagnostic?.reportedAt,
+                      ),
+                      'Versao app':
+                          diagnostic?.appVersion ??
+                          detail.device.appVersion ??
+                          '-',
+                      'Schema local': diagnostic?.localSchemaVersion ?? '-',
+                      'Entidade do erro':
+                          diagnostic?.lastLocalErrorEntity ?? '-',
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: _supportActions
+                        .map(
+                          (action) => FilledButton.tonalIcon(
+                            onPressed: () => onAction(action),
+                            icon: Icon(action.icon),
+                            label: Text(action.label),
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+                  const SizedBox(height: 16),
                   if (diagnostic?.lastLocalError != null)
                     _NoticeBox(message: diagnostic!.lastLocalError!),
                   const SizedBox(height: 12),

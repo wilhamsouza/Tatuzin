@@ -115,19 +115,35 @@ void main() {
     expect(find.text('PDV cafe oliveira'), findsOneWidget);
     expect(find.text('Falha local'), findsOneWidget);
     expect(find.text('3'), findsWidgets);
+    expect(find.text('Detalhes'), findsOneWidget);
+    expect(find.text('Suporte'), findsOneWidget);
 
-    await tester.tap(find.text('Ver diagnostico'));
+    await tester.tap(find.text('PDV cafe oliveira'));
     await tester.pumpAndSettle();
     expect(
       find.text('Suporte de sincronizacao por dispositivo'),
       findsOneWidget,
     );
+    expect(find.text('Client instance'), findsOneWidget);
+    expect(find.text('device...0001'), findsWidgets);
+    expect(find.text('operador@tatuzin.test'), findsWidgets);
+    expect(find.text('Ultimo sync ok'), findsOneWidget);
+    expect(find.text('Entidade do erro'), findsOneWidget);
+    expect(find.text('Comandos enviados'), findsOneWidget);
     expect(find.text('Reparar eventos recuperaveis'), findsOneWidget);
+    expect(
+      find.text('Limpar conflitos resolvidos no dispositivo'),
+      findsOneWidget,
+    );
+    expect(find.text('Forcar atualizacao da nuvem'), findsOneWidget);
+    expect(find.text('Recalcular status de sync'), findsOneWidget);
     expect(
       find.textContaining('totalCents maior ou igual a zero'),
       findsWidgets,
     );
 
+    await tester.ensureVisible(find.text('Reparar eventos recuperaveis'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Reparar eventos recuperaveis'));
     await tester.pumpAndSettle();
     expect(find.text('Motivo obrigatorio'), findsOneWidget);

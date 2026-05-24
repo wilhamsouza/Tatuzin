@@ -320,7 +320,13 @@ class OperationalSyncRunner {
         final cleared = await _queueRepository.clearResolvedConflictCache(
           conflicts: conflicts,
         );
-        await _reportDiagnosticsSafely(conflicts: conflicts);
+        if (cleared > 0) {
+          _onCacheSnapshotChanged();
+        }
+        await _reportDiagnosticsSafely(
+          conflicts: conflicts,
+          clearResolvedCache: false,
+        );
         return <String, dynamic>{
           'command': command.command,
           'clearedConflicts': cleared,
@@ -328,6 +334,9 @@ class OperationalSyncRunner {
       case 'REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS':
         final repaired = await _queueRepository
             .repairOperationalOrderItemTotalCents();
+        if (repaired > 0) {
+          _onCacheSnapshotChanged();
+        }
         await _reportDiagnosticsSafely();
         return <String, dynamic>{
           'command': command.command,
@@ -336,6 +345,9 @@ class OperationalSyncRunner {
       case 'RETRY_FAILED_SYNC_EVENTS':
         final requeued = await _queueRepository
             .reenqueueRecoverableFailedEvents();
+        if (requeued > 0) {
+          _onCacheSnapshotChanged();
+        }
         await _reportDiagnosticsSafely();
         return <String, dynamic>{
           'command': command.command,
@@ -344,6 +356,7 @@ class OperationalSyncRunner {
       case 'FORCE_SYNC_PULL':
         final outcome = await _pullAndRefreshSnapshot();
         await _reportDiagnosticsSafely();
+        _onCacheSnapshotChanged();
         final result = <String, dynamic>{
           'command': command.command,
           'pullFailed': outcome.pullFailed,
@@ -362,6 +375,7 @@ class OperationalSyncRunner {
         return result;
       case 'REFRESH_SYNC_STATUS':
         final report = await _reportDiagnosticsSafely();
+        _onCacheSnapshotChanged();
         return <String, dynamic>{
           'command': command.command,
           'pendingCount': report?.pendingCount,
@@ -375,11 +389,19 @@ class OperationalSyncRunner {
 
   Future<OperationalSyncDiagnosticReport?> _reportDiagnosticsSafely({
     List<OperationalSyncConflict>? conflicts,
+    bool clearResolvedCache = true,
   }) async {
     try {
       final effectiveConflicts =
           conflicts ?? await _loadConflictsForDiagnostics();
-      await _clearResolvedConflictCacheSafely(effectiveConflicts);
+      if (clearResolvedCache) {
+        final cleared = await _clearResolvedConflictCacheSafely(
+          effectiveConflicts,
+        );
+        if (cleared > 0) {
+          _onCacheSnapshotChanged();
+        }
+      }
       final report = await _queueRepository.buildDiagnosticReport(
         conflicts: effectiveConflicts,
       );
@@ -395,7 +417,7 @@ class OperationalSyncRunner {
     }
   }
 
-  Future<void> _clearResolvedConflictCacheSafely(
+  Future<int> _clearResolvedConflictCacheSafely(
     List<OperationalSyncConflict> conflicts,
   ) async {
     if (!conflicts.any(
@@ -403,16 +425,19 @@ class OperationalSyncRunner {
           conflict.status.toUpperCase() == 'RESOLVED' ||
           conflict.status.toUpperCase() == 'IGNORED',
     )) {
-      return;
+      return 0;
     }
     try {
-      await _queueRepository.clearResolvedConflictCache(conflicts: conflicts);
+      return await _queueRepository.clearResolvedConflictCache(
+        conflicts: conflicts,
+      );
     } catch (error, stackTrace) {
       AppLogger.error(
         '[OperationalSync] resolved_conflict_cache_clear_failed',
         error: error,
         stackTrace: stackTrace,
       );
+      return 0;
     }
   }
 
