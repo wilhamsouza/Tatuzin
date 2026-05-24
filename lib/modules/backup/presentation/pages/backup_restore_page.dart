@@ -200,9 +200,12 @@ class BackupRestorePage extends ConsumerWidget {
       if (!context.mounted) {
         return;
       }
+      final currentCloudStatus = ref.read(accountCloudStatusProvider);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(_syncResultMessage(result))));
+      ).showSnackBar(
+        SnackBar(content: Text(_syncResultMessage(result, currentCloudStatus))),
+      );
     } catch (error) {
       if (!context.mounted) {
         return;
@@ -446,11 +449,15 @@ String _formatFileSize(int bytes) {
   return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 }
 
-String _syncResultMessage(SyncBatchResult result) {
+String _syncResultMessage(
+  SyncBatchResult result,
+  AccountCloudStatusSnapshot cloudStatus,
+) {
   final hasAttention =
       result.failedCount > 0 ||
       result.blockedCount > 0 ||
-      result.conflictCount > 0;
+      result.conflictCount > 0 ||
+      cloudStatus.hasAttention;
   if (!hasAttention) {
     return 'Nuvem atualizada. Enviados: ${result.syncedCount}.';
   }

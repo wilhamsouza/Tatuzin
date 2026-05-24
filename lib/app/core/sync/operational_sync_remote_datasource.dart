@@ -14,12 +14,27 @@ abstract interface class OperationalSyncRemoteDataSource {
 
   Future<OperationalSyncStatusResponse> getStatus();
 
-  Future<List<OperationalSyncConflict>> getConflicts();
+  Future<List<OperationalSyncConflict>> getConflicts({String status = 'OPEN'});
 
   Future<OperationalSyncConflict> resolveConflict(
     String conflictId,
     Map<String, dynamic> resolution,
   );
+
+  Future<void> reportDiagnostics(OperationalSyncDiagnosticReport report);
+
+  Future<List<OperationalSyncSupportCommand>> fetchSupportCommands();
+
+  Future<void> completeSupportCommand(
+    String commandId,
+    Map<String, dynamic> result,
+  );
+
+  Future<void> failSupportCommand(
+    String commandId, {
+    required String errorMessage,
+    Map<String, dynamic> result = const <String, dynamic>{},
+  });
 }
 
 class OperationalSyncPushResponse {
@@ -241,6 +256,92 @@ class OperationalSyncConflict {
   }
 }
 
+class OperationalSyncDiagnosticReport {
+  const OperationalSyncDiagnosticReport({
+    required this.pendingCount,
+    required this.failedCount,
+    required this.openConflictCount,
+    required this.resolvedConflictCount,
+    required this.ignoredConflictCount,
+    this.appVersion,
+    this.localSchemaVersion,
+    this.lastLocalError,
+    this.lastLocalErrorCode,
+    this.lastLocalErrorEntity,
+    this.lastPushAt,
+    this.lastPullAt,
+    this.lastSuccessfulSyncAt,
+    this.safeDetails = const <String, dynamic>{},
+  });
+
+  final int pendingCount;
+  final int failedCount;
+  final int openConflictCount;
+  final int resolvedConflictCount;
+  final int ignoredConflictCount;
+  final String? appVersion;
+  final String? localSchemaVersion;
+  final String? lastLocalError;
+  final String? lastLocalErrorCode;
+  final String? lastLocalErrorEntity;
+  final DateTime? lastPushAt;
+  final DateTime? lastPullAt;
+  final DateTime? lastSuccessfulSyncAt;
+  final Map<String, dynamic> safeDetails;
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'pendingCount': pendingCount,
+      'failedCount': failedCount,
+      'openConflictCount': openConflictCount,
+      'resolvedConflictCount': resolvedConflictCount,
+      'ignoredConflictCount': ignoredConflictCount,
+      if (_notBlank(appVersion)) 'appVersion': appVersion,
+      if (_notBlank(localSchemaVersion))
+        'localSchemaVersion': localSchemaVersion,
+      if (_notBlank(lastLocalError)) 'lastLocalError': lastLocalError,
+      if (_notBlank(lastLocalErrorCode))
+        'lastLocalErrorCode': lastLocalErrorCode,
+      if (_notBlank(lastLocalErrorEntity))
+        'lastLocalErrorEntity': lastLocalErrorEntity,
+      if (lastPushAt != null) 'lastPushAt': lastPushAt!.toIso8601String(),
+      if (lastPullAt != null) 'lastPullAt': lastPullAt!.toIso8601String(),
+      if (lastSuccessfulSyncAt != null)
+        'lastSuccessfulSyncAt': lastSuccessfulSyncAt!.toIso8601String(),
+      'safeDetails': safeDetails,
+    };
+  }
+}
+
+class OperationalSyncSupportCommand {
+  const OperationalSyncSupportCommand({
+    required this.id,
+    required this.command,
+    required this.status,
+    required this.reason,
+    this.payload = const <String, dynamic>{},
+  });
+
+  final String id;
+  final String command;
+  final String status;
+  final String reason;
+  final Map<String, dynamic> payload;
+
+  factory OperationalSyncSupportCommand.fromJson(Map<String, dynamic> json) {
+    final payload = json['payload'];
+    return OperationalSyncSupportCommand(
+      id: _stringValue(json['id']) ?? '',
+      command: _stringValue(json['command']) ?? '',
+      status: _stringValue(json['status']) ?? '',
+      reason: _stringValue(json['reason']) ?? '',
+      payload: payload is Map<String, dynamic>
+          ? payload
+          : const <String, dynamic>{},
+    );
+  }
+}
+
 List<OperationalSyncPushItemResult> _readResultList(Object? value) {
   return _readMapList(
     value,
@@ -279,3 +380,5 @@ int? _intValue(Object? value) {
   }
   return null;
 }
+
+bool _notBlank(String? value) => value != null && value.trim().isNotEmpty;

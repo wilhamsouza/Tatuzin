@@ -31,8 +31,12 @@ import {
   type AdminSyncCenterEventsQueryInput,
   type AdminSyncCenterManualStockAdjustmentBodyInput,
   type AdminSyncCenterReprocessBodyInput,
+  type AdminSyncSupportActionInput,
+  type AdminSyncSupportDryRunInput,
   type AdminSyncOperationalQueryInput,
   type AdminSyncQueryInput,
+  adminSyncSupportActionSchema,
+  adminSyncSupportDryRunSchema,
   adminSyncCenterArchiveBodySchema,
   adminSyncCenterCompaniesQuerySchema,
   adminSyncCenterConflictsQuerySchema,
@@ -54,10 +58,12 @@ import {
 import { AdminSyncCenterService } from './admin-sync-center.service';
 import { AdminSyncHealthService } from './admin-sync-health.service';
 import { AdminService } from './admin.service';
+import { SyncSupportService } from '../sync/sync-support.service';
 
 const adminService = new AdminService();
 const adminSyncHealthService = new AdminSyncHealthService();
 const adminSyncCenterService = new AdminSyncCenterService();
+const syncSupportService = new SyncSupportService();
 const billingAdminService = new BillingAdminService();
 
 export const adminRouter = Router();
@@ -351,6 +357,76 @@ adminRouter.get(
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
     const payload = await adminSyncCenterService.getCompanySummary(companyId);
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/sync/companies/:companyId/devices',
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await syncSupportService.listAdminDevices(companyId);
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/sync/companies/:companyId/devices/:deviceId/diagnostics',
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const deviceId = readParam(request.params.deviceId);
+    const payload = await syncSupportService.getAdminDeviceDiagnostics(
+      companyId,
+      deviceId,
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  '/sync/companies/:companyId/devices/:deviceId/support-commands',
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const deviceId = readParam(request.params.deviceId);
+    const payload = await syncSupportService.listAdminCommands(
+      companyId,
+      deviceId,
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  '/sync/companies/:companyId/devices/:deviceId/support-actions/dry-run',
+  validateBody(adminSyncSupportDryRunSchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const deviceId = readParam(request.params.deviceId);
+    const payload = await syncSupportService.adminDryRun(
+      companyId,
+      deviceId,
+      request.body as AdminSyncSupportDryRunInput,
+    );
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  '/sync/companies/:companyId/devices/:deviceId/support-actions',
+  validateBody(adminSyncSupportActionSchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const deviceId = readParam(request.params.deviceId);
+    const payload = await syncSupportService.createAdminCommand(
+      companyId,
+      deviceId,
+      request.body as AdminSyncSupportActionInput,
+      {
+        actorUserId: request.auth!.userId,
+        ipAddress: request.ip ?? null,
+        userAgent: request.get('user-agent') ?? null,
+      },
+    );
     response.json(payload);
   }),
 );

@@ -48,6 +48,23 @@ enum SyncConflictStatus {
   IGNORED
 }
 
+enum SyncSupportCommandStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  EXPIRED
+  CANCELLED
+}
+
+enum SyncSupportCommandType {
+  RETRY_FAILED_SYNC_EVENTS
+  REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS
+  CLEAR_RESOLVED_CONFLICT_CACHE
+  FORCE_SYNC_PULL
+  REFRESH_SYNC_STATUS
+}
+
 enum CustomerTaskStatus {
   OPEN
   COMPLETED
@@ -88,39 +105,41 @@ enum EmployeeCommissionBase {
 }
 
 model User {
-  id                      String               @id @default(uuid())
-  email                   String               @unique
-  passwordHash            String
-  name                    String
-  isActive                Boolean              @default(true)
-  isPlatformAdmin         Boolean              @default(false)
-  mustChangePassword      Boolean              @default(false)
+  id                         String                   @id @default(uuid())
+  email                      String                   @unique
+  passwordHash               String
+  name                       String
+  isActive                   Boolean                  @default(true)
+  isPlatformAdmin            Boolean                  @default(false)
+  mustChangePassword         Boolean                  @default(false)
   temporaryPasswordExpiresAt DateTime?
-  createdAt               DateTime             @default(now())
-  updatedAt               DateTime             @updatedAt
-  memberships             Membership[]
-  billingCheckoutSessions BillingCheckoutSession[]
-  billingAdminAuditLogs   BillingAdminAuditLog[]
-  adminAuditLogs          AdminAuditLog[]      @relation("AdminAuditActor")
-  deviceSessions          DeviceSession[]
-  companyDevices          CompanyDevice[]
-  syncEvents              SyncEvent[]
-  syncConflicts           SyncConflict[]       @relation("SyncConflictUser")
-  resolvedSyncConflicts   SyncConflict[]       @relation("SyncConflictResolver")
-  syncIncidents           SyncIncident[]
-  cashSessions            CashSession[]
-  operationalOrders       OperationalOrder[]
-  passwordResetTokens     PasswordResetToken[]
-  sessionAuditActorLogs   SessionAuditLog[]    @relation("SessionAuditActor")
-  sessionAuditSubjectLogs SessionAuditLog[]    @relation("SessionAuditSubject")
-  customerNotesAuthored   CustomerNote[]       @relation("CustomerNoteAuthor")
-  customerTasksCreated    CustomerTask[]       @relation("CustomerTaskCreator")
-  customerTasksAssigned   CustomerTask[]       @relation("CustomerTaskAssignee")
-  customerTagAssignments  CustomerTagAssignment[] @relation("CustomerTagAssignmentActor")
-  customerTimelineEvents  CustomerTimelineEvent[] @relation("CustomerTimelineActor")
-  employeeProfiles        EmployeeProfile[]    @relation("EmployeeProfileUser")
-  employeeProfilesCreated EmployeeProfile[]    @relation("EmployeeProfileCreatedBy")
-  employeeProfilesUpdated EmployeeProfile[]    @relation("EmployeeProfileUpdatedBy")
+  createdAt                  DateTime                 @default(now())
+  updatedAt                  DateTime                 @updatedAt
+  memberships                Membership[]
+  billingCheckoutSessions    BillingCheckoutSession[]
+  billingAdminAuditLogs      BillingAdminAuditLog[]
+  adminAuditLogs             AdminAuditLog[]          @relation("AdminAuditActor")
+  deviceSessions             DeviceSession[]
+  companyDevices             CompanyDevice[]
+  syncEvents                 SyncEvent[]
+  syncConflicts              SyncConflict[]           @relation("SyncConflictUser")
+  resolvedSyncConflicts      SyncConflict[]           @relation("SyncConflictResolver")
+  syncIncidents              SyncIncident[]
+  syncSupportCommands        SyncSupportCommand[]     @relation("SyncSupportCommandActor")
+  deviceSyncDiagnostics      DeviceSyncDiagnostic[]
+  cashSessions               CashSession[]
+  operationalOrders          OperationalOrder[]
+  passwordResetTokens        PasswordResetToken[]
+  sessionAuditActorLogs      SessionAuditLog[]        @relation("SessionAuditActor")
+  sessionAuditSubjectLogs    SessionAuditLog[]        @relation("SessionAuditSubject")
+  customerNotesAuthored      CustomerNote[]           @relation("CustomerNoteAuthor")
+  customerTasksCreated       CustomerTask[]           @relation("CustomerTaskCreator")
+  customerTasksAssigned      CustomerTask[]           @relation("CustomerTaskAssignee")
+  customerTagAssignments     CustomerTagAssignment[]  @relation("CustomerTagAssignmentActor")
+  customerTimelineEvents     CustomerTimelineEvent[]  @relation("CustomerTimelineActor")
+  employeeProfiles           EmployeeProfile[]        @relation("EmployeeProfileUser")
+  employeeProfilesCreated    EmployeeProfile[]        @relation("EmployeeProfileCreatedBy")
+  employeeProfilesUpdated    EmployeeProfile[]        @relation("EmployeeProfileUpdatedBy")
 }
 
 model Company {
@@ -155,6 +174,8 @@ model Company {
   syncCheckpoints                 SyncCheckpoint[]
   syncConflicts                   SyncConflict[]
   syncIncidents                   SyncIncident[]
+  syncSupportCommands             SyncSupportCommand[]
+  deviceSyncDiagnostics           DeviceSyncDiagnostic[]
   sessionAuditLogs                SessionAuditLog[]                @relation("SessionAuditCompany")
   suppliers                       Supplier[]
   supplies                        Supply[]
@@ -187,16 +208,16 @@ model Company {
 }
 
 model Membership {
-  id             String          @id @default(uuid())
-  userId         String
-  companyId      String
-  role           MembershipRole  @default(OPERATOR)
-  isDefault      Boolean         @default(false)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  deviceSessions DeviceSession[]
+  id               String            @id @default(uuid())
+  userId           String
+  companyId        String
+  role             MembershipRole    @default(OPERATOR)
+  isDefault        Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deviceSessions   DeviceSession[]
   employeeProfiles EmployeeProfile[]
 
   @@unique([userId, companyId])
@@ -204,37 +225,37 @@ model Membership {
 }
 
 model EmployeeProfile {
-  id                String      @id @default(uuid())
-  companyId         String
-  userId            String?
-  membershipId      String?
-  name              String
-  email             String?
-  emailNormalized   String?
-  phone             String?
-  role              String
-  status            String      @default("ACTIVE")
-  permissions       Json?
-  invitedAt         DateTime?
-  inviteTokenHash   String?
-  inviteExpiresAt   DateTime?
-  acceptedAt        DateTime?
-  disabledAt        DateTime?
-  commissionEnabled Boolean     @default(false)
-  commissionType    EmployeeCommissionType @default(NONE)
-  commissionBase    EmployeeCommissionBase @default(NET_SALES)
-  commissionRateBps Int?
+  id                   String                 @id @default(uuid())
+  companyId            String
+  userId               String?
+  membershipId         String?
+  name                 String
+  email                String?
+  emailNormalized      String?
+  phone                String?
+  role                 String
+  status               String                 @default("ACTIVE")
+  permissions          Json?
+  invitedAt            DateTime?
+  inviteTokenHash      String?
+  inviteExpiresAt      DateTime?
+  acceptedAt           DateTime?
+  disabledAt           DateTime?
+  commissionEnabled    Boolean                @default(false)
+  commissionType       EmployeeCommissionType @default(NONE)
+  commissionBase       EmployeeCommissionBase @default(NET_SALES)
+  commissionRateBps    Int?
   commissionFixedCents Int?
-  commissionUpdatedAt DateTime?
-  createdByUserId   String?
-  updatedByUserId   String?
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-  company           Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user              User?       @relation("EmployeeProfileUser", fields: [userId], references: [id], onDelete: SetNull)
-  membership        Membership? @relation(fields: [membershipId], references: [id], onDelete: SetNull)
-  createdByUser     User?       @relation("EmployeeProfileCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  updatedByUser     User?       @relation("EmployeeProfileUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  commissionUpdatedAt  DateTime?
+  createdByUserId      String?
+  updatedByUserId      String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  company              Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user                 User?                  @relation("EmployeeProfileUser", fields: [userId], references: [id], onDelete: SetNull)
+  membership           Membership?            @relation(fields: [membershipId], references: [id], onDelete: SetNull)
+  createdByUser        User?                  @relation("EmployeeProfileCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedByUser        User?                  @relation("EmployeeProfileUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, membershipId])
   @@index([companyId])
@@ -246,28 +267,28 @@ model EmployeeProfile {
 }
 
 model License {
-  id                     String        @id @default(uuid())
-  companyId              String        @unique
-  plan                   String
-  status                 LicenseStatus @default(TRIAL)
-  startsAt               DateTime
-  expiresAt              DateTime?
-  maxDevices             Int?
-  syncEnabled            Boolean       @default(true)
-  billingProvider        String?
-  providerSubscriptionId String?
-  currentPeriodStart     DateTime?
-  currentPeriodEnd       DateTime?
-  nextPaymentDate        DateTime?
-  cancelAtPeriodEnd      Boolean       @default(false)
-  cancelRequestedAt      DateTime?
-  canceledAt             DateTime?
-  pendingPlan            String?
-  pendingPlanRequestedAt DateTime?
+  id                        String        @id @default(uuid())
+  companyId                 String        @unique
+  plan                      String
+  status                    LicenseStatus @default(TRIAL)
+  startsAt                  DateTime
+  expiresAt                 DateTime?
+  maxDevices                Int?
+  syncEnabled               Boolean       @default(true)
+  billingProvider           String?
+  providerSubscriptionId    String?
+  currentPeriodStart        DateTime?
+  currentPeriodEnd          DateTime?
+  nextPaymentDate           DateTime?
+  cancelAtPeriodEnd         Boolean       @default(false)
+  cancelRequestedAt         DateTime?
+  canceledAt                DateTime?
+  pendingPlan               String?
+  pendingPlanRequestedAt    DateTime?
   billingSubscriptionStatus String?
-  createdAt              DateTime      @default(now())
-  updatedAt              DateTime      @updatedAt
-  company                Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt                 DateTime      @default(now())
+  updatedAt                 DateTime      @updatedAt
+  company                   Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([syncEnabled])
@@ -322,15 +343,15 @@ model BillingProviderEvent {
 }
 
 model BillingInvoice {
-  id                     String   @id @default(uuid())
+  id                     String    @id @default(uuid())
   companyId              String
   provider               String
   providerInvoiceId      String?
   providerSubscriptionId String?
   plan                   String?
   status                 String
-  amountCents            Int      @default(0)
-  currency               String   @default("BRL")
+  amountCents            Int       @default(0)
+  currency               String    @default("BRL")
   periodStart            DateTime?
   periodEnd              DateTime?
   dueAt                  DateTime?
@@ -338,9 +359,9 @@ model BillingInvoice {
   failedAt               DateTime?
   invoiceUrl             String?
   payload                Json?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
-  company                Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  company                Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
   @@index([companyId])
   @@index([status])
@@ -370,31 +391,34 @@ model BillingAdminAuditLog {
 }
 
 model CompanyDevice {
-  id                 String              @id @default(uuid())
-  companyId          String
-  userId             String
-  clientInstanceId   String
-  deviceLabel        String?
-  platform           String?
-  appVersion         String?
-  status             CompanyDeviceStatus @default(PENDING)
-  approvedAt         DateTime?
-  approvedByUserId   String?
-  lastSeenAt         DateTime?
-  revokedAt          DateTime?
-  revokedReason      String?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  syncEvents         SyncEvent[]
-  syncCheckpoints    SyncCheckpoint[]
-  syncConflicts      SyncConflict[]
-  syncIncidents      SyncIncident[]
-  cashSessions       CashSession[]
-  operationalOrders  OperationalOrder[]
+  id                  String                @id @default(uuid())
+  companyId           String
+  userId              String
+  clientInstanceId    String
+  deviceLabel         String?
+  platform            String?
+  appVersion          String?
+  status              CompanyDeviceStatus   @default(PENDING)
+  approvedAt          DateTime?
+  approvedByUserId    String?
+  lastSeenAt          DateTime?
+  revokedAt           DateTime?
+  revokedReason       String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  company             Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  syncEvents          SyncEvent[]
+  syncCheckpoints     SyncCheckpoint[]
+  syncConflicts       SyncConflict[]
+  syncIncidents       SyncIncident[]
+  syncSupportCommands SyncSupportCommand[]
+  syncDiagnostic      DeviceSyncDiagnostic?
+  cashSessions        CashSession[]
+  operationalOrders   OperationalOrder[]
 
   @@unique([companyId, clientInstanceId])
+  @@unique([companyId, id])
   @@index([companyId])
   @@index([userId])
   @@index([status])
@@ -507,6 +531,68 @@ model SyncIncident {
   @@index([companyId, createdAt])
   @@index([deviceId, createdAt])
   @@index([code])
+}
+
+model SyncSupportCommand {
+  id               String                   @id @default(uuid())
+  companyId        String
+  deviceId         String
+  actorUserId      String
+  command          SyncSupportCommandType
+  status           SyncSupportCommandStatus @default(PENDING)
+  reason           String
+  confirmationText String?
+  dryRunResult     Json?
+  payload          Json?
+  result           Json?
+  errorMessage     String?
+  requestedAt      DateTime                 @default(now())
+  pickedUpAt       DateTime?
+  completedAt      DateTime?
+  expiresAt        DateTime
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  company          Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  device           CompanyDevice            @relation(fields: [companyId, deviceId], references: [companyId, id], onDelete: Cascade)
+  actorUser        User                     @relation("SyncSupportCommandActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, deviceId, status])
+  @@index([companyId, status])
+  @@index([deviceId, status])
+  @@index([expiresAt])
+  @@index([requestedAt])
+}
+
+model DeviceSyncDiagnostic {
+  id                    String        @id @default(uuid())
+  companyId             String
+  deviceId              String
+  userId                String?
+  clientInstanceId      String?
+  appVersion            String?
+  localSchemaVersion    String?
+  pendingCount          Int           @default(0)
+  failedCount           Int           @default(0)
+  openConflictCount     Int           @default(0)
+  resolvedConflictCount Int           @default(0)
+  ignoredConflictCount  Int           @default(0)
+  lastLocalError        String?
+  lastLocalErrorCode    String?
+  lastLocalErrorEntity  String?
+  lastPushAt            DateTime?
+  lastPullAt            DateTime?
+  lastSuccessfulSyncAt  DateTime?
+  safeDetails           Json?
+  reportedAt            DateTime      @default(now())
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  company               Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  device                CompanyDevice @relation(fields: [companyId, deviceId], references: [companyId, id], onDelete: Cascade)
+  user                  User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, deviceId])
+  @@index([companyId, reportedAt])
+  @@index([deviceId])
 }
 
 model AdminAuditLog {
@@ -668,22 +754,22 @@ model Product {
 }
 
 model ProductVariant {
-  id                   String         @id @default(uuid())
-  productId            String
-  sku                  String
-  colorLabel           String
-  sizeLabel            String
-  priceAdditionalCents Int            @default(0)
-  stockMil             Int            @default(0)
-  sortOrder            Int            @default(0)
-  isActive             Boolean        @default(true)
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
-  product              Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
-  purchaseItems        PurchaseItem[]
+  id                    String                 @id @default(uuid())
+  productId             String
+  sku                   String
+  colorLabel            String
+  sizeLabel             String
+  priceAdditionalCents  Int                    @default(0)
+  stockMil              Int                    @default(0)
+  sortOrder             Int                    @default(0)
+  isActive              Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  product               Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  purchaseItems         PurchaseItem[]
   operationalOrderItems OperationalOrderItem[]
-  stockReservations    StockReservation[]
-  stockDeductions      StockDeduction[]
+  stockReservations     StockReservation[]
+  stockDeductions       StockDeduction[]
 
   @@index([productId, sortOrder])
   @@index([sku])
@@ -750,14 +836,14 @@ model Customer {
 }
 
 model CustomerTag {
-  id              String                 @id @default(uuid())
+  id              String                  @id @default(uuid())
   companyId       String
   label           String
   normalizedLabel String
   color           String?
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  company         Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  company         Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
   assignments     CustomerTagAssignment[]
 
   @@unique([companyId, normalizedLabel])
@@ -782,38 +868,38 @@ model CustomerTagAssignment {
 }
 
 model CustomerNote {
-  id           String    @id @default(uuid())
+  id           String   @id @default(uuid())
   companyId    String
   customerId   String
   authorUserId String?
   body         String
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  authorUser   User?     @relation("CustomerNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  authorUser   User?    @relation("CustomerNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
 
   @@index([companyId, customerId, createdAt])
   @@index([authorUserId])
 }
 
 model CustomerTask {
-  id              String             @id @default(uuid())
-  companyId       String
-  customerId      String
-  createdByUserId String?
+  id               String             @id @default(uuid())
+  companyId        String
+  customerId       String
+  createdByUserId  String?
   assignedToUserId String?
-  title           String
-  description     String?
-  status          CustomerTaskStatus @default(OPEN)
-  dueAt           DateTime?
-  completedAt     DateTime?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  company         Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer        Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  createdByUser   User?              @relation("CustomerTaskCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  assignedToUser  User?              @relation("CustomerTaskAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  title            String
+  description      String?
+  status           CustomerTaskStatus @default(OPEN)
+  dueAt            DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  company          Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer         Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdByUser    User?              @relation("CustomerTaskCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  assignedToUser   User?              @relation("CustomerTaskAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
 
   @@index([companyId, customerId, status, dueAt])
   @@index([assignedToUserId, status])
@@ -838,32 +924,32 @@ model CustomerTimelineEvent {
 }
 
 model HybridGovernanceProfile {
-  id                               String                   @id @default(uuid())
-  companyId                        String                   @unique
-  requireCategoryForGovernedCatalog Boolean                 @default(true)
-  requireVariantSku                Boolean                  @default(true)
-  requireRemoteImageForGovernedCatalog Boolean              @default(false)
-  allowOfflinePriceOverride        Boolean                  @default(true)
-  allowLocalCatalogDeactivation    Boolean                  @default(true)
-  minMarginBasisPoints             Int                      @default(0)
-  maxOfflineDiscountBasisPoints    Int                      @default(1500)
-  pricePolicyMode                  HybridPricePolicyMode    @default(ADVISORY)
-  stockDivergenceAlertThresholdMil Int                      @default(5000)
-  allowOfflineStockAdjustments     Boolean                  @default(true)
-  requireStockReconciliationReview Boolean                  @default(false)
-  customerMasterMode               HybridCustomerMasterMode @default(CLOUD_MASTER)
-  allowOperationalCustomerNotes    Boolean                  @default(true)
-  allowOperationalCustomerAddressOverride Boolean           @default(true)
-  requireCustomerConflictReview    Boolean                  @default(false)
-  promotionMode                    HybridPromotionMode      @default(MANUAL_PREVIEW)
-  allowPromotionStacking           Boolean                  @default(false)
-  requireGovernedPriceForPromotion Boolean                  @default(true)
-  alertOnCatalogDrift              Boolean                  @default(true)
-  alertOnStockDivergence           Boolean                  @default(true)
-  alertOnCustomerConflict          Boolean                  @default(true)
-  createdAt                        DateTime                 @default(now())
-  updatedAt                        DateTime                 @updatedAt
-  company                          Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id                                      String                   @id @default(uuid())
+  companyId                               String                   @unique
+  requireCategoryForGovernedCatalog       Boolean                  @default(true)
+  requireVariantSku                       Boolean                  @default(true)
+  requireRemoteImageForGovernedCatalog    Boolean                  @default(false)
+  allowOfflinePriceOverride               Boolean                  @default(true)
+  allowLocalCatalogDeactivation           Boolean                  @default(true)
+  minMarginBasisPoints                    Int                      @default(0)
+  maxOfflineDiscountBasisPoints           Int                      @default(1500)
+  pricePolicyMode                         HybridPricePolicyMode    @default(ADVISORY)
+  stockDivergenceAlertThresholdMil        Int                      @default(5000)
+  allowOfflineStockAdjustments            Boolean                  @default(true)
+  requireStockReconciliationReview        Boolean                  @default(false)
+  customerMasterMode                      HybridCustomerMasterMode @default(CLOUD_MASTER)
+  allowOperationalCustomerNotes           Boolean                  @default(true)
+  allowOperationalCustomerAddressOverride Boolean                  @default(true)
+  requireCustomerConflictReview           Boolean                  @default(false)
+  promotionMode                           HybridPromotionMode      @default(MANUAL_PREVIEW)
+  allowPromotionStacking                  Boolean                  @default(false)
+  requireGovernedPriceForPromotion        Boolean                  @default(true)
+  alertOnCatalogDrift                     Boolean                  @default(true)
+  alertOnStockDivergence                  Boolean                  @default(true)
+  alertOnCustomerConflict                 Boolean                  @default(true)
+  createdAt                               DateTime                 @default(now())
+  updatedAt                               DateTime                 @updatedAt
+  company                                 Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 }
 
 model Supplier {
@@ -1027,31 +1113,31 @@ model PurchasePayment {
 }
 
 model Sale {
-  id               String           @id @default(uuid())
-  companyId        String
-  cashSessionId    String?
-  localUuid        String
-  customerId       String?
-  receiptNumber    String?
-  paymentType      String
-  paymentMethod    String
-  status           String           @default("active")
-  totalAmountCents Int
-  totalCostCents   Int
-  soldAt           DateTime
-  canceledAt       DateTime?
-  notes            String?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  cashSession      CashSession?     @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
-  customer         Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  items            SaleItem[]
-  financialEvents  FinancialEvent[]
-  fiadoPayments    FiadoPayment[]
-  convertedOperationalOrder OperationalOrder? @relation("OperationalOrderConvertedSale")
-  stockReservations StockReservation[]
-  stockDeductions   StockDeduction[]
+  id                        String             @id @default(uuid())
+  companyId                 String
+  cashSessionId             String?
+  localUuid                 String
+  customerId                String?
+  receiptNumber             String?
+  paymentType               String
+  paymentMethod             String
+  status                    String             @default("active")
+  totalAmountCents          Int
+  totalCostCents            Int
+  soldAt                    DateTime
+  canceledAt                DateTime?
+  notes                     String?
+  createdAt                 DateTime           @default(now())
+  updatedAt                 DateTime           @updatedAt
+  company                   Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  cashSession               CashSession?       @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  customer                  Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items                     SaleItem[]
+  financialEvents           FinancialEvent[]
+  fiadoPayments             FiadoPayment[]
+  convertedOperationalOrder OperationalOrder?  @relation("OperationalOrderConvertedSale")
+  stockReservations         StockReservation[]
+  stockDeductions           StockDeduction[]
 
   @@unique([companyId, localUuid])
   @@index([companyId, cashSessionId])
@@ -1148,7 +1234,7 @@ model FiadoPayment {
 }
 
 model CashEvent {
-  id            String   @id @default(uuid())
+  id            String       @id @default(uuid())
   companyId     String
   cashSessionId String?
   localUuid     String
@@ -1159,8 +1245,8 @@ model CashEvent {
   referenceId   String?
   notes         String?
   createdAt     DateTime
-  updatedAt     DateTime @updatedAt
-  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  updatedAt     DateTime     @updatedAt
+  company       Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   cashSession   CashSession? @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, localUuid])
@@ -1170,26 +1256,26 @@ model CashEvent {
 }
 
 model CashSession {
-  id                   String         @id @default(uuid())
+  id                   String             @id @default(uuid())
   companyId            String
   deviceId             String?
   userId               String?
   localId              String?
   localUuid            String
-  status               String         @default("open")
+  status               String             @default("open")
   openedAt             DateTime?
   closedAt             DateTime?
-  openingBalanceCents  Int            @default(0)
+  openingBalanceCents  Int                @default(0)
   closingBalanceCents  Int?
   expectedBalanceCents Int?
   notes                String?
   payload              Json?
   lastLocalSequence    Int?
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
-  company              Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  device               CompanyDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
-  user                 User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  company              Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  device               CompanyDevice?     @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  user                 User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
   sales                Sale[]
   cashEvents           CashEvent[]
   operationalOrders    OperationalOrder[]

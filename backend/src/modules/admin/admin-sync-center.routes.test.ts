@@ -224,6 +224,157 @@ describe("admin sync center routes", () => {
     assert.doesNotMatch(JSON.stringify(events.data), /url-token-secret/);
   });
 
+  it("lists device diagnostics and creates a pending support command with confirmation", async () => {
+    const fixture = await createFixture();
+    await prisma.deviceSyncDiagnostic.create({
+      data: {
+        companyId: fixture.companyId,
+        deviceId: fixture.deviceId,
+        userId: fixture.operatorUserId,
+        clientInstanceId: `${runId}-pdv`,
+        appVersion: "2.1.0",
+        pendingCount: 0,
+        failedCount: 3,
+        openConflictCount: 0,
+        resolvedConflictCount: 4,
+        ignoredConflictCount: 0,
+        lastLocalError:
+          "operationalOrderItem precisa de totalCents maior ou igual a zero.",
+        lastLocalErrorEntity: "operationalOrderItem",
+        safeDetails: { entity: "operationalOrderItem" },
+        reportedAt: new Date(),
+      },
+    });
+
+    const devices = await requestJson(
+      "GET",
+      `/admin/sync/companies/${fixture.companyId}/devices`,
+      { token: fixture.adminToken },
+    );
+    assert.equal(devices.status, 200);
+    const devicesPayload = devices.data as {
+      items: Array<{
+        id: string;
+        status: string;
+        diagnostic: { failedCount: number; resolvedConflictCount: number };
+      }>;
+    };
+    assert.equal(devicesPayload.items[0]?.id, fixture.deviceId);
+    assert.equal(devicesPayload.items[0]?.status, "local_failure");
+    assert.equal(devicesPayload.items[0]?.diagnostic.failedCount, 3);
+
+    const wrongCompany = await requestJson(
+      "GET",
+      `/admin/sync/companies/${fixture.healthyCompanyId}/devices/${fixture.deviceId}/diagnostics`,
+      { token: fixture.adminToken },
+    );
+    assert.equal(wrongCompany.status, 404);
+
+    const dryRun = await requestJson(
+      "POST",
+      `/admin/sync/companies/${fixture.companyId}/devices/${fixture.deviceId}/support-actions/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: {
+          command: "REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS",
+          reason: "reparar fila local antiga",
+        },
+      },
+    );
+    assert.equal(dryRun.status, 200);
+    assert.equal(
+      (dryRun.data as { expectedConfirmationText: string })
+        .expectedConfirmationText,
+      "REPARAR",
+    );
+
+    const wrongConfirmation = await requestJson(
+      "POST",
+      `/admin/sync/companies/${fixture.companyId}/devices/${fixture.deviceId}/support-actions`,
+      {
+        token: fixture.adminToken,
+        body: {
+          command: "REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS",
+          reason: "reparar fila local antiga",
+          confirmationText: "ARQUIVAR",
+        },
+      },
+    );
+    assert.equal(wrongConfirmation.status, 422);
+    assert.equal(
+      (wrongConfirmation.data as { code?: string }).code,
+      "SYNC_SUPPORT_CONFIRMATION_REQUIRED",
+    );
+
+    const created = await requestJson(
+      "POST",
+      `/admin/sync/companies/${fixture.companyId}/devices/${fixture.deviceId}/support-actions`,
+      {
+        token: fixture.adminToken,
+        body: {
+          command: "REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS",
+          reason: "reparar fila local antiga",
+          confirmationText: "REPARAR",
+          payload: {
+            apiKey: "secret-api-key",
+            callbackUrl: "https://example.test/return?token=secret-token",
+          },
+        },
+      },
+    );
+    assert.equal(created.status, 200);
+    const command = await prisma.syncSupportCommand.findFirstOrThrow({
+      where: {
+        companyId: fixture.companyId,
+        deviceId: fixture.deviceId,
+        command: "REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS",
+      },
+    });
+    assert.equal(command.status, "PENDING");
+    assert.equal(command.actorUserId, fixture.adminUserId);
+    assert.equal(command.reason, "reparar fila local antiga");
+    assert.doesNotMatch(JSON.stringify(command.payload), /secret-api-key/);
+    assert.doesNotMatch(JSON.stringify(command.payload), /secret-token/);
+
+    const duplicate = await requestJson(
+      "POST",
+      `/admin/sync/companies/${fixture.companyId}/devices/${fixture.deviceId}/support-actions`,
+      {
+        token: fixture.adminToken,
+        body: {
+          command: "REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS",
+          reason: "nao criar comando duplicado",
+          confirmationText: "REPARAR",
+        },
+      },
+    );
+    assert.equal(duplicate.status, 200);
+    assert.equal(
+      (duplicate.data as { command: { id: string }; message: string }).command
+        .id,
+      command.id,
+    );
+    assert.equal(
+      await prisma.syncSupportCommand.count({
+        where: {
+          companyId: fixture.companyId,
+          deviceId: fixture.deviceId,
+          command: "REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS",
+          status: "PENDING",
+        },
+      }),
+      1,
+    );
+
+    const audit = await prisma.adminAuditLog.findFirst({
+      where: {
+        actorUserId: fixture.adminUserId,
+        action: "sync.support_command.create",
+      },
+    });
+    assert.notEqual(audit, null);
+  });
+
   it("classifies cafe oliveira legacy stockDeduction as not automatically reprocessable", async () => {
     const fixture = await createFixture();
 

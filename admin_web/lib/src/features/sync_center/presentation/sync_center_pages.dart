@@ -187,6 +187,9 @@ class _SyncCompanyPageState extends ConsumerState<SyncCompanyPage> {
     final conflictsAsync = ref.watch(
       adminSyncCenterConflictsProvider(conflictsQuery),
     );
+    final devicesAsync = ref.watch(
+      adminSyncSupportDevicesProvider(widget.companyId),
+    );
 
     return summaryAsync.when(
       data: (summary) => SingleChildScrollView(
@@ -200,7 +203,7 @@ class _SyncCompanyPageState extends ConsumerState<SyncCompanyPage> {
             ),
             const SizedBox(height: 24),
             DefaultTabController(
-              length: 4,
+              length: 5,
               child: AdminSurface(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
                 child: Column(
@@ -211,6 +214,7 @@ class _SyncCompanyPageState extends ConsumerState<SyncCompanyPage> {
                       tabs: [
                         Tab(text: 'Eventos'),
                         Tab(text: 'Conflitos'),
+                        Tab(text: 'Dispositivos'),
                         Tab(text: 'Incidentes'),
                         Tab(text: 'Auditoria'),
                       ],
@@ -244,6 +248,10 @@ class _SyncCompanyPageState extends ConsumerState<SyncCompanyPage> {
                                 conflictsAsync.value?.pagination.hasNext == true
                                 ? () => setState(() => _conflictsPage++)
                                 : null,
+                          ),
+                          _DevicesTab(
+                            companyId: widget.companyId,
+                            devicesAsync: devicesAsync,
                           ),
                           _IncidentsTab(incidents: summary.latestIncidents),
                           const _AuditTab(),
@@ -1554,6 +1562,652 @@ class _ConflictRowActions extends StatelessWidget {
   }
 }
 
+class _DevicesTab extends ConsumerWidget {
+  const _DevicesTab({required this.companyId, required this.devicesAsync});
+
+  final String companyId;
+  final AsyncValue<List<AdminSyncSupportDevice>> devicesAsync;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return devicesAsync.when(
+      data: (devices) {
+        if (devices.isEmpty) {
+          return const Center(
+            child: Text('Nenhum dispositivo reportou sincronizacao ainda.'),
+          );
+        }
+        return SingleChildScrollView(
+          padding: const EdgeInsets.only(top: 16),
+          child: _DevicesTable(
+            companyId: companyId,
+            devices: devices,
+            onOpen: (device) => _showDeviceDetail(context, ref, device.id),
+          ),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => _ErrorSurface(
+        title: 'Nao foi possivel carregar dispositivos',
+        error: error,
+        onRetry: () =>
+            ref.invalidate(adminSyncSupportDevicesProvider(companyId)),
+      ),
+    );
+  }
+
+  Future<void> _showDeviceDetail(
+    BuildContext context,
+    WidgetRef ref,
+    String deviceId,
+  ) {
+    final key = AdminSyncCenterDetailKey(
+      companyId: companyId,
+      targetId: deviceId,
+    );
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        insetPadding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 960, maxHeight: 760),
+          child: Consumer(
+            builder: (context, ref, _) {
+              final detailAsync = ref.watch(
+                adminSyncSupportDeviceDetailProvider(key),
+              );
+              return detailAsync.when(
+                data: (detail) => _DeviceDetailPanel(
+                  companyId: companyId,
+                  detail: detail,
+                  onClose: () => Navigator.of(dialogContext).pop(),
+                  onAction: (action) =>
+                      _showSupportActionDialog(context, ref, deviceId, action),
+                ),
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (error, _) => Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: _ErrorSurface(
+                    title: 'Nao foi possivel carregar diagnostico',
+                    error: error,
+                    onRetry: () => ref.invalidate(
+                      adminSyncSupportDeviceDetailProvider(key),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showSupportActionDialog(
+    BuildContext context,
+    WidgetRef ref,
+    String deviceId,
+    _SupportActionSpec action,
+  ) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => _SupportActionDialog(
+        companyId: companyId,
+        deviceId: deviceId,
+        action: action,
+        onCompleted: () {
+          ref.read(adminRefreshTickProvider.notifier).state++;
+          ref.invalidate(adminSyncSupportDevicesProvider(companyId));
+          ref.invalidate(
+            adminSyncSupportDeviceDetailProvider(
+              AdminSyncCenterDetailKey(
+                companyId: companyId,
+                targetId: deviceId,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DevicesTable extends StatelessWidget {
+  const _DevicesTable({
+    required this.companyId,
+    required this.devices,
+    required this.onOpen,
+  });
+
+  final String companyId;
+  final List<AdminSyncSupportDevice> devices;
+  final ValueChanged<AdminSyncSupportDevice> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: DataTable(
+        columns: const [
+          DataColumn(label: Text('Dispositivo')),
+          DataColumn(label: Text('Usuario')),
+          DataColumn(label: Text('Status')),
+          DataColumn(label: Text('Pendente')),
+          DataColumn(label: Text('Falhas')),
+          DataColumn(label: Text('Conflitos')),
+          DataColumn(label: Text('Ultimo report')),
+          DataColumn(label: Text('Acoes')),
+        ],
+        rows: devices
+            .map(
+              (device) => DataRow(
+                cells: [
+                  DataCell(
+                    Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          device.title,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        Text(
+                          '${device.maskedDeviceId} · ${device.appVersion ?? 'sem versao'}',
+                        ),
+                      ],
+                    ),
+                  ),
+                  DataCell(_CellText(device.user?.email ?? 'Nao informado')),
+                  DataCell(
+                    _StatusChip(label: _deviceStatusLabel(device.status)),
+                  ),
+                  DataCell(Text('${device.pendingCount}')),
+                  DataCell(Text('${device.failedCount}')),
+                  DataCell(Text('${device.openConflictCount}')),
+                  DataCell(
+                    Text(
+                      AdminFormatters.formatDateTime(
+                        device.diagnostic?.reportedAt,
+                      ),
+                    ),
+                  ),
+                  DataCell(
+                    FilledButton.tonalIcon(
+                      onPressed: () => onOpen(device),
+                      icon: const Icon(Icons.manage_search_rounded),
+                      label: const Text('Ver diagnostico'),
+                    ),
+                  ),
+                ],
+              ),
+            )
+            .toList(growable: false),
+      ),
+    );
+  }
+}
+
+class _DeviceDetailPanel extends StatelessWidget {
+  const _DeviceDetailPanel({
+    required this.companyId,
+    required this.detail,
+    required this.onClose,
+    required this.onAction,
+  });
+
+  final String companyId;
+  final AdminSyncSupportDeviceDetail detail;
+  final VoidCallback onClose;
+  final ValueChanged<_SupportActionSpec> onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final diagnostic = detail.diagnostic;
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      detail.device.title,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const Text('Suporte de sincronizacao por dispositivo'),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Fechar',
+                onPressed: onClose,
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const _NoticeBox(
+            message:
+                'Executar reparo nao apaga vendas, pedidos ou estoque. O comando fica pendente ate o app deste dispositivo sincronizar.',
+          ),
+          const SizedBox(height: 16),
+          _DetailGrid(
+            rows: {
+              'Status': _deviceStatusLabel(detail.device.status),
+              'Pendentes locais': '${diagnostic?.pendingCount ?? 0}',
+              'Falhas locais': '${diagnostic?.failedCount ?? 0}',
+              'Conflitos OPEN': '${diagnostic?.openConflictCount ?? 0}',
+              'Resolvidos/Ignorados':
+                  '${diagnostic?.resolvedConflictCount ?? 0}/${diagnostic?.ignoredConflictCount ?? 0}',
+              'Ultimo push': AdminFormatters.formatDateTime(
+                diagnostic?.lastPushAt ?? detail.device.lastPushAt,
+              ),
+              'Ultimo pull': AdminFormatters.formatDateTime(
+                diagnostic?.lastPullAt ?? detail.device.lastPullAt,
+              ),
+              'Versao app':
+                  diagnostic?.appVersion ?? detail.device.appVersion ?? '-',
+            },
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: _supportActions
+                .map(
+                  (action) => FilledButton.tonalIcon(
+                    onPressed: () => onAction(action),
+                    icon: Icon(action.icon),
+                    label: Text(action.label),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (diagnostic?.lastLocalError != null)
+                    _NoticeBox(message: diagnostic!.lastLocalError!),
+                  const SizedBox(height: 12),
+                  _SupportCommandsList(commands: detail.commands),
+                  const SizedBox(height: 12),
+                  _FailedEventsList(events: detail.failedEvents),
+                  const SizedBox(height: 12),
+                  _SupportConflictsList(
+                    title: 'Conflitos remotos OPEN',
+                    conflicts: detail.openConflicts,
+                  ),
+                  const SizedBox(height: 12),
+                  _SupportConflictsList(
+                    title: 'Conflitos antigos resolvidos/ignorados',
+                    conflicts: detail.resolvedConflicts,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SupportCommandsList extends StatelessWidget {
+  const _SupportCommandsList({required this.commands});
+
+  final List<AdminSyncSupportCommand> commands;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminSurface(
+      title: 'Comandos enviados',
+      padding: const EdgeInsets.all(16),
+      child: commands.isEmpty
+          ? const Text('Nenhum comando enviado para este dispositivo.')
+          : Column(
+              children: commands
+                  .map(
+                    (command) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.task_alt_rounded),
+                      title: Text(command.label),
+                      subtitle: Text(command.reason),
+                      trailing: _StatusChip(label: command.status),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+    );
+  }
+}
+
+class _FailedEventsList extends StatelessWidget {
+  const _FailedEventsList({required this.events});
+
+  final List<AdminSyncSupportFailedEvent> events;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminSurface(
+      title: 'Eventos locais com falha reportados',
+      padding: const EdgeInsets.all(16),
+      child: events.isEmpty
+          ? const Text('Sem falhas locais reportadas.')
+          : Column(
+              children: events
+                  .map(
+                    (event) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.error_outline_rounded),
+                      title: Text(
+                        '${adminSyncCenterEntityLabel(event.entity)} / ${adminSyncCenterOperationLabel(event.operation)}',
+                      ),
+                      subtitle: Text(
+                        event.errorMessage ?? 'Falha local sem detalhe.',
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+    );
+  }
+}
+
+class _SupportConflictsList extends StatelessWidget {
+  const _SupportConflictsList({required this.title, required this.conflicts});
+
+  final String title;
+  final List<AdminSyncSupportConflict> conflicts;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminSurface(
+      title: title,
+      padding: const EdgeInsets.all(16),
+      child: conflicts.isEmpty
+          ? const Text('Nenhum registro.')
+          : Column(
+              children: conflicts
+                  .map(
+                    (conflict) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.report_problem_rounded),
+                      title: Text(conflict.code),
+                      subtitle: Text(conflict.message),
+                      trailing: _StatusChip(label: conflict.status),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+    );
+  }
+}
+
+class _SupportActionDialog extends ConsumerStatefulWidget {
+  const _SupportActionDialog({
+    required this.companyId,
+    required this.deviceId,
+    required this.action,
+    required this.onCompleted,
+  });
+
+  final String companyId;
+  final String deviceId;
+  final _SupportActionSpec action;
+  final VoidCallback onCompleted;
+
+  @override
+  ConsumerState<_SupportActionDialog> createState() =>
+      _SupportActionDialogState();
+}
+
+class _SupportActionDialogState extends ConsumerState<_SupportActionDialog> {
+  final _reasonController = TextEditingController();
+  final _confirmationController = TextEditingController();
+  AdminSyncSupportDryRunResult? _dryRun;
+  String? _error;
+  bool _isRunning = false;
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    _confirmationController.dispose();
+    super.dispose();
+  }
+
+  bool get _reasonOk => _reasonController.text.trim().isNotEmpty;
+  String get _expected =>
+      _dryRun?.expectedConfirmationText ?? widget.action.confirmationText;
+  bool get _confirmationOk =>
+      _confirmationController.text.trim().toUpperCase() == _expected;
+  bool get _canConfirm =>
+      _reasonOk && _confirmationOk && (_dryRun?.allowed ?? false);
+
+  @override
+  Widget build(BuildContext context) {
+    final dryRun = _dryRun;
+    return AlertDialog(
+      title: Text(widget.action.label),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(widget.action.description),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _reasonController,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  labelText: 'Motivo obrigatorio',
+                  border: OutlineInputBorder(),
+                ),
+                minLines: 2,
+                maxLines: 3,
+              ),
+              const SizedBox(height: 12),
+              FilledButton.tonalIcon(
+                onPressed: _isRunning || !_reasonOk ? null : _runDryRun,
+                icon: const Icon(Icons.science_rounded),
+                label: const Text('Executar dry-run'),
+              ),
+              if (!_reasonOk)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text('Informe o motivo para liberar o dry-run.'),
+                ),
+              if (dryRun != null) ...[
+                const SizedBox(height: 16),
+                _RiskBlock(risks: dryRun.risks, blockers: dryRun.blockers),
+                const SizedBox(height: 12),
+                Text(dryRun.summary),
+                const SizedBox(height: 16),
+                Text('Digite $_expected para confirmar.'),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _confirmationController,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'Texto de confirmacao',
+                    helperText: _confirmationOk
+                        ? 'Confirmacao correta.'
+                        : 'Digite $_expected para liberar a confirmacao.',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isRunning ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          onPressed: _isRunning || !_canConfirm ? null : _confirm,
+          icon: const Icon(Icons.send_rounded),
+          label: const Text('Enviar comando'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _runDryRun() async {
+    setState(() {
+      _isRunning = true;
+      _error = null;
+    });
+    try {
+      final result = await ref
+          .read(adminApiServiceProvider)
+          .dryRunSyncSupportAction(
+            companyId: widget.companyId,
+            deviceId: widget.deviceId,
+            command: widget.action.command,
+            reason: _reasonController.text,
+          );
+      if (mounted) {
+        setState(() {
+          _dryRun = result;
+          _confirmationController.clear();
+        });
+      }
+    } on AdminApiException catch (error) {
+      if (mounted) {
+        setState(() => _error = error.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Nao foi possivel validar a acao.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRunning = false);
+      }
+    }
+  }
+
+  Future<void> _confirm() async {
+    setState(() {
+      _isRunning = true;
+      _error = null;
+    });
+    try {
+      final result = await ref
+          .read(adminApiServiceProvider)
+          .createSyncSupportAction(
+            companyId: widget.companyId,
+            deviceId: widget.deviceId,
+            command: widget.action.command,
+            reason: _reasonController.text,
+            confirmationText: _confirmationController.text,
+          );
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pop();
+      widget.onCompleted();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.message ?? 'Comando enviado.')),
+      );
+    } on AdminApiException catch (error) {
+      if (mounted) {
+        setState(() => _error = error.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Nao foi possivel enviar o comando.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRunning = false);
+      }
+    }
+  }
+}
+
+class _SupportActionSpec {
+  const _SupportActionSpec({
+    required this.command,
+    required this.label,
+    required this.confirmationText,
+    required this.icon,
+    required this.description,
+  });
+
+  final String command;
+  final String label;
+  final String confirmationText;
+  final IconData icon;
+  final String description;
+}
+
+const _supportActions = <_SupportActionSpec>[
+  _SupportActionSpec(
+    command: 'REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS',
+    label: 'Reparar eventos recuperaveis',
+    confirmationText: 'REPARAR',
+    icon: Icons.build_rounded,
+    description:
+        'Repara eventos antigos operationalOrderItem sem totalCents e devolve para a fila local.',
+  ),
+  _SupportActionSpec(
+    command: 'RETRY_FAILED_SYNC_EVENTS',
+    label: 'Reprocessar falhas locais',
+    confirmationText: 'REPROCESSAR',
+    icon: Icons.sync_rounded,
+    description:
+        'Recoloca eventos recuperaveis na fila para novo envio idempotente.',
+  ),
+  _SupportActionSpec(
+    command: 'CLEAR_RESOLVED_CONFLICT_CACHE',
+    label: 'Limpar conflitos resolvidos no dispositivo',
+    confirmationText: 'LIMPAR',
+    icon: Icons.cleaning_services_rounded,
+    description:
+        'Remove alertas locais de conflitos que ja estao resolvidos ou ignorados no backend.',
+  ),
+  _SupportActionSpec(
+    command: 'FORCE_SYNC_PULL',
+    label: 'Forcar atualizacao da nuvem',
+    confirmationText: 'ATUALIZAR',
+    icon: Icons.cloud_sync_rounded,
+    description:
+        'Solicita que o app faca pull remoto de status, conflitos e eventos.',
+  ),
+  _SupportActionSpec(
+    command: 'REFRESH_SYNC_STATUS',
+    label: 'Recalcular status de sync',
+    confirmationText: 'RECALCULAR',
+    icon: Icons.fact_check_rounded,
+    description:
+        'Recalcula o status local de sincronizacao e reporta novo diagnostico.',
+  ),
+];
+
 class _IncidentsTab extends StatelessWidget {
   const _IncidentsTab({required this.incidents});
 
@@ -2166,6 +2820,21 @@ String _eventBlockedMessage(AdminSyncCenterEvent event) {
     return event.rejectionMessage!;
   }
   return 'A classificação de segurança bloqueia o reprocessamento automático.';
+}
+
+String _deviceStatusLabel(String value) {
+  switch (value) {
+    case 'cloud_ok':
+      return 'Nuvem em dia';
+    case 'local_failure':
+      return 'Falha local';
+    case 'remote_conflict':
+      return 'Conflito remoto';
+    case 'attention':
+      return 'Atencao';
+    default:
+      return value;
+  }
 }
 
 void _showActionError(BuildContext context, String message) {

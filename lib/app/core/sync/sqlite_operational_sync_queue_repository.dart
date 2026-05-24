@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:sqflite/sqflite.dart';
 
 import '../database/app_database.dart';
@@ -8,6 +11,7 @@ import 'operational_sync_policy.dart';
 import 'operational_sync_queue_item.dart';
 import 'operational_sync_queue_repository.dart';
 import 'operational_sync_queue_status.dart';
+import 'operational_sync_remote_datasource.dart';
 import 'sync_error_type.dart';
 import 'sync_queue_feature_summary.dart';
 
@@ -478,6 +482,178 @@ class SqliteOperationalSyncQueueRepository
     ];
   }
 
+  @override
+  Future<OperationalSyncDiagnosticReport> buildDiagnosticReport({
+    List<OperationalSyncConflict> conflicts = const <OperationalSyncConflict>[],
+  }) async {
+    final summaries = await listFeatureSummaries();
+    final summary = summaries.isEmpty ? null : summaries.first;
+    final openConflicts = conflicts
+        .where((conflict) => conflict.status.toUpperCase() == 'OPEN')
+        .length;
+    final resolvedConflicts = conflicts
+        .where((conflict) => conflict.status.toUpperCase() == 'RESOLVED')
+        .length;
+    final ignoredConflicts = conflicts
+        .where((conflict) => conflict.status.toUpperCase() == 'IGNORED')
+        .length;
+    return OperationalSyncDiagnosticReport(
+      pendingCount: summary?.pendingCount ?? 0,
+      failedCount: summary?.errorCount ?? 0,
+      openConflictCount: openConflicts + (summary?.conflictCount ?? 0),
+      resolvedConflictCount: resolvedConflicts,
+      ignoredConflictCount: ignoredConflicts,
+      lastLocalError: summary?.lastError,
+      lastLocalErrorEntity: _lastErrorEntity(summary?.lastError),
+      lastPushAt: summary?.lastProcessedAt,
+      lastPullAt: _parseDateTime(await _readState(_lastPullSucceededAtKey)),
+      lastSuccessfulSyncAt: _latestDate(
+        summary?.lastProcessedAt,
+        _parseDateTime(await _readState(_lastPullSucceededAtKey)),
+      ),
+      safeDetails: <String, dynamic>{
+        'feature': _featureKey,
+        'totalTracked': summary?.totalTracked ?? 0,
+        'staleProcessingCount': summary?.staleProcessingCount ?? 0,
+        'lastPullError': summary?.lastPullError,
+        'lastSnapshotError': summary?.lastSnapshotError,
+      },
+    );
+  }
+
+  @override
+  Future<int> repairOperationalOrderItemTotalCents() async {
+    final database = await _appDatabase.database;
+    final rows = await database.query(
+      TableNames.operationalSyncEvents,
+      where: 'status = ? AND entity = ?',
+      whereArgs: [
+        OperationalSyncQueueStatus.failed.storageValue,
+        'operationalOrderItem',
+      ],
+    );
+    var repaired = 0;
+    final now = DateTime.now().toIso8601String();
+    for (final row in rows) {
+      final rawPayload = row['payload_json'] as String? ?? '{}';
+      final decoded = jsonDecode(rawPayload);
+      if (decoded is! Map<String, dynamic>) {
+        continue;
+      }
+      final currentTotal = _intValue(decoded['totalCents']);
+      if (currentTotal != null && currentTotal >= 0) {
+        continue;
+      }
+      final totalCents = _deriveOperationalOrderItemTotalCents(decoded);
+      if (totalCents == null) {
+        continue;
+      }
+      decoded['totalCents'] = max(0, totalCents);
+      await database.update(
+        TableNames.operationalSyncEvents,
+        {
+          'payload_json': jsonEncode(decoded),
+          'status': OperationalSyncQueueStatus.pending.storageValue,
+          'next_retry_at': null,
+          'error_code': null,
+          'error_message': null,
+          'pushing_started_at': null,
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
+      repaired++;
+    }
+    if (repaired > 0) {
+      await _deleteState(_lastPullErrorKey);
+      await _deleteState(_lastPullErrorAtKey);
+    }
+    return repaired;
+  }
+
+  @override
+  Future<int> reenqueueRecoverableFailedEvents() async {
+    final repaired = await repairOperationalOrderItemTotalCents();
+    final database = await _appDatabase.database;
+    final rows = await database.query(
+      TableNames.operationalSyncEvents,
+      where: 'status = ? AND entity = ?',
+      whereArgs: [
+        OperationalSyncQueueStatus.failed.storageValue,
+        'operationalOrderItem',
+      ],
+    );
+    var requeued = 0;
+    final now = DateTime.now().toIso8601String();
+    for (final row in rows) {
+      final decoded = jsonDecode(row['payload_json'] as String? ?? '{}');
+      if (decoded is! Map<String, dynamic>) {
+        continue;
+      }
+      final totalCents = _intValue(decoded['totalCents']);
+      if (totalCents == null || totalCents < 0) {
+        continue;
+      }
+      await database.update(
+        TableNames.operationalSyncEvents,
+        {
+          'status': OperationalSyncQueueStatus.pending.storageValue,
+          'next_retry_at': null,
+          'error_code': null,
+          'error_message': null,
+          'pushing_started_at': null,
+          'updated_at': now,
+        },
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
+      requeued++;
+    }
+    return repaired + requeued;
+  }
+
+  @override
+  Future<int> clearResolvedConflictCache({
+    required List<OperationalSyncConflict> conflicts,
+  }) async {
+    final resolvedIds = conflicts
+        .where(
+          (conflict) =>
+              conflict.status.toUpperCase() == 'RESOLVED' ||
+              conflict.status.toUpperCase() == 'IGNORED',
+        )
+        .map((conflict) => conflict.id)
+        .where((id) => id.trim().isNotEmpty)
+        .toList(growable: false);
+    if (resolvedIds.isEmpty) {
+      return 0;
+    }
+    final database = await _appDatabase.database;
+    final placeholders = List.filled(resolvedIds.length, '?').join(', ');
+    final now = DateTime.now().toIso8601String();
+    return database.rawUpdate(
+      '''
+      UPDATE ${TableNames.operationalSyncEvents}
+      SET
+        status = ?,
+        error_code = NULL,
+        error_message = NULL,
+        conflict_id = NULL,
+        next_retry_at = NULL,
+        pushing_started_at = NULL,
+        updated_at = ?
+      WHERE status = ? AND conflict_id IN ($placeholders)
+      ''',
+      <Object?>[
+        OperationalSyncQueueStatus.duplicate.storageValue,
+        now,
+        OperationalSyncQueueStatus.conflict.storageValue,
+        ...resolvedIds,
+      ],
+    );
+  }
+
   Future<void> _markTerminal({
     required String eventId,
     required OperationalSyncQueueStatus status,
@@ -567,6 +743,43 @@ class SqliteOperationalSyncQueueRepository
       return first;
     }
     return first.isAfter(second) ? first : second;
+  }
+
+  String? _lastErrorEntity(String? message) {
+    if (message == null) {
+      return null;
+    }
+    if (message.contains('operationalOrderItem')) {
+      return 'operationalOrderItem';
+    }
+    return null;
+  }
+
+  int? _deriveOperationalOrderItemTotalCents(Map<String, dynamic> payload) {
+    final subtotal = _intValue(payload['subtotalCents']);
+    if (subtotal != null) {
+      return max(0, subtotal);
+    }
+    final unitPrice = _intValue(payload['unitPriceCents']);
+    final quantityMil = _intValue(payload['quantityMil']);
+    if (unitPrice == null || quantityMil == null || quantityMil < 0) {
+      return null;
+    }
+    final discount = _intValue(payload['discountCents']) ?? 0;
+    return max(0, ((unitPrice * quantityMil) ~/ 1000) - discount);
+  }
+
+  int? _intValue(Object? value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value);
+    }
+    return null;
   }
 
   OperationalSyncQueueItem _mapRow(Map<String, Object?> row) {

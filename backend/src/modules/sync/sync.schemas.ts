@@ -87,6 +87,36 @@ export const syncResolveConflictSchema = z.object({
   resolution: z.record(z.unknown()).optional().default({}),
 });
 
+const optionalDateBody = z
+  .union([z.string().datetime(), z.null(), z.undefined()])
+  .transform((value) => (value == null ? null : new Date(value)));
+
+export const syncSupportDiagnosticSchema = z.object({
+  appVersion: optionalTrimmedString(80),
+  localSchemaVersion: optionalTrimmedString(80),
+  pendingCount: z.coerce.number().int().min(0).default(0),
+  failedCount: z.coerce.number().int().min(0).default(0),
+  openConflictCount: z.coerce.number().int().min(0).default(0),
+  resolvedConflictCount: z.coerce.number().int().min(0).default(0),
+  ignoredConflictCount: z.coerce.number().int().min(0).default(0),
+  lastLocalError: z.string().trim().max(1000).optional().nullable(),
+  lastLocalErrorCode: optionalTrimmedString(120).nullable(),
+  lastLocalErrorEntity: optionalTrimmedString(120).nullable(),
+  lastPushAt: optionalDateBody,
+  lastPullAt: optionalDateBody,
+  lastSuccessfulSyncAt: optionalDateBody,
+  safeDetails: z.record(z.unknown()).optional().default({}),
+});
+
+export const syncSupportCommandCompleteSchema = z.object({
+  result: z.record(z.unknown()).optional().default({}),
+});
+
+export const syncSupportCommandFailSchema = z.object({
+  errorMessage: z.string().trim().min(1).max(1000),
+  result: z.record(z.unknown()).optional().default({}),
+});
+
 export const appSnapshotQuerySchema = z.object({
   features: z
     .preprocess((value) => {
@@ -111,5 +141,14 @@ export type SyncPullQueryInput = z.infer<typeof syncPullQuerySchema>;
 export type SyncConflictQueryInput = z.infer<typeof syncConflictQuerySchema>;
 export type SyncResolveConflictInput = z.infer<
   typeof syncResolveConflictSchema
+>;
+export type SyncSupportDiagnosticInput = z.infer<
+  typeof syncSupportDiagnosticSchema
+>;
+export type SyncSupportCommandCompleteInput = z.infer<
+  typeof syncSupportCommandCompleteSchema
+>;
+export type SyncSupportCommandFailInput = z.infer<
+  typeof syncSupportCommandFailSchema
 >;
 export type AppSnapshotQueryInput = z.infer<typeof appSnapshotQuerySchema>;

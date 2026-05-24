@@ -250,6 +250,24 @@ export const adminSyncCenterManualStockAdjustmentBodySchema =
     quantityDeltaMil: z.coerce.number().int(),
   });
 
+export const adminSyncSupportCommandSchema = z.enum([
+  'RETRY_FAILED_SYNC_EVENTS',
+  'REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS',
+  'CLEAR_RESOLVED_CONFLICT_CACHE',
+  'FORCE_SYNC_PULL',
+  'REFRESH_SYNC_STATUS',
+]);
+
+export const adminSyncSupportDryRunSchema = z.object({
+  command: adminSyncSupportCommandSchema,
+  reason: requiredBodyString('reason'),
+});
+
+export const adminSyncSupportActionSchema = adminSyncSupportDryRunSchema.extend({
+  confirmationText: requiredBodyString('confirmationText', 80),
+  payload: z.record(z.unknown()).optional().default({}),
+});
+
 export type AdminLicensePatchInput = z.infer<typeof adminLicensePatchSchema>;
 export type AdminCompaniesQueryInput = z.infer<typeof adminCompaniesQuerySchema>;
 export type AdminLicensesQueryInput = z.infer<typeof adminLicensesQuerySchema>;
@@ -290,4 +308,10 @@ export type AdminSyncCenterArchiveBodyInput = z.infer<
 >;
 export type AdminSyncCenterManualStockAdjustmentBodyInput = z.infer<
   typeof adminSyncCenterManualStockAdjustmentBodySchema
+>;
+export type AdminSyncSupportDryRunInput = z.infer<
+  typeof adminSyncSupportDryRunSchema
+>;
+export type AdminSyncSupportActionInput = z.infer<
+  typeof adminSyncSupportActionSchema
 >;

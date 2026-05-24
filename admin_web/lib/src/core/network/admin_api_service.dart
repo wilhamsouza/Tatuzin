@@ -612,6 +612,92 @@ class AdminApiService {
     );
   }
 
+  Future<List<AdminSyncSupportDevice>> fetchSyncSupportDevices({
+    required String companyId,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/sync/companies/$companyId/devices',
+      accessToken: await _readRequiredToken(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return readAdminItems(
+      payload,
+    ).map(AdminSyncSupportDevice.fromMap).toList(growable: false);
+  }
+
+  Future<AdminSyncSupportDeviceDetail> fetchSyncSupportDeviceDetail({
+    required String companyId,
+    required String deviceId,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/sync/companies/$companyId/devices/$deviceId/diagnostics',
+      accessToken: await _readRequiredToken(),
+    );
+    return AdminSyncSupportDeviceDetail.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
+  Future<AdminSyncSupportDryRunResult> dryRunSyncSupportAction({
+    required String companyId,
+    required String deviceId,
+    required String command,
+    required String reason,
+  }) async {
+    final normalizedReason = reason.trim();
+    if (normalizedReason.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    final response = await _apiClient.postJson(
+      '/admin/sync/companies/$companyId/devices/$deviceId/support-actions/dry-run',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{'command': command, 'reason': normalizedReason},
+    );
+    return AdminSyncSupportDryRunResult.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
+  Future<AdminSyncSupportActionResult> createSyncSupportAction({
+    required String companyId,
+    required String deviceId,
+    required String command,
+    required String reason,
+    required String confirmationText,
+  }) async {
+    final normalizedReason = reason.trim();
+    final confirmation = confirmationText.trim();
+    if (normalizedReason.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    if (confirmation.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o texto de confirmacao.',
+        code: 'ADMIN_CONFIRMATION_REQUIRED',
+      );
+    }
+    final response = await _apiClient.postJson(
+      '/admin/sync/companies/$companyId/devices/$deviceId/support-actions',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        'command': command,
+        'reason': normalizedReason,
+        'confirmationText': confirmation,
+      },
+    );
+    return AdminSyncSupportActionResult.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
   Future<AdminSyncCenterEventDetail> fetchSyncCenterEventDetail({
     required String companyId,
     required String eventId,

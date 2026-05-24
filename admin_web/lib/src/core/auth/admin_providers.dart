@@ -241,6 +241,31 @@ final adminSyncCenterConflictsProvider =
           .fetchSyncCenterConflicts(query: query);
     });
 
+final adminSyncSupportDevicesProvider =
+    FutureProvider.family<List<AdminSyncSupportDevice>, String>((
+      ref,
+      companyId,
+    ) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchSyncSupportDevices(companyId: companyId);
+    });
+
+final adminSyncSupportDeviceDetailProvider =
+    FutureProvider.family<
+      AdminSyncSupportDeviceDetail,
+      AdminSyncCenterDetailKey
+    >((ref, key) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchSyncSupportDeviceDetail(
+            companyId: key.companyId,
+            deviceId: key.targetId,
+          );
+    });
+
 final adminSyncCenterEventDetailProvider =
     FutureProvider.family<AdminSyncCenterEventDetail, AdminSyncCenterDetailKey>(
       (ref, key) async {

@@ -2906,6 +2906,182 @@ describe("operational local-first sync routes", () => {
     );
   });
 
+  it("upserts device sync diagnostics without counting resolved conflicts as active", async () => {
+    const fixture = await createFixture();
+
+    const response = await requestJson("POST", "/sync/diagnostics", {
+      token: fixture.token,
+      body: {
+        pendingCount: 0,
+        failedCount: 3,
+        openConflictCount: 0,
+        resolvedConflictCount: 4,
+        ignoredConflictCount: 1,
+        lastLocalError:
+          "operationalOrderItem precisa de totalCents maior ou igual a zero.",
+        lastLocalErrorEntity: "operationalOrderItem",
+        appVersion: "2.1.0",
+        safeDetails: {
+          eventIds: ["safe-event-id"],
+          headers: { authorization: "Bearer secret" },
+        },
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const diagnostic = await prisma.deviceSyncDiagnostic.findUniqueOrThrow({
+      where: {
+        companyId_deviceId: {
+          companyId: fixture.companyId,
+          deviceId: fixture.deviceId,
+        },
+      },
+    });
+    assert.equal(diagnostic.failedCount, 3);
+    assert.equal(diagnostic.openConflictCount, 0);
+    assert.equal(diagnostic.resolvedConflictCount, 4);
+    assert.equal(diagnostic.ignoredConflictCount, 1);
+    assert.equal(diagnostic.lastLocalErrorEntity, "operationalOrderItem");
+    assert.doesNotMatch(JSON.stringify(diagnostic.safeDetails), /Bearer secret/);
+  });
+
+  it("delivers support commands only to the matching device and records completion", async () => {
+    const fixture = await createFixture();
+    const otherDevice = await createAdditionalDevice(fixture);
+    const command = await prisma.syncSupportCommand.create({
+      data: {
+        companyId: fixture.companyId,
+        deviceId: fixture.deviceId,
+        actorUserId: fixture.userId,
+        command: "CLEAR_RESOLVED_CONFLICT_CACHE",
+        reason: "limpar cache antigo",
+        confirmationText: "LIMPAR",
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    await prisma.syncSupportCommand.create({
+      data: {
+        companyId: fixture.companyId,
+        deviceId: otherDevice.deviceId,
+        actorUserId: fixture.userId,
+        command: "FORCE_SYNC_PULL",
+        reason: "outro device",
+        confirmationText: "ATUALIZAR",
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+
+    const pullOwn = await requestJson("GET", "/sync/support-commands", {
+      token: fixture.token,
+    });
+    const pullOther = await requestJson("GET", "/sync/support-commands", {
+      token: otherDevice.token,
+    });
+
+    assert.equal(pullOwn.status, 200);
+    assert.equal(pullOther.status, 200);
+    assert.deepEqual(
+      (
+        pullOwn.data as {
+          items: Array<{ id: string; command: string; status: string }>;
+        }
+      ).items.map((item) => [item.id, item.command, item.status]),
+      [[command.id, "CLEAR_RESOLVED_CONFLICT_CACHE", "RUNNING"]],
+    );
+    assert.equal(
+      (
+        pullOther.data as {
+          items: Array<{ command: string }>;
+        }
+      ).items[0]?.command,
+      "FORCE_SYNC_PULL",
+    );
+
+    const wrongDeviceComplete = await requestJson(
+      "POST",
+      `/sync/support-commands/${command.id}/complete`,
+      {
+        token: otherDevice.token,
+        body: { result: { shouldNotApply: true } },
+      },
+    );
+    assert.equal(wrongDeviceComplete.status, 404);
+
+    const complete = await requestJson(
+      "POST",
+      `/sync/support-commands/${command.id}/complete`,
+      {
+        token: fixture.token,
+        body: { result: { clearedConflicts: 4 } },
+      },
+    );
+    assert.equal(complete.status, 200);
+    const stored = await prisma.syncSupportCommand.findUniqueOrThrow({
+      where: { id: command.id },
+    });
+    assert.equal(stored.status, "SUCCEEDED");
+    assert.notEqual(stored.completedAt, null);
+  });
+
+  it("does not deliver expired support commands and rejects expired completion", async () => {
+    const fixture = await createFixture();
+    const expiredPending = await prisma.syncSupportCommand.create({
+      data: {
+        companyId: fixture.companyId,
+        deviceId: fixture.deviceId,
+        actorUserId: fixture.userId,
+        command: "REFRESH_SYNC_STATUS",
+        reason: "expirado antes da coleta",
+        confirmationText: "RECALCULAR",
+        expiresAt: new Date(Date.now() - 60_000),
+      },
+    });
+    const expiredRunning = await prisma.syncSupportCommand.create({
+      data: {
+        companyId: fixture.companyId,
+        deviceId: fixture.deviceId,
+        actorUserId: fixture.userId,
+        command: "FORCE_SYNC_PULL",
+        status: "RUNNING",
+        reason: "expirado em execucao",
+        confirmationText: "ATUALIZAR",
+        pickedUpAt: new Date(Date.now() - 120_000),
+        expiresAt: new Date(Date.now() - 60_000),
+      },
+    });
+
+    const completeExpired = await requestJson(
+      "POST",
+      `/sync/support-commands/${expiredRunning.id}/complete`,
+      {
+        token: fixture.token,
+        body: { result: { completedAfterExpiry: true } },
+      },
+    );
+    assert.equal(completeExpired.status, 409);
+    assert.equal(
+      (completeExpired.data as { code?: string }).code,
+      "SYNC_SUPPORT_COMMAND_EXPIRED",
+    );
+
+    const pull = await requestJson("GET", "/sync/support-commands", {
+      token: fixture.token,
+    });
+    assert.equal(pull.status, 200);
+    assert.deepEqual((pull.data as { items: unknown[] }).items, []);
+
+    const [pendingAfter, runningAfter] = await Promise.all([
+      prisma.syncSupportCommand.findUniqueOrThrow({
+        where: { id: expiredPending.id },
+      }),
+      prisma.syncSupportCommand.findUniqueOrThrow({
+        where: { id: expiredRunning.id },
+      }),
+    ]);
+    assert.equal(pendingAfter.status, "EXPIRED");
+    assert.equal(runningAfter.status, "EXPIRED");
+  });
+
   it("reprocesses existing OPERATIONAL_ORDER_NOT_FOUND when parent order exists", async () => {
     const fixture = await createFixture();
     const orderLocalUuid = `${runId}-reprocess-order`;

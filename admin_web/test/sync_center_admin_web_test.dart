@@ -95,8 +95,92 @@ void main() {
     expect(find.text('25'), findsWidgets);
     expect(find.text('Eventos'), findsOneWidget);
     expect(find.text('Conflitos'), findsWidgets);
+    expect(find.text('Dispositivos'), findsOneWidget);
     expect(find.text('Incidentes'), findsOneWidget);
     expect(find.text('Auditoria'), findsOneWidget);
+  });
+
+  testWidgets('dispositivos mostram diagnostico e criam comando com dry-run', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeSyncApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(service: service, initialLocation: '/sync/company-1'),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Dispositivos'));
+    await tester.pumpAndSettle();
+    expect(find.text('PDV cafe oliveira'), findsOneWidget);
+    expect(find.text('Falha local'), findsOneWidget);
+    expect(find.text('3'), findsWidgets);
+
+    await tester.tap(find.text('Ver diagnostico'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Suporte de sincronizacao por dispositivo'),
+      findsOneWidget,
+    );
+    expect(find.text('Reparar eventos recuperaveis'), findsOneWidget);
+    expect(
+      find.textContaining('totalCents maior ou igual a zero'),
+      findsWidgets,
+    );
+
+    await tester.tap(find.text('Reparar eventos recuperaveis'));
+    await tester.pumpAndSettle();
+    expect(find.text('Motivo obrigatorio'), findsOneWidget);
+    expect(find.text('Enviar comando'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Enviar comando'),
+          )
+          .enabled,
+      isFalse,
+    );
+
+    await tester.enterText(find.byType(TextField).first, 'reparar fila antiga');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Executar dry-run'));
+    await tester.pumpAndSettle();
+    expect(service.supportDryRunCalls, 1);
+    expect(find.text('Digite REPARAR para confirmar.'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).last, 'ERRADO');
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Digite REPARAR para liberar a confirmacao.'),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Enviar comando'),
+          )
+          .enabled,
+      isFalse,
+    );
+
+    await tester.enterText(find.byType(TextField).last, 'REPARAR');
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Enviar comando'),
+          )
+          .enabled,
+      isTrue,
+    );
+    await tester.tap(find.text('Enviar comando'));
+    await tester.pumpAndSettle();
+
+    expect(service.supportActionCalls, 1);
+    expect(
+      service.lastSupportCommand,
+      'REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS',
+    );
   });
 
   testWidgets('tabela de eventos mostra ações e traduções seguras', (
@@ -500,8 +584,13 @@ class _FakeSyncApiService extends AdminApiService {
   int fetchSummaryCalls = 0;
   int fetchEventsCalls = 0;
   int fetchConflictsCalls = 0;
+  int fetchSupportDevicesCalls = 0;
+  int fetchSupportDeviceDetailCalls = 0;
+  int supportDryRunCalls = 0;
+  int supportActionCalls = 0;
   String? lastArchiveReason;
   String? lastReprocessReason;
+  String? lastSupportCommand;
 
   @override
   Future<AdminPaginatedResult<AdminSyncCenterCompany>>
@@ -624,6 +713,99 @@ class _FakeSyncApiService extends AdminApiService {
       filters: const {},
       sort: const AdminSortMeta(by: 'createdAt', direction: 'desc'),
     );
+  }
+
+  @override
+  Future<List<AdminSyncSupportDevice>> fetchSyncSupportDevices({
+    required String companyId,
+  }) async {
+    fetchSupportDevicesCalls += 1;
+    return <AdminSyncSupportDevice>[
+      AdminSyncSupportDevice.fromMap(_supportDeviceMap()),
+    ];
+  }
+
+  @override
+  Future<AdminSyncSupportDeviceDetail> fetchSyncSupportDeviceDetail({
+    required String companyId,
+    required String deviceId,
+  }) async {
+    fetchSupportDeviceDetailCalls += 1;
+    return AdminSyncSupportDeviceDetail.fromMap({
+      'device': _supportDeviceMap(),
+      'diagnostic': _supportDiagnosticMap(),
+      'failedEvents': [
+        {
+          'id': 'event-failed-1',
+          'eventId': 'local-event-failed-1',
+          'entity': 'operationalOrderItem',
+          'operation': 'create',
+          'errorCode': 'SYNC_PUSH_FAILED',
+          'errorMessage':
+              'operationalOrderItem precisa de totalCents maior ou igual a zero.',
+          'updatedAt': '2026-05-06T20:45:01.211999Z',
+          'payloadSummary': '{"entity":"operationalOrderItem"}',
+        },
+      ],
+      'openConflicts': const [],
+      'resolvedConflicts': [
+        {
+          'id': 'conflict-resolved-1',
+          'entity': 'operationalOrderItem',
+          'code': 'OPERATIONAL_ORDER_NOT_FOUND',
+          'message': 'Conflito antigo resolvido no backend.',
+          'status': 'resolved',
+          'createdAt': '2026-05-06T20:45:01.211999Z',
+          'resolvedAt': '2026-05-07T20:45:01.211999Z',
+        },
+      ],
+      'commands': const [],
+    });
+  }
+
+  @override
+  Future<AdminSyncSupportDryRunResult> dryRunSyncSupportAction({
+    required String companyId,
+    required String deviceId,
+    required String command,
+    required String reason,
+  }) async {
+    supportDryRunCalls += 1;
+    lastSupportCommand = command;
+    return AdminSyncSupportDryRunResult.fromMap({
+      'allowed': true,
+      'command': command,
+      'label': 'Reparar totalCents de itens',
+      'expectedConfirmationText': 'REPARAR',
+      'blockers': const [],
+      'risks': ['Nenhuma venda, pedido ou estoque sera apagado.'],
+      'summary': 'Comando pode ser enviado com seguranca para execucao local.',
+    });
+  }
+
+  @override
+  Future<AdminSyncSupportActionResult> createSyncSupportAction({
+    required String companyId,
+    required String deviceId,
+    required String command,
+    required String reason,
+    required String confirmationText,
+  }) async {
+    supportActionCalls += 1;
+    lastSupportCommand = command;
+    return AdminSyncSupportActionResult.fromMap({
+      'ok': true,
+      'message': 'Comando enviado ao dispositivo.',
+      'command': {
+        'id': 'cmd-1',
+        'command': command,
+        'label': 'Reparar totalCents de itens',
+        'status': 'PENDING',
+        'reason': reason,
+        'requestedAt': '2026-05-06T20:45:01.211999Z',
+        'expiresAt': '2026-05-07T20:45:01.211999Z',
+      },
+    });
   }
 
   @override
@@ -777,6 +959,61 @@ Map<String, dynamic> _companyMap() {
     'lastEventAt': '2026-05-06T20:45:01.211999Z',
     'lastIncidentAt': '2026-05-06T20:45:01.211999Z',
     'requiresReview': true,
+  };
+}
+
+Map<String, dynamic> _supportDeviceMap() {
+  return {
+    'id': 'device-1',
+    'maskedDeviceId': 'device...0001',
+    'clientInstanceId': 'client...0001',
+    'deviceLabel': 'PDV cafe oliveira',
+    'platform': 'android',
+    'appVersion': '2.1.0',
+    'status': 'local_failure',
+    'deviceStatus': 'active',
+    'lastSeenAt': '2026-05-06T20:45:01.211999Z',
+    'lastPushAt': '2026-05-06T20:45:01.211999Z',
+    'lastPullAt': '2026-05-06T20:45:01.211999Z',
+    'user': {
+      'id': 'user-1',
+      'name': 'Operador local',
+      'email': 'operador@tatuzin.test',
+    },
+    'diagnostic': _supportDiagnosticSummaryMap(),
+    'remoteConflictCounts': {
+      'openConflictCount': 0,
+      'resolvedConflictCount': 4,
+      'ignoredConflictCount': 0,
+    },
+  };
+}
+
+Map<String, dynamic> _supportDiagnosticSummaryMap() {
+  return {
+    'pendingCount': 0,
+    'failedCount': 3,
+    'openConflictCount': 0,
+    'resolvedConflictCount': 4,
+    'ignoredConflictCount': 0,
+    'lastLocalError':
+        'operationalOrderItem precisa de totalCents maior ou igual a zero.',
+    'reportedAt': '2026-05-06T20:45:01.211999Z',
+  };
+}
+
+Map<String, dynamic> _supportDiagnosticMap() {
+  return {
+    'id': 'diagnostic-1',
+    ..._supportDiagnosticSummaryMap(),
+    'lastLocalErrorCode': 'SYNC_PUSH_FAILED',
+    'lastLocalErrorEntity': 'operationalOrderItem',
+    'appVersion': '2.1.0',
+    'localSchemaVersion': '37',
+    'lastPushAt': '2026-05-06T20:45:01.211999Z',
+    'lastPullAt': '2026-05-06T20:45:01.211999Z',
+    'lastSuccessfulSyncAt': '2026-05-06T20:45:01.211999Z',
+    'safeDetails': {'entity': 'operationalOrderItem'},
   };
 }
 

@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import 'operational_sync_event.dart';
 import 'operational_sync_queue_item.dart';
+import 'operational_sync_remote_datasource.dart';
 import 'sync_queue_feature_summary.dart';
 
 abstract interface class OperationalSyncQueueRepository {
@@ -85,6 +86,18 @@ abstract interface class OperationalSyncQueueRepository {
   Future<void> recordSnapshotFailed({
     required String message,
     required DateTime failedAt,
+  });
+
+  Future<OperationalSyncDiagnosticReport> buildDiagnosticReport({
+    List<OperationalSyncConflict> conflicts = const <OperationalSyncConflict>[],
+  });
+
+  Future<int> repairOperationalOrderItemTotalCents();
+
+  Future<int> reenqueueRecoverableFailedEvents();
+
+  Future<int> clearResolvedConflictCache({
+    required List<OperationalSyncConflict> conflicts,
   });
 
   Future<List<SyncQueueFeatureSummary>> listFeatureSummaries();

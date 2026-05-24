@@ -334,6 +334,73 @@ void main() {
       expect(eligible.map((item) => item.event.eventId), [event.eventId]);
     });
 
+    test(
+      'repara operationalOrderItem antigo sem totalCents e volta para fila',
+      () async {
+        final appDatabase = _newIsolatedDatabase('repair-order-item-total');
+        addTearDown(() async => _disposeIsolatedDatabase(appDatabase));
+        final database = await appDatabase.database;
+        final repository = SqliteOperationalSyncQueueRepository(appDatabase);
+        final event = OperationalSyncEvent(
+          eventId: 'order-item-missing-total',
+          feature: 'pdv',
+          entity: 'operationalOrderItem',
+          operation: 'create',
+          entityLocalId: 'order-item-1',
+          occurredAt: DateTime(2026, 5, 5, 10),
+          payload: const <String, dynamic>{
+            'uuid': 'order-item-1',
+            'unitPriceCents': 1200,
+            'quantityMil': 2500,
+            'discountCents': 500,
+          },
+        );
+
+        await repository.enqueue(database, event: event);
+        final pending = await repository.listPending(
+          limit: 10,
+          retryOnly: false,
+          ignoreRetryBackoff: true,
+        );
+        await repository.markFailed(
+          pending,
+          message: 'totalCents maior ou igual a zero',
+          failedAt: DateTime(2026, 5, 5, 11),
+          nextRetryAt: null,
+        );
+        final failedRow = (await database.query(
+          TableNames.operationalSyncEvents,
+          where: 'event_id = ?',
+          whereArgs: [event.eventId],
+          limit: 1,
+        )).single;
+
+        final repaired = await repository
+            .repairOperationalOrderItemTotalCents();
+        final repairedPending = await repository.listPending(
+          limit: 10,
+          retryOnly: false,
+          ignoreRetryBackoff: true,
+        );
+        final repairedRow = (await database.query(
+          TableNames.operationalSyncEvents,
+          where: 'event_id = ?',
+          whereArgs: [event.eventId],
+          limit: 1,
+        )).single;
+
+        expect(repaired, 1);
+        expect(repairedRow['id'], failedRow['id']);
+        expect(repairedRow['event_id'], failedRow['event_id']);
+        expect(repairedPending.single.event.eventId, event.eventId);
+        expect(repairedPending.single.event.payload['totalCents'], 2500);
+        expect(
+          repairedPending.single.status,
+          OperationalSyncQueueStatus.pending,
+        );
+      },
+    );
+
     test('backoff nao ocupa limit e nao esconde eventos elegiveis', () async {
       final now = DateTime(2026, 5, 5, 12);
       final appDatabase = _newIsolatedDatabase('backoff-limit');
@@ -475,6 +542,194 @@ void main() {
       expect(queue.statusByEventId[conflict.eventId], 'conflict:conflict-1');
       expect(snapshotChanges, 1);
     });
+
+    test('diagnostico conta apenas conflitos OPEN como ativos', () async {
+      final queue = _MemoryOperationalSyncQueueRepository();
+      final remote = _FakeOperationalSyncRemoteDataSource(
+        conflicts: const <OperationalSyncConflict>[
+          OperationalSyncConflict(
+            id: 'open-1',
+            entity: 'operationalOrderItem',
+            code: 'OPERATIONAL_ORDER_NOT_FOUND',
+            message: 'aberto',
+            status: 'OPEN',
+          ),
+          OperationalSyncConflict(
+            id: 'resolved-1',
+            entity: 'operationalOrderItem',
+            code: 'OPERATIONAL_ORDER_NOT_FOUND',
+            message: 'resolvido',
+            status: 'RESOLVED',
+          ),
+          OperationalSyncConflict(
+            id: 'ignored-1',
+            entity: 'operationalOrderItem',
+            code: 'OPERATIONAL_ORDER_NOT_FOUND',
+            message: 'ignorado',
+            status: 'IGNORED',
+          ),
+        ],
+      );
+      final runner = OperationalSyncRunner(
+        queueRepository: queue,
+        remoteDataSource: remote,
+        snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+          version: '1',
+        ),
+        shouldContinue: () => true,
+        onCacheSnapshotChanged: () {},
+      );
+
+      await runner.run(retryOnly: false);
+
+      final report = remote.diagnostics.last;
+      expect(report.openConflictCount, 1);
+      expect(report.resolvedConflictCount, 1);
+      expect(report.ignoredConflictCount, 1);
+    });
+
+    test('diagnostico limpa cache local de conflitos ja tratados no backend', () async {
+      final queue = _MemoryOperationalSyncQueueRepository()
+        ..clearedConflicts = 2;
+      final remote = _FakeOperationalSyncRemoteDataSource(
+        conflicts: const <OperationalSyncConflict>[
+          OperationalSyncConflict(
+            id: 'resolved-1',
+            entity: 'operationalOrderItem',
+            code: 'OPERATIONAL_ORDER_NOT_FOUND',
+            message: 'resolvido',
+            status: 'RESOLVED',
+          ),
+          OperationalSyncConflict(
+            id: 'ignored-1',
+            entity: 'operationalOrderItem',
+            code: 'OPERATIONAL_ORDER_NOT_FOUND',
+            message: 'ignorado',
+            status: 'IGNORED',
+          ),
+        ],
+      );
+      final runner = OperationalSyncRunner(
+        queueRepository: queue,
+        remoteDataSource: remote,
+        snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+          version: '1',
+        ),
+        shouldContinue: () => true,
+        onCacheSnapshotChanged: () {},
+      );
+
+      await runner.run(retryOnly: false);
+
+      expect(queue.clearResolvedConflictCalls, greaterThanOrEqualTo(1));
+      expect(remote.diagnostics.last.openConflictCount, 0);
+    });
+
+    test('executa comando de reparo e reporta resultado ao backend', () async {
+      final queue = _MemoryOperationalSyncQueueRepository()..repairedEvents = 3;
+      final remote = _FakeOperationalSyncRemoteDataSource()
+        ..supportCommands = const <OperationalSyncSupportCommand>[
+          OperationalSyncSupportCommand(
+            id: 'cmd-repair',
+            command: 'REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS',
+            status: 'RUNNING',
+            reason: 'reparar totalCents',
+          ),
+        ];
+      final runner = OperationalSyncRunner(
+        queueRepository: queue,
+        remoteDataSource: remote,
+        snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+          version: '1',
+        ),
+        shouldContinue: () => true,
+        onCacheSnapshotChanged: () {},
+      );
+
+      await runner.run(retryOnly: false);
+
+      expect(
+        remote.completedSupportCommands['cmd-repair']?['repairedEvents'],
+        3,
+      );
+      expect(remote.failedSupportCommands, isEmpty);
+    });
+
+    test('limpa cache local de conflitos resolvidos por comando', () async {
+      final queue = _MemoryOperationalSyncQueueRepository()
+        ..clearedConflicts = 4;
+      final remote =
+          _FakeOperationalSyncRemoteDataSource(
+              conflicts: const <OperationalSyncConflict>[
+                OperationalSyncConflict(
+                  id: 'resolved-1',
+                  entity: 'operationalOrderItem',
+                  code: 'OPERATIONAL_ORDER_NOT_FOUND',
+                  message: 'resolvido',
+                  status: 'RESOLVED',
+                ),
+              ],
+            )
+            ..supportCommands = const <OperationalSyncSupportCommand>[
+              OperationalSyncSupportCommand(
+                id: 'cmd-clear',
+                command: 'CLEAR_RESOLVED_CONFLICT_CACHE',
+                status: 'RUNNING',
+                reason: 'limpar cache',
+              ),
+            ];
+      final runner = OperationalSyncRunner(
+        queueRepository: queue,
+        remoteDataSource: remote,
+        snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+          version: '1',
+        ),
+        shouldContinue: () => true,
+        onCacheSnapshotChanged: () {},
+      );
+
+      await runner.run(retryOnly: false);
+
+      expect(
+        remote.completedSupportCommands['cmd-clear']?['clearedConflicts'],
+        4,
+      );
+    });
+
+    test('force sync pull reporta comando como falha quando pull falha', () async {
+      final queue = _MemoryOperationalSyncQueueRepository();
+      final remote = _FakeOperationalSyncRemoteDataSource(failPull: true)
+        ..supportCommands = const <OperationalSyncSupportCommand>[
+          OperationalSyncSupportCommand(
+            id: 'cmd-force-pull',
+            command: 'FORCE_SYNC_PULL',
+            status: 'RUNNING',
+            reason: 'forcar atualizacao',
+          ),
+        ];
+      final runner = OperationalSyncRunner(
+        queueRepository: queue,
+        remoteDataSource: remote,
+        snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+          version: '1',
+        ),
+        shouldContinue: () => true,
+        onCacheSnapshotChanged: () {},
+      );
+
+      await runner.run(retryOnly: false);
+
+      expect(remote.completedSupportCommands, isNot(contains('cmd-force-pull')));
+      expect(
+        remote.failedSupportCommands['cmd-force-pull'],
+        'Nao foi possivel atualizar os dados da nuvem.',
+      );
+      expect(
+        remote.failedSupportCommandResults['cmd-force-pull']?['pullFailed'],
+        isTrue,
+      );
+    });
+
 
     test('batch limita 100 eventos por push', () async {
       final queue = _MemoryOperationalSyncQueueRepository(
@@ -1599,6 +1854,10 @@ class _MemoryOperationalSyncQueueRepository
   DateTime? lastSnapshotSucceededAt;
   int staleRecoveryCalls = 0;
   int cacheRefreshSignals = 0;
+  int repairedEvents = 0;
+  int requeuedEvents = 0;
+  int clearedConflicts = 0;
+  int clearResolvedConflictCalls = 0;
 
   @override
   Future<bool> enqueue(db, {required OperationalSyncEvent event}) async {
@@ -1734,6 +1993,43 @@ class _MemoryOperationalSyncQueueRepository
   Future<List<SyncQueueFeatureSummary>> listFeatureSummaries() async {
     return const <SyncQueueFeatureSummary>[];
   }
+
+  @override
+  Future<OperationalSyncDiagnosticReport> buildDiagnosticReport({
+    List<OperationalSyncConflict> conflicts = const <OperationalSyncConflict>[],
+  }) async {
+    return OperationalSyncDiagnosticReport(
+      pendingCount: _items.length,
+      failedCount: 0,
+      openConflictCount: conflicts
+          .where((conflict) => conflict.status.toUpperCase() == 'OPEN')
+          .length,
+      resolvedConflictCount: conflicts
+          .where((conflict) => conflict.status.toUpperCase() == 'RESOLVED')
+          .length,
+      ignoredConflictCount: conflicts
+          .where((conflict) => conflict.status.toUpperCase() == 'IGNORED')
+          .length,
+    );
+  }
+
+  @override
+  Future<int> repairOperationalOrderItemTotalCents() async {
+    return repairedEvents;
+  }
+
+  @override
+  Future<int> reenqueueRecoverableFailedEvents() async {
+    return requeuedEvents;
+  }
+
+  @override
+  Future<int> clearResolvedConflictCache({
+    required List<OperationalSyncConflict> conflicts,
+  }) async {
+    clearResolvedConflictCalls++;
+    return clearedConflicts;
+  }
 }
 
 class _MemoryOperationalSyncProjectionApplier
@@ -1790,6 +2086,12 @@ class _FakeOperationalSyncRemoteDataSource
   final List<OperationalSyncConflict> conflicts;
   final bool failPull;
   List<OperationalSyncEvent> lastPushedEvents = const <OperationalSyncEvent>[];
+  final diagnostics = <OperationalSyncDiagnosticReport>[];
+  List<OperationalSyncSupportCommand> supportCommands =
+      const <OperationalSyncSupportCommand>[];
+  final completedSupportCommands = <String, Map<String, dynamic>>{};
+  final failedSupportCommands = <String, String>{};
+  final failedSupportCommandResults = <String, Map<String, dynamic>>{};
   final pulledSinceVersions = <String>[];
   int _pullCallCount = 0;
 
@@ -1835,7 +2137,11 @@ class _FakeOperationalSyncRemoteDataSource
   }
 
   @override
-  Future<List<OperationalSyncConflict>> getConflicts() async => conflicts;
+  Future<List<OperationalSyncConflict>> getConflicts({
+    String status = 'OPEN',
+  }) async => conflicts
+      .where((conflict) => conflict.status.toUpperCase() == status)
+      .toList(growable: false);
 
   @override
   Future<OperationalSyncConflict> resolveConflict(
@@ -1843,6 +2149,34 @@ class _FakeOperationalSyncRemoteDataSource
     Map<String, dynamic> resolution,
   ) async {
     throw UnimplementedError();
+  }
+
+  @override
+  Future<void> reportDiagnostics(OperationalSyncDiagnosticReport report) async {
+    diagnostics.add(report);
+  }
+
+  @override
+  Future<List<OperationalSyncSupportCommand>> fetchSupportCommands() async {
+    return supportCommands;
+  }
+
+  @override
+  Future<void> completeSupportCommand(
+    String commandId,
+    Map<String, dynamic> result,
+  ) async {
+    completedSupportCommands[commandId] = result;
+  }
+
+  @override
+  Future<void> failSupportCommand(
+    String commandId, {
+    required String errorMessage,
+    Map<String, dynamic> result = const <String, dynamic>{},
+  }) async {
+    failedSupportCommands[commandId] = errorMessage;
+    failedSupportCommandResults[commandId] = result;
   }
 }
 

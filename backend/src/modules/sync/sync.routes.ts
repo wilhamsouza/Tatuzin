@@ -11,7 +11,14 @@ import { asyncHandler } from "../../shared/http/async-handler";
 import { validateBody, validateQuery } from "../../shared/http/validate";
 import { SyncConflictService } from "./sync-conflict.service";
 import { SyncEventService } from "./sync-event.service";
+import { SyncSupportService } from "./sync-support.service";
 import {
+  syncSupportCommandCompleteSchema,
+  type SyncSupportCommandCompleteInput,
+  syncSupportCommandFailSchema,
+  type SyncSupportCommandFailInput,
+  syncSupportDiagnosticSchema,
+  type SyncSupportDiagnosticInput,
   syncConflictQuerySchema,
   syncPullQuerySchema,
   syncResolveConflictSchema,
@@ -23,6 +30,7 @@ export const syncRouter = Router();
 
 const syncEventService = new SyncEventService();
 const syncConflictService = new SyncConflictService();
+const syncSupportService = new SyncSupportService();
 
 syncRouter.use(requireAppContext);
 syncRouter.use(requireSyncContext);
@@ -55,6 +63,66 @@ syncRouter.post(
       request.body,
     );
     response.status(202).json(payload);
+  }),
+);
+
+syncRouter.post(
+  "/diagnostics",
+  validateBody(syncSupportDiagnosticSchema),
+  asyncHandler(async (request, response) => {
+    const payload = await syncSupportService.reportDiagnostic(
+      request.appContext!,
+      request.body as SyncSupportDiagnosticInput,
+    );
+    response.json(payload);
+  }),
+);
+
+syncRouter.get(
+  "/support-commands",
+  asyncHandler(async (request, response) => {
+    const payload = await syncSupportService.pullCommands(request.appContext!);
+    response.json(payload);
+  }),
+);
+
+syncRouter.post(
+  "/support-commands/:id/start",
+  asyncHandler(async (request, response) => {
+    const commandId = readParam(request.params.id);
+    const payload = await syncSupportService.startCommand(
+      request.appContext!,
+      commandId,
+    );
+    response.json(payload);
+  }),
+);
+
+syncRouter.post(
+  "/support-commands/:id/complete",
+  validateBody(syncSupportCommandCompleteSchema),
+  asyncHandler(async (request, response) => {
+    const commandId = readParam(request.params.id);
+    const payload = await syncSupportService.completeCommand(
+      request.appContext!,
+      commandId,
+      request.body as SyncSupportCommandCompleteInput,
+    );
+    response.json(payload);
+  }),
+);
+
+syncRouter.post(
+  "/support-commands/:id/fail",
+  validateBody(syncSupportCommandFailSchema),
+  asyncHandler(async (request, response) => {
+    const commandId = readParam(request.params.id);
+    const payload = await syncSupportService.failCommand(
+      request.appContext!,
+      commandId,
+      request.body as SyncSupportCommandFailInput,
+    );
+    response.json(payload);
   }),
 );
 
@@ -99,6 +167,10 @@ syncRouter.post(
     response.json(payload);
   }),
 );
+
+function readParam(value: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 function requireSyncContext(
   request: Request,

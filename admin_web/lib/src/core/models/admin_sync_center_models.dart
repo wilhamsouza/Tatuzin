@@ -764,6 +764,388 @@ class AdminSyncCenterActionResult {
   }
 }
 
+class AdminSyncSupportDevice {
+  const AdminSyncSupportDevice({
+    required this.id,
+    required this.maskedDeviceId,
+    required this.clientInstanceId,
+    required this.deviceLabel,
+    required this.platform,
+    required this.appVersion,
+    required this.status,
+    required this.deviceStatus,
+    required this.lastSeenAt,
+    required this.lastPushAt,
+    required this.lastPullAt,
+    required this.user,
+    required this.diagnostic,
+    required this.remoteConflictCounts,
+  });
+
+  final String id;
+  final String maskedDeviceId;
+  final String clientInstanceId;
+  final String? deviceLabel;
+  final String? platform;
+  final String? appVersion;
+  final String status;
+  final String deviceStatus;
+  final DateTime? lastSeenAt;
+  final DateTime? lastPushAt;
+  final DateTime? lastPullAt;
+  final AdminSyncSupportUser? user;
+  final AdminSyncSupportDiagnosticSummary? diagnostic;
+  final Map<String, dynamic> remoteConflictCounts;
+
+  int get pendingCount => diagnostic?.pendingCount ?? 0;
+  int get failedCount => diagnostic?.failedCount ?? 0;
+  int get openConflictCount => diagnostic?.openConflictCount ?? 0;
+  String get title => deviceLabel?.trim().isNotEmpty == true
+      ? deviceLabel!.trim()
+      : 'Dispositivo $maskedDeviceId';
+
+  factory AdminSyncSupportDevice.fromMap(Map<String, dynamic> map) {
+    final user = map['user'];
+    final diagnostic = map['diagnostic'];
+    return AdminSyncSupportDevice(
+      id: _readString(map, 'id'),
+      maskedDeviceId: _readString(map, 'maskedDeviceId'),
+      clientInstanceId: _readString(map, 'clientInstanceId'),
+      deviceLabel: _readOptionalString(map, 'deviceLabel'),
+      platform: _readOptionalString(map, 'platform'),
+      appVersion: _readOptionalString(map, 'appVersion'),
+      status: _readString(map, 'status', fallback: 'cloud_ok'),
+      deviceStatus: _readString(map, 'deviceStatus', fallback: 'unknown'),
+      lastSeenAt: _readOptionalDateTime(map, 'lastSeenAt'),
+      lastPushAt: _readOptionalDateTime(map, 'lastPushAt'),
+      lastPullAt: _readOptionalDateTime(map, 'lastPullAt'),
+      user: user is Map<String, dynamic>
+          ? AdminSyncSupportUser.fromMap(user)
+          : null,
+      diagnostic: diagnostic is Map<String, dynamic>
+          ? AdminSyncSupportDiagnosticSummary.fromMap(diagnostic)
+          : null,
+      remoteConflictCounts: _readOptionalMap(map, 'remoteConflictCounts'),
+    );
+  }
+}
+
+class AdminSyncSupportUser {
+  const AdminSyncSupportUser({
+    required this.id,
+    required this.name,
+    required this.email,
+  });
+
+  final String id;
+  final String name;
+  final String email;
+
+  factory AdminSyncSupportUser.fromMap(Map<String, dynamic> map) {
+    return AdminSyncSupportUser(
+      id: _readString(map, 'id'),
+      name: _readString(map, 'name'),
+      email: _readString(map, 'email'),
+    );
+  }
+}
+
+class AdminSyncSupportDiagnosticSummary {
+  const AdminSyncSupportDiagnosticSummary({
+    required this.pendingCount,
+    required this.failedCount,
+    required this.openConflictCount,
+    required this.resolvedConflictCount,
+    required this.ignoredConflictCount,
+    required this.lastLocalError,
+    required this.reportedAt,
+  });
+
+  final int pendingCount;
+  final int failedCount;
+  final int openConflictCount;
+  final int resolvedConflictCount;
+  final int ignoredConflictCount;
+  final String? lastLocalError;
+  final DateTime? reportedAt;
+
+  factory AdminSyncSupportDiagnosticSummary.fromMap(Map<String, dynamic> map) {
+    return AdminSyncSupportDiagnosticSummary(
+      pendingCount: _readOptionalInt(map, 'pendingCount') ?? 0,
+      failedCount: _readOptionalInt(map, 'failedCount') ?? 0,
+      openConflictCount: _readOptionalInt(map, 'openConflictCount') ?? 0,
+      resolvedConflictCount:
+          _readOptionalInt(map, 'resolvedConflictCount') ?? 0,
+      ignoredConflictCount: _readOptionalInt(map, 'ignoredConflictCount') ?? 0,
+      lastLocalError: _readOptionalString(map, 'lastLocalError'),
+      reportedAt: _readOptionalDateTime(map, 'reportedAt'),
+    );
+  }
+}
+
+class AdminSyncSupportDeviceDetail {
+  const AdminSyncSupportDeviceDetail({
+    required this.device,
+    required this.diagnostic,
+    required this.failedEvents,
+    required this.openConflicts,
+    required this.resolvedConflicts,
+    required this.commands,
+  });
+
+  final AdminSyncSupportDevice device;
+  final AdminSyncSupportDiagnostic? diagnostic;
+  final List<AdminSyncSupportFailedEvent> failedEvents;
+  final List<AdminSyncSupportConflict> openConflicts;
+  final List<AdminSyncSupportConflict> resolvedConflicts;
+  final List<AdminSyncSupportCommand> commands;
+
+  factory AdminSyncSupportDeviceDetail.fromMap(Map<String, dynamic> map) {
+    final diagnostic = map['diagnostic'];
+    return AdminSyncSupportDeviceDetail(
+      device: AdminSyncSupportDevice.fromMap(_readMap(map, 'device')),
+      diagnostic: diagnostic is Map<String, dynamic>
+          ? AdminSyncSupportDiagnostic.fromMap(diagnostic)
+          : null,
+      failedEvents: _readMapList(
+        map['failedEvents'],
+      ).map(AdminSyncSupportFailedEvent.fromMap).toList(growable: false),
+      openConflicts: _readMapList(
+        map['openConflicts'],
+      ).map(AdminSyncSupportConflict.fromMap).toList(growable: false),
+      resolvedConflicts: _readMapList(
+        map['resolvedConflicts'],
+      ).map(AdminSyncSupportConflict.fromMap).toList(growable: false),
+      commands: _readMapList(
+        map['commands'],
+      ).map(AdminSyncSupportCommand.fromMap).toList(growable: false),
+    );
+  }
+}
+
+class AdminSyncSupportDiagnostic {
+  const AdminSyncSupportDiagnostic({
+    required this.id,
+    required this.pendingCount,
+    required this.failedCount,
+    required this.openConflictCount,
+    required this.resolvedConflictCount,
+    required this.ignoredConflictCount,
+    required this.lastLocalError,
+    required this.lastLocalErrorCode,
+    required this.lastLocalErrorEntity,
+    required this.appVersion,
+    required this.localSchemaVersion,
+    required this.lastPushAt,
+    required this.lastPullAt,
+    required this.lastSuccessfulSyncAt,
+    required this.safeDetails,
+    required this.reportedAt,
+  });
+
+  final String id;
+  final int pendingCount;
+  final int failedCount;
+  final int openConflictCount;
+  final int resolvedConflictCount;
+  final int ignoredConflictCount;
+  final String? lastLocalError;
+  final String? lastLocalErrorCode;
+  final String? lastLocalErrorEntity;
+  final String? appVersion;
+  final String? localSchemaVersion;
+  final DateTime? lastPushAt;
+  final DateTime? lastPullAt;
+  final DateTime? lastSuccessfulSyncAt;
+  final Map<String, dynamic> safeDetails;
+  final DateTime? reportedAt;
+
+  factory AdminSyncSupportDiagnostic.fromMap(Map<String, dynamic> map) {
+    return AdminSyncSupportDiagnostic(
+      id: _readString(map, 'id'),
+      pendingCount: _readOptionalInt(map, 'pendingCount') ?? 0,
+      failedCount: _readOptionalInt(map, 'failedCount') ?? 0,
+      openConflictCount: _readOptionalInt(map, 'openConflictCount') ?? 0,
+      resolvedConflictCount:
+          _readOptionalInt(map, 'resolvedConflictCount') ?? 0,
+      ignoredConflictCount: _readOptionalInt(map, 'ignoredConflictCount') ?? 0,
+      lastLocalError: _readOptionalString(map, 'lastLocalError'),
+      lastLocalErrorCode: _readOptionalString(map, 'lastLocalErrorCode'),
+      lastLocalErrorEntity: _readOptionalString(map, 'lastLocalErrorEntity'),
+      appVersion: _readOptionalString(map, 'appVersion'),
+      localSchemaVersion: _readOptionalString(map, 'localSchemaVersion'),
+      lastPushAt: _readOptionalDateTime(map, 'lastPushAt'),
+      lastPullAt: _readOptionalDateTime(map, 'lastPullAt'),
+      lastSuccessfulSyncAt: _readOptionalDateTime(map, 'lastSuccessfulSyncAt'),
+      safeDetails: _readOptionalMap(map, 'safeDetails'),
+      reportedAt: _readOptionalDateTime(map, 'reportedAt'),
+    );
+  }
+}
+
+class AdminSyncSupportFailedEvent {
+  const AdminSyncSupportFailedEvent({
+    required this.id,
+    required this.eventId,
+    required this.entity,
+    required this.operation,
+    required this.errorCode,
+    required this.errorMessage,
+    required this.updatedAt,
+    required this.payloadSummary,
+  });
+
+  final String id;
+  final String eventId;
+  final String entity;
+  final String operation;
+  final String? errorCode;
+  final String? errorMessage;
+  final DateTime? updatedAt;
+  final String? payloadSummary;
+
+  factory AdminSyncSupportFailedEvent.fromMap(Map<String, dynamic> map) {
+    return AdminSyncSupportFailedEvent(
+      id: _readString(map, 'id'),
+      eventId: _readString(map, 'eventId'),
+      entity: _readString(map, 'entity'),
+      operation: _readString(map, 'operation'),
+      errorCode: _readOptionalString(map, 'errorCode'),
+      errorMessage: _readOptionalString(map, 'errorMessage'),
+      updatedAt: _readOptionalDateTime(map, 'updatedAt'),
+      payloadSummary: _readOptionalString(map, 'payloadSummary'),
+    );
+  }
+}
+
+class AdminSyncSupportConflict {
+  const AdminSyncSupportConflict({
+    required this.id,
+    required this.entity,
+    required this.code,
+    required this.message,
+    required this.status,
+    required this.createdAt,
+    required this.resolvedAt,
+  });
+
+  final String id;
+  final String entity;
+  final String code;
+  final String message;
+  final String status;
+  final DateTime? createdAt;
+  final DateTime? resolvedAt;
+
+  factory AdminSyncSupportConflict.fromMap(Map<String, dynamic> map) {
+    return AdminSyncSupportConflict(
+      id: _readString(map, 'id'),
+      entity: _readString(map, 'entity'),
+      code: _readString(map, 'code'),
+      message: _readString(map, 'message'),
+      status: _readString(map, 'status'),
+      createdAt: _readOptionalDateTime(map, 'createdAt'),
+      resolvedAt: _readOptionalDateTime(map, 'resolvedAt'),
+    );
+  }
+}
+
+class AdminSyncSupportCommand {
+  const AdminSyncSupportCommand({
+    required this.id,
+    required this.command,
+    required this.label,
+    required this.status,
+    required this.reason,
+    required this.errorMessage,
+    required this.requestedAt,
+    required this.pickedUpAt,
+    required this.completedAt,
+    required this.expiresAt,
+  });
+
+  final String id;
+  final String command;
+  final String label;
+  final String status;
+  final String reason;
+  final String? errorMessage;
+  final DateTime? requestedAt;
+  final DateTime? pickedUpAt;
+  final DateTime? completedAt;
+  final DateTime? expiresAt;
+
+  factory AdminSyncSupportCommand.fromMap(Map<String, dynamic> map) {
+    return AdminSyncSupportCommand(
+      id: _readString(map, 'id'),
+      command: _readString(map, 'command'),
+      label: _readString(map, 'label'),
+      status: _readString(map, 'status'),
+      reason: _readString(map, 'reason'),
+      errorMessage: _readOptionalString(map, 'errorMessage'),
+      requestedAt: _readOptionalDateTime(map, 'requestedAt'),
+      pickedUpAt: _readOptionalDateTime(map, 'pickedUpAt'),
+      completedAt: _readOptionalDateTime(map, 'completedAt'),
+      expiresAt: _readOptionalDateTime(map, 'expiresAt'),
+    );
+  }
+}
+
+class AdminSyncSupportDryRunResult {
+  const AdminSyncSupportDryRunResult({
+    required this.allowed,
+    required this.command,
+    required this.label,
+    required this.expectedConfirmationText,
+    required this.blockers,
+    required this.risks,
+    required this.summary,
+  });
+
+  final bool allowed;
+  final String command;
+  final String label;
+  final String expectedConfirmationText;
+  final List<String> blockers;
+  final List<String> risks;
+  final String summary;
+
+  factory AdminSyncSupportDryRunResult.fromMap(Map<String, dynamic> map) {
+    return AdminSyncSupportDryRunResult(
+      allowed: map['allowed'] == true,
+      command: _readString(map, 'command'),
+      label: _readString(map, 'label'),
+      expectedConfirmationText: _readString(map, 'expectedConfirmationText'),
+      blockers: _readStringList(map['blockers']),
+      risks: _readStringList(map['risks']),
+      summary: _readString(map, 'summary'),
+    );
+  }
+}
+
+class AdminSyncSupportActionResult {
+  const AdminSyncSupportActionResult({
+    required this.ok,
+    required this.message,
+    required this.command,
+  });
+
+  final bool ok;
+  final String? message;
+  final AdminSyncSupportCommand? command;
+
+  factory AdminSyncSupportActionResult.fromMap(Map<String, dynamic> map) {
+    final command = map['command'];
+    return AdminSyncSupportActionResult(
+      ok: map['ok'] == true,
+      message: _readOptionalString(map, 'message'),
+      command: command is Map<String, dynamic>
+          ? AdminSyncSupportCommand.fromMap(command)
+          : null,
+    );
+  }
+}
+
 String adminSyncCenterClassificationLabel(String value) {
   switch (value) {
     case 'REPROCESSABLE':

@@ -179,9 +179,12 @@ class AccountCloudPage extends ConsumerWidget {
       if (!context.mounted) {
         return;
       }
+      final currentCloudStatus = ref.read(accountCloudStatusProvider);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(_syncResultMessage(result))));
+      ).showSnackBar(
+        SnackBar(content: Text(_syncResultMessage(result, currentCloudStatus))),
+      );
     } catch (error) {
       if (!context.mounted) {
         return;
@@ -522,11 +525,15 @@ class _InfoRow extends StatelessWidget {
 
 enum _SignOutDecision { cancel, syncFirst, signOut }
 
-String _syncResultMessage(SyncBatchResult result) {
+String _syncResultMessage(
+  SyncBatchResult result,
+  AccountCloudStatusSnapshot cloudStatus,
+) {
   final hasAttention =
       result.failedCount > 0 ||
       result.blockedCount > 0 ||
-      result.conflictCount > 0;
+      result.conflictCount > 0 ||
+      cloudStatus.hasAttention;
   if (!hasAttention) {
     return 'Nuvem atualizada. Enviados: ${result.syncedCount}.';
   }

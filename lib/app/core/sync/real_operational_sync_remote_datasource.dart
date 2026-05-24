@@ -61,10 +61,14 @@ class RealOperationalSyncRemoteDataSource
   }
 
   @override
-  Future<List<OperationalSyncConflict>> getConflicts() async {
+  Future<List<OperationalSyncConflict>> getConflicts({
+    String status = 'OPEN',
+  }) async {
     final response = await _apiClient.getJson(
       '/sync/conflicts',
-      options: await _authorizedOptions(),
+      options: await _authorizedOptions(
+        queryParameters: <String, Object?>{'status': status},
+      ),
     );
     final items = response.data['items'];
     if (items is! List) {
@@ -93,6 +97,56 @@ class RealOperationalSyncRemoteDataSource
       );
     }
     return OperationalSyncConflict.fromJson(conflict);
+  }
+
+  @override
+  Future<void> reportDiagnostics(OperationalSyncDiagnosticReport report) async {
+    await _apiClient.postJson(
+      '/sync/diagnostics',
+      body: report.toJson(),
+      options: await _authorizedOptions(),
+    );
+  }
+
+  @override
+  Future<List<OperationalSyncSupportCommand>> fetchSupportCommands() async {
+    final response = await _apiClient.getJson(
+      '/sync/support-commands',
+      options: await _authorizedOptions(),
+    );
+    final items = response.data['items'];
+    if (items is! List) {
+      return const <OperationalSyncSupportCommand>[];
+    }
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map(OperationalSyncSupportCommand.fromJson)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<void> completeSupportCommand(
+    String commandId,
+    Map<String, dynamic> result,
+  ) async {
+    await _apiClient.postJson(
+      '/sync/support-commands/$commandId/complete',
+      body: <String, dynamic>{'result': result},
+      options: await _authorizedOptions(),
+    );
+  }
+
+  @override
+  Future<void> failSupportCommand(
+    String commandId, {
+    required String errorMessage,
+    Map<String, dynamic> result = const <String, dynamic>{},
+  }) async {
+    await _apiClient.postJson(
+      '/sync/support-commands/$commandId/fail',
+      body: <String, dynamic>{'errorMessage': errorMessage, 'result': result},
+      options: await _authorizedOptions(),
+    );
   }
 
   Future<ApiRequestOptions> _authorizedOptions({

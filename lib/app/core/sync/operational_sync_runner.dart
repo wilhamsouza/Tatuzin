@@ -74,6 +74,8 @@ class OperationalSyncRunner {
     }
 
     await _queueRepository.recoverStalePushing(staleAfter: stalePushingAfter);
+    await _reportDiagnosticsSafely();
+    await _executeSupportCommands();
 
     final pending = await _queueRepository.listPending(
       limit: maxEventsPerBatch,
@@ -153,6 +155,7 @@ class OperationalSyncRunner {
     final refreshOutcome = _shouldContinue()
         ? await _pullAndRefreshSnapshot()
         : const _RefreshOutcome();
+    await _reportDiagnosticsSafely();
 
     return _result(
       retryOnly: retryOnly,
@@ -254,6 +257,179 @@ class OperationalSyncRunner {
       lastPullError: lastPullError,
       lastSnapshotError: lastSnapshotError,
     );
+  }
+
+  Future<void> _executeSupportCommands() async {
+    List<OperationalSyncSupportCommand> commands;
+    try {
+      commands = await _remoteDataSource.fetchSupportCommands();
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[OperationalSync] support_commands_fetch_failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return;
+    }
+
+    for (final command in commands) {
+      if (!_shouldContinue()) {
+        return;
+      }
+      if (command.id.trim().isEmpty || command.status != 'RUNNING') {
+        continue;
+      }
+      try {
+        final result = await _executeSupportCommand(command);
+        await _remoteDataSource.completeSupportCommand(command.id, result);
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          '[OperationalSync] support_command_failed '
+          'id=${command.id} command=${command.command}',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        try {
+          await _remoteDataSource.failSupportCommand(
+            command.id,
+            errorMessage: error is _SupportCommandFailure
+                ? error.message
+                : _summarizeSupportError(error),
+            result: error is _SupportCommandFailure
+                ? error.result
+                : <String, dynamic>{'command': command.command},
+          );
+        } catch (reportError, reportStackTrace) {
+          AppLogger.error(
+            '[OperationalSync] support_command_fail_report_failed '
+            'id=${command.id}',
+            error: reportError,
+            stackTrace: reportStackTrace,
+          );
+        }
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> _executeSupportCommand(
+    OperationalSyncSupportCommand command,
+  ) async {
+    switch (command.command) {
+      case 'CLEAR_RESOLVED_CONFLICT_CACHE':
+        final conflicts = await _loadConflictsForDiagnostics();
+        final cleared = await _queueRepository.clearResolvedConflictCache(
+          conflicts: conflicts,
+        );
+        await _reportDiagnosticsSafely(conflicts: conflicts);
+        return <String, dynamic>{
+          'command': command.command,
+          'clearedConflicts': cleared,
+        };
+      case 'REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS':
+        final repaired = await _queueRepository
+            .repairOperationalOrderItemTotalCents();
+        await _reportDiagnosticsSafely();
+        return <String, dynamic>{
+          'command': command.command,
+          'repairedEvents': repaired,
+        };
+      case 'RETRY_FAILED_SYNC_EVENTS':
+        final requeued = await _queueRepository
+            .reenqueueRecoverableFailedEvents();
+        await _reportDiagnosticsSafely();
+        return <String, dynamic>{
+          'command': command.command,
+          'requeuedEvents': requeued,
+        };
+      case 'FORCE_SYNC_PULL':
+        final outcome = await _pullAndRefreshSnapshot();
+        await _reportDiagnosticsSafely();
+        final result = <String, dynamic>{
+          'command': command.command,
+          'pullFailed': outcome.pullFailed,
+          'snapshotFailed': outcome.snapshotFailed,
+          if (outcome.lastPullError != null)
+            'lastPullError': outcome.lastPullError,
+          if (outcome.lastSnapshotError != null)
+            'lastSnapshotError': outcome.lastSnapshotError,
+        };
+        if (outcome.pullFailed || outcome.snapshotFailed) {
+          throw _SupportCommandFailure(
+            'Nao foi possivel atualizar os dados da nuvem.',
+            result,
+          );
+        }
+        return result;
+      case 'REFRESH_SYNC_STATUS':
+        final report = await _reportDiagnosticsSafely();
+        return <String, dynamic>{
+          'command': command.command,
+          'pendingCount': report?.pendingCount,
+          'failedCount': report?.failedCount,
+          'openConflictCount': report?.openConflictCount,
+        };
+      default:
+        throw UnsupportedError('Comando de suporte nao reconhecido.');
+    }
+  }
+
+  Future<OperationalSyncDiagnosticReport?> _reportDiagnosticsSafely({
+    List<OperationalSyncConflict>? conflicts,
+  }) async {
+    try {
+      final effectiveConflicts =
+          conflicts ?? await _loadConflictsForDiagnostics();
+      await _clearResolvedConflictCacheSafely(effectiveConflicts);
+      final report = await _queueRepository.buildDiagnosticReport(
+        conflicts: effectiveConflicts,
+      );
+      await _remoteDataSource.reportDiagnostics(report);
+      return report;
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[OperationalSync] diagnostic_report_failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return null;
+    }
+  }
+
+  Future<void> _clearResolvedConflictCacheSafely(
+    List<OperationalSyncConflict> conflicts,
+  ) async {
+    if (!conflicts.any(
+      (conflict) =>
+          conflict.status.toUpperCase() == 'RESOLVED' ||
+          conflict.status.toUpperCase() == 'IGNORED',
+    )) {
+      return;
+    }
+    try {
+      await _queueRepository.clearResolvedConflictCache(conflicts: conflicts);
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        '[OperationalSync] resolved_conflict_cache_clear_failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  Future<List<OperationalSyncConflict>> _loadConflictsForDiagnostics() async {
+    final all = <OperationalSyncConflict>[];
+    for (final status in const <String>['OPEN', 'RESOLVED', 'IGNORED']) {
+      try {
+        all.addAll(await _remoteDataSource.getConflicts(status: status));
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          '[OperationalSync] diagnostic_conflict_lookup_failed status=$status',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
+    return all;
   }
 
   Future<_PullPagesOutcome> _pullOperationalPages(String checkpoint) async {
@@ -455,7 +631,7 @@ class OperationalSyncRunner {
 
   Future<Map<String, String>> _loadConflictIdsByEventId() async {
     try {
-      final conflicts = await _remoteDataSource.getConflicts();
+      final conflicts = await _remoteDataSource.getConflicts(status: 'OPEN');
       return <String, String>{
         for (final conflict in conflicts)
           if (conflict.eventId != null) conflict.eventId!: conflict.id,
@@ -477,6 +653,14 @@ class OperationalSyncRunner {
     );
     final seconds = (5 * (1 << (maxAttempt - 1))).clamp(5, 300).toInt();
     return DateTime.now().add(Duration(seconds: seconds));
+  }
+
+  String _summarizeSupportError(Object error) {
+    final message = error.toString().trim();
+    if (message.length <= 300) {
+      return message;
+    }
+    return '${message.substring(0, 300)}...';
   }
 
   SyncBatchResult _cancelled({
@@ -557,6 +741,16 @@ class _OperationalSyncPullProjectionWarning implements Exception {
   const _OperationalSyncPullProjectionWarning(this.message);
 
   final String message;
+
+  @override
+  String toString() => message;
+}
+
+class _SupportCommandFailure implements Exception {
+  const _SupportCommandFailure(this.message, this.result);
+
+  final String message;
+  final Map<String, dynamic> result;
 
   @override
   String toString() => message;
