@@ -435,6 +435,27 @@ class AdminApiService {
     );
   }
 
+  Future<AdminPaginatedResult<AdminBillingAuditLog>> fetchBillingAuditLogs({
+    required AdminBillingListQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/companies/${query.companyId}/billing/audit-logs',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return AdminPaginatedResult<AdminBillingAuditLog>(
+      items: readAdminItems(
+        payload,
+      ).map(AdminBillingAuditLog.fromMap).toList(growable: false),
+      pagination: AdminPaginationMeta.fromPayload(payload),
+      filters: readAdminFilters(payload),
+      sort: AdminSortMeta.fromPayload(payload),
+    );
+  }
+
   Future<AdminBillingActionResult> refreshBillingCompany({
     required String companyId,
     required String reason,

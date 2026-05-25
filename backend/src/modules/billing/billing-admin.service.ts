@@ -214,6 +214,39 @@ export class BillingAdminService {
     });
   }
 
+  async listAuditLogs(companyId: string, query: AdminBillingListQueryInput) {
+    await this.assertCompanyExists(companyId);
+    const { skip, take } = toPaginationParams(query);
+    const where: Prisma.BillingAdminAuditLogWhereInput = { companyId };
+    const [total, logs] = await prisma.$transaction([
+      prisma.billingAdminAuditLog.count({ where }),
+      prisma.billingAdminAuditLog.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: "desc" },
+        include: {
+          actorUser: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    return buildAdminListResponse({
+      items: logs.map((log) => this.serializeBillingAdminAuditLog(log)),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      filters: { companyId },
+      sort: { by: "createdAt", direction: "desc" },
+    });
+  }
+
   async refreshCompany(input: AdminActionContext & AdminBillingRefreshInput) {
     const context = this.assertAdminActionContext(input);
     const before = await this.getLicenseSnapshot(context.companyId);
@@ -1472,6 +1505,33 @@ export class BillingAdminService {
       updatedAt: invoice.updatedAt.toISOString(),
     };
   }
+
+  private serializeBillingAdminAuditLog(
+    log: Prisma.BillingAdminAuditLogGetPayload<{
+      include: { actorUser: { select: { id: true; name: true; email: true } } };
+    }>,
+  ) {
+    return {
+      id: log.id,
+      action: log.action,
+      reason: log.reason,
+      actorUserId: log.actorUserId,
+      actorName: log.actorUser.name,
+      actorEmail: log.actorUser.email,
+      companyId: log.companyId,
+      before: this.sanitizeBillingAuditPayload(log.before),
+      after: this.sanitizeBillingAuditPayload(log.after),
+      metadata: this.sanitizeBillingAuditPayload(log.metadata),
+      ipAddress: log.ipAddress,
+      userAgent: sanitizeForAdmin(log.userAgent),
+      createdAt: log.createdAt.toISOString(),
+    };
+  }
+
+  private sanitizeBillingAuditPayload(value: unknown): unknown {
+    const sanitized = sanitizeForAdmin(value);
+    return maskBillingAuditProviderIdentifiers(sanitized);
+  }
 }
 
 function toJsonInput(value: unknown) {
@@ -1479,4 +1539,43 @@ function toJsonInput(value: unknown) {
     return Prisma.JsonNull;
   }
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+function maskBillingAuditProviderIdentifiers(value: unknown): unknown {
+  if (value == null) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(maskBillingAuditProviderIdentifiers);
+  }
+  if (typeof value !== "object") {
+    return value;
+  }
+
+  const output: Record<string, unknown> = {};
+  for (const [key, rawValue] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
+    if (isProviderIdentifierKey(key)) {
+      output[key] =
+        typeof rawValue === "string"
+          ? maskProviderSubscriptionId(rawValue)
+          : "[redacted]";
+      continue;
+    }
+    output[key] = maskBillingAuditProviderIdentifiers(rawValue);
+  }
+  return output;
+}
+
+function isProviderIdentifierKey(key: string) {
+  const normalized = key
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]/g, "");
+  return (
+    normalized.includes("providersubscriptionid") ||
+    normalized.includes("providerreference") ||
+    normalized.includes("providereventid")
+  );
 }

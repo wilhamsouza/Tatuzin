@@ -15,6 +15,12 @@ const Set<String> adminBillingSensitiveKeys = {
   'sandboxcheckouturl',
   'init_point',
   'sandbox_init_point',
+  'providersubscriptionid',
+  'provider_subscription_id',
+  'providerreference',
+  'provider_reference',
+  'providereventid',
+  'provider_event_id',
   'card',
   'card_number',
   'security_code',
@@ -112,6 +118,10 @@ bool _looksLikeCheckoutUrl(String value) {
 }
 
 bool _isSensitiveKey(String normalizedKey) {
+  if (normalizedKey.startsWith('maskedprovider') ||
+      normalizedKey.contains('masked_provider')) {
+    return false;
+  }
   if (adminBillingSensitiveKeys.contains(normalizedKey)) {
     return true;
   }
@@ -132,7 +142,13 @@ bool _isSensitiveKey(String normalizedKey) {
       normalizedKey == 'token' ||
       normalizedKey.endsWith('token') ||
       normalizedKey.contains('checkouturl') ||
-      normalizedKey.contains('init_point');
+      normalizedKey.contains('init_point') ||
+      normalizedKey.contains('providersubscriptionid') ||
+      normalizedKey.contains('provider_subscription_id') ||
+      normalizedKey.contains('providerreference') ||
+      normalizedKey.contains('provider_reference') ||
+      normalizedKey.contains('providereventid') ||
+      normalizedKey.contains('provider_event_id');
 }
 
 String _normalizeSensitiveKey(String value) {
@@ -571,6 +587,56 @@ class AdminBillingEvent {
       errorMessage: _readOptionalString(map, 'errorMessage'),
       createdAt: _readDate(map, 'createdAt'),
       updatedAt: _readDate(map, 'updatedAt'),
+    );
+  }
+}
+
+class AdminBillingAuditLog {
+  const AdminBillingAuditLog({
+    required this.id,
+    required this.action,
+    this.reason,
+    required this.actorUserId,
+    this.actorName,
+    this.actorEmail,
+    this.companyId,
+    this.before,
+    this.after,
+    this.metadata,
+    this.ipAddress,
+    this.userAgent,
+    this.createdAt,
+  });
+
+  final String id;
+  final String action;
+  final String? reason;
+  final String actorUserId;
+  final String? actorName;
+  final String? actorEmail;
+  final String? companyId;
+  final Map<String, dynamic>? before;
+  final Map<String, dynamic>? after;
+  final Map<String, dynamic>? metadata;
+  final String? ipAddress;
+  final Object? userAgent;
+  final DateTime? createdAt;
+
+  factory AdminBillingAuditLog.fromMap(Map<String, dynamic> map) {
+    return AdminBillingAuditLog(
+      id: _readString(map, 'id'),
+      action: _readString(map, 'action', fallback: 'admin.billing.action'),
+      reason: _readOptionalString(map, 'reason'),
+      actorUserId: _readString(map, 'actorUserId'),
+      actorName: _readOptionalString(map, 'actorName'),
+      actorEmail: _readOptionalString(map, 'actorEmail'),
+      companyId: _readOptionalString(map, 'companyId'),
+      before: _readNullableSafeMap(map, 'before'),
+      after: _readNullableSafeMap(map, 'after'),
+      metadata: _readNullableSafeMap(map, 'metadata'),
+      ipAddress: _readOptionalString(map, 'ipAddress'),
+      userAgent: sanitizeAdminBillingValue(map['userAgent']),
+      createdAt: _readDate(map, 'createdAt'),
     );
   }
 }

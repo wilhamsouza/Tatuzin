@@ -416,6 +416,7 @@ void main() {
 
     expect(service.extensionApplyCalls, 1);
     expect(service.statusFetchCount, greaterThanOrEqualTo(2));
+    expect(service.auditFetchCount, greaterThanOrEqualTo(2));
     expect(find.text('Extensao emergencial aplicada.'), findsOneWidget);
   });
 
@@ -691,6 +692,83 @@ void main() {
     expect(confirm.onPressed, isNull);
     expect(service.billingReconcileApplyCalls, 0);
   });
+
+  testWidgets('Licenca mostra historico administrativo com rotulos amigaveis', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeAdminApiService(),
+        initialLocation: '/licenses/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Historico administrativo'), findsOneWidget);
+    expect(find.text('Extensao emergencial'), findsWidgets);
+    expect(find.text('Suspensao de licenca'), findsWidgets);
+    expect(find.text('Reativacao de licenca'), findsWidgets);
+    expect(find.text('Reconciliacao de billing'), findsWidgets);
+    expect(find.textContaining('Ator: Admin Suporte'), findsWidgets);
+    expect(find.textContaining('preapproval-secret-full-id'), findsNothing);
+    expect(find.textContaining('Bearer secret'), findsNothing);
+  });
+
+  testWidgets('Historico administrativo mostra estado vazio e atualiza', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeAdminApiService(emptyAuditLogs: true);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/licenses/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Nenhuma acao administrativa de licenca registrada.'),
+      findsOneWidget,
+    );
+    expect(service.auditFetchCount, 1);
+
+    final refresh = find.text('Atualizar historico');
+    await tester.ensureVisible(refresh);
+    await tester.pumpAndSettle();
+    await tester.tap(refresh);
+    await tester.pumpAndSettle();
+
+    expect(service.auditFetchCount, greaterThanOrEqualTo(2));
+  });
+
+  testWidgets('Detalhe do historico administrativo exibe JSON sanitizado', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeAdminApiService(),
+        initialLocation: '/licenses/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final details = find.text('Ver detalhes').first;
+    await tester.ensureVisible(details);
+    await tester.pumpAndSettle();
+    await tester.tap(details);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Historico administrativo'), findsWidgets);
+    expect(find.textContaining('Dados sensiveis sao omitidos'), findsOneWidget);
+    expect(find.textContaining('before'), findsOneWidget);
+    expect(find.textContaining('after'), findsOneWidget);
+    expect(find.textContaining('metadata'), findsOneWidget);
+    expect(find.textContaining('preapproval-secret-full-id'), findsNothing);
+    expect(find.textContaining('Bearer secret'), findsNothing);
+  });
 }
 
 void _setLargeViewport(WidgetTester tester) {
@@ -786,6 +864,7 @@ class _FakeAdminApiService extends AdminApiService {
     this.blockExtension = false,
     this.blockReconcile = false,
     this.blockReactivate = false,
+    this.emptyAuditLogs = false,
   }) : super(
          apiClient: AdminApiClient(
            baseUrl: 'https://api.test/api',
@@ -800,7 +879,9 @@ class _FakeAdminApiService extends AdminApiService {
   final bool blockExtension;
   final bool blockReconcile;
   final bool blockReactivate;
+  final bool emptyAuditLogs;
   int statusFetchCount = 0;
+  int auditFetchCount = 0;
   int forcePlanCalls = 0;
   int extensionDryRunCalls = 0;
   int extensionApplyCalls = 0;
@@ -1240,6 +1321,98 @@ class _FakeAdminApiService extends AdminApiService {
         pageSize: 10,
         total: 1,
         count: 1,
+        hasNext: false,
+        hasPrevious: false,
+      ),
+      filters: const {},
+      sort: const AdminSortMeta(by: 'createdAt', direction: 'desc'),
+    );
+  }
+
+  @override
+  Future<AdminPaginatedResult<AdminBillingAuditLog>> fetchBillingAuditLogs({
+    required AdminBillingListQuery query,
+  }) async {
+    auditFetchCount += 1;
+    if (emptyAuditLogs) {
+      return const AdminPaginatedResult<AdminBillingAuditLog>(
+        items: [],
+        pagination: AdminPaginationMeta(
+          page: 1,
+          pageSize: 10,
+          total: 0,
+          count: 0,
+          hasNext: false,
+          hasPrevious: false,
+        ),
+        filters: {},
+        sort: AdminSortMeta(by: 'createdAt', direction: 'desc'),
+      );
+    }
+    return AdminPaginatedResult<AdminBillingAuditLog>(
+      items: [
+        AdminBillingAuditLog.fromMap({
+          'id': 'audit-1',
+          'action': 'license.emergency_extension',
+          'reason': 'Atendimento emergencial',
+          'actorUserId': 'user-1234567890',
+          'actorName': 'Admin Suporte',
+          'companyId': query.companyId,
+          'before': {
+            'status': 'EXPIRED',
+            'expiresAt': '2026-05-20T00:00:00.000Z',
+            'providerSubscriptionId': 'preapproval-secret-full-id',
+          },
+          'after': {
+            'status': 'ACTIVE',
+            'expiresAt': '2026-05-27T00:00:00.000Z',
+            'providerSubscriptionId': 'preapproval-secret-full-id',
+          },
+          'metadata': {
+            'Authorization': 'Bearer secret',
+            'providerReference': 'preapproval-secret-full-id',
+          },
+          'createdAt': '2026-05-25T10:00:00.000Z',
+        }),
+        AdminBillingAuditLog.fromMap({
+          'id': 'audit-2',
+          'action': 'license.suspend',
+          'reason': 'Risco operacional',
+          'actorUserId': 'user-1234567890',
+          'actorName': 'Admin Suporte',
+          'companyId': query.companyId,
+          'before': {'status': 'ACTIVE'},
+          'after': {'status': 'SUSPENDED'},
+          'createdAt': '2026-05-25T09:00:00.000Z',
+        }),
+        AdminBillingAuditLog.fromMap({
+          'id': 'audit-3',
+          'action': 'license.reactivate',
+          'reason': 'Cliente regularizado',
+          'actorUserId': 'user-1234567890',
+          'actorName': 'Admin Suporte',
+          'companyId': query.companyId,
+          'before': {'status': 'SUSPENDED'},
+          'after': {'status': 'ACTIVE'},
+          'createdAt': '2026-05-25T08:00:00.000Z',
+        }),
+        AdminBillingAuditLog.fromMap({
+          'id': 'audit-4',
+          'action': 'billing.reconcile',
+          'reason': 'Atualizar cobranca',
+          'actorUserId': 'user-1234567890',
+          'actorName': 'Admin Suporte',
+          'companyId': query.companyId,
+          'before': {'billingSubscriptionStatus': 'pending'},
+          'after': {'billingSubscriptionStatus': 'authorized'},
+          'createdAt': '2026-05-25T07:00:00.000Z',
+        }),
+      ],
+      pagination: const AdminPaginationMeta(
+        page: 1,
+        pageSize: 10,
+        total: 4,
+        count: 4,
         hasNext: false,
         hasPrevious: false,
       ),

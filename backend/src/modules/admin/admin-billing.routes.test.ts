@@ -289,6 +289,106 @@ describe("admin billing routes", () => {
     );
   });
 
+  it("lists billing admin audit logs ordered desc and sanitized", async () => {
+    const fixture = await createFixture({ plan: "BASIC" });
+    const otherCompany = await createFixture({ plan: "PRO" });
+
+    await prisma.billingAdminAuditLog.createMany({
+      data: [
+        {
+          actorUserId: fixture.ownerUserId,
+          companyId: fixture.companyId,
+          action: "license.suspend",
+          reason: "Suspensao de suporte",
+          before: {
+            status: "ACTIVE",
+            providerSubscriptionId: fixture.providerId,
+          },
+          after: {
+            status: "SUSPENDED",
+            providerSubscriptionId: fixture.providerId,
+          },
+          metadata: {
+            Authorization: "Bearer secret",
+            providerReference: fixture.providerId,
+            headers: { token: "nested-secret" },
+          },
+          createdAt: new Date("2026-05-24T10:00:00.000Z"),
+        },
+        {
+          actorUserId: fixture.ownerUserId,
+          companyId: fixture.companyId,
+          action: "billing.reconcile",
+          reason: "Reconciliar provider",
+          before: { billingSubscriptionStatus: "pending" },
+          after: { billingSubscriptionStatus: "authorized" },
+          metadata: {
+            nested: { providerSubscriptionId: fixture.providerId },
+          },
+          createdAt: new Date("2026-05-24T11:00:00.000Z"),
+        },
+        {
+          actorUserId: otherCompany.ownerUserId,
+          companyId: otherCompany.companyId,
+          action: "license.reactivate",
+          reason: "Outra empresa",
+          before: { providerSubscriptionId: otherCompany.providerId },
+          after: { providerSubscriptionId: otherCompany.providerId },
+          createdAt: new Date("2026-05-24T12:00:00.000Z"),
+        },
+      ],
+    });
+
+    const forbidden = await requestJson(
+      "GET",
+      `/admin/companies/${fixture.companyId}/billing/audit-logs`,
+      { token: fixture.operatorToken },
+    );
+    assert.equal(forbidden.status, 403);
+
+    const response = await requestJson(
+      "GET",
+      `/admin/companies/${fixture.companyId}/billing/audit-logs?page=1&pageSize=10`,
+      { token: fixture.adminToken },
+    );
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      items: Array<{
+        action: string;
+        reason: string;
+        actorName: string;
+        before: Record<string, unknown>;
+        after: Record<string, unknown>;
+        metadata: Record<string, unknown>;
+      }>;
+      pagination: { total: number };
+    };
+    assert.equal(payload.pagination.total, 2);
+    assert.equal(payload.items[0]?.action, "billing.reconcile");
+    assert.equal(payload.items[1]?.action, "license.suspend");
+    assert.equal(payload.items[0]?.actorName, "Billing Owner");
+
+    const serialized = JSON.stringify(payload);
+    assert.equal(serialized.includes(fixture.providerId), false);
+    assert.equal(serialized.includes(otherCompany.providerId), false);
+    assert.equal(serialized.includes("Bearer secret"), false);
+    assert.equal(serialized.includes("nested-secret"), false);
+    assert.match(serialized, /prea\.\.\.9999/);
+
+    const emptyFixture = await createFixture({ plan: "FREE" });
+    const empty = await requestJson(
+      "GET",
+      `/admin/companies/${emptyFixture.companyId}/billing/audit-logs`,
+      { token: emptyFixture.adminToken },
+    );
+    assert.equal(empty.status, 200);
+    assert.equal(
+      (empty.data as { pagination: { total: number } }).pagination.total,
+      0,
+    );
+  });
+
   it("lists checkout sessions without exposing full checkout URLs", async () => {
     const fixture = await createFixture();
     await createSensitiveBillingArtifacts(fixture);

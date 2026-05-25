@@ -1211,6 +1211,46 @@ class _FakeReadOnlyApiService extends AdminApiService {
   }
 
   @override
+  Future<AdminPaginatedResult<AdminBillingAuditLog>> fetchBillingAuditLogs({
+    required AdminBillingListQuery query,
+  }) async {
+    return AdminPaginatedResult<AdminBillingAuditLog>(
+      items: emptyBillingHistory
+          ? []
+          : [
+              AdminBillingAuditLog.fromMap({
+                'id': 'billing-audit-1',
+                'action': 'license.emergency_extension',
+                'reason': 'Atendimento emergencial',
+                'actorUserId': 'admin-user-123456789',
+                'actorName': 'Admin Suporte',
+                'companyId': query.companyId,
+                'before': {
+                  'expiresAt': '2026-05-20T00:00:00.000Z',
+                  'providerSubscriptionId': 'preapproval-secret-full-id',
+                },
+                'after': {
+                  'expiresAt': '2026-05-27T00:00:00.000Z',
+                  'providerSubscriptionId': 'preapproval-secret-full-id',
+                },
+                'metadata': {'Authorization': 'Bearer secret'},
+                'createdAt': '2026-05-25T00:00:00.000Z',
+              }),
+            ],
+      pagination: AdminPaginationMeta(
+        page: 1,
+        pageSize: 20,
+        total: emptyBillingHistory ? 0 : 1,
+        count: emptyBillingHistory ? 0 : 1,
+        hasNext: false,
+        hasPrevious: false,
+      ),
+      filters: const {},
+      sort: const AdminSortMeta(by: 'createdAt', direction: 'desc'),
+    );
+  }
+
+  @override
   Future<AdminLicenseSnapshot> updateLicense({
     required String companyId,
     required String plan,

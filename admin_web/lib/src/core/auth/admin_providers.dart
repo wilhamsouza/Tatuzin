@@ -191,6 +191,17 @@ final adminBillingCheckoutSessionsProvider =
           .fetchBillingCheckoutSessions(query: query);
     });
 
+final adminBillingAuditLogsProvider =
+    FutureProvider.family<
+      AdminPaginatedResult<AdminBillingAuditLog>,
+      AdminBillingListQuery
+    >((ref, query) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchBillingAuditLogs(query: query);
+    });
+
 final adminAuditSummaryProvider =
     FutureProvider.family<AdminAuditSummary, AdminAuditQuery>((
       ref,

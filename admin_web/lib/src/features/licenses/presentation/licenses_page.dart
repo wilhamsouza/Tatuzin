@@ -250,10 +250,14 @@ class LicenseCompanyPage extends ConsumerWidget {
     final checkoutAsync = ref.watch(
       adminBillingCheckoutSessionsProvider(billingListQuery),
     );
+    final auditLogsAsync = ref.watch(
+      adminBillingAuditLogsProvider(billingListQuery),
+    );
     Future<void> refreshLicense() async {
       ref.invalidate(adminBillingCompanyStatusProvider(companyId));
       ref.invalidate(adminBillingEventsProvider(billingListQuery));
       ref.invalidate(adminBillingCheckoutSessionsProvider(billingListQuery));
+      ref.invalidate(adminBillingAuditLogsProvider(billingListQuery));
     }
 
     return billingAsync.when(
@@ -294,6 +298,33 @@ class LicenseCompanyPage extends ConsumerWidget {
               _PlaceholderActions(
                 companyId: companyId,
                 onApplied: refreshLicense,
+              ),
+              const SizedBox(height: 16),
+              auditLogsAsync.when(
+                data: (logs) => _BillingAdminHistorySection(
+                  logs: logs.items,
+                  onRefresh: () => ref.invalidate(
+                    adminBillingAuditLogsProvider(billingListQuery),
+                  ),
+                ),
+                loading: () => const AdminSurface(
+                  title: 'Historico administrativo',
+                  child: LinearProgressIndicator(),
+                ),
+                error: (error, _) => AdminSurface(
+                  title: 'Historico administrativo',
+                  subtitle: _safeError(error),
+                  trailing: IconButton(
+                    tooltip: 'Atualizar historico',
+                    onPressed: () => ref.invalidate(
+                      adminBillingAuditLogsProvider(billingListQuery),
+                    ),
+                    icon: const Icon(Icons.refresh_rounded),
+                  ),
+                  child: const Text(
+                    'Historico administrativo indisponivel nesta versao.',
+                  ),
+                ),
               ),
               const SizedBox(height: 16),
               eventsAsync.when(
@@ -1549,6 +1580,69 @@ class _BillingReconcilePreview extends StatelessWidget {
   }
 }
 
+class _BillingAdminHistorySection extends StatelessWidget {
+  const _BillingAdminHistorySection({
+    required this.logs,
+    required this.onRefresh,
+  });
+
+  final List<AdminBillingAuditLog> logs;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminSurface(
+      title: 'Historico administrativo',
+      subtitle:
+          'Acoes feitas por platform admin. Eventos do provider aparecem em "Eventos de billing".',
+      trailing: TextButton.icon(
+        onPressed: onRefresh,
+        icon: const Icon(Icons.refresh_rounded),
+        label: const Text('Atualizar historico'),
+      ),
+      child: logs.isEmpty
+          ? const _EmptyState(
+              message: 'Nenhuma acao administrativa de licenca registrada.',
+            )
+          : Column(
+              children: logs
+                  .map((log) => _BillingAdminHistoryTile(log: log))
+                  .toList(growable: false),
+            ),
+    );
+  }
+}
+
+class _BillingAdminHistoryTile extends StatelessWidget {
+  const _BillingAdminHistoryTile({required this.log});
+
+  final AdminBillingAuditLog log;
+
+  @override
+  Widget build(BuildContext context) {
+    final actor = _billingAuditActorLabel(log);
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: const Icon(Icons.admin_panel_settings_rounded),
+      title: Text(_billingAuditActionLabel(log.action)),
+      subtitle: Text(
+        [
+          AdminFormatters.formatDateTime(log.createdAt),
+          'Ator: $actor',
+          'Motivo: ${_safeShort(log.reason)}',
+          _billingAuditChangeSummary(log),
+        ].join('\n'),
+      ),
+      isThreeLine: true,
+      trailing: TextButton.icon(
+        onPressed: () => _showBillingAuditDetails(context, log),
+        icon: const Icon(Icons.visibility_rounded),
+        label: const Text('Ver detalhes'),
+      ),
+    );
+  }
+}
+
 class _BillingEventsSection extends StatelessWidget {
   const _BillingEventsSection({required this.events});
 
@@ -2156,6 +2250,54 @@ String _previewValue(Object? value) {
   return _maskIdentifier(text);
 }
 
+String _billingAuditActionLabel(String action) {
+  switch (action.trim().toLowerCase()) {
+    case 'license.emergency_extension':
+      return 'Extensao emergencial';
+    case 'billing.reconcile':
+      return 'Reconciliacao de billing';
+    case 'billing.reconcile.failed':
+      return 'Falha na reconciliacao de billing';
+    case 'license.suspend':
+      return 'Suspensao de licenca';
+    case 'license.reactivate':
+      return 'Reativacao de licenca';
+    default:
+      return action.trim().isEmpty ? 'Acao administrativa' : action;
+  }
+}
+
+String _billingAuditActorLabel(AdminBillingAuditLog log) {
+  final name = log.actorName?.trim();
+  if (name != null && name.isNotEmpty) {
+    return name;
+  }
+  final email = log.actorEmail?.trim();
+  if (email != null && email.isNotEmpty) {
+    return email;
+  }
+  return _maskIdentifier(log.actorUserId);
+}
+
+String _billingAuditChangeSummary(AdminBillingAuditLog log) {
+  final before = log.before ?? const <String, dynamic>{};
+  final after = log.after ?? const <String, dynamic>{};
+  final candidates = <String>[
+    'status',
+    'billingSubscriptionStatus',
+    'expiresAt',
+    'currentPeriodEnd',
+  ];
+  for (final key in candidates) {
+    final beforeValue = before[key]?.toString();
+    final afterValue = after[key]?.toString();
+    if (beforeValue != afterValue && afterValue != null) {
+      return '$key: ${_previewValue(beforeValue)} -> ${_previewValue(afterValue)}';
+    }
+  }
+  return 'Alteracao administrativa registrada.';
+}
+
 void _showSafeDetails(
   BuildContext context, {
   required String title,
@@ -2178,6 +2320,25 @@ void _showSafeDetails(
         ),
       ],
     ),
+  );
+}
+
+void _showBillingAuditDetails(BuildContext context, AdminBillingAuditLog log) {
+  _showSafeDetails(
+    context,
+    title: 'Historico administrativo',
+    value: {
+      'aviso': 'Dados sensiveis sao omitidos por seguranca.',
+      'acao': _billingAuditActionLabel(log.action),
+      'motivo': log.reason,
+      'ator': _billingAuditActorLabel(log),
+      'criadoEm': log.createdAt?.toIso8601String(),
+      'before': log.before,
+      'after': log.after,
+      'metadata': log.metadata,
+      'ipAddress': log.ipAddress,
+      'userAgent': log.userAgent,
+    },
   );
 }
 
@@ -2210,11 +2371,17 @@ bool _isSensitiveBillingPreviewKey(String key) {
     RegExp(r'[\s\-_]'),
     '',
   );
+  if (normalized.startsWith('maskedprovider')) {
+    return false;
+  }
   return normalized.contains('authorization') ||
       normalized.contains('header') ||
       normalized.contains('token') ||
       normalized.contains('secret') ||
       normalized.contains('apikey') ||
+      normalized.contains('providersubscriptionid') ||
+      normalized.contains('providerreference') ||
+      normalized.contains('providereventid') ||
       normalized.contains('card') ||
       normalized.contains('cvv') ||
       normalized.contains('securitycode');

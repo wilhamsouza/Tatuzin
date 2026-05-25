@@ -229,6 +229,19 @@ adminRouter.get(
   }),
 );
 
+adminRouter.get(
+  "/companies/:companyId/billing/audit-logs",
+  validateQuery(adminBillingListQuerySchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await billingAdminService.listAuditLogs(
+      companyId,
+      request.query as unknown as AdminBillingListQueryInput,
+    );
+    response.json(payload);
+  }),
+);
+
 adminRouter.post(
   "/companies/:companyId/billing/refresh",
   validateBody(adminBillingRefreshSchema),
