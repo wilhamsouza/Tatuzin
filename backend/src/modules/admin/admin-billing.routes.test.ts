@@ -120,6 +120,70 @@ describe("admin billing routes", () => {
     assert.equal(serialized.includes(otherCompany.operatorUserId), false);
   });
 
+  it("returns read-only plan catalog with real entitlements", async () => {
+    const freeFixture = await createFixture({ plan: "FREE" });
+    const basicFixture = await createFixture({ plan: "BASIC" });
+    const proFixture = await createFixture({ plan: "PRO" });
+
+    const forbidden = await requestJson("GET", "/admin/plans", {
+      token: basicFixture.operatorToken,
+    });
+    assert.equal(forbidden.status, 403);
+
+    const response = await requestJson("GET", "/admin/plans", {
+      token: proFixture.adminToken,
+    });
+    assert.equal(response.status, 200);
+
+    const payload = response.data as {
+      items: Array<{
+        key: string;
+        entitlements: {
+          features: Record<string, boolean>;
+          limits: { maxEmployees: number; maxDevices: number };
+        };
+        usage: { companiesCount: number; pendingPlanCount: number };
+      }>;
+      rules: {
+        entitlementSource: string;
+        pendingPlanReleasesFeatures: boolean;
+      };
+      usageSummary: {
+        companiesByPlan: Record<string, number>;
+        pendingCompaniesByPlan: Record<string, number>;
+        pendingPlanCount: number;
+      };
+    };
+    const byPlan = new Map(payload.items.map((item) => [item.key, item]));
+    assert.equal(byPlan.get("FREE")?.entitlements.features.employees, false);
+    assert.equal(byPlan.get("BASIC")?.entitlements.features.employees, false);
+    assert.equal(byPlan.get("PRO")?.entitlements.features.employees, true);
+    assert.equal(byPlan.get("PRO")?.entitlements.features.ownerWebPanel, true);
+    assert.equal(byPlan.get("BASIC")?.entitlements.limits.maxEmployees, 0);
+    assert.equal(byPlan.get("PRO")?.entitlements.limits.maxEmployees, 100);
+    assert.equal(payload.rules.entitlementSource, "license.plan");
+    assert.equal(payload.rules.pendingPlanReleasesFeatures, false);
+    assert.equal(byPlan.get("FREE")?.usage.companiesCount, 1);
+    assert.equal(byPlan.get("BASIC")?.usage.companiesCount, 1);
+    assert.equal(byPlan.get("PRO")?.usage.companiesCount, 1);
+    assert.equal(byPlan.get("PRO")?.usage.pendingPlanCount, 1);
+    assert.deepEqual(payload.usageSummary.companiesByPlan, {
+      FREE: 1,
+      BASIC: 1,
+      PRO: 1,
+    });
+    assert.deepEqual(payload.usageSummary.pendingCompaniesByPlan, {
+      FREE: 0,
+      BASIC: 0,
+      PRO: 1,
+    });
+    assert.equal(payload.usageSummary.pendingPlanCount, 1);
+    assert.equal(
+      JSON.stringify(payload).includes(freeFixture.providerId),
+      false,
+    );
+  });
+
   it("lists billing companies with filters and masked provider id", async () => {
     const fixture = await createFixture();
 

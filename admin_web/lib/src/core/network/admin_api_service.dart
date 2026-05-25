@@ -6,6 +6,7 @@ import '../models/admin_billing_models.dart';
 import '../models/admin_crm_models.dart';
 import '../models/admin_hybrid_governance_models.dart';
 import '../models/admin_models.dart';
+import '../models/admin_plan_models.dart';
 import '../models/admin_sync_center_models.dart';
 import 'admin_api_client.dart';
 
@@ -172,6 +173,21 @@ class AdminApiService {
     }
 
     return AdminCompanyDetail.fromMap(response);
+  }
+
+  Future<AdminPlansOverview> fetchPlansOverview() async {
+    final response = await _apiClient.getJson(
+      '/admin/plans',
+      accessToken: await _readRequiredToken(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou planos no formato esperado.',
+      );
+    }
+
+    return AdminPlansOverview.fromMap(response);
   }
 
   Future<AdminCompanyAccessSummary> fetchCompanyAccessSummary(

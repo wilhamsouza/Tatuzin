@@ -7,6 +7,7 @@ import '../models/admin_crm_models.dart';
 import '../models/admin_hybrid_governance_models.dart';
 import '../../config/admin_env.dart';
 import '../models/admin_models.dart';
+import '../models/admin_plan_models.dart';
 import '../models/admin_sync_center_models.dart';
 import '../network/admin_api_client.dart';
 import '../network/admin_api_service.dart';
@@ -63,6 +64,13 @@ final adminCompanyDetailProvider =
       ref.watch(adminRefreshTickProvider);
       return ref.watch(adminApiServiceProvider).fetchCompanyDetail(companyId);
     });
+
+final adminPlansOverviewProvider = FutureProvider<AdminPlansOverview>((
+  ref,
+) async {
+  ref.watch(adminRefreshTickProvider);
+  return ref.watch(adminApiServiceProvider).fetchPlansOverview();
+});
 
 final adminCompanyAccessSummaryProvider =
     FutureProvider.family<AdminCompanyAccessSummary, String>((

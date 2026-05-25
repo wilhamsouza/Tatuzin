@@ -93,6 +93,14 @@ adminRouter.get(
 );
 
 adminRouter.get(
+  "/plans",
+  asyncHandler(async (_request, response) => {
+    const payload = await adminService.getPlansOverview();
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
   "/companies",
   validateQuery(adminCompaniesQuerySchema),
   asyncHandler(async (request, response) => {

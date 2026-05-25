@@ -375,6 +375,11 @@ class _CompanyLicenseHeader extends StatelessWidget {
             icon: const Icon(Icons.list_alt_rounded),
             label: const Text('Todas as licencas'),
           ),
+          OutlinedButton.icon(
+            onPressed: () => context.go('/plans'),
+            icon: const Icon(Icons.view_module_rounded),
+            label: const Text('Ver matriz de planos'),
+          ),
         ],
       ),
       child: Wrap(

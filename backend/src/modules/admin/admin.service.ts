@@ -24,6 +24,14 @@ import {
   parseStoredPermissions,
   roleFromMembershipRole,
 } from "../employees/employee-permissions";
+import { BillingService } from "../billing/billing.service";
+import {
+  FEATURE_KEYS,
+  PLAN_KEYS,
+  getPlanEntitlements,
+  requiredPlanForFeature,
+  type PlanKey,
+} from "../plans/plan-catalog.service";
 import type {
   AdminAuditQueryInput,
   AdminCompaniesQueryInput,
@@ -109,7 +117,10 @@ type SyncObservedFeatureSnapshot = SyncObservedFeatureAggregate & {
 };
 
 export class AdminService {
-  constructor(private readonly sessionService = new AuthSessionService()) {}
+  constructor(
+    private readonly sessionService = new AuthSessionService(),
+    private readonly billingService = new BillingService(),
+  ) {}
 
   async listCompanies(query: AdminCompaniesQueryInput) {
     const where = this.buildCompanyWhere(query);
@@ -545,6 +556,75 @@ export class AdminService {
 
   async revokeSession(input: { sessionId: string; actorUserId: string }) {
     await this.sessionService.revokeSessionAsPlatformAdmin(input);
+  }
+
+  async getPlansOverview() {
+    const countResults = await prisma.$transaction([
+      ...PLAN_KEYS.map((plan) => prisma.license.count({ where: { plan } })),
+      ...PLAN_KEYS.map((plan) =>
+        prisma.license.count({ where: { plan, status: "ACTIVE" } }),
+      ),
+      ...PLAN_KEYS.map((plan) =>
+        prisma.license.count({ where: { pendingPlan: plan } }),
+      ),
+    ]);
+    const companiesByPlan = planCountRecordFromValues(countResults.slice(0, 3));
+    const activeCompaniesByPlan = planCountRecordFromValues(
+      countResults.slice(3, 6),
+    );
+    const pendingCompaniesByPlan = planCountRecordFromValues(
+      countResults.slice(6, 9),
+    );
+    const publicPlans = new Map(
+      this.billingService.listPlans().map((plan) => [plan.key, plan]),
+    );
+
+    const items = PLAN_KEYS.map((plan) => {
+      const publicPlan = publicPlans.get(plan);
+      return {
+        key: plan,
+        name: publicPlan?.name ?? plan,
+        description: publicPlan?.description ?? null,
+        priceCents: publicPlan?.priceCents ?? null,
+        currency: publicPlan?.currency ?? null,
+        billingCycle: publicPlan?.billingCycle ?? null,
+        featuresSummary: publicPlan?.featuresSummary ?? [],
+        entitlements: getPlanEntitlements(plan),
+        usage: {
+          companiesCount: companiesByPlan[plan] ?? 0,
+          activeCompaniesCount: activeCompaniesByPlan[plan] ?? 0,
+          pendingPlanCount: pendingCompaniesByPlan[plan] ?? 0,
+        },
+        status: "ACTIVE",
+        isPublic: true,
+        observations: planObservations(plan),
+      };
+    });
+
+    return {
+      items,
+      features: FEATURE_KEYS.map((feature) => ({
+        key: feature,
+        requiredPlan: requiredPlanForFeature(feature),
+      })),
+      usageSummary: {
+        totalPlans: PLAN_KEYS.length,
+        companiesByPlan,
+        activeCompaniesByPlan,
+        pendingCompaniesByPlan,
+        pendingPlanCount: Object.values(pendingCompaniesByPlan).reduce(
+          (sum, value) => sum + value,
+          0,
+        ),
+        plansWithActiveCompanies: PLAN_KEYS.filter(
+          (plan) => (activeCompaniesByPlan[plan] ?? 0) > 0,
+        ).length,
+      },
+      rules: {
+        entitlementSource: "license.plan",
+        pendingPlanReleasesFeatures: false,
+      },
+    };
   }
 
   private describeEmployeePermission(permission: string) {
@@ -1757,4 +1837,37 @@ function sanitizeAdminAccessValue(value: unknown): unknown {
     return result;
   }
   return String(value);
+}
+
+function planCountRecordFromValues(values: number[]): Record<PlanKey, number> {
+  const result: Record<PlanKey, number> = {
+    FREE: 0,
+    BASIC: 0,
+    PRO: 0,
+  };
+  for (let index = 0; index < PLAN_KEYS.length; index += 1) {
+    result[PLAN_KEYS[index]] = values[index] ?? 0;
+  }
+  return result;
+}
+
+function planObservations(plan: PlanKey) {
+  switch (plan) {
+    case "PRO":
+      return [
+        "Libera Funcionarios PRO, permissoes, multi-dispositivo, owner_web e relatorios avancados.",
+        "license.plan=PRO e necessario para liberar estes recursos; pendingPlan nao libera acesso.",
+      ];
+    case "BASIC":
+      return [
+        "Recursos comerciais basicos para operacao individual.",
+        "Nao libera Funcionarios PRO nem owner_web.",
+      ];
+    case "FREE":
+    default:
+      return [
+        "Plano gratuito/base para PDV com um dispositivo.",
+        "Trial e planos desconhecidos caem no mesmo fallback de entitlement FREE.",
+      ];
+  }
 }

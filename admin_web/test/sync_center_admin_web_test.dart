@@ -10,6 +10,7 @@ import 'package:tatuzin_admin_web/src/core/auth/admin_providers.dart';
 import 'package:tatuzin_admin_web/src/core/models/admin_access_models.dart';
 import 'package:tatuzin_admin_web/src/core/models/admin_billing_models.dart';
 import 'package:tatuzin_admin_web/src/core/models/admin_models.dart';
+import 'package:tatuzin_admin_web/src/core/models/admin_plan_models.dart';
 import 'package:tatuzin_admin_web/src/core/models/admin_sync_center_models.dart';
 import 'package:tatuzin_admin_web/src/core/network/admin_api_client.dart';
 import 'package:tatuzin_admin_web/src/core/network/admin_api_service.dart';
@@ -594,7 +595,13 @@ void main() {
     expect(find.textContaining('Suspender'), findsOneWidget);
     expect(find.textContaining('Reativar'), findsOneWidget);
     expect(find.textContaining('Reconciliar Mercado Pago'), findsOneWidget);
+    expect(find.text('Ver matriz de planos'), findsOneWidget);
 
+    await tester.scrollUntilVisible(
+      find.textContaining('Trocar plano'),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.textContaining('Trocar plano'));
     await tester.pumpAndSettle();
     expect(
@@ -666,17 +673,62 @@ void main() {
 
   testWidgets('Planos mostra matriz', (tester) async {
     _setLargeViewport(tester);
+    final service = _FakeReadOnlyApiService();
     await tester.pumpWidget(
-      const MaterialApp(home: Scaffold(body: PlansPage())),
+      _adminRouterTestApp(service: service, initialLocation: '/plans'),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Planos read-only'), findsOneWidget);
+    expect(find.text('Planos e recursos'), findsWidgets);
     expect(find.text('Matriz de features'), findsOneWidget);
     expect(find.text('FREE'), findsWidgets);
     expect(find.text('BASIC'), findsWidgets);
     expect(find.text('PRO'), findsWidgets);
-    expect(find.text('Max dispositivos'), findsOneWidget);
+    expect(find.textContaining('license.plan e a fonte real'), findsOneWidget);
+    expect(
+      find.textContaining('pendingPlan nao libera recursos'),
+      findsOneWidget,
+    );
+    expect(find.text('employees'), findsOneWidget);
+    expect(find.text('Funcionarios PRO'), findsOneWidget);
+    expect(find.text('Owner web'), findsOneWidget);
+    expect(find.text('Limites por plano'), findsOneWidget);
+    expect(find.text('Empresas por plano'), findsOneWidget);
+    expect(find.text('Como pendingPlan'), findsOneWidget);
+    expect(find.textContaining('Editar preco'), findsOneWidget);
+    expect(find.textContaining('Arquivar plano'), findsOneWidget);
+    expect(find.textContaining('Duplicar plano'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.textContaining('Editar preco'),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.textContaining('Editar preco'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Acao administrativa sera implementada em fase posterior com dry-run, confirmacao explicita e auditoria.',
+      ),
+      findsWidgets,
+    );
+    expect(service.mutableBillingCalls, 0);
+    expect(service.supportDryRunCalls, 0);
+    expect(service.supportCreateCalls, 0);
+  });
+
+  testWidgets('Licenca navega para matriz de planos', (tester) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/companies/company-1/license',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Ver matriz de planos'));
+    await tester.pumpAndSettle();
+    expect(find.text('Planos e recursos'), findsWidgets);
   });
 
   testWidgets('estados vazio e erro funcionam', (tester) async {
@@ -701,6 +753,25 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Nao foi possivel carregar o dashboard'), findsOneWidget);
+    expect(find.textContaining('falha controlada'), findsOneWidget);
+
+    await tester.pumpWidget(
+      _adminTestApp(
+        service: _FakeReadOnlyApiService(emptyPlans: true),
+        child: const PlansPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Nenhum plano retornado pelo backend.'), findsOneWidget);
+
+    await tester.pumpWidget(
+      _adminTestApp(
+        service: _FakeReadOnlyApiService(throwPlans: true),
+        child: const PlansPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Nao foi possivel carregar planos'), findsOneWidget);
     expect(find.textContaining('falha controlada'), findsOneWidget);
   });
 }
@@ -788,6 +859,10 @@ Widget _adminRouterTestApp({
         ),
       ),
       GoRoute(
+        path: '/plans',
+        builder: (context, state) => const Scaffold(body: PlansPage()),
+      ),
+      GoRoute(
         path: '/sync/:companyId/events/:eventId',
         builder: (context, state) => Scaffold(
           body: SyncEventDetailPage(
@@ -818,7 +893,9 @@ class _FakeReadOnlyApiService extends AdminApiService {
   _FakeReadOnlyApiService({
     this.emptyLicenses = false,
     this.emptyBillingHistory = false,
+    this.emptyPlans = false,
     this.throwDashboard = false,
+    this.throwPlans = false,
     this.emptyCompanySync = false,
     this.throwCompanySync = false,
   }) : super(
@@ -834,7 +911,9 @@ class _FakeReadOnlyApiService extends AdminApiService {
 
   final bool emptyLicenses;
   final bool emptyBillingHistory;
+  final bool emptyPlans;
   final bool throwDashboard;
+  final bool throwPlans;
   final bool emptyCompanySync;
   final bool throwCompanySync;
   AdminSyncCenterCompaniesQuery? lastCompaniesQuery;
@@ -878,6 +957,25 @@ class _FakeReadOnlyApiService extends AdminApiService {
       ],
       'sessions': [_mobileSessionMap(), _adminSessionMap()],
     });
+  }
+
+  @override
+  Future<AdminPlansOverview> fetchPlansOverview() async {
+    if (throwPlans) {
+      throw const AdminApiException(message: 'falha controlada');
+    }
+    if (emptyPlans) {
+      return AdminPlansOverview.fromMap({
+        'items': const [],
+        'features': const [],
+        'usageSummary': const {},
+        'rules': const {
+          'entitlementSource': 'license.plan',
+          'pendingPlanReleasesFeatures': false,
+        },
+      });
+    }
+    return AdminPlansOverview.fromMap(_plansOverviewMap());
   }
 
   @override
@@ -2077,6 +2175,172 @@ Map<String, dynamic> _companyDeviceMap() {
     'approvedAt': '2026-05-24T00:00:00.000Z',
     'revokedAt': null,
     'revokedReason': null,
+  };
+}
+
+Map<String, dynamic> _plansOverviewMap() {
+  const featureKeys = [
+    'sales',
+    'cash',
+    'products',
+    'categories',
+    'customersBasic',
+    'fiadoCreateSale',
+    'fiadoManagement',
+    'supplies',
+    'costs',
+    'suppliers',
+    'purchases',
+    'inventoryBasic',
+    'inventoryAdvanced',
+    'reportsDaily',
+    'reportsBasic',
+    'reportsAdvanced',
+    'employees',
+    'permissions',
+    'multiDevice',
+    'ownerWebPanel',
+    'commissions',
+    'devicesManagement',
+  ];
+  const freeFeatures = {
+    'sales',
+    'cash',
+    'products',
+    'categories',
+    'customersBasic',
+    'fiadoCreateSale',
+    'reportsDaily',
+    'inventoryBasic',
+  };
+  const basicFeatures = {
+    ...freeFeatures,
+    'fiadoManagement',
+    'supplies',
+    'costs',
+    'suppliers',
+    'purchases',
+    'inventoryAdvanced',
+    'reportsBasic',
+  };
+
+  Map<String, dynamic> plan(
+    String key,
+    Set<String> enabledFeatures, {
+    required int priceCents,
+    required int maxDevices,
+    required int maxEmployees,
+    required List<String> reportPeriods,
+    required int companiesCount,
+    required int activeCompaniesCount,
+    required int pendingPlanCount,
+  }) {
+    return {
+      'key': key,
+      'name': key == 'FREE'
+          ? 'Free'
+          : key == 'BASIC'
+          ? 'Basico'
+          : 'Pro',
+      'description': key == 'PRO'
+          ? 'Equipe, dispositivos e relatorios avancados.'
+          : 'Contrato administrativo real.',
+      'priceCents': priceCents,
+      'currency': 'BRL',
+      'billingCycle': key == 'FREE' ? 'free' : 'monthly',
+      'featuresSummary': key == 'PRO'
+          ? const [
+              'Multi-dispositivo',
+              'Funcionarios, permissoes e comissoes',
+              'Relatorios avancados',
+            ]
+          : const ['Contrato real'],
+      'entitlements': {
+        'plan': key,
+        'features': {
+          for (final feature in featureKeys)
+            feature: enabledFeatures.contains(feature),
+        },
+        'limits': {
+          'maxDevices': maxDevices,
+          'maxEmployees': maxEmployees,
+          'reportPeriods': reportPeriods,
+        },
+      },
+      'usage': {
+        'companiesCount': companiesCount,
+        'activeCompaniesCount': activeCompaniesCount,
+        'pendingPlanCount': pendingPlanCount,
+      },
+      'status': 'ACTIVE',
+      'isPublic': true,
+      'observations': key == 'PRO'
+          ? const [
+              'Libera Funcionarios PRO, permissoes, multi-dispositivo, owner_web e relatorios avancados.',
+            ]
+          : const ['pendingPlan nao libera acesso.'],
+    };
+  }
+
+  return {
+    'items': [
+      plan(
+        'FREE',
+        freeFeatures,
+        priceCents: 0,
+        maxDevices: 1,
+        maxEmployees: 0,
+        reportPeriods: const ['daily'],
+        companiesCount: 2,
+        activeCompaniesCount: 1,
+        pendingPlanCount: 0,
+      ),
+      plan(
+        'BASIC',
+        basicFeatures,
+        priceCents: 4900,
+        maxDevices: 1,
+        maxEmployees: 0,
+        reportPeriods: const ['daily', 'weekly', 'monthly'],
+        companiesCount: 3,
+        activeCompaniesCount: 2,
+        pendingPlanCount: 1,
+      ),
+      plan(
+        'PRO',
+        featureKeys.toSet(),
+        priceCents: 9900,
+        maxDevices: 100,
+        maxEmployees: 100,
+        reportPeriods: const ['daily', 'weekly', 'monthly', 'yearly', 'custom'],
+        companiesCount: 4,
+        activeCompaniesCount: 4,
+        pendingPlanCount: 2,
+      ),
+    ],
+    'features': [
+      for (final feature in featureKeys)
+        {
+          'key': feature,
+          'requiredPlan': feature == 'employees' || feature == 'ownerWebPanel'
+              ? 'PRO'
+              : basicFeatures.contains(feature)
+              ? 'BASIC'
+              : 'FREE',
+        },
+    ],
+    'usageSummary': const {
+      'totalPlans': 3,
+      'companiesByPlan': {'FREE': 2, 'BASIC': 3, 'PRO': 4},
+      'activeCompaniesByPlan': {'FREE': 1, 'BASIC': 2, 'PRO': 4},
+      'pendingCompaniesByPlan': {'FREE': 0, 'BASIC': 1, 'PRO': 2},
+      'pendingPlanCount': 3,
+      'plansWithActiveCompanies': 3,
+    },
+    'rules': const {
+      'entitlementSource': 'license.plan',
+      'pendingPlanReleasesFeatures': false,
+    },
   };
 }
 
