@@ -705,6 +705,62 @@ class AdminLicenseExtensionResult {
   }
 }
 
+class AdminLicenseStatusActionDryRun {
+  const AdminLicenseStatusActionDryRun({
+    required this.allowed,
+    required this.expectedConfirmationText,
+    required this.summary,
+    required this.risks,
+    required this.blockers,
+    required this.currentLicense,
+    required this.proposedChange,
+  });
+
+  final bool allowed;
+  final String expectedConfirmationText;
+  final String summary;
+  final List<String> risks;
+  final List<String> blockers;
+  final Map<String, dynamic>? currentLicense;
+  final Map<String, dynamic>? proposedChange;
+
+  factory AdminLicenseStatusActionDryRun.fromMap(Map<String, dynamic> map) {
+    return AdminLicenseStatusActionDryRun(
+      allowed: map['allowed'] == true,
+      expectedConfirmationText:
+          _readOptionalString(map, 'expectedConfirmationText') ?? '',
+      summary: _readOptionalString(map, 'summary') ?? 'Sem resumo.',
+      risks: _readStringList(map, 'risks'),
+      blockers: _readStringList(map, 'blockers'),
+      currentLicense: _readNullableSafeMap(map, 'currentLicense'),
+      proposedChange: _readNullableSafeMap(map, 'proposedChange'),
+    );
+  }
+}
+
+class AdminLicenseStatusActionResult {
+  const AdminLicenseStatusActionResult({
+    required this.success,
+    this.message,
+    this.license,
+    this.proposedChange,
+  });
+
+  final bool success;
+  final String? message;
+  final Map<String, dynamic>? license;
+  final Map<String, dynamic>? proposedChange;
+
+  factory AdminLicenseStatusActionResult.fromMap(Map<String, dynamic> map) {
+    return AdminLicenseStatusActionResult(
+      success: map['success'] == true,
+      message: _readOptionalString(map, 'message'),
+      license: _readNullableSafeMap(map, 'license'),
+      proposedChange: _readNullableSafeMap(map, 'proposedChange'),
+    );
+  }
+}
+
 class AdminBillingReconcileDryRun {
   const AdminBillingReconcileDryRun({
     required this.allowed,

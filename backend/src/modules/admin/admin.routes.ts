@@ -16,6 +16,8 @@ import {
   adminBillingRefreshSchema,
   adminLicenseEmergencyExtensionDryRunSchema,
   adminLicenseEmergencyExtensionSchema,
+  adminLicenseStatusActionDryRunSchema,
+  adminLicenseStatusActionSchema,
 } from "../billing/billing-admin.schemas";
 import { BillingAdminService } from "../billing/billing-admin.service";
 import {
@@ -406,6 +408,70 @@ adminRouter.patch(
       request.auth!.userId,
     );
     response.json({ license });
+  }),
+);
+
+adminRouter.post(
+  "/companies/:companyId/license/suspend/dry-run",
+  validateBody(adminLicenseStatusActionDryRunSchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await billingAdminService.dryRunLicenseSuspend({
+      ...request.body,
+      companyId,
+      actorUserId: request.auth?.userId,
+      ipAddress: request.ip,
+      userAgent: request.get("user-agent") ?? null,
+    });
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  "/companies/:companyId/license/suspend",
+  validateBody(adminLicenseStatusActionSchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await billingAdminService.applyLicenseSuspend({
+      ...request.body,
+      companyId,
+      actorUserId: request.auth?.userId,
+      ipAddress: request.ip,
+      userAgent: request.get("user-agent") ?? null,
+    });
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  "/companies/:companyId/license/reactivate/dry-run",
+  validateBody(adminLicenseStatusActionDryRunSchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await billingAdminService.dryRunLicenseReactivate({
+      ...request.body,
+      companyId,
+      actorUserId: request.auth?.userId,
+      ipAddress: request.ip,
+      userAgent: request.get("user-agent") ?? null,
+    });
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  "/companies/:companyId/license/reactivate",
+  validateBody(adminLicenseStatusActionSchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await billingAdminService.applyLicenseReactivate({
+      ...request.body,
+      companyId,
+      actorUserId: request.auth?.userId,
+      ipAddress: request.ip,
+      userAgent: request.get("user-agent") ?? null,
+    });
+    response.json(payload);
   }),
 );
 

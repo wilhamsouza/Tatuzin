@@ -625,13 +625,21 @@ class _PlaceholderActions extends StatelessWidget {
             label: 'Trocar plano',
             icon: Icons.swap_horiz_rounded,
           ),
-          const _PlaceholderButton(
-            label: 'Suspender licenca',
-            icon: Icons.lock_rounded,
+          OutlinedButton.icon(
+            onPressed: () => _openLicenseStatusAction(
+              context,
+              action: _LicenseStatusAction.suspend,
+            ),
+            icon: const Icon(Icons.lock_rounded),
+            label: const Text('Suspender licenca'),
           ),
-          const _PlaceholderButton(
-            label: 'Reativar licenca',
-            icon: Icons.lock_open_rounded,
+          OutlinedButton.icon(
+            onPressed: () => _openLicenseStatusAction(
+              context,
+              action: _LicenseStatusAction.reactivate,
+            ),
+            icon: const Icon(Icons.lock_open_rounded),
+            label: const Text('Reativar licenca'),
           ),
           OutlinedButton.icon(
             onPressed: () => _openBillingReconcile(context),
@@ -659,6 +667,26 @@ class _PlaceholderActions extends StatelessWidget {
     }
   }
 
+  Future<void> _openLicenseStatusAction(
+    BuildContext context, {
+    required _LicenseStatusAction action,
+  }) async {
+    final applied = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) =>
+          _LicenseStatusActionDialog(companyId: companyId, action: action),
+    );
+    if (applied == true) {
+      await onApplied();
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(action.successMessage)));
+      }
+    }
+  }
+
   Future<void> _openBillingReconcile(BuildContext context) async {
     final applied = await showDialog<bool>(
       context: context,
@@ -671,6 +699,258 @@ class _PlaceholderActions extends StatelessWidget {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Billing reconciliado.')));
+      }
+    }
+  }
+}
+
+enum _LicenseStatusAction { suspend, reactivate }
+
+extension _LicenseStatusActionText on _LicenseStatusAction {
+  String get title {
+    switch (this) {
+      case _LicenseStatusAction.suspend:
+        return 'Suspender licenca';
+      case _LicenseStatusAction.reactivate:
+        return 'Reativar licenca';
+    }
+  }
+
+  String get expectedConfirmationText {
+    switch (this) {
+      case _LicenseStatusAction.suspend:
+        return 'SUSPENDER';
+      case _LicenseStatusAction.reactivate:
+        return 'REATIVAR';
+    }
+  }
+
+  String get confirmButtonLabel {
+    switch (this) {
+      case _LicenseStatusAction.suspend:
+        return 'Confirmar suspensao';
+      case _LicenseStatusAction.reactivate:
+        return 'Confirmar reativacao';
+    }
+  }
+
+  String get successMessage {
+    switch (this) {
+      case _LicenseStatusAction.suspend:
+        return 'Licenca suspensa.';
+      case _LicenseStatusAction.reactivate:
+        return 'Licenca reativada.';
+    }
+  }
+}
+
+class _LicenseStatusActionDialog extends ConsumerStatefulWidget {
+  const _LicenseStatusActionDialog({
+    required this.companyId,
+    required this.action,
+  });
+
+  final String companyId;
+  final _LicenseStatusAction action;
+
+  @override
+  ConsumerState<_LicenseStatusActionDialog> createState() =>
+      _LicenseStatusActionDialogState();
+}
+
+class _LicenseStatusActionDialogState
+    extends ConsumerState<_LicenseStatusActionDialog> {
+  final _reasonController = TextEditingController();
+  final _noteController = TextEditingController();
+  final _confirmationController = TextEditingController();
+  AdminLicenseStatusActionDryRun? _dryRun;
+  String? _error;
+  bool _loadingDryRun = false;
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    _noteController.dispose();
+    _confirmationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final expected =
+        _dryRun?.expectedConfirmationText ??
+        widget.action.expectedConfirmationText;
+    final reasonFilled = _reasonController.text.trim().isNotEmpty;
+    final confirmationMatches = _confirmationController.text.trim() == expected;
+    final canSubmit =
+        !_submitting &&
+        _dryRun?.allowed == true &&
+        reasonFilled &&
+        confirmationMatches;
+
+    return AlertDialog(
+      title: Text(widget.action.title),
+      content: SizedBox(
+        width: 600,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Esta acao altera somente o estado administrativo da licenca. Ela nao altera plano, pendingPlan, Mercado Pago, providerSubscriptionId ou currentPeriodEnd.',
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'license.plan continua sendo a fonte real do plano ativo; pendingPlan nao libera recursos.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _reasonController,
+                decoration: const InputDecoration(
+                  labelText: 'Motivo obrigatorio',
+                ),
+                minLines: 2,
+                maxLines: 3,
+                onChanged: (_) => setState(() => _dryRun = null),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _noteController,
+                decoration: const InputDecoration(labelText: 'Nota opcional'),
+                onChanged: (_) => setState(() => _dryRun = null),
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: _loadingDryRun ? null : _runDryRun,
+                icon: _loadingDryRun
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.fact_check_rounded),
+                label: const Text('Simular dry-run'),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+              if (_dryRun != null) ...[
+                const SizedBox(height: 16),
+                _LicenseStatusActionPreview(dryRun: _dryRun!),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _confirmationController,
+                  decoration: InputDecoration(
+                    labelText: 'Texto de confirmacao',
+                    helperText: confirmationMatches
+                        ? 'Confirmacao correta.'
+                        : 'Digite $expected para liberar a confirmacao.',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting
+              ? null
+              : () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          onPressed: canSubmit ? _submit : null,
+          icon: _submitting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.check_rounded),
+          label: Text(widget.action.confirmButtonLabel),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _runDryRun() async {
+    if (_reasonController.text.trim().isEmpty) {
+      setState(() => _error = 'Informe o motivo da acao administrativa.');
+      return;
+    }
+    setState(() {
+      _loadingDryRun = true;
+      _error = null;
+      _dryRun = null;
+      _confirmationController.clear();
+    });
+    try {
+      final service = ref.read(adminApiServiceProvider);
+      final result = widget.action == _LicenseStatusAction.suspend
+          ? await service.dryRunLicenseSuspend(
+              companyId: widget.companyId,
+              reason: _reasonController.text,
+              note: _noteController.text,
+            )
+          : await service.dryRunLicenseReactivate(
+              companyId: widget.companyId,
+              reason: _reasonController.text,
+              note: _noteController.text,
+            );
+      if (mounted) {
+        setState(() => _dryRun = result);
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = _safeError(error));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loadingDryRun = false);
+      }
+    }
+  }
+
+  Future<void> _submit() async {
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final service = ref.read(adminApiServiceProvider);
+      if (widget.action == _LicenseStatusAction.suspend) {
+        await service.applyLicenseSuspend(
+          companyId: widget.companyId,
+          reason: _reasonController.text,
+          note: _noteController.text,
+          confirmationText: _confirmationController.text,
+        );
+      } else {
+        await service.applyLicenseReactivate(
+          companyId: widget.companyId,
+          reason: _reasonController.text,
+          note: _noteController.text,
+          confirmationText: _confirmationController.text,
+        );
+      }
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = _safeError(error));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
       }
     }
   }
@@ -1115,6 +1395,61 @@ class _DryRunPreview extends StatelessWidget {
             ),
             Text(
               'PendingPlan: ${proposed['pendingPlanBefore'] ?? 'nenhum'} -> ${proposed['pendingPlanAfter'] ?? 'nenhum'}',
+            ),
+          ],
+          if (dryRun.risks.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Text('Riscos/garantias:'),
+            ...dryRun.risks.map((risk) => Text('- $risk')),
+          ],
+          if (dryRun.blockers.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Bloqueios:',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            ...dryRun.blockers.map((blocker) => Text('- $blocker')),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _LicenseStatusActionPreview extends StatelessWidget {
+  const _LicenseStatusActionPreview({required this.dryRun});
+
+  final AdminLicenseStatusActionDryRun dryRun;
+
+  @override
+  Widget build(BuildContext context) {
+    final proposed = dryRun.proposedChange;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(dryRun.summary),
+          const SizedBox(height: 8),
+          Text('Confirmacao exigida: ${dryRun.expectedConfirmationText}'),
+          if (proposed != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Status: ${proposed['statusBefore'] ?? 'nao disponivel'} -> ${proposed['statusAfter'] ?? 'nao disponivel'}',
+            ),
+            Text(
+              'Plano: ${proposed['planBefore']} -> ${proposed['planAfter']}',
+            ),
+            Text(
+              'PendingPlan: ${proposed['pendingPlanBefore'] ?? 'nenhum'} -> ${proposed['pendingPlanAfter'] ?? 'nenhum'}',
+            ),
+            Text(
+              'currentPeriodEnd: ${proposed['currentPeriodEndBefore'] ?? 'sem data'} -> ${proposed['currentPeriodEndAfter'] ?? 'sem data'}',
             ),
           ],
           if (dryRun.risks.isNotEmpty) ...[

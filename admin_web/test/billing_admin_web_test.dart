@@ -94,6 +94,30 @@ void main() {
       throwsA(isA<AdminApiException>()),
     );
     expect(
+      () => service.dryRunLicenseSuspend(companyId: 'company-1', reason: ''),
+      throwsA(isA<AdminApiException>()),
+    );
+    expect(
+      () => service.applyLicenseSuspend(
+        companyId: 'company-1',
+        reason: ' ',
+        confirmationText: 'SUSPENDER',
+      ),
+      throwsA(isA<AdminApiException>()),
+    );
+    expect(
+      () => service.dryRunLicenseReactivate(companyId: 'company-1', reason: ''),
+      throwsA(isA<AdminApiException>()),
+    );
+    expect(
+      () => service.applyLicenseReactivate(
+        companyId: 'company-1',
+        reason: ' ',
+        confirmationText: 'REATIVAR',
+      ),
+      throwsA(isA<AdminApiException>()),
+    );
+    expect(
       () => service.dryRunBillingReconcile(companyId: 'company-1', reason: ' '),
       throwsA(isA<AdminApiException>()),
     );
@@ -425,6 +449,143 @@ void main() {
     expect(service.extensionApplyCalls, 0);
   });
 
+  testWidgets('Suspender licenca usa dry-run e confirmacao SUSPENDER', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeAdminApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/licenses/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _openLicenseStatusDialog(tester, 'Suspender licenca');
+    await tester.tap(find.text('Simular dry-run'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Informe o motivo da acao administrativa.'),
+      findsOneWidget,
+    );
+    expect(service.suspendDryRunCalls, 0);
+    expect(service.suspendApplyCalls, 0);
+
+    await tester.enterText(find.byType(TextField).at(0), 'Risco operacional');
+    await tester.tap(find.text('Simular dry-run'));
+    await tester.pumpAndSettle();
+
+    expect(service.suspendDryRunCalls, 1);
+    expect(service.suspendApplyCalls, 0);
+    expect(find.text('Confirmacao exigida: SUSPENDER'), findsOneWidget);
+    expect(find.textContaining('Status: ACTIVE -> SUSPENDED'), findsOneWidget);
+    expect(find.textContaining('Plano: BASIC -> BASIC'), findsOneWidget);
+    expect(find.textContaining('PendingPlan: PRO -> PRO'), findsOneWidget);
+    expect(find.textContaining('preapproval-secret-full-id'), findsNothing);
+
+    await tester.enterText(find.byType(TextField).last, 'ERRADO');
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Digite SUSPENDER para liberar a confirmacao.'),
+      findsOneWidget,
+    );
+    final disabledConfirm = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Confirmar suspensao'),
+    );
+    expect(disabledConfirm.onPressed, isNull);
+
+    await tester.enterText(find.byType(TextField).last, 'SUSPENDER');
+    await tester.pumpAndSettle();
+    final enabledConfirm = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Confirmar suspensao'),
+    );
+    expect(enabledConfirm.onPressed, isNotNull);
+    await tester.tap(find.text('Confirmar suspensao'));
+    await tester.pumpAndSettle();
+
+    expect(service.suspendApplyCalls, 1);
+    expect(service.statusFetchCount, greaterThanOrEqualTo(2));
+    expect(find.text('Licenca suspensa.'), findsOneWidget);
+  });
+
+  testWidgets('Reativar licenca bloqueada mostra blockers e nao executa', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeAdminApiService(blockReactivate: true);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/licenses/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _openLicenseStatusDialog(tester, 'Reativar licenca');
+    await tester.enterText(
+      find.byType(TextField).at(0),
+      'Cliente regularizado',
+    );
+    await tester.tap(find.text('Simular dry-run'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bloqueios:'), findsOneWidget);
+    expect(
+      find.textContaining('Licenca vencida por expiresAt'),
+      findsOneWidget,
+    );
+    final confirm = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Confirmar reativacao'),
+    );
+    expect(confirm.onPressed, isNull);
+    expect(service.reactivateApplyCalls, 0);
+  });
+
+  testWidgets('Reativar licenca usa dry-run e confirmacao REATIVAR', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeAdminApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/licenses/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _openLicenseStatusDialog(tester, 'Reativar licenca');
+    await tester.enterText(
+      find.byType(TextField).at(0),
+      'Cliente regularizado',
+    );
+    await tester.tap(find.text('Simular dry-run'));
+    await tester.pumpAndSettle();
+
+    expect(service.reactivateDryRunCalls, 1);
+    expect(service.reactivateApplyCalls, 0);
+    expect(find.text('Confirmacao exigida: REATIVAR'), findsOneWidget);
+    expect(find.textContaining('Status: SUSPENDED -> ACTIVE'), findsOneWidget);
+    expect(find.textContaining('Plano: BASIC -> BASIC'), findsOneWidget);
+    expect(find.textContaining('PendingPlan: PRO -> PRO'), findsOneWidget);
+    expect(find.textContaining('preapproval-secret-full-id'), findsNothing);
+
+    await tester.enterText(find.byType(TextField).last, 'REATIVAR');
+    await tester.pumpAndSettle();
+    final enabledConfirm = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Confirmar reativacao'),
+    );
+    expect(enabledConfirm.onPressed, isNotNull);
+    await tester.tap(find.text('Confirmar reativacao'));
+    await tester.pumpAndSettle();
+
+    expect(service.reactivateApplyCalls, 1);
+    expect(service.statusFetchCount, greaterThanOrEqualTo(2));
+    expect(find.text('Licenca reativada.'), findsOneWidget);
+  });
+
   testWidgets('Reconciliar billing exige motivo antes do dry-run', (
     tester,
   ) async {
@@ -549,6 +710,17 @@ Future<void> _openExtensionDialog(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _openLicenseStatusDialog(
+  WidgetTester tester,
+  String buttonLabel,
+) async {
+  final button = find.widgetWithText(OutlinedButton, buttonLabel);
+  await tester.ensureVisible(button);
+  await tester.pumpAndSettle();
+  await tester.tap(button);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _openReconcileDialog(WidgetTester tester) async {
   final button = find.widgetWithText(
     OutlinedButton,
@@ -613,6 +785,7 @@ class _FakeAdminApiService extends AdminApiService {
   _FakeAdminApiService({
     this.blockExtension = false,
     this.blockReconcile = false,
+    this.blockReactivate = false,
   }) : super(
          apiClient: AdminApiClient(
            baseUrl: 'https://api.test/api',
@@ -626,10 +799,15 @@ class _FakeAdminApiService extends AdminApiService {
 
   final bool blockExtension;
   final bool blockReconcile;
+  final bool blockReactivate;
   int statusFetchCount = 0;
   int forcePlanCalls = 0;
   int extensionDryRunCalls = 0;
   int extensionApplyCalls = 0;
+  int suspendDryRunCalls = 0;
+  int suspendApplyCalls = 0;
+  int reactivateDryRunCalls = 0;
+  int reactivateApplyCalls = 0;
   int billingReconcileDryRunCalls = 0;
   int billingReconcileApplyCalls = 0;
   String? lastForcePlan;
@@ -765,6 +943,162 @@ class _FakeAdminApiService extends AdminApiService {
         'maskedProviderSubscriptionId': 'pre_..._7890',
       },
       'proposedChange': const {
+        'planBefore': 'BASIC',
+        'planAfter': 'BASIC',
+        'pendingPlanBefore': 'PRO',
+        'pendingPlanAfter': 'PRO',
+      },
+    });
+  }
+
+  @override
+  Future<AdminLicenseStatusActionDryRun> dryRunLicenseSuspend({
+    required String companyId,
+    required String reason,
+    String? note,
+  }) async {
+    if (reason.trim().isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    suspendDryRunCalls += 1;
+    return AdminLicenseStatusActionDryRun.fromMap({
+      'allowed': true,
+      'expectedConfirmationText': 'SUSPENDER',
+      'summary': 'Suspender estado administrativo da licenca.',
+      'risks': const [
+        'A suspensao pode bloquear acesso operacional.',
+        'Esta acao nao altera plano nem Mercado Pago.',
+      ],
+      'blockers': const [],
+      'currentLicense': const {
+        'plan': 'BASIC',
+        'status': 'ACTIVE',
+        'pendingPlan': 'PRO',
+        'maskedProviderSubscriptionId': 'pre_..._7890',
+      },
+      'proposedChange': const {
+        'statusBefore': 'ACTIVE',
+        'statusAfter': 'SUSPENDED',
+        'planBefore': 'BASIC',
+        'planAfter': 'BASIC',
+        'pendingPlanBefore': 'PRO',
+        'pendingPlanAfter': 'PRO',
+        'currentPeriodEndBefore': '2026-06-20T00:00:00.000Z',
+        'currentPeriodEndAfter': '2026-06-20T00:00:00.000Z',
+      },
+    });
+  }
+
+  @override
+  Future<AdminLicenseStatusActionResult> applyLicenseSuspend({
+    required String companyId,
+    required String reason,
+    required String confirmationText,
+    String? note,
+  }) async {
+    if (reason.trim().isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    suspendApplyCalls += 1;
+    return AdminLicenseStatusActionResult.fromMap({
+      'success': true,
+      'message': 'Licenca suspensa.',
+      'license': const {
+        'plan': 'BASIC',
+        'status': 'SUSPENDED',
+        'pendingPlan': 'PRO',
+        'maskedProviderSubscriptionId': 'pre_..._7890',
+      },
+      'proposedChange': const {
+        'statusBefore': 'ACTIVE',
+        'statusAfter': 'SUSPENDED',
+        'planBefore': 'BASIC',
+        'planAfter': 'BASIC',
+        'pendingPlanBefore': 'PRO',
+        'pendingPlanAfter': 'PRO',
+      },
+    });
+  }
+
+  @override
+  Future<AdminLicenseStatusActionDryRun> dryRunLicenseReactivate({
+    required String companyId,
+    required String reason,
+    String? note,
+  }) async {
+    if (reason.trim().isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    reactivateDryRunCalls += 1;
+    return AdminLicenseStatusActionDryRun.fromMap({
+      'allowed': !blockReactivate,
+      'expectedConfirmationText': 'REATIVAR',
+      'summary': blockReactivate
+          ? 'Reativacao bloqueada.'
+          : 'Reativar estado administrativo da licenca.',
+      'risks': const [
+        'Reativar restabelece acesso conforme license.plan.',
+        'Esta acao nao altera plano nem Mercado Pago.',
+      ],
+      'blockers': blockReactivate
+          ? const [
+              'Licenca vencida por expiresAt. Use Extensao emergencial ou Reconciliar billing antes de reativar.',
+            ]
+          : const [],
+      'currentLicense': const {
+        'plan': 'BASIC',
+        'status': 'SUSPENDED',
+        'pendingPlan': 'PRO',
+        'maskedProviderSubscriptionId': 'pre_..._7890',
+      },
+      'proposedChange': const {
+        'statusBefore': 'SUSPENDED',
+        'statusAfter': 'ACTIVE',
+        'planBefore': 'BASIC',
+        'planAfter': 'BASIC',
+        'pendingPlanBefore': 'PRO',
+        'pendingPlanAfter': 'PRO',
+        'currentPeriodEndBefore': '2026-06-20T00:00:00.000Z',
+        'currentPeriodEndAfter': '2026-06-20T00:00:00.000Z',
+      },
+    });
+  }
+
+  @override
+  Future<AdminLicenseStatusActionResult> applyLicenseReactivate({
+    required String companyId,
+    required String reason,
+    required String confirmationText,
+    String? note,
+  }) async {
+    if (reason.trim().isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    reactivateApplyCalls += 1;
+    return AdminLicenseStatusActionResult.fromMap({
+      'success': true,
+      'message': 'Licenca reativada.',
+      'license': const {
+        'plan': 'BASIC',
+        'status': 'ACTIVE',
+        'pendingPlan': 'PRO',
+        'maskedProviderSubscriptionId': 'pre_..._7890',
+      },
+      'proposedChange': const {
+        'statusBefore': 'SUSPENDED',
+        'statusAfter': 'ACTIVE',
         'planBefore': 'BASIC',
         'planAfter': 'BASIC',
         'pendingPlanBefore': 'PRO',

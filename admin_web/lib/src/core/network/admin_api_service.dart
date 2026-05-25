@@ -569,6 +569,110 @@ class AdminApiService {
     );
   }
 
+  Future<AdminLicenseStatusActionDryRun> dryRunLicenseSuspend({
+    required String companyId,
+    required String reason,
+    String? note,
+  }) async {
+    final trimmedReason = reason.trim();
+    if (trimmedReason.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    final response = await _apiClient.postJson(
+      '/admin/companies/$companyId/license/suspend/dry-run',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        'reason': trimmedReason,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      },
+    );
+    return AdminLicenseStatusActionDryRun.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
+  Future<AdminLicenseStatusActionResult> applyLicenseSuspend({
+    required String companyId,
+    required String reason,
+    required String confirmationText,
+    String? note,
+  }) async {
+    final trimmedReason = reason.trim();
+    if (trimmedReason.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    final response = await _apiClient.postJson(
+      '/admin/companies/$companyId/license/suspend',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        'reason': trimmedReason,
+        'confirmationText': confirmationText.trim(),
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      },
+    );
+    return AdminLicenseStatusActionResult.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
+  Future<AdminLicenseStatusActionDryRun> dryRunLicenseReactivate({
+    required String companyId,
+    required String reason,
+    String? note,
+  }) async {
+    final trimmedReason = reason.trim();
+    if (trimmedReason.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    final response = await _apiClient.postJson(
+      '/admin/companies/$companyId/license/reactivate/dry-run',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        'reason': trimmedReason,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      },
+    );
+    return AdminLicenseStatusActionDryRun.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
+  Future<AdminLicenseStatusActionResult> applyLicenseReactivate({
+    required String companyId,
+    required String reason,
+    required String confirmationText,
+    String? note,
+  }) async {
+    final trimmedReason = reason.trim();
+    if (trimmedReason.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    final response = await _apiClient.postJson(
+      '/admin/companies/$companyId/license/reactivate',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        'reason': trimmedReason,
+        'confirmationText': confirmationText.trim(),
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      },
+    );
+    return AdminLicenseStatusActionResult.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
   Future<AdminBillingReconcileDryRun> dryRunBillingReconcile({
     required String companyId,
     required String reason,

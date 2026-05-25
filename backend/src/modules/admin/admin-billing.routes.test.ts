@@ -68,6 +68,26 @@ describe("admin billing routes", () => {
       },
     );
     assert.equal(forbiddenExtension.status, 403);
+
+    const forbiddenSuspend = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/suspend/dry-run`,
+      {
+        token: fixture.operatorToken,
+        body: { reason: "Suspensao administrativa" },
+      },
+    );
+    assert.equal(forbiddenSuspend.status, 403);
+
+    const forbiddenReactivate = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/reactivate/dry-run`,
+      {
+        token: fixture.operatorToken,
+        body: { reason: "Reativacao administrativa" },
+      },
+    );
+    assert.equal(forbiddenReactivate.status, 403);
   });
 
   it("returns read-only company access summary without sensitive fields", async () => {
@@ -471,6 +491,303 @@ describe("admin billing routes", () => {
     assert.equal(serializedAudit.includes(fixture.providerId), false);
     assert.equal(serializedAudit.includes("Chamado interno 123"), true);
     assert.equal(serializedAudit.includes("ESTENDER"), true);
+  });
+
+  it("suspends license with dry-run, confirmation and sanitized audit", async () => {
+    const fixture = await createFixture({ plan: "BASIC" });
+    const before = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+
+    const missingReason = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/suspend/dry-run`,
+      { token: fixture.adminToken, body: {} },
+    );
+    assert.equal(missingReason.status, 422);
+
+    const dryRun = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/suspend/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: { reason: "Fraude operacional em investigacao" },
+      },
+    );
+    assert.equal(dryRun.status, 200);
+    const dryRunPayload = dryRun.data as {
+      allowed: boolean;
+      expectedConfirmationText: string;
+      currentLicense: { plan: string; pendingPlan: string | null };
+      proposedChange: {
+        statusBefore: string;
+        statusAfter: string;
+        planAfter: string;
+        pendingPlanAfter: string | null;
+      };
+    };
+    assert.equal(dryRunPayload.allowed, true);
+    assert.equal(dryRunPayload.expectedConfirmationText, "SUSPENDER");
+    assert.equal(dryRunPayload.currentLicense.plan, "BASIC");
+    assert.equal(dryRunPayload.currentLicense.pendingPlan, "PRO");
+    assert.equal(dryRunPayload.proposedChange.statusBefore, "ACTIVE");
+    assert.equal(dryRunPayload.proposedChange.statusAfter, "SUSPENDED");
+    assert.equal(dryRunPayload.proposedChange.planAfter, "BASIC");
+    assert.equal(dryRunPayload.proposedChange.pendingPlanAfter, "PRO");
+    assert.equal(
+      JSON.stringify(dryRunPayload).includes(fixture.providerId),
+      false,
+    );
+
+    const unchanged = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(unchanged.status, before.status);
+
+    const wrongConfirmation = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/suspend`,
+      {
+        token: fixture.adminToken,
+        body: {
+          reason: "Fraude operacional em investigacao",
+          confirmationText: "CONFIRMAR",
+        },
+      },
+    );
+    assert.equal(wrongConfirmation.status, 422);
+
+    globalThis.fetch = failFetch("Mercado Pago nao deve ser chamado");
+    const response = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/suspend`,
+      {
+        token: fixture.adminToken,
+        body: {
+          reason: "Fraude operacional em investigacao",
+          note: "Chamado seguranca 789",
+          confirmationText: "SUSPENDER",
+        },
+      },
+    );
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      success: boolean;
+      license: {
+        plan: string;
+        status: string;
+        pendingPlan: string | null;
+        providerSubscriptionId?: string;
+      };
+      proposedChange: { statusAfter: string };
+    };
+    assert.equal(payload.success, true);
+    assert.equal(payload.license.status, "SUSPENDED");
+    assert.equal(payload.license.plan, "BASIC");
+    assert.equal(payload.license.pendingPlan, "PRO");
+    assert.equal(payload.license.providerSubscriptionId, undefined);
+    assert.equal(payload.proposedChange.statusAfter, "SUSPENDED");
+    assert.equal(JSON.stringify(payload).includes(fixture.providerId), false);
+
+    const after = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(after.status, "SUSPENDED");
+    assert.equal(after.plan, before.plan);
+    assert.equal(after.pendingPlan, before.pendingPlan);
+    assert.equal(after.providerSubscriptionId, before.providerSubscriptionId);
+    assert.equal(after.billingProvider, before.billingProvider);
+    assert.equal(
+      after.currentPeriodEnd?.toISOString(),
+      before.currentPeriodEnd?.toISOString(),
+    );
+    assert.equal(
+      after.expiresAt?.toISOString(),
+      before.expiresAt?.toISOString(),
+    );
+
+    const duplicate = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/suspend/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: { reason: "Suspender novamente" },
+      },
+    );
+    assert.equal(duplicate.status, 200);
+    assert.equal(
+      JSON.stringify(duplicate.data).includes("Licenca ja esta suspensa."),
+      true,
+    );
+
+    const audit = await prisma.billingAdminAuditLog.findFirstOrThrow({
+      where: { companyId: fixture.companyId, action: "license.suspend" },
+      orderBy: { createdAt: "desc" },
+    });
+    assert.equal(audit.reason, "Fraude operacional em investigacao");
+    const serializedAudit = JSON.stringify({
+      before: audit.before,
+      after: audit.after,
+      metadata: audit.metadata,
+    });
+    assert.equal(serializedAudit.includes(fixture.providerId), false);
+    assert.equal(serializedAudit.includes("Chamado seguranca 789"), true);
+    assert.equal(serializedAudit.includes("SUSPENDER"), true);
+  });
+
+  it("reactivates suspended license but blocks expired licenses", async () => {
+    const fixture = await createFixture({ plan: "BASIC" });
+    const futureExpiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    const before = await prisma.license.update({
+      where: { companyId: fixture.companyId },
+      data: { status: "SUSPENDED", expiresAt: futureExpiresAt },
+    });
+
+    const missingReason = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/reactivate/dry-run`,
+      { token: fixture.adminToken, body: {} },
+    );
+    assert.equal(missingReason.status, 422);
+
+    const dryRun = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/reactivate/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: { reason: "Cliente regularizado" },
+      },
+    );
+    assert.equal(dryRun.status, 200);
+    const dryRunPayload = dryRun.data as {
+      allowed: boolean;
+      expectedConfirmationText: string;
+      proposedChange: {
+        statusBefore: string;
+        statusAfter: string;
+        planAfter: string;
+        pendingPlanAfter: string | null;
+      };
+    };
+    assert.equal(dryRunPayload.allowed, true);
+    assert.equal(dryRunPayload.expectedConfirmationText, "REATIVAR");
+    assert.equal(dryRunPayload.proposedChange.statusBefore, "SUSPENDED");
+    assert.equal(dryRunPayload.proposedChange.statusAfter, "ACTIVE");
+    assert.equal(dryRunPayload.proposedChange.planAfter, "BASIC");
+    assert.equal(dryRunPayload.proposedChange.pendingPlanAfter, "PRO");
+
+    const wrongConfirmation = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/reactivate`,
+      {
+        token: fixture.adminToken,
+        body: {
+          reason: "Cliente regularizado",
+          confirmationText: "CONFIRMAR",
+        },
+      },
+    );
+    assert.equal(wrongConfirmation.status, 422);
+
+    globalThis.fetch = failFetch("Mercado Pago nao deve ser chamado");
+    const response = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/reactivate`,
+      {
+        token: fixture.adminToken,
+        body: {
+          reason: "Cliente regularizado",
+          note: "Chamado suporte 321",
+          confirmationText: "REATIVAR",
+        },
+      },
+    );
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      success: boolean;
+      license: {
+        plan: string;
+        status: string;
+        pendingPlan: string | null;
+        providerSubscriptionId?: string;
+      };
+    };
+    assert.equal(payload.success, true);
+    assert.equal(payload.license.status, "ACTIVE");
+    assert.equal(payload.license.plan, "BASIC");
+    assert.equal(payload.license.pendingPlan, "PRO");
+    assert.equal(payload.license.providerSubscriptionId, undefined);
+    assert.equal(JSON.stringify(payload).includes(fixture.providerId), false);
+
+    const after = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(after.status, "ACTIVE");
+    assert.equal(after.plan, before.plan);
+    assert.equal(after.pendingPlan, before.pendingPlan);
+    assert.equal(after.providerSubscriptionId, before.providerSubscriptionId);
+    assert.equal(after.billingProvider, before.billingProvider);
+    assert.equal(
+      after.currentPeriodEnd?.toISOString(),
+      before.currentPeriodEnd?.toISOString(),
+    );
+    assert.equal(
+      after.expiresAt?.toISOString(),
+      before.expiresAt?.toISOString(),
+    );
+
+    const alreadyActive = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/reactivate/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: { reason: "Ativar novamente" },
+      },
+    );
+    assert.equal(alreadyActive.status, 200);
+    assert.equal(
+      JSON.stringify(alreadyActive.data).includes("Licenca ja esta ativa."),
+      true,
+    );
+
+    const audit = await prisma.billingAdminAuditLog.findFirstOrThrow({
+      where: { companyId: fixture.companyId, action: "license.reactivate" },
+      orderBy: { createdAt: "desc" },
+    });
+    assert.equal(audit.reason, "Cliente regularizado");
+    const serializedAudit = JSON.stringify({
+      before: audit.before,
+      after: audit.after,
+      metadata: audit.metadata,
+    });
+    assert.equal(serializedAudit.includes(fixture.providerId), false);
+    assert.equal(serializedAudit.includes("Chamado suporte 321"), true);
+    assert.equal(serializedAudit.includes("REATIVAR"), true);
+
+    const expiredFixture = await createFixture({ plan: "BASIC" });
+    await prisma.license.update({
+      where: { companyId: expiredFixture.companyId },
+      data: {
+        status: "SUSPENDED",
+        expiresAt: new Date(Date.now() - 60 * 60 * 1000),
+      },
+    });
+    const blockedExpired = await requestJson(
+      "POST",
+      `/admin/companies/${expiredFixture.companyId}/license/reactivate/dry-run`,
+      {
+        token: expiredFixture.adminToken,
+        body: { reason: "Cliente regularizado" },
+      },
+    );
+    assert.equal(blockedExpired.status, 200);
+    assert.equal((blockedExpired.data as { allowed?: boolean }).allowed, false);
+    assert.equal(
+      JSON.stringify(blockedExpired.data).includes(
+        "Use Extensao emergencial ou Reconciliar billing",
+      ),
+      true,
+    );
   });
 
   it("dry-runs billing reconcile without mutating or exposing provider id", async () => {

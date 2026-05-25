@@ -106,6 +106,16 @@ export const adminBillingReconcileSchema =
     confirmationText: z.string().trim(),
   });
 
+export const adminLicenseStatusActionDryRunSchema = z.object({
+  reason: requiredReason,
+  note: z.string().trim().max(1000).optional(),
+});
+
+export const adminLicenseStatusActionSchema =
+  adminLicenseStatusActionDryRunSchema.extend({
+    confirmationText: z.string().trim(),
+  });
+
 export type AdminBillingCompaniesQueryInput = z.infer<
   typeof adminBillingCompaniesQuerySchema
 >;
@@ -132,6 +142,12 @@ export type AdminBillingReconcileDryRunInput = z.infer<
 >;
 export type AdminBillingReconcileInput = z.infer<
   typeof adminBillingReconcileSchema
+>;
+export type AdminLicenseStatusActionDryRunInput = z.infer<
+  typeof adminLicenseStatusActionDryRunSchema
+>;
+export type AdminLicenseStatusActionInput = z.infer<
+  typeof adminLicenseStatusActionSchema
 >;
 export type AdminBillingStatusInput =
   | "ACTIVE"

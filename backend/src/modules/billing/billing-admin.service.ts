@@ -17,6 +17,8 @@ import type {
   AdminBillingStatusInput,
   AdminLicenseEmergencyExtensionDryRunInput,
   AdminLicenseEmergencyExtensionInput,
+  AdminLicenseStatusActionDryRunInput,
+  AdminLicenseStatusActionInput,
 } from "./billing-admin.schemas";
 import {
   maskProviderSubscriptionId,
@@ -45,6 +47,8 @@ const BILLING_PROVIDER = "mercadopago";
 const BILLING_RECONCILE_CONFIRMATION = "RECONCILIAR";
 const EMERGENCY_EXTENSION_CONFIRMATION = "ESTENDER";
 const EMERGENCY_EXTENSION_MAX_DAYS = 7;
+const LICENSE_SUSPEND_CONFIRMATION = "SUSPENDER";
+const LICENSE_REACTIVATE_CONFIRMATION = "REATIVAR";
 
 export class BillingAdminService {
   constructor(private readonly billingService = new BillingService()) {}
@@ -596,6 +600,249 @@ export class BillingAdminService {
       success: true,
       message:
         "Extensao emergencial aplicada sem alterar plano, pendingPlan ou Mercado Pago.",
+      license: result.after,
+      currentLicense: result.before,
+      proposedChange: result.proposedChange,
+    };
+  }
+
+  async dryRunLicenseSuspend(
+    input: AdminActionContext & AdminLicenseStatusActionDryRunInput,
+  ) {
+    const context = this.assertAdminActionContext(input);
+    await this.assertCompanyExists(context.companyId);
+    const license = await prisma.license.findUnique({
+      where: { companyId: context.companyId },
+    });
+    return this.buildLicenseStatusActionDryRun({
+      license,
+      action: "suspend",
+      note: input.note,
+    });
+  }
+
+  async applyLicenseSuspend(
+    input: AdminActionContext & AdminLicenseStatusActionInput,
+  ) {
+    return this.applyLicenseStatusAction({
+      input,
+      action: "suspend",
+      expectedConfirmationText: LICENSE_SUSPEND_CONFIRMATION,
+      targetStatus: LicenseStatus.SUSPENDED,
+      auditAction: "license.suspend",
+      blockedCode: "LICENSE_SUSPEND_BLOCKED",
+      confirmationCode: "LICENSE_SUSPEND_CONFIRMATION_REQUIRED",
+      confirmationMessage:
+        "Digite SUSPENDER para confirmar a suspensao da licenca.",
+      successMessage:
+        "Licenca suspensa sem alterar plano, pendingPlan ou Mercado Pago.",
+    });
+  }
+
+  async dryRunLicenseReactivate(
+    input: AdminActionContext & AdminLicenseStatusActionDryRunInput,
+  ) {
+    const context = this.assertAdminActionContext(input);
+    await this.assertCompanyExists(context.companyId);
+    const license = await prisma.license.findUnique({
+      where: { companyId: context.companyId },
+    });
+    return this.buildLicenseStatusActionDryRun({
+      license,
+      action: "reactivate",
+      note: input.note,
+    });
+  }
+
+  async applyLicenseReactivate(
+    input: AdminActionContext & AdminLicenseStatusActionInput,
+  ) {
+    return this.applyLicenseStatusAction({
+      input,
+      action: "reactivate",
+      expectedConfirmationText: LICENSE_REACTIVATE_CONFIRMATION,
+      targetStatus: LicenseStatus.ACTIVE,
+      auditAction: "license.reactivate",
+      blockedCode: "LICENSE_REACTIVATE_BLOCKED",
+      confirmationCode: "LICENSE_REACTIVATE_CONFIRMATION_REQUIRED",
+      confirmationMessage:
+        "Digite REATIVAR para confirmar a reativacao da licenca.",
+      successMessage:
+        "Licenca reativada sem alterar plano, pendingPlan ou Mercado Pago.",
+    });
+  }
+
+  private buildLicenseStatusActionDryRun(input: {
+    license: License | null;
+    action: "suspend" | "reactivate";
+    note?: string;
+  }) {
+    const { license, action } = input;
+    const blockers: string[] = [];
+    const now = new Date();
+    const isExpiredByDate =
+      license?.expiresAt != null &&
+      license.expiresAt.getTime() <= now.getTime();
+    const expectedConfirmationText =
+      action === "suspend"
+        ? LICENSE_SUSPEND_CONFIRMATION
+        : LICENSE_REACTIVATE_CONFIRMATION;
+    const targetStatus =
+      action === "suspend" ? LicenseStatus.SUSPENDED : LicenseStatus.ACTIVE;
+    const risks =
+      action === "suspend"
+        ? [
+            "A suspensao pode bloquear acesso operacional conforme regras de licenca.",
+            "Esta acao nao cancela cobranca no Mercado Pago.",
+            "Esta acao nao altera plano nem assinatura provider.",
+            "pendingPlan continua sem liberar recursos.",
+          ]
+        : [
+            "Reativar licenca restabelece acesso conforme plano ativo license.plan.",
+            "Esta acao nao altera plano.",
+            "Esta acao nao altera cobranca Mercado Pago.",
+            "pendingPlan continua sem liberar recursos.",
+          ];
+
+    if (license == null) {
+      blockers.push("Empresa sem licenca cadastrada.");
+    } else if (action === "suspend") {
+      if (license.status === LicenseStatus.SUSPENDED) {
+        blockers.push("Licenca ja esta suspensa.");
+      }
+    } else {
+      if (license.status === LicenseStatus.ACTIVE) {
+        blockers.push("Licenca ja esta ativa.");
+      } else if (license.status !== LicenseStatus.SUSPENDED) {
+        blockers.push(
+          "Reativacao administrativa permitida apenas para licenca SUSPENDED.",
+        );
+      }
+      if (isExpiredByDate) {
+        blockers.push(
+          "Licenca vencida por expiresAt. Use Extensao emergencial ou Reconciliar billing antes de reativar.",
+        );
+      }
+    }
+
+    const statusBefore = license?.status ?? null;
+    return {
+      allowed: blockers.length === 0,
+      expectedConfirmationText,
+      summary:
+        license == null
+          ? "Nao foi possivel simular a acao porque a licenca nao existe."
+          : action === "suspend"
+            ? "Suspender estado administrativo da licenca sem trocar plano e sem acionar Mercado Pago."
+            : "Reativar estado administrativo da licenca sem trocar plano e sem acionar Mercado Pago.",
+      risks,
+      blockers,
+      currentLicense:
+        license == null
+          ? null
+          : this.serializeLicenseForEmergencyAudit(license),
+      proposedChange:
+        license == null
+          ? null
+          : {
+              field: "status",
+              statusBefore,
+              statusAfter: targetStatus,
+              planBefore: license.plan,
+              planAfter: license.plan,
+              pendingPlanBefore: license.pendingPlan,
+              pendingPlanAfter: license.pendingPlan,
+              expiresAtBefore: license.expiresAt?.toISOString() ?? null,
+              expiresAtAfter: license.expiresAt?.toISOString() ?? null,
+              currentPeriodEndBefore:
+                license.currentPeriodEnd?.toISOString() ?? null,
+              currentPeriodEndAfter:
+                license.currentPeriodEnd?.toISOString() ?? null,
+              mercadoPagoTouched: false,
+              providerSubscriptionTouched: false,
+              note: input.note ?? null,
+            },
+    };
+  }
+
+  private async applyLicenseStatusAction(input: {
+    input: AdminActionContext & AdminLicenseStatusActionInput;
+    action: "suspend" | "reactivate";
+    expectedConfirmationText: string;
+    targetStatus: LicenseStatus;
+    auditAction: string;
+    blockedCode: string;
+    confirmationCode: string;
+    confirmationMessage: string;
+    successMessage: string;
+  }) {
+    const context = this.assertAdminActionContext(input.input);
+    if (input.input.confirmationText !== input.expectedConfirmationText) {
+      throw new AppError(
+        input.confirmationMessage,
+        422,
+        input.confirmationCode,
+        {
+          expectedConfirmationText: input.expectedConfirmationText,
+        },
+      );
+    }
+
+    await this.assertCompanyExists(context.companyId);
+    const result = await prisma.$transaction(async (tx) => {
+      const license = await tx.license.findUnique({
+        where: { companyId: context.companyId },
+      });
+      const dryRun = this.buildLicenseStatusActionDryRun({
+        license,
+        action: input.action,
+        note: input.input.note,
+      });
+      const proposedChange = dryRun.proposedChange;
+      if (!dryRun.allowed || license == null || proposedChange == null) {
+        throw new AppError(
+          "Acao administrativa de licenca bloqueada.",
+          409,
+          input.blockedCode,
+          { blockers: dryRun.blockers },
+        );
+      }
+
+      const before = this.serializeLicenseForEmergencyAudit(license);
+      const updated = await tx.license.update({
+        where: { companyId: context.companyId },
+        data: { status: input.targetStatus },
+      });
+      const after = this.serializeLicenseForEmergencyAudit(updated);
+
+      await tx.billingAdminAuditLog.create({
+        data: {
+          actorUserId: context.actorUserId,
+          companyId: context.companyId,
+          action: input.auditAction,
+          reason: context.reason,
+          before: toJsonInput(before),
+          after: toJsonInput(after),
+          metadata: toJsonInput(
+            sanitizeForAdmin({
+              source: "admin_web",
+              note: input.input.note ?? null,
+              confirmationTextExpected: input.expectedConfirmationText,
+              mercadoPagoTouched: false,
+              providerSubscriptionTouched: false,
+            }),
+          ),
+          ipAddress: context.ipAddress ?? null,
+          userAgent: context.userAgent ?? null,
+        },
+      });
+
+      return { before, after, proposedChange };
+    });
+
+    return {
+      success: true,
+      message: input.successMessage,
       license: result.after,
       currentLicense: result.before,
       proposedChange: result.proposedChange,
