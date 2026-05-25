@@ -59,6 +59,8 @@ void main() {
       'Licencas',
       'Planos',
       'Auditoria',
+      'Billing avancado',
+      'Avancado',
     ]) {
       expect(shellSource, contains(label));
     }
@@ -86,6 +88,8 @@ void main() {
     expect(find.text('Licencas'), findsOneWidget);
     expect(find.text('Planos'), findsOneWidget);
     expect(find.text('Auditoria'), findsOneWidget);
+    expect(find.text('Billing avancado'), findsOneWidget);
+    expect(find.text('Avancado'), findsOneWidget);
   });
 
   testWidgets('menu lateral destaca apenas a secao ativa', (tester) async {

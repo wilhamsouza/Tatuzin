@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/auth/admin_providers.dart';
@@ -54,6 +55,8 @@ class _BillingCompanyDetailPageState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const _AdvancedBillingDetailNotice(),
+            const SizedBox(height: 16),
             AdminSurface(
               title: 'Billing de ${status.companyName}',
               subtitle:
@@ -551,6 +554,46 @@ void _disposeDialogControllers(
     first.dispose();
     second?.dispose();
   });
+}
+
+class _AdvancedBillingDetailNotice extends StatelessWidget {
+  const _AdvancedBillingDetailNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: Text(
+              'Area avancada. Acoes nesta tela podem alterar estado administrativo de billing.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onErrorContainer,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => context.go('/licenses'),
+            icon: const Icon(Icons.workspace_premium_rounded),
+            label: const Text('Consultar Licencas read-only'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _BillingStatusSection extends StatelessWidget {

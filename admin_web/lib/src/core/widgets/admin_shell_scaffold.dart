@@ -52,6 +52,12 @@ class AdminShellScaffold extends ConsumerWidget {
       icon: Icons.fact_check_rounded,
       label: 'Auditoria',
     ),
+    _AdminNavItem(
+      route: '/billing',
+      icon: Icons.admin_panel_settings_rounded,
+      label: 'Billing avancado',
+      badge: 'Avancado',
+    ),
   ];
 
   @override
@@ -60,6 +66,7 @@ class AdminShellScaffold extends ConsumerWidget {
     final isCompact = MediaQuery.sizeOf(context).width < 980;
     final sessionName = auth.session?.user.name ?? 'Administrador';
     final sessionEmail = auth.session?.user.email ?? 'sem sessao';
+    final isAdvancedBilling = currentLocation.startsWith('/billing');
 
     if (isCompact) {
       return Scaffold(
@@ -79,6 +86,7 @@ class AdminShellScaffold extends ConsumerWidget {
             currentLocation: currentLocation,
             sessionName: sessionName,
             sessionEmail: sessionEmail,
+            isAdvancedBilling: isAdvancedBilling,
           ),
         ),
         body: Padding(padding: const EdgeInsets.all(16), child: child),
@@ -93,6 +101,7 @@ class AdminShellScaffold extends ConsumerWidget {
             currentLocation: currentLocation,
             sessionName: sessionName,
             sessionEmail: sessionEmail,
+            isAdvancedBilling: isAdvancedBilling,
           ),
           Expanded(
             child: Column(
@@ -120,7 +129,9 @@ class AdminShellScaffold extends ConsumerWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Console interno read-only para operacao, suporte e auditoria da plataforma.',
+                              isAdvancedBilling
+                                  ? 'Console interno avancado com acoes reais de billing administrativo.'
+                                  : 'Console interno read-only para operacao, suporte e auditoria da plataforma.',
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     color: Theme.of(
@@ -163,11 +174,13 @@ class _Sidebar extends StatelessWidget {
     required this.currentLocation,
     required this.sessionName,
     required this.sessionEmail,
+    required this.isAdvancedBilling,
   });
 
   final String currentLocation;
   final String sessionName;
   final String sessionEmail;
+  final bool isAdvancedBilling;
 
   @override
   Widget build(BuildContext context) {
@@ -248,7 +261,9 @@ class _Sidebar extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       leading: Icon(item.icon),
-                      title: Text(item.label),
+                      title: item.badge == null
+                          ? Text(item.label)
+                          : _NavTitle(item: item),
                       onTap: () {
                         if (!selected) {
                           context.go(item.route);
@@ -261,7 +276,7 @@ class _Sidebar extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 10),
-              const _ReadOnlyBadge(),
+              _ReadOnlyBadge(isAdvancedBilling: isAdvancedBilling),
             ],
           ),
         ),
@@ -327,6 +342,39 @@ class _SessionCard extends StatelessWidget {
   }
 }
 
+class _NavTitle extends StatelessWidget {
+  const _NavTitle({required this.item});
+
+  final _AdminNavItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    if (item.badge == null) {
+      return Text(item.label);
+    }
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Expanded(child: Text(item.label)),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: scheme.errorContainer,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            item.badge!,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.onErrorContainer,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _SessionPill extends StatelessWidget {
   const _SessionPill({required this.name, required this.email});
 
@@ -362,7 +410,9 @@ class _SessionPill extends StatelessWidget {
 }
 
 class _ReadOnlyBadge extends StatelessWidget {
-  const _ReadOnlyBadge();
+  const _ReadOnlyBadge({required this.isAdvancedBilling});
+
+  final bool isAdvancedBilling;
 
   @override
   Widget build(BuildContext context) {
@@ -371,13 +421,19 @@ class _ReadOnlyBadge extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: scheme.secondaryContainer,
+        color: isAdvancedBilling
+            ? scheme.errorContainer
+            : scheme.secondaryContainer,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        'Modo seguro/read-only: sem comandos remotos e sem alteracoes reais.',
+        isAdvancedBilling
+            ? 'Billing avancado: esta rota preserva acoes administrativas reais.'
+            : 'Modo seguro/read-only: sem comandos remotos e sem alteracoes reais.',
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: scheme.onSecondaryContainer,
+          color: isAdvancedBilling
+              ? scheme.onErrorContainer
+              : scheme.onSecondaryContainer,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -390,9 +446,11 @@ class _AdminNavItem {
     required this.route,
     required this.icon,
     required this.label,
+    this.badge,
   });
 
   final String route;
   final IconData icon;
   final String label;
+  final String? badge;
 }

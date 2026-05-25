@@ -380,28 +380,48 @@ class _CompanyLicenseHeader extends StatelessWidget {
             icon: const Icon(Icons.view_module_rounded),
             label: const Text('Ver matriz de planos'),
           ),
+          OutlinedButton.icon(
+            onPressed: () => context.go('/billing/${status.companyId}'),
+            icon: const Icon(Icons.admin_panel_settings_rounded),
+            label: const Text('Abrir billing avancado'),
+          ),
         ],
       ),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Chip(
-            label: Text(
-              'Plano ativo: ${AdminFormatters.formatPlan(license?.plan ?? 'FREE')}',
-            ),
-          ),
-          Chip(
-            label: Text(AdminFormatters.formatLicenseStatus(license?.status)),
-          ),
-          if (license?.pendingPlan != null || billing.pendingPlan != null)
-            Chip(
-              label: Text(
-                'Mudanca pendente: ${AdminFormatters.formatPlan((license?.pendingPlan ?? billing.pendingPlan)!)}',
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              Chip(
+                label: Text(
+                  'Plano ativo: ${AdminFormatters.formatPlan(license?.plan ?? 'FREE')}',
+                ),
               ),
+              Chip(
+                label: Text(
+                  AdminFormatters.formatLicenseStatus(license?.status),
+                ),
+              ),
+              if (license?.pendingPlan != null || billing.pendingPlan != null)
+                Chip(
+                  label: Text(
+                    'Mudanca pendente: ${AdminFormatters.formatPlan((license?.pendingPlan ?? billing.pendingPlan)!)}',
+                  ),
+                ),
+              if (billing.cancelAtPeriodEnd)
+                const Chip(label: Text('Cancelamento agendado')),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Billing avancado executa suporte operacional real. Use apenas para suporte operacional.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
             ),
-          if (billing.cancelAtPeriodEnd)
-            const Chip(label: Text('Cancelamento agendado')),
+          ),
         ],
       ),
     );

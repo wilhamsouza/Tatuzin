@@ -55,9 +55,9 @@ class _BillingAdminPageState extends ConsumerState<BillingAdminPage> {
 
     return companiesAsync.when(
       data: (result) => AdminSurface(
-        title: 'Billing Admin',
+        title: 'Billing avancado',
         subtitle:
-            'Área interna de plataforma/suporte para investigar e corrigir billing Mercado Pago.',
+            'Console operacional legado para suporte administrativo de billing.',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -147,15 +147,31 @@ class _PlatformOnlyNotice extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colorScheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(16),
+        color: colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        'Billing Admin é uma área interna de plataforma. Não é painel owner e não usa /api/owner/*.',
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: colorScheme.onSecondaryContainer,
-          fontWeight: FontWeight.w800,
-        ),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: Text(
+              'Console avancado de billing. Esta area preserva acoes administrativas reais. Para consulta segura/read-only, use Licencas.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onErrorContainer,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          FilledButton.tonalIcon(
+            onPressed: () => context.go('/licenses'),
+            icon: const Icon(Icons.workspace_premium_rounded),
+            label: const Text('Ir para Licencas read-only'),
+          ),
+        ],
       ),
     );
   }

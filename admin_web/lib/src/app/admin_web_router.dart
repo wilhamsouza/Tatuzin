@@ -303,7 +303,7 @@ String _titleForLocation(String location) {
     return 'CRM Gerencial';
   }
   if (location.startsWith('/billing')) {
-    return 'Billing Admin';
+    return 'Billing avancado';
   }
   if (location.startsWith('/sync-health')) {
     return 'Saude da sync';

@@ -90,7 +90,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Billing Admin'), findsOneWidget);
+    expect(find.text('Billing avancado'), findsOneWidget);
+    expect(find.textContaining('Console avancado de billing'), findsOneWidget);
+    expect(find.text('Ir para Licencas read-only'), findsOneWidget);
     expect(find.text('Loja Moda Sul'), findsOneWidget);
     expect(find.text('pre_..._7890'), findsOneWidget);
     expect(find.textContaining('preapproval-secret-full-id'), findsNothing);
@@ -126,6 +128,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Billing de Loja Moda Sul'), findsOneWidget);
+    expect(
+      find.textContaining('Area avancada. Acoes nesta tela podem alterar'),
+      findsOneWidget,
+    );
     expect(find.text('Dashboard Plataforma'), findsNothing);
   });
 
@@ -142,6 +148,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Dado interno de plataforma'), findsOneWidget);
+    expect(find.text('Consultar Licencas read-only'), findsOneWidget);
     expect(find.text('pre_..._7890'), findsWidgets);
     expect(find.textContaining('preapproval-secret-full-id'), findsNothing);
 
@@ -244,6 +251,34 @@ void main() {
     expect(find.text('Licencas read-only'), findsOneWidget);
     expect(find.textContaining('Modo seguro/read-only'), findsOneWidget);
   });
+
+  testWidgets('/licenses/:companyId linka para billing avancado', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeAdminApiService(),
+        initialLocation: '/licenses/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Abrir billing avancado'), findsOneWidget);
+    expect(
+      find.textContaining('Use apenas para suporte operacional'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Abrir billing avancado'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Billing de Loja Moda Sul'), findsOneWidget);
+    expect(
+      find.textContaining('Area avancada. Acoes nesta tela podem alterar'),
+      findsOneWidget,
+    );
+  });
 }
 
 void _setLargeViewport(WidgetTester tester) {
@@ -279,6 +314,16 @@ Widget _adminRouterTestApp({
       GoRoute(
         path: '/billing/:companyId',
         builder: (context, state) => BillingCompanyDetailPage(
+          companyId: state.pathParameters['companyId'] ?? '',
+        ),
+      ),
+      GoRoute(
+        path: '/licenses',
+        builder: (context, state) => const LicensesPage(),
+      ),
+      GoRoute(
+        path: '/licenses/:companyId',
+        builder: (context, state) => LicenseCompanyPage(
           companyId: state.pathParameters['companyId'] ?? '',
         ),
       ),
