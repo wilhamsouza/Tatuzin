@@ -300,10 +300,9 @@ void main() {
     expect(find.text('Falhas locais'), findsWidgets);
     expect(find.text('totalCents antigo'), findsOneWidget);
     expect(
-      find.textContaining('Acoes remotas de suporte serao implementadas'),
+      find.textContaining('Comandos de suporte sao enviados ao app'),
       findsOneWidget,
     );
-    expect(find.textContaining('Comando remoto'), findsNothing);
 
     final deviceTableScroller = find
         .ancestor(
@@ -319,6 +318,83 @@ void main() {
     expect(find.text('Pendentes locais'), findsWidgets);
     expect(find.text('Detalhes seguros'), findsOneWidget);
     expect(find.text('operationalOrderItem'), findsWidgets);
+    expect(find.text('Comandos de suporte'), findsOneWidget);
+    expect(find.text('Recalcular status'), findsOneWidget);
+    expect(find.text('Forcar pull da nuvem'), findsOneWidget);
+    expect(find.text('Limpar conflitos resolvidos'), findsOneWidget);
+    expect(find.text('Reparar eventos recuperaveis'), findsOneWidget);
+    expect(find.text('Reprocessar falhas locais'), findsOneWidget);
+    expect(
+      find.text('Nenhum comando enviado para este device.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('comandos de suporte exigem dry-run e confirmacao correta', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeReadOnlyApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/companies/company-1/sync',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(Tab, 'Dispositivos'));
+    await tester.pumpAndSettle();
+    final deviceTableScroller = find
+        .ancestor(
+          of: find.byType(DataTable).first,
+          matching: find.byType(SingleChildScrollView),
+        )
+        .last;
+    await tester.drag(deviceTableScroller, const Offset(-1800, 0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Detalhes').first);
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Reprocessar falhas locais'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reprocessar falhas locais'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'reprocessar fila');
+    await tester.tap(find.text('Executar dry-run'));
+    await tester.pumpAndSettle();
+
+    expect(service.supportDryRunCalls, 1);
+    expect(
+      find.text('Comando pode ser enviado com seguranca.'),
+      findsOneWidget,
+    );
+    expect(find.text('Confirmacao esperada'), findsOneWidget);
+    expect(find.text('REPROCESSAR'), findsWidgets);
+
+    await tester.enterText(find.byType(TextField).last, 'ERRADO');
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Digite REPROCESSAR para liberar a confirmacao.'),
+      findsWidgets,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Enviar comando'),
+          )
+          .enabled,
+      isFalse,
+    );
+
+    await tester.enterText(find.byType(TextField).last, 'REPROCESSAR');
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Enviar comando'));
+    await tester.pumpAndSettle();
+
+    expect(service.supportCreateCalls, 1);
+    expect(find.text('PENDING'), findsOneWidget);
+    expect(find.text('reprocessar fila'), findsOneWidget);
   });
 
   testWidgets('refresh chama providers por empresa novamente', (tester) async {
@@ -545,6 +621,9 @@ class _FakeReadOnlyApiService extends AdminApiService {
   final bool throwCompanySync;
   AdminSyncCenterCompaniesQuery? lastCompaniesQuery;
   int companyHealthFetchCount = 0;
+  int supportDryRunCalls = 0;
+  int supportCreateCalls = 0;
+  final supportCommands = <Map<String, dynamic>>[];
 
   @override
   Future<AdminDashboardSnapshot> fetchDashboard() async {
@@ -787,7 +866,64 @@ class _FakeReadOnlyApiService extends AdminApiService {
       'failedEvents': const [],
       'openConflicts': const [],
       'resolvedConflicts': const [],
-      'commands': const [],
+      'commands': supportCommands,
+    });
+  }
+
+  @override
+  Future<AdminSyncSupportDryRunResult> dryRunSyncSupportAction({
+    required String companyId,
+    required String deviceId,
+    required String command,
+    required String reason,
+  }) async {
+    supportDryRunCalls++;
+    final expected = switch (command) {
+      'RETRY_FAILED_SYNC_EVENTS' => 'REPROCESSAR',
+      'REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS' => 'REPARAR',
+      'CLEAR_RESOLVED_CONFLICT_CACHE' => 'LIMPAR',
+      'FORCE_SYNC_PULL' => 'ATUALIZAR',
+      _ => 'RECALCULAR',
+    };
+    return AdminSyncSupportDryRunResult.fromMap({
+      'allowed': true,
+      'command': command,
+      'label': 'Comando seguro',
+      'expectedConfirmationText': expected,
+      'blockers': const [],
+      'risks': ['Executado pelo app no proprio dispositivo.'],
+      'summary': 'Comando pode ser enviado com seguranca.',
+    });
+  }
+
+  @override
+  Future<AdminSyncSupportActionResult> createSyncSupportAction({
+    required String companyId,
+    required String deviceId,
+    required String command,
+    required String reason,
+    required String confirmationText,
+  }) async {
+    supportCreateCalls++;
+    final commandMap = {
+      'id': 'cmd-created',
+      'command': command,
+      'label': 'Comando seguro',
+      'status': 'PENDING',
+      'reason': reason,
+      'payload': const {},
+      'result': const {},
+      'errorMessage': null,
+      'requestedAt': '2026-05-24T12:30:00.000Z',
+      'pickedUpAt': null,
+      'completedAt': null,
+      'expiresAt': '2026-05-25T12:30:00.000Z',
+    };
+    supportCommands.insert(0, commandMap);
+    return AdminSyncSupportActionResult.fromMap({
+      'ok': true,
+      'message': 'Comando enviado ao dispositivo.',
+      'command': commandMap,
     });
   }
 

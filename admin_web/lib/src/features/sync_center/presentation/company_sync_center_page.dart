@@ -9,7 +9,47 @@ import '../../../core/utils/admin_formatters.dart';
 import '../../../core/widgets/admin_surface.dart';
 
 const _remoteActionsNotice =
-    'Acoes remotas de suporte serao implementadas na proxima fase com dry-run, confirmacao explicita e auditoria.';
+    'Comandos de suporte sao enviados ao app, executados localmente com dry-run, confirmacao explicita e auditoria.';
+
+const _supportCommands = <_SupportCommandOption>[
+  _SupportCommandOption(
+    command: 'REFRESH_SYNC_STATUS',
+    label: 'Recalcular status',
+    expectedConfirmationText: 'RECALCULAR',
+  ),
+  _SupportCommandOption(
+    command: 'FORCE_SYNC_PULL',
+    label: 'Forcar pull da nuvem',
+    expectedConfirmationText: 'ATUALIZAR',
+  ),
+  _SupportCommandOption(
+    command: 'CLEAR_RESOLVED_CONFLICT_CACHE',
+    label: 'Limpar conflitos resolvidos',
+    expectedConfirmationText: 'LIMPAR',
+  ),
+  _SupportCommandOption(
+    command: 'REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS',
+    label: 'Reparar eventos recuperaveis',
+    expectedConfirmationText: 'REPARAR',
+  ),
+  _SupportCommandOption(
+    command: 'RETRY_FAILED_SYNC_EVENTS',
+    label: 'Reprocessar falhas locais',
+    expectedConfirmationText: 'REPROCESSAR',
+  ),
+];
+
+class _SupportCommandOption {
+  const _SupportCommandOption({
+    required this.command,
+    required this.label,
+    required this.expectedConfirmationText,
+  });
+
+  final String command;
+  final String label;
+  final String expectedConfirmationText;
+}
 
 class AdminCompanySyncCenterPage extends ConsumerStatefulWidget {
   const AdminCompanySyncCenterPage({super.key, required this.companyId});
@@ -968,6 +1008,339 @@ class _DetailGrid extends StatelessWidget {
   }
 }
 
+class _SupportCommandsPanel extends ConsumerWidget {
+  const _SupportCommandsPanel({
+    required this.companyId,
+    required this.deviceId,
+    required this.commands,
+  });
+
+  final String companyId;
+  final String deviceId;
+  final List<AdminSyncSupportCommand> commands;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Comandos de suporte',
+          style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _supportCommands
+              .map(
+                (option) => FilledButton.tonal(
+                  onPressed: () => _showSupportCommandDialog(
+                    context,
+                    companyId: companyId,
+                    deviceId: deviceId,
+                    option: option,
+                  ),
+                  child: Text(option.label),
+                ),
+              )
+              .toList(growable: false),
+        ),
+        const SizedBox(height: 12),
+        if (commands.isEmpty)
+          const _EmptyState(message: 'Nenhum comando enviado para este device.')
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columns: const [
+                DataColumn(label: Text('Comando')),
+                DataColumn(label: Text('Status')),
+                DataColumn(label: Text('Solicitado em')),
+                DataColumn(label: Text('Retirado em')),
+                DataColumn(label: Text('Concluido em')),
+                DataColumn(label: Text('Expira em')),
+                DataColumn(label: Text('Motivo')),
+                DataColumn(label: Text('Resultado/erro')),
+              ],
+              rows: commands
+                  .map(
+                    (command) => DataRow(
+                      cells: [
+                        DataCell(Text(command.command)),
+                        DataCell(_StatusChip(label: command.status)),
+                        DataCell(
+                          Text(
+                            AdminFormatters.formatDateTime(command.requestedAt),
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            AdminFormatters.formatDateTime(command.pickedUpAt),
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            AdminFormatters.formatDateTime(command.completedAt),
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            AdminFormatters.formatDateTime(command.expiresAt),
+                          ),
+                        ),
+                        DataCell(
+                          SizedBox(width: 180, child: Text(command.reason)),
+                        ),
+                        DataCell(
+                          SizedBox(
+                            width: 240,
+                            child: Text(
+                              command.errorMessage ??
+                                  _formatSafeDetails(command.result),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+void _showSupportCommandDialog(
+  BuildContext context, {
+  required String companyId,
+  required String deviceId,
+  required _SupportCommandOption option,
+}) {
+  showDialog<void>(
+    context: context,
+    builder: (_) => _SupportCommandDialog(
+      companyId: companyId,
+      deviceId: deviceId,
+      option: option,
+    ),
+  );
+}
+
+class _SupportCommandDialog extends ConsumerStatefulWidget {
+  const _SupportCommandDialog({
+    required this.companyId,
+    required this.deviceId,
+    required this.option,
+  });
+
+  final String companyId;
+  final String deviceId;
+  final _SupportCommandOption option;
+
+  @override
+  ConsumerState<_SupportCommandDialog> createState() =>
+      _SupportCommandDialogState();
+}
+
+class _SupportCommandDialogState extends ConsumerState<_SupportCommandDialog> {
+  final _reasonController = TextEditingController();
+  final _confirmationController = TextEditingController();
+  AdminSyncSupportDryRunResult? _dryRun;
+  String? _error;
+  bool _loading = false;
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    _confirmationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dryRun = _dryRun;
+    final expected =
+        dryRun?.expectedConfirmationText ??
+        widget.option.expectedConfirmationText;
+    final canConfirm =
+        dryRun?.allowed == true &&
+        _confirmationController.text.trim() == expected &&
+        !_loading;
+    return AlertDialog(
+      title: Text(widget.option.label),
+      content: SizedBox(
+        width: 560,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Command: ${widget.option.command}'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _reasonController,
+                minLines: 2,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Motivo obrigatorio',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              FilledButton.tonalIcon(
+                onPressed: _loading ? null : _runDryRun,
+                icon: const Icon(Icons.fact_check_rounded),
+                label: const Text('Executar dry-run'),
+              ),
+              if (dryRun != null) ...[
+                const SizedBox(height: 16),
+                _DryRunSummary(result: dryRun),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _confirmationController,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'Texto de confirmacao',
+                    helperText: 'Digite $expected para liberar a confirmacao.',
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                if (_confirmationController.text.trim().isNotEmpty &&
+                    _confirmationController.text.trim() != expected)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Digite $expected para liberar a confirmacao.',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+              if (_loading) const LinearProgressIndicator(),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _loading ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: canConfirm ? _createCommand : null,
+          child: const Text('Enviar comando'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _runDryRun() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _dryRun = null;
+      _confirmationController.clear();
+    });
+    try {
+      final result = await ref
+          .read(adminApiServiceProvider)
+          .dryRunSyncSupportAction(
+            companyId: widget.companyId,
+            deviceId: widget.deviceId,
+            command: widget.option.command,
+            reason: _reasonController.text,
+          );
+      if (mounted) {
+        setState(() => _dryRun = result);
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = _safeError(error));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  Future<void> _createCommand() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final result = await ref
+          .read(adminApiServiceProvider)
+          .createSyncSupportAction(
+            companyId: widget.companyId,
+            deviceId: widget.deviceId,
+            command: widget.option.command,
+            reason: _reasonController.text,
+            confirmationText: _confirmationController.text,
+          );
+      ref.invalidate(
+        adminSyncSupportDeviceDetailProvider(
+          AdminSyncCenterDetailKey(
+            companyId: widget.companyId,
+            targetId: widget.deviceId,
+          ),
+        ),
+      );
+      ref.invalidate(adminSyncSupportDevicesProvider(widget.companyId));
+      if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
+        Navigator.of(context).pop();
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(result.message ?? 'Comando criado como PENDING.'),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = _safeError(error));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+}
+
+class _DryRunSummary extends StatelessWidget {
+  const _DryRunSummary({required this.result});
+
+  final AdminSyncSupportDryRunResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    return _DetailGrid(
+      rows: {
+        'Dry-run': result.allowed ? 'Liberado' : 'Bloqueado',
+        'Resumo': result.summary,
+        'Confirmacao esperada': result.expectedConfirmationText,
+        'Riscos': result.risks.isEmpty ? 'Sem dados' : result.risks.join('; '),
+        'Bloqueios': result.blockers.isEmpty
+            ? 'Sem bloqueios'
+            : result.blockers.join('; '),
+      },
+    );
+  }
+}
+
 class _StatusChip extends StatelessWidget {
   const _StatusChip({required this.label});
 
@@ -1161,8 +1534,19 @@ void _showDeviceDetail(
               );
               return detailAsync.when(
                 data: (detail) => SingleChildScrollView(
-                  child: _DetailGrid(
-                    rows: _deviceDetailRows(row, detail.diagnostic),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _DetailGrid(
+                        rows: _deviceDetailRows(row, detail.diagnostic),
+                      ),
+                      const SizedBox(height: 16),
+                      _SupportCommandsPanel(
+                        companyId: companyId,
+                        deviceId: row.id,
+                        commands: detail.commands,
+                      ),
+                    ],
                   ),
                 ),
                 loading: () => const Padding(

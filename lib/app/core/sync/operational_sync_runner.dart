@@ -171,7 +171,7 @@ class OperationalSyncRunner {
     );
   }
 
-  Future<OperationalSyncDiagnosticReport?> reportDiagnosticsOnly() {
+  Future<OperationalSyncDiagnosticReport?> reportDiagnosticsOnly() async {
     return _reportDiagnosticsSafely();
   }
 
@@ -280,12 +280,16 @@ class OperationalSyncRunner {
       if (!_shouldContinue()) {
         return;
       }
-      if (command.id.trim().isEmpty || command.status != 'RUNNING') {
+      if (command.id.trim().isEmpty || command.status != 'PENDING') {
         continue;
       }
       try {
-        final result = await _executeSupportCommand(command);
-        await _remoteDataSource.completeSupportCommand(command.id, result);
+        final running = await _remoteDataSource.startSupportCommand(command.id);
+        if (running == null || running.status != 'RUNNING') {
+          continue;
+        }
+        final result = await _executeSupportCommand(running);
+        await _remoteDataSource.completeSupportCommand(running.id, result);
       } catch (error, stackTrace) {
         AppLogger.error(
           '[OperationalSync] support_command_failed '

@@ -642,7 +642,7 @@ void main() {
           OperationalSyncSupportCommand(
             id: 'cmd-repair',
             command: 'REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS',
-            status: 'RUNNING',
+            status: 'PENDING',
             reason: 'reparar totalCents',
           ),
         ];
@@ -685,7 +685,7 @@ void main() {
               OperationalSyncSupportCommand(
                 id: 'cmd-clear',
                 command: 'CLEAR_RESOLVED_CONFLICT_CACHE',
-                status: 'RUNNING',
+                status: 'PENDING',
                 reason: 'limpar cache',
               ),
             ];
@@ -715,7 +715,7 @@ void main() {
           OperationalSyncSupportCommand(
             id: 'cmd-refresh',
             command: 'REFRESH_SYNC_STATUS',
-            status: 'RUNNING',
+            status: 'PENDING',
             reason: 'recalcular status visual',
           ),
         ];
@@ -744,7 +744,7 @@ void main() {
             OperationalSyncSupportCommand(
               id: 'cmd-force-pull',
               command: 'FORCE_SYNC_PULL',
-              status: 'RUNNING',
+              status: 'PENDING',
               reason: 'forcar atualizacao',
             ),
           ];
@@ -2203,6 +2203,24 @@ class _FakeOperationalSyncRemoteDataSource
   @override
   Future<List<OperationalSyncSupportCommand>> fetchSupportCommands() async {
     return supportCommands;
+  }
+
+  @override
+  Future<OperationalSyncSupportCommand?> startSupportCommand(
+    String commandId,
+  ) async {
+    for (final command in supportCommands) {
+      if (command.id == commandId) {
+        return OperationalSyncSupportCommand(
+          id: command.id,
+          command: command.command,
+          status: 'RUNNING',
+          reason: command.reason,
+          payload: command.payload,
+        );
+      }
+    }
+    return null;
   }
 
   @override

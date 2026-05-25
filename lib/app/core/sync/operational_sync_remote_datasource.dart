@@ -25,6 +25,8 @@ abstract interface class OperationalSyncRemoteDataSource {
 
   Future<List<OperationalSyncSupportCommand>> fetchSupportCommands();
 
+  Future<OperationalSyncSupportCommand?> startSupportCommand(String commandId);
+
   Future<void> completeSupportCommand(
     String commandId,
     Map<String, dynamic> result,

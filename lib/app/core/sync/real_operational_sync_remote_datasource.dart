@@ -138,6 +138,22 @@ class RealOperationalSyncRemoteDataSource
   }
 
   @override
+  Future<OperationalSyncSupportCommand?> startSupportCommand(
+    String commandId,
+  ) async {
+    final response = await _apiClient.postJson(
+      '/sync/support-commands/$commandId/start',
+      body: const <String, dynamic>{},
+      options: await _authorizedOptions(),
+    );
+    final command = response.data['command'];
+    if (command is Map<String, dynamic>) {
+      return OperationalSyncSupportCommand.fromJson(command);
+    }
+    return null;
+  }
+
+  @override
   Future<void> completeSupportCommand(
     String commandId,
     Map<String, dynamic> result,

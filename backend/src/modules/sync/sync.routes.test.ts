@@ -2990,7 +2990,7 @@ describe("operational local-first sync routes", () => {
           items: Array<{ id: string; command: string; status: string }>;
         }
       ).items.map((item) => [item.id, item.command, item.status]),
-      [[command.id, "CLEAR_RESOLVED_CONFLICT_CACHE", "RUNNING"]],
+      [[command.id, "CLEAR_RESOLVED_CONFLICT_CACHE", "PENDING"]],
     );
     assert.equal(
       (
@@ -3010,6 +3010,19 @@ describe("operational local-first sync routes", () => {
       },
     );
     assert.equal(wrongDeviceComplete.status, 404);
+
+    const started = await requestJson(
+      "POST",
+      `/sync/support-commands/${command.id}/start`,
+      {
+        token: fixture.token,
+      },
+    );
+    assert.equal(started.status, 200);
+    assert.equal(
+      (started.data as { command: { status: string } }).command.status,
+      "RUNNING",
+    );
 
     const complete = await requestJson(
       "POST",

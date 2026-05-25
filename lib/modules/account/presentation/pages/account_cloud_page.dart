@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -31,25 +29,6 @@ class AccountCloudPage extends ConsumerStatefulWidget {
 }
 
 class _AccountCloudPageState extends ConsumerState<AccountCloudPage> {
-  bool _diagnosticReported = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_diagnosticReported) {
-      return;
-    }
-    _diagnosticReported = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-      unawaited(
-        ref.read(operationalSyncRunnerProvider).reportDiagnosticsOnly(),
-      );
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);

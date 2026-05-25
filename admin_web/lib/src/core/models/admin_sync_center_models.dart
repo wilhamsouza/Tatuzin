@@ -1060,6 +1060,8 @@ class AdminSyncSupportCommand {
     required this.label,
     required this.status,
     required this.reason,
+    required this.payload,
+    required this.result,
     required this.errorMessage,
     required this.requestedAt,
     required this.pickedUpAt,
@@ -1072,6 +1074,8 @@ class AdminSyncSupportCommand {
   final String label;
   final String status;
   final String reason;
+  final Map<String, dynamic> payload;
+  final Map<String, dynamic> result;
   final String? errorMessage;
   final DateTime? requestedAt;
   final DateTime? pickedUpAt;
@@ -1085,6 +1089,8 @@ class AdminSyncSupportCommand {
       label: _readString(map, 'label'),
       status: _readString(map, 'status'),
       reason: _readString(map, 'reason'),
+      payload: _readOptionalMap(map, 'payload'),
+      result: _readOptionalMap(map, 'result'),
       errorMessage: _readOptionalString(map, 'errorMessage'),
       requestedAt: _readOptionalDateTime(map, 'requestedAt'),
       pickedUpAt: _readOptionalDateTime(map, 'pickedUpAt'),

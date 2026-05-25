@@ -115,29 +115,9 @@ export class SyncSupportService {
       orderBy: { requestedAt: "asc" },
       take: 10,
     });
-    if (pending.length === 0) {
-      return { ok: true, items: [] };
-    }
-    const ids = pending.map((command) => command.id);
-    await prisma.syncSupportCommand.updateMany({
-      where: {
-        id: { in: ids },
-        companyId: context.company.id,
-        deviceId: context.device.id,
-        status: SyncSupportCommandStatus.PENDING,
-      },
-      data: {
-        status: SyncSupportCommandStatus.RUNNING,
-        pickedUpAt: now,
-      },
-    });
-    const running = await prisma.syncSupportCommand.findMany({
-      where: { id: { in: ids } },
-      orderBy: { requestedAt: "asc" },
-    });
     return {
       ok: true,
-      items: running.map((command) => this.commandDto(command)),
+      items: pending.map((command) => this.commandDto(command)),
     };
   }
 
@@ -232,7 +212,7 @@ export class SyncSupportService {
       data: {
         status: SyncSupportCommandStatus.FAILED,
         completedAt: new Date(),
-        errorMessage: truncate(input.errorMessage, 400),
+        errorMessage: truncate(sanitizeString(input.errorMessage), 400),
         result: sanitizeJson(input.result ?? {}),
       },
     });
@@ -756,7 +736,8 @@ export class SyncSupportService {
       reason: command.reason,
       payload: sanitizeJson(command.payload ?? {}),
       result: sanitizeJson(command.result ?? {}),
-      errorMessage: command.errorMessage,
+      errorMessage:
+        command.errorMessage == null ? null : sanitizeString(command.errorMessage),
       requestedAt: command.requestedAt.toISOString(),
       pickedUpAt: command.pickedUpAt?.toISOString() ?? null,
       completedAt: command.completedAt?.toISOString() ?? null,
