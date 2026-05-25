@@ -1,10 +1,10 @@
-import { LicenseStatus, Prisma, type License } from '@prisma/client';
+import { LicenseStatus, Prisma, type License } from "@prisma/client";
 
-import { prisma } from '../../database/prisma';
-import { buildAdminListResponse } from '../../shared/http/api-response';
-import { AppError } from '../../shared/http/app-error';
-import { toPaginationParams } from '../../shared/http/pagination';
-import { normalizePlan } from '../plans/plan-catalog.service';
+import { prisma } from "../../database/prisma";
+import { buildAdminListResponse } from "../../shared/http/api-response";
+import { AppError } from "../../shared/http/app-error";
+import { toPaginationParams } from "../../shared/http/pagination";
+import { normalizePlan } from "../plans/plan-catalog.service";
 import type {
   AdminBillingCancelLocalInput,
   AdminBillingCompaniesQueryInput,
@@ -12,13 +12,15 @@ import type {
   AdminBillingListQueryInput,
   AdminBillingRefreshInput,
   AdminBillingStatusInput,
-} from './billing-admin.schemas';
+  AdminLicenseEmergencyExtensionDryRunInput,
+  AdminLicenseEmergencyExtensionInput,
+} from "./billing-admin.schemas";
 import {
   maskProviderSubscriptionId,
   maskUrl,
   sanitizeForAdmin,
-} from './billing-sanitizer';
-import { BillingService } from './billing.service';
+} from "./billing-sanitizer";
+import { BillingService } from "./billing.service";
 
 type AdminActionContext = {
   actorUserId: string | null | undefined;
@@ -35,6 +37,9 @@ type CompanyIdentity = {
   slug: string;
   isActive: boolean;
 };
+
+const EMERGENCY_EXTENSION_CONFIRMATION = "ESTENDER";
+const EMERGENCY_EXTENSION_MAX_DAYS = 7;
 
 export class BillingAdminService {
   constructor(private readonly billingService = new BillingService()) {}
@@ -100,17 +105,17 @@ export class BillingAdminService {
     const [checkoutSessions, events, invoices] = await prisma.$transaction([
       prisma.billingCheckoutSession.findMany({
         where: { companyId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: 5,
       }),
       prisma.billingProviderEvent.findMany({
         where: { companyId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: 5,
       }),
       prisma.billingInvoice.findMany({
         where: { companyId },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: 5,
       }),
     ]);
@@ -121,8 +126,7 @@ export class BillingAdminService {
         company.license == null ? null : this.serializeLicense(company.license),
       billing: {
         provider: company.license?.billingProvider ?? null,
-        providerSubscriptionId:
-          company.license?.providerSubscriptionId ?? null,
+        providerSubscriptionId: company.license?.providerSubscriptionId ?? null,
         hasProviderSubscription:
           company.license?.providerSubscriptionId != null,
         maskedProviderSubscriptionId: maskProviderSubscriptionId(
@@ -162,7 +166,7 @@ export class BillingAdminService {
         where,
         skip,
         take,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       }),
     ]);
     return buildAdminListResponse({
@@ -171,7 +175,7 @@ export class BillingAdminService {
       pageSize: query.pageSize,
       total,
       filters: {},
-      sort: { by: 'createdAt', direction: 'desc' },
+      sort: { by: "createdAt", direction: "desc" },
     });
   }
 
@@ -188,7 +192,7 @@ export class BillingAdminService {
         where,
         skip,
         take,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       }),
     ]);
     return buildAdminListResponse({
@@ -197,7 +201,7 @@ export class BillingAdminService {
       pageSize: query.pageSize,
       total,
       filters: {},
-      sort: { by: 'createdAt', direction: 'desc' },
+      sort: { by: "createdAt", direction: "desc" },
     });
   }
 
@@ -212,7 +216,7 @@ export class BillingAdminService {
       const after = await this.getLicenseSnapshot(context.companyId);
       await this.createAuditLog({
         ...context,
-        action: 'billing.refresh',
+        action: "billing.refresh",
         before,
         after,
         metadata: { result: status },
@@ -222,20 +226,20 @@ export class BillingAdminService {
       const after = await this.getLicenseSnapshot(context.companyId);
       await this.createAuditLog({
         ...context,
-        action: 'billing.refresh.failed',
+        action: "billing.refresh.failed",
         before,
         after,
         metadata: {
           error:
             error instanceof AppError
               ? { code: error.code, statusCode: error.statusCode }
-              : { code: 'BILLING_REFRESH_FAILED' },
+              : { code: "BILLING_REFRESH_FAILED" },
         },
       });
       throw new AppError(
-        'Nao foi possivel reconciliar a assinatura com o Mercado Pago.',
+        "Nao foi possivel reconciliar a assinatura com o Mercado Pago.",
         error instanceof AppError ? error.statusCode : 502,
-        error instanceof AppError ? error.code : 'BILLING_REFRESH_FAILED',
+        error instanceof AppError ? error.code : "BILLING_REFRESH_FAILED",
       );
     }
   }
@@ -262,7 +266,9 @@ export class BillingAdminService {
         expiresAt: null,
         syncEnabled: true,
         currentPeriodEnd:
-          input.clearProvider === true ? null : input.currentPeriodEnd ?? null,
+          input.clearProvider === true
+            ? null
+            : (input.currentPeriodEnd ?? null),
         billingSubscriptionStatus: input.status ?? null,
         cancelAtPeriodEnd: false,
         cancelRequestedAt: null,
@@ -298,15 +304,13 @@ export class BillingAdminService {
     const after = this.serializeLicense(license);
     await this.createAuditLog({
       ...context,
-      action: 'billing.force_plan',
+      action: "billing.force_plan",
       before,
       after,
       metadata: {
         requestedStatus: input.status ?? null,
         clearProvider: input.clearProvider,
-        ...(providerStillLinked
-          ? { warning: 'provider still linked' }
-          : {}),
+        ...(providerStillLinked ? { warning: "provider still linked" } : {}),
       },
     });
 
@@ -327,14 +331,13 @@ export class BillingAdminService {
     });
 
     if (current == null) {
-      throw new AppError('Licenca nao encontrada.', 404, 'LICENSE_NOT_FOUND');
+      throw new AppError("Licenca nao encontrada.", 404, "LICENSE_NOT_FOUND");
     }
 
     const now = new Date();
     const hasFuturePeriod =
       current.currentPeriodEnd != null && current.currentPeriodEnd > now;
-    const shouldSchedule =
-      input.effective === 'period_end' && hasFuturePeriod;
+    const shouldSchedule = input.effective === "period_end" && hasFuturePeriod;
 
     const license = await prisma.license.update({
       where: { companyId: context.companyId },
@@ -342,10 +345,10 @@ export class BillingAdminService {
         ? {
             cancelAtPeriodEnd: true,
             cancelRequestedAt: now,
-            billingSubscriptionStatus: 'CANCELLED_LOCAL_PERIOD_END',
+            billingSubscriptionStatus: "CANCELLED_LOCAL_PERIOD_END",
           }
         : {
-            plan: 'FREE',
+            plan: "FREE",
             status: LicenseStatus.ACTIVE,
             expiresAt: null,
             cancelAtPeriodEnd: false,
@@ -353,14 +356,14 @@ export class BillingAdminService {
             canceledAt: now,
             pendingPlan: null,
             pendingPlanRequestedAt: null,
-            billingSubscriptionStatus: 'CANCELLED_LOCAL',
+            billingSubscriptionStatus: "CANCELLED_LOCAL",
           },
     });
     const after = this.serializeLicense(license);
 
     await this.createAuditLog({
       ...context,
-      action: 'billing.cancel_local',
+      action: "billing.cancel_local",
       before,
       after,
       metadata: {
@@ -373,8 +376,196 @@ export class BillingAdminService {
     return {
       providerCancelled: false,
       message:
-        'Cancelamento local aplicado. A assinatura no Mercado Pago não foi cancelada por este endpoint.',
+        "Cancelamento local aplicado. A assinatura no Mercado Pago não foi cancelada por este endpoint.",
       license: after,
+    };
+  }
+
+  async dryRunEmergencyExtension(
+    input: AdminActionContext & AdminLicenseEmergencyExtensionDryRunInput,
+  ) {
+    const context = this.assertAdminActionContext(input);
+    await this.assertCompanyExists(context.companyId);
+    const license = await prisma.license.findUnique({
+      where: { companyId: context.companyId },
+    });
+
+    return this.buildEmergencyExtensionDryRun({
+      license,
+      days: input.days,
+      note: input.note,
+    });
+  }
+
+  async applyEmergencyExtension(
+    input: AdminActionContext & AdminLicenseEmergencyExtensionInput,
+  ) {
+    const context = this.assertAdminActionContext(input);
+    if (input.confirmationText !== EMERGENCY_EXTENSION_CONFIRMATION) {
+      throw new AppError(
+        "Digite ESTENDER para confirmar a extensao emergencial.",
+        422,
+        "LICENSE_EXTENSION_CONFIRMATION_REQUIRED",
+        { expectedConfirmationText: EMERGENCY_EXTENSION_CONFIRMATION },
+      );
+    }
+
+    await this.assertCompanyExists(context.companyId);
+    const result = await prisma.$transaction(async (tx) => {
+      const license = await tx.license.findUnique({
+        where: { companyId: context.companyId },
+      });
+      const dryRun = this.buildEmergencyExtensionDryRun({
+        license,
+        days: input.days,
+        note: input.note,
+      });
+      const proposedChange = dryRun.proposedChange;
+      if (!dryRun.allowed || license == null || proposedChange == null) {
+        throw new AppError(
+          "Extensao emergencial bloqueada.",
+          409,
+          "LICENSE_EXTENSION_BLOCKED",
+          { blockers: dryRun.blockers },
+        );
+      }
+
+      const before = this.serializeLicenseForEmergencyAudit(license);
+      const updated = await tx.license.update({
+        where: { companyId: context.companyId },
+        data: {
+          status: proposedChange.statusAfter as LicenseStatus,
+          expiresAt: new Date(proposedChange.expiresAtAfter),
+        },
+      });
+      const after = this.serializeLicenseForEmergencyAudit(updated);
+
+      await tx.billingAdminAuditLog.create({
+        data: {
+          actorUserId: context.actorUserId,
+          companyId: context.companyId,
+          action: "license.emergency_extension",
+          reason: context.reason,
+          before: toJsonInput(before),
+          after: toJsonInput(after),
+          metadata: toJsonInput(
+            sanitizeForAdmin({
+              days: input.days,
+              note: input.note ?? null,
+              source: "admin_web",
+              expectedConfirmationText: EMERGENCY_EXTENSION_CONFIRMATION,
+            }),
+          ),
+          ipAddress: context.ipAddress ?? null,
+          userAgent: context.userAgent ?? null,
+        },
+      });
+
+      return { before, after, proposedChange };
+    });
+
+    return {
+      success: true,
+      message:
+        "Extensao emergencial aplicada sem alterar plano, pendingPlan ou Mercado Pago.",
+      license: result.after,
+      currentLicense: result.before,
+      proposedChange: result.proposedChange,
+    };
+  }
+
+  private buildEmergencyExtensionDryRun(input: {
+    license: License | null;
+    days: number;
+    note?: string;
+  }) {
+    const { license, days } = input;
+    const blockers: string[] = [];
+    const risks = [
+      "Nao altera o plano da empresa.",
+      "Nao altera pendingPlan e nao libera recursos pendentes.",
+      "Nao chama Mercado Pago nem altera providerSubscriptionId.",
+      "A extensao apenas ajusta expiresAt e pode reativar status EXPIRED/SUSPENDED durante a janela emergencial.",
+    ];
+
+    if (license == null) {
+      blockers.push("Empresa sem licenca cadastrada.");
+    }
+    if (
+      !Number.isInteger(days) ||
+      days < 1 ||
+      days > EMERGENCY_EXTENSION_MAX_DAYS
+    ) {
+      blockers.push(`Informe dias entre 1 e ${EMERGENCY_EXTENSION_MAX_DAYS}.`);
+    }
+
+    const now = new Date();
+    const expiresAtBefore = license?.expiresAt ?? null;
+    const canExtendActiveExpiration =
+      expiresAtBefore != null && expiresAtBefore.getTime() > now.getTime();
+    const requiresStatusRecovery =
+      license?.status === LicenseStatus.EXPIRED ||
+      license?.status === LicenseStatus.SUSPENDED ||
+      (expiresAtBefore != null && expiresAtBefore.getTime() <= now.getTime());
+
+    if (
+      license != null &&
+      !canExtendActiveExpiration &&
+      !requiresStatusRecovery
+    ) {
+      blockers.push(
+        "Licenca ativa sem expiresAt nao precisa de extensao emergencial.",
+      );
+    }
+
+    const baseDate =
+      expiresAtBefore != null && expiresAtBefore.getTime() > now.getTime()
+        ? expiresAtBefore
+        : now;
+    const expiresAtAfter = new Date(
+      baseDate.getTime() + days * 24 * 60 * 60 * 1000,
+    );
+    const statusBefore = license?.status ?? null;
+    const statusAfter =
+      license == null
+        ? null
+        : requiresStatusRecovery
+          ? LicenseStatus.ACTIVE
+          : license.status;
+
+    return {
+      allowed: blockers.length === 0,
+      expectedConfirmationText: EMERGENCY_EXTENSION_CONFIRMATION,
+      summary:
+        license == null
+          ? "Nao foi possivel simular a extensao porque a licenca nao existe."
+          : `Extender acesso operacional por ${days} dia(s), sem trocar plano e sem acionar Mercado Pago.`,
+      risks,
+      blockers,
+      currentLicense:
+        license == null
+          ? null
+          : this.serializeLicenseForEmergencyAudit(license),
+      proposedChange:
+        license == null
+          ? null
+          : {
+              field: "expiresAt",
+              days,
+              statusBefore,
+              statusAfter,
+              expiresAtBefore: expiresAtBefore?.toISOString() ?? null,
+              expiresAtAfter: expiresAtAfter.toISOString(),
+              planBefore: license.plan,
+              planAfter: license.plan,
+              pendingPlanBefore: license.pendingPlan,
+              pendingPlanAfter: license.pendingPlan,
+              mercadoPagoTouched: false,
+              providerSubscriptionTouched: false,
+              note: input.note ?? null,
+            },
+      maxAllowedDays: EMERGENCY_EXTENSION_MAX_DAYS,
+      allowedDaysRange: { min: 1, max: EMERGENCY_EXTENSION_MAX_DAYS },
     };
   }
 
@@ -386,9 +577,9 @@ export class BillingAdminService {
     if (query.search != null) {
       filters.push({
         OR: [
-          { name: { contains: query.search, mode: 'insensitive' } },
-          { legalName: { contains: query.search, mode: 'insensitive' } },
-          { slug: { contains: query.search, mode: 'insensitive' } },
+          { name: { contains: query.search, mode: "insensitive" } },
+          { legalName: { contains: query.search, mode: "insensitive" } },
+          { slug: { contains: query.search, mode: "insensitive" } },
         ],
       });
     }
@@ -424,7 +615,7 @@ export class BillingAdminService {
       filters.push({
         license: {
           is: {
-            billingProvider: { equals: query.provider, mode: 'insensitive' },
+            billingProvider: { equals: query.provider, mode: "insensitive" },
           },
         },
       });
@@ -446,15 +637,15 @@ export class BillingAdminService {
     query: AdminBillingCompaniesQueryInput,
   ): Prisma.CompanyOrderByWithRelationInput {
     switch (query.sort) {
-      case 'companyName':
+      case "companyName":
         return { name: query.sortDirection };
-      case 'plan':
+      case "plan":
         return { license: { plan: query.sortDirection } };
-      case 'status':
+      case "status":
         return { license: { status: query.sortDirection } };
-      case 'currentPeriodEnd':
+      case "currentPeriodEnd":
         return { license: { currentPeriodEnd: query.sortDirection } };
-      case 'updatedAt':
+      case "updatedAt":
         return { updatedAt: query.sortDirection };
     }
   }
@@ -462,23 +653,23 @@ export class BillingAdminService {
   private assertAdminActionContext(input: AdminActionContext) {
     if (input.actorUserId == null || input.actorUserId.trim().length === 0) {
       throw new AppError(
-        'Usuario administrativo obrigatorio para esta acao.',
+        "Usuario administrativo obrigatorio para esta acao.",
         401,
-        'ADMIN_ACTOR_REQUIRED',
+        "ADMIN_ACTOR_REQUIRED",
       );
     }
     if (input.companyId.trim().length === 0) {
       throw new AppError(
-        'Empresa obrigatoria para esta acao.',
+        "Empresa obrigatoria para esta acao.",
         400,
-        'ADMIN_COMPANY_REQUIRED',
+        "ADMIN_COMPANY_REQUIRED",
       );
     }
     if (input.reason.trim().length === 0) {
       throw new AppError(
-        'Informe o motivo da acao administrativa.',
+        "Informe o motivo da acao administrativa.",
         422,
-        'ADMIN_REASON_REQUIRED',
+        "ADMIN_REASON_REQUIRED",
       );
     }
     return {
@@ -489,12 +680,14 @@ export class BillingAdminService {
     };
   }
 
-  private async createAuditLog(input: AdminActionContext & {
-    action: string;
-    before: unknown;
-    after: unknown;
-    metadata?: unknown;
-  }) {
+  private async createAuditLog(
+    input: AdminActionContext & {
+      action: string;
+      before: unknown;
+      after: unknown;
+      metadata?: unknown;
+    },
+  ) {
     const context = this.assertAdminActionContext(input);
     await prisma.billingAdminAuditLog.create({
       data: {
@@ -519,27 +712,27 @@ export class BillingAdminService {
       return current?.status ?? LicenseStatus.ACTIVE;
     }
     switch (status) {
-      case 'ACTIVE':
+      case "ACTIVE":
         return LicenseStatus.ACTIVE;
-      case 'EXPIRED':
-      case 'CANCELLED':
+      case "EXPIRED":
+      case "CANCELLED":
         return LicenseStatus.EXPIRED;
-      case 'PAST_DUE':
+      case "PAST_DUE":
         return LicenseStatus.SUSPENDED;
     }
   }
 
   private tryLicenseStatus(value: string) {
-    if (value === 'TRIAL') {
+    if (value === "TRIAL") {
       return LicenseStatus.TRIAL;
     }
-    if (value === 'ACTIVE') {
+    if (value === "ACTIVE") {
       return LicenseStatus.ACTIVE;
     }
-    if (value === 'SUSPENDED') {
+    if (value === "SUSPENDED") {
       return LicenseStatus.SUSPENDED;
     }
-    if (value === 'EXPIRED') {
+    if (value === "EXPIRED") {
       return LicenseStatus.EXPIRED;
     }
     return null;
@@ -557,15 +750,17 @@ export class BillingAdminService {
     });
     if (company == null) {
       throw new AppError(
-        'Empresa nao encontrada.',
+        "Empresa nao encontrada.",
         404,
-        'ADMIN_COMPANY_NOT_FOUND',
+        "ADMIN_COMPANY_NOT_FOUND",
       );
     }
     return company;
   }
 
-  private async getCompanyIdentity(companyId: string): Promise<CompanyIdentity> {
+  private async getCompanyIdentity(
+    companyId: string,
+  ): Promise<CompanyIdentity> {
     const company = await prisma.company.findUnique({
       where: { id: companyId },
       select: {
@@ -578,9 +773,9 @@ export class BillingAdminService {
     });
     if (company == null) {
       throw new AppError(
-        'Empresa nao encontrada.',
+        "Empresa nao encontrada.",
         404,
-        'ADMIN_COMPANY_NOT_FOUND',
+        "ADMIN_COMPANY_NOT_FOUND",
       );
     }
     return company;
@@ -603,6 +798,36 @@ export class BillingAdminService {
       syncEnabled: license.syncEnabled,
       billingProvider: license.billingProvider,
       providerSubscriptionId: license.providerSubscriptionId,
+      currentPeriodStart: license.currentPeriodStart?.toISOString() ?? null,
+      currentPeriodEnd: license.currentPeriodEnd?.toISOString() ?? null,
+      nextPaymentDate: license.nextPaymentDate?.toISOString() ?? null,
+      cancelAtPeriodEnd: license.cancelAtPeriodEnd,
+      cancelRequestedAt: license.cancelRequestedAt?.toISOString() ?? null,
+      canceledAt: license.canceledAt?.toISOString() ?? null,
+      pendingPlan: license.pendingPlan,
+      pendingPlanRequestedAt:
+        license.pendingPlanRequestedAt?.toISOString() ?? null,
+      billingSubscriptionStatus: license.billingSubscriptionStatus,
+      createdAt: license.createdAt.toISOString(),
+      updatedAt: license.updatedAt.toISOString(),
+    };
+  }
+
+  private serializeLicenseForEmergencyAudit(license: License) {
+    return {
+      id: license.id,
+      companyId: license.companyId,
+      plan: license.plan,
+      normalizedPlan: normalizePlan(license.plan),
+      status: license.status,
+      startsAt: license.startsAt.toISOString(),
+      expiresAt: license.expiresAt?.toISOString() ?? null,
+      maxDevices: license.maxDevices,
+      syncEnabled: license.syncEnabled,
+      billingProvider: license.billingProvider,
+      maskedProviderSubscriptionId: maskProviderSubscriptionId(
+        license.providerSubscriptionId,
+      ),
       currentPeriodStart: license.currentPeriodStart?.toISOString() ?? null,
       currentPeriodEnd: license.currentPeriodEnd?.toISOString() ?? null,
       nextPaymentDate: license.nextPaymentDate?.toISOString() ?? null,

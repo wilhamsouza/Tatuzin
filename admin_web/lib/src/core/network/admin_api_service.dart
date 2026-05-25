@@ -513,6 +513,62 @@ class AdminApiService {
     );
   }
 
+  Future<AdminLicenseExtensionDryRun> dryRunLicenseEmergencyExtension({
+    required String companyId,
+    required int days,
+    required String reason,
+    String? note,
+  }) async {
+    final trimmedReason = reason.trim();
+    if (trimmedReason.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    final response = await _apiClient.postJson(
+      '/admin/companies/$companyId/license/extension/dry-run',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        'days': days,
+        'reason': trimmedReason,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      },
+    );
+    return AdminLicenseExtensionDryRun.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
+  Future<AdminLicenseExtensionResult> applyLicenseEmergencyExtension({
+    required String companyId,
+    required int days,
+    required String reason,
+    required String confirmationText,
+    String? note,
+  }) async {
+    final trimmedReason = reason.trim();
+    if (trimmedReason.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    final response = await _apiClient.postJson(
+      '/admin/companies/$companyId/license/extension',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        'days': days,
+        'reason': trimmedReason,
+        'confirmationText': confirmationText.trim(),
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      },
+    );
+    return AdminLicenseExtensionResult.fromMap(
+      response as Map<String, dynamic>? ?? const <String, dynamic>{},
+    );
+  }
+
   Future<AdminAuditSummary> fetchAuditSummary({AdminAuditQuery? query}) async {
     final response = await _apiClient.getJson(
       '/admin/audit/summary',

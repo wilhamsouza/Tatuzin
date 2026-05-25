@@ -76,6 +76,23 @@ void main() {
       ),
       throwsA(isA<AdminApiException>()),
     );
+    expect(
+      () => service.dryRunLicenseEmergencyExtension(
+        companyId: 'company-1',
+        days: 3,
+        reason: ' ',
+      ),
+      throwsA(isA<AdminApiException>()),
+    );
+    expect(
+      () => service.applyLicenseEmergencyExtension(
+        companyId: 'company-1',
+        days: 3,
+        reason: '',
+        confirmationText: 'ESTENDER',
+      ),
+      throwsA(isA<AdminApiException>()),
+    );
   });
 
   testWidgets('Billing Admin lista empresas com provider mascarado', (
@@ -279,6 +296,122 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'Extensao emergencial exige motivo e dias validos antes do dry-run',
+    (tester) async {
+      _setLargeViewport(tester);
+      final service = _FakeAdminApiService();
+      await tester.pumpWidget(
+        _adminRouterTestApp(
+          service: service,
+          initialLocation: '/licenses/company-1',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _openExtensionDialog(tester);
+      await tester.tap(find.text('Simular dry-run'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Informe o motivo da acao administrativa.'),
+        findsOneWidget,
+      );
+      expect(service.extensionDryRunCalls, 0);
+
+      await tester.enterText(find.byType(TextField).at(0), '30');
+      await tester.enterText(
+        find.byType(TextField).at(1),
+        'Suporte emergencial',
+      );
+      await tester.tap(find.text('Simular dry-run'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Informe dias entre 1 e 7.'), findsOneWidget);
+      expect(service.extensionDryRunCalls, 0);
+    },
+  );
+
+  testWidgets('Extensao emergencial usa dry-run e confirmacao ESTENDER', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeAdminApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/licenses/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _openExtensionDialog(tester);
+    await tester.enterText(find.byType(TextField).at(1), 'Cliente em plantao');
+    await tester.tap(find.text('Simular dry-run'));
+    await tester.pumpAndSettle();
+
+    expect(service.extensionDryRunCalls, 1);
+    expect(service.extensionApplyCalls, 0);
+    expect(find.text('Confirmacao exigida: ESTENDER'), findsOneWidget);
+    expect(find.textContaining('Plano: BASIC -> BASIC'), findsOneWidget);
+    expect(find.textContaining('PendingPlan: PRO -> PRO'), findsOneWidget);
+    expect(find.textContaining('preapproval-secret-full-id'), findsNothing);
+
+    await tester.enterText(find.byType(TextField).last, 'ERRADO');
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Digite ESTENDER para liberar a confirmacao.'),
+      findsOneWidget,
+    );
+    final disabledConfirm = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Confirmar extensao'),
+    );
+    expect(disabledConfirm.onPressed, isNull);
+
+    await tester.enterText(find.byType(TextField).last, 'ESTENDER');
+    await tester.pumpAndSettle();
+    final enabledConfirm = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Confirmar extensao'),
+    );
+    expect(enabledConfirm.onPressed, isNotNull);
+    await tester.tap(find.text('Confirmar extensao'));
+    await tester.pumpAndSettle();
+
+    expect(service.extensionApplyCalls, 1);
+    expect(service.statusFetchCount, greaterThanOrEqualTo(2));
+    expect(find.text('Extensao emergencial aplicada.'), findsOneWidget);
+  });
+
+  testWidgets('Extensao emergencial bloqueada mostra blockers e nao executa', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeAdminApiService(blockExtension: true);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/licenses/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _openExtensionDialog(tester);
+    await tester.enterText(find.byType(TextField).at(1), 'Cliente em plantao');
+    await tester.tap(find.text('Simular dry-run'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bloqueios:'), findsOneWidget);
+    expect(
+      find.textContaining('Ja existe extensao emergencial ativa'),
+      findsOneWidget,
+    );
+    final confirm = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Confirmar extensao'),
+    );
+    expect(confirm.onPressed, isNull);
+    expect(service.extensionApplyCalls, 0);
+  });
 }
 
 void _setLargeViewport(WidgetTester tester) {
@@ -288,6 +421,14 @@ void _setLargeViewport(WidgetTester tester) {
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
   });
+}
+
+Future<void> _openExtensionDialog(WidgetTester tester) async {
+  final button = find.widgetWithText(FilledButton, 'Extensao emergencial');
+  await tester.ensureVisible(button);
+  await tester.pumpAndSettle();
+  await tester.tap(button);
+  await tester.pumpAndSettle();
 }
 
 Widget _adminTestApp({
@@ -332,12 +473,15 @@ Widget _adminRouterTestApp({
 
   return ProviderScope(
     overrides: [adminApiServiceProvider.overrideWithValue(service)],
-    child: MaterialApp.router(routerConfig: router),
+    child: MaterialApp.router(
+      routerConfig: router,
+      builder: (context, child) => Scaffold(body: child ?? const SizedBox()),
+    ),
   );
 }
 
 class _FakeAdminApiService extends AdminApiService {
-  _FakeAdminApiService()
+  _FakeAdminApiService({this.blockExtension = false})
     : super(
         apiClient: AdminApiClient(
           baseUrl: 'https://api.test/api',
@@ -349,8 +493,11 @@ class _FakeAdminApiService extends AdminApiService {
         authStorage: AdminAuthStorage(),
       );
 
+  final bool blockExtension;
   int statusFetchCount = 0;
   int forcePlanCalls = 0;
+  int extensionDryRunCalls = 0;
+  int extensionApplyCalls = 0;
   String? lastForcePlan;
   String? lastForcePlanStatus;
   String? lastForcePlanReason;
@@ -393,8 +540,10 @@ class _FakeAdminApiService extends AdminApiService {
     return AdminBillingCompanyStatus.fromMap({
       'company': {'id': companyId, 'name': 'Loja Moda Sul'},
       'license': {
-        'plan': 'PRO',
-        'status': 'ACTIVE',
+        'plan': 'BASIC',
+        'status': 'SUSPENDED',
+        'pendingPlan': 'PRO',
+        'expiresAt': '2026-05-20T00:00:00.000Z',
         'providerSubscriptionId': 'preapproval-secret-full-id',
       },
       'billing': {
@@ -402,10 +551,91 @@ class _FakeAdminApiService extends AdminApiService {
         'providerSubscriptionId': 'preapproval-secret-full-id',
         'maskedProviderSubscriptionId': 'pre_..._7890',
         'hasProviderSubscription': true,
+        'pendingPlan': 'PRO',
       },
       'checkoutSessions': const [],
       'events': const [],
       'invoices': const [],
+    });
+  }
+
+  @override
+  Future<AdminLicenseExtensionDryRun> dryRunLicenseEmergencyExtension({
+    required String companyId,
+    required int days,
+    required String reason,
+    String? note,
+  }) async {
+    if (reason.trim().isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    extensionDryRunCalls += 1;
+    return AdminLicenseExtensionDryRun.fromMap({
+      'allowed': !blockExtension,
+      'expectedConfirmationText': 'ESTENDER',
+      'summary': blockExtension
+          ? 'Extensao bloqueada.'
+          : 'Extensao emergencial de $days dias disponivel.',
+      'risks': const ['Nao altera license.plan.', 'Nao altera Mercado Pago.'],
+      'blockers': blockExtension
+          ? const ['Ja existe extensao emergencial ativa.']
+          : const [],
+      'maxAllowedDays': 7,
+      'allowedDaysRange': const {'min': 1, 'max': 7},
+      'currentLicense': const {
+        'plan': 'BASIC',
+        'status': 'SUSPENDED',
+        'pendingPlan': 'PRO',
+        'expiresAt': '2026-05-20T00:00:00.000Z',
+        'maskedProviderSubscriptionId': 'pre_..._7890',
+      },
+      'proposedChange': const {
+        'planBefore': 'BASIC',
+        'planAfter': 'BASIC',
+        'pendingPlanBefore': 'PRO',
+        'pendingPlanAfter': 'PRO',
+        'statusBefore': 'SUSPENDED',
+        'statusAfter': 'ACTIVE',
+        'expiresAtBefore': '2026-05-20T00:00:00.000Z',
+        'expiresAtAfter': '2026-05-28T00:00:00.000Z',
+      },
+    });
+  }
+
+  @override
+  Future<AdminLicenseExtensionResult> applyLicenseEmergencyExtension({
+    required String companyId,
+    required int days,
+    required String reason,
+    required String confirmationText,
+    String? note,
+  }) async {
+    if (reason.trim().isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    extensionApplyCalls += 1;
+    return AdminLicenseExtensionResult.fromMap({
+      'success': true,
+      'message': 'Extensao emergencial aplicada.',
+      'license': const {
+        'plan': 'BASIC',
+        'status': 'ACTIVE',
+        'pendingPlan': 'PRO',
+        'expiresAt': '2026-05-28T00:00:00.000Z',
+        'maskedProviderSubscriptionId': 'pre_..._7890',
+      },
+      'proposedChange': const {
+        'planBefore': 'BASIC',
+        'planAfter': 'BASIC',
+        'pendingPlanBefore': 'PRO',
+        'pendingPlanAfter': 'PRO',
+      },
     });
   }
 

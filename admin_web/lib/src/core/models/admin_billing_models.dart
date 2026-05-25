@@ -639,6 +639,72 @@ class AdminBillingInvoiceSummary {
   }
 }
 
+class AdminLicenseExtensionDryRun {
+  const AdminLicenseExtensionDryRun({
+    required this.allowed,
+    required this.expectedConfirmationText,
+    required this.summary,
+    required this.risks,
+    required this.blockers,
+    required this.currentLicense,
+    required this.proposedChange,
+    required this.maxAllowedDays,
+    required this.allowedDaysMin,
+    required this.allowedDaysMax,
+  });
+
+  final bool allowed;
+  final String expectedConfirmationText;
+  final String summary;
+  final List<String> risks;
+  final List<String> blockers;
+  final Map<String, dynamic>? currentLicense;
+  final Map<String, dynamic>? proposedChange;
+  final int maxAllowedDays;
+  final int allowedDaysMin;
+  final int allowedDaysMax;
+
+  factory AdminLicenseExtensionDryRun.fromMap(Map<String, dynamic> map) {
+    final range = _readMap(map, 'allowedDaysRange');
+    return AdminLicenseExtensionDryRun(
+      allowed: map['allowed'] == true,
+      expectedConfirmationText:
+          _readOptionalString(map, 'expectedConfirmationText') ?? 'ESTENDER',
+      summary: _readOptionalString(map, 'summary') ?? 'Sem resumo.',
+      risks: _readStringList(map, 'risks'),
+      blockers: _readStringList(map, 'blockers'),
+      currentLicense: _readNullableSafeMap(map, 'currentLicense'),
+      proposedChange: _readNullableSafeMap(map, 'proposedChange'),
+      maxAllowedDays: _readInt(map, 'maxAllowedDays') ?? 7,
+      allowedDaysMin: _readInt(range, 'min') ?? 1,
+      allowedDaysMax: _readInt(range, 'max') ?? 7,
+    );
+  }
+}
+
+class AdminLicenseExtensionResult {
+  const AdminLicenseExtensionResult({
+    required this.success,
+    this.message,
+    this.license,
+    this.proposedChange,
+  });
+
+  final bool success;
+  final String? message;
+  final Map<String, dynamic>? license;
+  final Map<String, dynamic>? proposedChange;
+
+  factory AdminLicenseExtensionResult.fromMap(Map<String, dynamic> map) {
+    return AdminLicenseExtensionResult(
+      success: map['success'] == true,
+      message: _readOptionalString(map, 'message'),
+      license: _readNullableSafeMap(map, 'license'),
+      proposedChange: _readNullableSafeMap(map, 'proposedChange'),
+    );
+  }
+}
+
 class AdminBillingActionResult {
   const AdminBillingActionResult({
     this.message,
@@ -667,6 +733,25 @@ class AdminBillingActionResult {
           : null,
     );
   }
+}
+
+List<String> _readStringList(Map<String, dynamic> map, String key) {
+  final value = map[key];
+  if (value is! List) {
+    return const <String>[];
+  }
+  return value.map((item) => item.toString()).toList(growable: false);
+}
+
+Map<String, dynamic>? _readNullableSafeMap(
+  Map<String, dynamic> map,
+  String key,
+) {
+  final sanitized = sanitizeAdminBillingValue(map[key]);
+  if (sanitized is Map) {
+    return Map<String, dynamic>.from(sanitized);
+  }
+  return null;
 }
 
 List<Map<String, dynamic>> _readList(Map<String, dynamic> map, String key) {

@@ -58,6 +58,16 @@ describe("admin billing routes", () => {
       token: fixture.adminToken,
     });
     assert.equal(allowed.status, 200);
+
+    const forbiddenExtension = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/extension/dry-run`,
+      {
+        token: fixture.operatorToken,
+        body: { days: 3, reason: "Atendimento emergencial" },
+      },
+    );
+    assert.equal(forbiddenExtension.status, 403);
   });
 
   it("returns read-only company access summary without sensitive fields", async () => {
@@ -285,6 +295,182 @@ describe("admin billing routes", () => {
       /^https:\/\/sandbox\.mercadopago\.test\/\.\.\.#/,
     );
     assert.equal(JSON.stringify(payload).includes("full-url"), false);
+  });
+
+  it("dry-runs license emergency extension without mutating license", async () => {
+    const fixture = await createFixture({ plan: "BASIC" });
+    const activeWithoutExpiresAt = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/extension/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: { days: 3, reason: "Atendimento emergencial" },
+      },
+    );
+    assert.equal(activeWithoutExpiresAt.status, 200);
+    assert.equal(
+      (activeWithoutExpiresAt.data as { allowed?: boolean }).allowed,
+      false,
+    );
+    assert.equal(
+      JSON.stringify(activeWithoutExpiresAt.data).includes(
+        "Licenca ativa sem expiresAt nao precisa de extensao emergencial.",
+      ),
+      true,
+    );
+
+    const expiredAt = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await prisma.license.update({
+      where: { companyId: fixture.companyId },
+      data: { status: "EXPIRED", expiresAt: expiredAt },
+    });
+
+    const missingReason = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/extension/dry-run`,
+      { token: fixture.adminToken, body: { days: 3 } },
+    );
+    assert.equal(missingReason.status, 422);
+
+    const invalidDays = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/extension/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: { days: 30, reason: "Atendimento emergencial" },
+      },
+    );
+    assert.equal(invalidDays.status, 422);
+
+    const response = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/extension/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: { days: 3, reason: "Atendimento emergencial" },
+      },
+    );
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      allowed: boolean;
+      expectedConfirmationText: string;
+      maxAllowedDays: number;
+      allowedDaysRange: { min: number; max: number };
+      currentLicense: { plan: string; pendingPlan: string | null };
+      proposedChange: {
+        planAfter: string;
+        pendingPlanAfter: string | null;
+        statusAfter: string;
+        expiresAtAfter: string;
+      };
+    };
+    assert.equal(payload.allowed, true);
+    assert.equal(payload.expectedConfirmationText, "ESTENDER");
+    assert.equal(payload.maxAllowedDays, 7);
+    assert.deepEqual(payload.allowedDaysRange, { min: 1, max: 7 });
+    assert.equal(payload.currentLicense.plan, "BASIC");
+    assert.equal(payload.currentLicense.pendingPlan, "PRO");
+    assert.equal(payload.proposedChange.planAfter, "BASIC");
+    assert.equal(payload.proposedChange.pendingPlanAfter, "PRO");
+    assert.equal(payload.proposedChange.statusAfter, "ACTIVE");
+    assert.equal(JSON.stringify(payload).includes(fixture.providerId), false);
+
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.status, "EXPIRED");
+    assert.equal(license.expiresAt?.toISOString(), expiredAt.toISOString());
+    assert.equal(license.plan, "BASIC");
+    assert.equal(license.pendingPlan, "PRO");
+    assert.equal(license.providerSubscriptionId, fixture.providerId);
+  });
+
+  it("applies license emergency extension with confirmation and sanitized audit", async () => {
+    const fixture = await createFixture({ plan: "BASIC" });
+    const beforeExpiresAt = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    const originalLicense = await prisma.license.update({
+      where: { companyId: fixture.companyId },
+      data: { status: "SUSPENDED", expiresAt: beforeExpiresAt },
+    });
+
+    const wrongConfirmation = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/extension`,
+      {
+        token: fixture.adminToken,
+        body: {
+          days: 2,
+          reason: "Loja precisa concluir conciliacao",
+          confirmationText: "CONFIRMAR",
+        },
+      },
+    );
+    assert.equal(wrongConfirmation.status, 422);
+
+    const response = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/license/extension`,
+      {
+        token: fixture.adminToken,
+        body: {
+          days: 2,
+          reason: "Loja precisa concluir conciliacao",
+          note: "Chamado interno 123",
+          confirmationText: "ESTENDER",
+        },
+      },
+    );
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      success: boolean;
+      license: {
+        plan: string;
+        status: string;
+        pendingPlan: string | null;
+        providerSubscriptionId?: string;
+      };
+      proposedChange: { planAfter: string; pendingPlanAfter: string | null };
+    };
+    assert.equal(payload.success, true);
+    assert.equal(payload.license.plan, "BASIC");
+    assert.equal(payload.license.status, "ACTIVE");
+    assert.equal(payload.license.pendingPlan, "PRO");
+    assert.equal(payload.license.providerSubscriptionId, undefined);
+    assert.equal(payload.proposedChange.planAfter, "BASIC");
+    assert.equal(payload.proposedChange.pendingPlanAfter, "PRO");
+    assert.equal(JSON.stringify(payload).includes(fixture.providerId), false);
+
+    const license = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(license.status, "ACTIVE");
+    assert.equal(license.plan, "BASIC");
+    assert.equal(license.pendingPlan, "PRO");
+    assert.equal(license.providerSubscriptionId, fixture.providerId);
+    assert.equal(license.billingProvider, "mercadopago");
+    assert.equal(
+      license.currentPeriodEnd?.toISOString(),
+      originalLicense.currentPeriodEnd?.toISOString(),
+    );
+    assert.notEqual(license.expiresAt, null);
+    assert.equal(license.expiresAt!.getTime() > Date.now(), true);
+
+    const audit = await prisma.billingAdminAuditLog.findFirstOrThrow({
+      where: {
+        companyId: fixture.companyId,
+        action: "license.emergency_extension",
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    assert.equal(audit.reason, "Loja precisa concluir conciliacao");
+    const serializedAudit = JSON.stringify({
+      before: audit.before,
+      after: audit.after,
+      metadata: audit.metadata,
+    });
+    assert.equal(serializedAudit.includes(fixture.providerId), false);
+    assert.equal(serializedAudit.includes("Chamado interno 123"), true);
+    assert.equal(serializedAudit.includes("ESTENDER"), true);
   });
 
   it("requires reason for refresh and audits provider refresh failures without activating plan", async () => {

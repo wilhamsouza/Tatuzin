@@ -594,7 +594,10 @@ void main() {
     expect(find.text('payment.created'), findsOneWidget);
     expect(find.text('Sessoes de checkout'), findsOneWidget);
     expect(find.text('Tentativa pendente'), findsOneWidget);
-    expect(find.textContaining('Extensao emergencial'), findsOneWidget);
+    expect(
+      find.widgetWithText(FilledButton, 'Extensao emergencial'),
+      findsOneWidget,
+    );
     expect(find.textContaining('Trocar plano'), findsOneWidget);
     expect(find.textContaining('Suspender'), findsOneWidget);
     expect(find.textContaining('Reativar'), findsOneWidget);

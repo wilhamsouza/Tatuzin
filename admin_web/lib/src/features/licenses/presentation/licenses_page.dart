@@ -250,16 +250,15 @@ class LicenseCompanyPage extends ConsumerWidget {
     final checkoutAsync = ref.watch(
       adminBillingCheckoutSessionsProvider(billingListQuery),
     );
+    Future<void> refreshLicense() async {
+      ref.invalidate(adminBillingCompanyStatusProvider(companyId));
+      ref.invalidate(adminBillingEventsProvider(billingListQuery));
+      ref.invalidate(adminBillingCheckoutSessionsProvider(billingListQuery));
+    }
 
     return billingAsync.when(
       data: (status) => RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(adminBillingCompanyStatusProvider(companyId));
-          ref.invalidate(adminBillingEventsProvider(billingListQuery));
-          ref.invalidate(
-            adminBillingCheckoutSessionsProvider(billingListQuery),
-          );
-        },
+        onRefresh: refreshLicense,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
@@ -292,7 +291,10 @@ class LicenseCompanyPage extends ConsumerWidget {
               const SizedBox(height: 16),
               const _SecurityCard(),
               const SizedBox(height: 16),
-              const _PlaceholderActions(),
+              _PlaceholderActions(
+                companyId: companyId,
+                onApplied: refreshLicense,
+              ),
               const SizedBox(height: 16),
               eventsAsync.when(
                 data: (events) => _BillingEventsSection(events: events.items),
@@ -599,38 +601,325 @@ class _SecurityCard extends StatelessWidget {
 }
 
 class _PlaceholderActions extends StatelessWidget {
-  const _PlaceholderActions();
+  const _PlaceholderActions({required this.companyId, required this.onApplied});
+
+  final String companyId;
+  final Future<void> Function() onApplied;
 
   @override
   Widget build(BuildContext context) {
-    return const AdminSurface(
+    return AdminSurface(
       title: 'Proximos passos',
       subtitle:
-          'Botoes visiveis como placeholder. Nenhuma acao real sera enviada.',
+          'Extensao emergencial segue dry-run, motivo, confirmacao explicita e auditoria. Demais acoes permanecem placeholder.',
       child: Wrap(
         spacing: 10,
         runSpacing: 10,
         children: [
-          _PlaceholderButton(
-            label: 'Extensao emergencial',
-            icon: Icons.event_available_rounded,
+          FilledButton.icon(
+            onPressed: () => _openEmergencyExtension(context),
+            icon: const Icon(Icons.event_available_rounded),
+            label: const Text('Extensao emergencial'),
           ),
-          _PlaceholderButton(
+          const _PlaceholderButton(
             label: 'Trocar plano',
             icon: Icons.swap_horiz_rounded,
           ),
-          _PlaceholderButton(
+          const _PlaceholderButton(
             label: 'Suspender licenca',
             icon: Icons.lock_rounded,
           ),
-          _PlaceholderButton(
+          const _PlaceholderButton(
             label: 'Reativar licenca',
             icon: Icons.lock_open_rounded,
           ),
-          _PlaceholderButton(
+          const _PlaceholderButton(
             label: 'Reconciliar Mercado Pago',
             icon: Icons.receipt_long_rounded,
           ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openEmergencyExtension(BuildContext context) async {
+    final applied = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _EmergencyExtensionDialog(companyId: companyId),
+    );
+    if (applied == true) {
+      await onApplied();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Extensao emergencial aplicada.')),
+        );
+      }
+    }
+  }
+}
+
+class _EmergencyExtensionDialog extends ConsumerStatefulWidget {
+  const _EmergencyExtensionDialog({required this.companyId});
+
+  final String companyId;
+
+  @override
+  ConsumerState<_EmergencyExtensionDialog> createState() =>
+      _EmergencyExtensionDialogState();
+}
+
+class _EmergencyExtensionDialogState
+    extends ConsumerState<_EmergencyExtensionDialog> {
+  final _daysController = TextEditingController(text: '3');
+  final _reasonController = TextEditingController();
+  final _noteController = TextEditingController();
+  final _confirmationController = TextEditingController();
+  AdminLicenseExtensionDryRun? _dryRun;
+  String? _error;
+  bool _loadingDryRun = false;
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _daysController.dispose();
+    _reasonController.dispose();
+    _noteController.dispose();
+    _confirmationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final expected = _dryRun?.expectedConfirmationText ?? 'ESTENDER';
+    final reasonFilled = _reasonController.text.trim().isNotEmpty;
+    final days = int.tryParse(_daysController.text.trim());
+    final daysValid = days != null && days >= 1 && days <= 7;
+    final confirmationMatches = _confirmationController.text.trim() == expected;
+    final canSubmit =
+        !_submitting &&
+        _dryRun?.allowed == true &&
+        reasonFilled &&
+        daysValid &&
+        confirmationMatches;
+
+    return AlertDialog(
+      title: const Text('Extensao emergencial'),
+      content: SizedBox(
+        width: 560,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Esta acao nao troca o plano da empresa, nao altera Mercado Pago e nao usa pendingPlan como entitlement ativo.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _daysController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Dias',
+                  helperText: 'Permitido: 1 a 7 dias.',
+                ),
+                onChanged: (_) => setState(() => _dryRun = null),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _reasonController,
+                decoration: const InputDecoration(
+                  labelText: 'Motivo obrigatorio',
+                ),
+                minLines: 2,
+                maxLines: 3,
+                onChanged: (_) => setState(() => _dryRun = null),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _noteController,
+                decoration: const InputDecoration(labelText: 'Nota opcional'),
+                onChanged: (_) => setState(() => _dryRun = null),
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: _loadingDryRun ? null : _runDryRun,
+                icon: _loadingDryRun
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.fact_check_rounded),
+                label: const Text('Simular dry-run'),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+              if (_dryRun != null) ...[
+                const SizedBox(height: 16),
+                _DryRunPreview(dryRun: _dryRun!),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _confirmationController,
+                  decoration: InputDecoration(
+                    labelText: 'Texto de confirmacao',
+                    helperText: confirmationMatches
+                        ? 'Confirmacao correta.'
+                        : 'Digite $expected para liberar a confirmacao.',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting
+              ? null
+              : () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          onPressed: canSubmit ? _submit : null,
+          icon: _submitting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.check_rounded),
+          label: const Text('Confirmar extensao'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _runDryRun() async {
+    final days = int.tryParse(_daysController.text.trim());
+    if (days == null || days < 1 || days > 7) {
+      setState(() => _error = 'Informe dias entre 1 e 7.');
+      return;
+    }
+    if (_reasonController.text.trim().isEmpty) {
+      setState(() => _error = 'Informe o motivo da acao administrativa.');
+      return;
+    }
+    setState(() {
+      _loadingDryRun = true;
+      _error = null;
+      _dryRun = null;
+      _confirmationController.clear();
+    });
+    try {
+      final result = await ref
+          .read(adminApiServiceProvider)
+          .dryRunLicenseEmergencyExtension(
+            companyId: widget.companyId,
+            days: days,
+            reason: _reasonController.text,
+            note: _noteController.text,
+          );
+      if (mounted) {
+        setState(() => _dryRun = result);
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = _safeError(error));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loadingDryRun = false);
+      }
+    }
+  }
+
+  Future<void> _submit() async {
+    final days = int.tryParse(_daysController.text.trim());
+    if (days == null) {
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(adminApiServiceProvider)
+          .applyLicenseEmergencyExtension(
+            companyId: widget.companyId,
+            days: days,
+            reason: _reasonController.text,
+            note: _noteController.text,
+            confirmationText: _confirmationController.text,
+          );
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = _safeError(error));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
+  }
+}
+
+class _DryRunPreview extends StatelessWidget {
+  const _DryRunPreview({required this.dryRun});
+
+  final AdminLicenseExtensionDryRun dryRun;
+
+  @override
+  Widget build(BuildContext context) {
+    final proposed = dryRun.proposedChange;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(dryRun.summary),
+          const SizedBox(height: 8),
+          Text('Confirmacao exigida: ${dryRun.expectedConfirmationText}'),
+          if (proposed != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'expiresAt: ${proposed['expiresAtBefore'] ?? 'sem data'} -> ${proposed['expiresAtAfter'] ?? 'nao disponivel'}',
+            ),
+            Text(
+              'Plano: ${proposed['planBefore']} -> ${proposed['planAfter']}',
+            ),
+            Text(
+              'PendingPlan: ${proposed['pendingPlanBefore'] ?? 'nenhum'} -> ${proposed['pendingPlanAfter'] ?? 'nenhum'}',
+            ),
+          ],
+          if (dryRun.risks.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Text('Riscos/garantias:'),
+            ...dryRun.risks.map((risk) => Text('- $risk')),
+          ],
+          if (dryRun.blockers.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Bloqueios:',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            ...dryRun.blockers.map((blocker) => Text('- $blocker')),
+          ],
         ],
       ),
     );
