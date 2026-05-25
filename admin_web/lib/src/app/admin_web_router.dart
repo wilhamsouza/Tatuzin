@@ -10,6 +10,7 @@ import '../features/billing/presentation/billing_admin_page.dart';
 import '../features/billing/presentation/billing_company_detail_page.dart';
 import '../features/companies/presentation/companies_page.dart';
 import '../features/companies/presentation/company_detail_page.dart';
+import '../features/companies/presentation/company_users_page.dart';
 import '../features/dashboard/presentation/dashboard_page.dart';
 import '../features/devices/presentation/devices_page.dart';
 import '../features/licenses/presentation/licenses_page.dart';
@@ -105,13 +106,6 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const CompaniesPage(),
           ),
           GoRoute(
-            path: '/companies/:companyId',
-            builder: (context, state) {
-              final companyId = state.pathParameters['companyId'] ?? '';
-              return CompanyDetailPage(companyId: companyId);
-            },
-          ),
-          GoRoute(
             path: '/companies/:companyId/sync',
             builder: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
@@ -123,6 +117,28 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
               return LicenseCompanyPage(companyId: companyId);
+            },
+          ),
+          GoRoute(
+            path: '/companies/:companyId/users',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              return CompanyUsersPage(companyId: companyId);
+            },
+          ),
+          GoRoute(
+            path: '/companies/:companyId',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              return CompanyDetailPage(companyId: companyId);
+            },
+          ),
+          GoRoute(
+            path: '/companies/:companyId/employees',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              // Alias read-only de /companies/:companyId/users.
+              return CompanyUsersPage(companyId: companyId);
             },
           ),
           GoRoute(
@@ -242,6 +258,10 @@ String _titleForLocation(String location) {
   }
   if (location.startsWith('/companies/') && location.endsWith('/license')) {
     return 'Licenca da empresa';
+  }
+  if (location.startsWith('/companies/') &&
+      (location.endsWith('/users') || location.endsWith('/employees'))) {
+    return 'Usuarios e funcionarios';
   }
   if (location.startsWith('/licenses/')) {
     return 'Licenca da empresa';

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/admin_access_models.dart';
 import '../models/admin_analytics_models.dart';
 import '../models/admin_billing_models.dart';
 import '../models/admin_crm_models.dart';
@@ -61,6 +62,17 @@ final adminCompanyDetailProvider =
     FutureProvider.family<AdminCompanyDetail, String>((ref, companyId) async {
       ref.watch(adminRefreshTickProvider);
       return ref.watch(adminApiServiceProvider).fetchCompanyDetail(companyId);
+    });
+
+final adminCompanyAccessSummaryProvider =
+    FutureProvider.family<AdminCompanyAccessSummary, String>((
+      ref,
+      companyId,
+    ) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchCompanyAccessSummary(companyId);
     });
 
 final adminCompanySyncHealthProvider =

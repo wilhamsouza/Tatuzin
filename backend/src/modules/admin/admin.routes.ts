@@ -1,11 +1,9 @@
-import { Router } from 'express';
+import { Router } from "express";
 
-import {
-  requirePlatformAdmin,
-} from '../../shared/http/auth-middleware';
-import { asyncHandler } from '../../shared/http/async-handler';
-import { createRateLimit } from '../../shared/http/rate-limit';
-import { validateBody, validateQuery } from '../../shared/http/validate';
+import { requirePlatformAdmin } from "../../shared/http/auth-middleware";
+import { asyncHandler } from "../../shared/http/async-handler";
+import { createRateLimit } from "../../shared/http/rate-limit";
+import { validateBody, validateQuery } from "../../shared/http/validate";
 import {
   type AdminBillingCompaniesQueryInput,
   type AdminBillingListQueryInput,
@@ -14,8 +12,8 @@ import {
   adminBillingForcePlanSchema,
   adminBillingListQuerySchema,
   adminBillingRefreshSchema,
-} from '../billing/billing-admin.schemas';
-import { BillingAdminService } from '../billing/billing-admin.service';
+} from "../billing/billing-admin.schemas";
+import { BillingAdminService } from "../billing/billing-admin.service";
 import {
   type AdminAuditQueryInput,
   type AdminCompanySyncConflictsQueryInput,
@@ -54,11 +52,11 @@ import {
   adminLicensesQuerySchema,
   adminSyncOperationalQuerySchema,
   adminSyncQuerySchema,
-} from './admin.schemas';
-import { AdminSyncCenterService } from './admin-sync-center.service';
-import { AdminSyncHealthService } from './admin-sync-health.service';
-import { AdminService } from './admin.service';
-import { SyncSupportService } from '../sync/sync-support.service';
+} from "./admin.schemas";
+import { AdminSyncCenterService } from "./admin-sync-center.service";
+import { AdminSyncHealthService } from "./admin-sync-health.service";
+import { AdminService } from "./admin.service";
+import { SyncSupportService } from "../sync/sync-support.service";
 
 const adminService = new AdminService();
 const adminSyncHealthService = new AdminSyncHealthService();
@@ -71,20 +69,20 @@ export const adminRouter = Router();
 adminRouter.use(requirePlatformAdmin);
 adminRouter.use(
   createRateLimit({
-    name: 'platform_admin',
+    name: "platform_admin",
     windowMs: 60_000,
     max: 240,
     message:
-      'Muitas operacoes administrativas em pouco tempo. Aguarde um instante e tente novamente.',
-    code: 'ADMIN_RATE_LIMITED',
+      "Muitas operacoes administrativas em pouco tempo. Aguarde um instante e tente novamente.",
+    code: "ADMIN_RATE_LIMITED",
     keyGenerator(request) {
-      return request.auth?.userId ?? request.ip ?? 'unknown-admin';
+      return request.auth?.userId ?? request.ip ?? "unknown-admin";
     },
   }),
 );
 
 adminRouter.get(
-  '/billing/companies',
+  "/billing/companies",
   validateQuery(adminBillingCompaniesQuerySchema),
   asyncHandler(async (request, response) => {
     const payload = await billingAdminService.listCompanies(
@@ -95,7 +93,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/companies',
+  "/companies",
   validateQuery(adminCompaniesQuerySchema),
   asyncHandler(async (request, response) => {
     const companies = await adminService.listCompanies(
@@ -106,7 +104,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/companies/:id',
+  "/companies/:id",
   asyncHandler(async (request, response) => {
     const companyId = Array.isArray(request.params.id)
       ? request.params.id[0]
@@ -117,7 +115,16 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/companies/:companyId/sync/health',
+  "/companies/:companyId/access-summary",
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await adminService.getCompanyAccessSummary(companyId);
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
+  "/companies/:companyId/sync/health",
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
     const payload = await adminSyncHealthService.getHealth(companyId);
@@ -126,7 +133,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/companies/:companyId/sync/events',
+  "/companies/:companyId/sync/events",
   validateQuery(adminCompanySyncEventsQuerySchema),
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
@@ -139,7 +146,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/companies/:companyId/sync/conflicts',
+  "/companies/:companyId/sync/conflicts",
   validateQuery(adminCompanySyncConflictsQuerySchema),
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
@@ -152,7 +159,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/companies/:companyId/sync/incidents',
+  "/companies/:companyId/sync/incidents",
   validateQuery(adminCompanySyncIncidentsQuerySchema),
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
@@ -165,7 +172,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/companies/:companyId/devices',
+  "/companies/:companyId/devices",
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
     const payload = await adminSyncHealthService.listDevices(companyId);
@@ -174,7 +181,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/companies/:companyId/billing/status',
+  "/companies/:companyId/billing/status",
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
     const payload = await billingAdminService.getStatus(companyId);
@@ -183,7 +190,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/companies/:companyId/billing/events',
+  "/companies/:companyId/billing/events",
   validateQuery(adminBillingListQuerySchema),
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
@@ -196,7 +203,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/companies/:companyId/billing/checkout-sessions',
+  "/companies/:companyId/billing/checkout-sessions",
   validateQuery(adminBillingListQuerySchema),
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
@@ -209,7 +216,7 @@ adminRouter.get(
 );
 
 adminRouter.post(
-  '/companies/:companyId/billing/refresh',
+  "/companies/:companyId/billing/refresh",
   validateBody(adminBillingRefreshSchema),
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
@@ -218,14 +225,14 @@ adminRouter.post(
       companyId,
       actorUserId: request.auth?.userId,
       ipAddress: request.ip,
-      userAgent: request.get('user-agent') ?? null,
+      userAgent: request.get("user-agent") ?? null,
     });
     response.json(payload);
   }),
 );
 
 adminRouter.post(
-  '/companies/:companyId/billing/force-plan',
+  "/companies/:companyId/billing/force-plan",
   validateBody(adminBillingForcePlanSchema),
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
@@ -234,14 +241,14 @@ adminRouter.post(
       companyId,
       actorUserId: request.auth?.userId,
       ipAddress: request.ip,
-      userAgent: request.get('user-agent') ?? null,
+      userAgent: request.get("user-agent") ?? null,
     });
     response.json(payload);
   }),
 );
 
 adminRouter.post(
-  '/companies/:companyId/billing/cancel-local',
+  "/companies/:companyId/billing/cancel-local",
   validateBody(adminBillingCancelLocalSchema),
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
@@ -250,14 +257,14 @@ adminRouter.post(
       companyId,
       actorUserId: request.auth?.userId,
       ipAddress: request.ip,
-      userAgent: request.get('user-agent') ?? null,
+      userAgent: request.get("user-agent") ?? null,
     });
     response.json(payload);
   }),
 );
 
 adminRouter.post(
-  '/sessions/:sessionId/revoke',
+  "/sessions/:sessionId/revoke",
   asyncHandler(async (request, response) => {
     const sessionId = Array.isArray(request.params.sessionId)
       ? request.params.sessionId[0]
@@ -273,7 +280,7 @@ adminRouter.post(
 );
 
 adminRouter.patch(
-  '/companies/:id/license',
+  "/companies/:id/license",
   validateBody(adminLicensePatchSchema),
   asyncHandler(async (request, response) => {
     const companyId = Array.isArray(request.params.id)
@@ -289,7 +296,7 @@ adminRouter.patch(
 );
 
 adminRouter.get(
-  '/licenses',
+  "/licenses",
   validateQuery(adminLicensesQuerySchema),
   asyncHandler(async (request, response) => {
     const licenses = await adminService.listLicenses(
@@ -300,7 +307,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/licenses/:companyId',
+  "/licenses/:companyId",
   asyncHandler(async (request, response) => {
     const companyId = Array.isArray(request.params.companyId)
       ? request.params.companyId[0]
@@ -311,7 +318,7 @@ adminRouter.get(
 );
 
 adminRouter.patch(
-  '/licenses/:companyId',
+  "/licenses/:companyId",
   validateBody(adminLicensePatchSchema),
   asyncHandler(async (request, response) => {
     const companyId = Array.isArray(request.params.companyId)
@@ -327,7 +334,7 @@ adminRouter.patch(
 );
 
 adminRouter.get(
-  '/audit/summary',
+  "/audit/summary",
   validateQuery(adminAuditQuerySchema),
   asyncHandler(async (request, response) => {
     const summary = await adminService.getAuditSummary(
@@ -342,7 +349,7 @@ function readParam(value: string | string[]) {
 }
 
 adminRouter.get(
-  '/sync/companies',
+  "/sync/companies",
   validateQuery(adminSyncCenterCompaniesQuerySchema),
   asyncHandler(async (request, response) => {
     const payload = await adminSyncCenterService.listCompanies(
@@ -353,7 +360,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/sync/companies/:companyId/summary',
+  "/sync/companies/:companyId/summary",
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
     const payload = await adminSyncCenterService.getCompanySummary(companyId);
@@ -362,7 +369,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/sync/companies/:companyId/devices',
+  "/sync/companies/:companyId/devices",
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
     const payload = await syncSupportService.listAdminDevices(companyId);
@@ -371,7 +378,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/sync/companies/:companyId/devices/:deviceId/diagnostics',
+  "/sync/companies/:companyId/devices/:deviceId/diagnostics",
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
     const deviceId = readParam(request.params.deviceId);
@@ -384,7 +391,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/sync/companies/:companyId/devices/:deviceId/support-commands',
+  "/sync/companies/:companyId/devices/:deviceId/support-commands",
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
     const deviceId = readParam(request.params.deviceId);
@@ -397,7 +404,7 @@ adminRouter.get(
 );
 
 adminRouter.post(
-  '/sync/companies/:companyId/devices/:deviceId/support-actions/dry-run',
+  "/sync/companies/:companyId/devices/:deviceId/support-actions/dry-run",
   validateBody(adminSyncSupportDryRunSchema),
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
@@ -412,7 +419,7 @@ adminRouter.post(
 );
 
 adminRouter.post(
-  '/sync/companies/:companyId/devices/:deviceId/support-actions',
+  "/sync/companies/:companyId/devices/:deviceId/support-actions",
   validateBody(adminSyncSupportActionSchema),
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
@@ -424,7 +431,7 @@ adminRouter.post(
       {
         actorUserId: request.auth!.userId,
         ipAddress: request.ip ?? null,
-        userAgent: request.get('user-agent') ?? null,
+        userAgent: request.get("user-agent") ?? null,
       },
     );
     response.json(payload);
@@ -432,7 +439,7 @@ adminRouter.post(
 );
 
 adminRouter.get(
-  '/sync/companies/:companyId/events',
+  "/sync/companies/:companyId/events",
   validateQuery(adminSyncCenterEventsQuerySchema),
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
@@ -445,7 +452,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/sync/events/:eventId',
+  "/sync/events/:eventId",
   validateQuery(adminSyncCenterDetailQuerySchema),
   asyncHandler(async (request, response) => {
     const eventId = readParam(request.params.eventId);
@@ -457,7 +464,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/sync/companies/:companyId/conflicts',
+  "/sync/companies/:companyId/conflicts",
   validateQuery(adminSyncCenterConflictsQuerySchema),
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
@@ -470,7 +477,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/sync/conflicts/:conflictId',
+  "/sync/conflicts/:conflictId",
   validateQuery(adminSyncCenterDetailQuerySchema),
   asyncHandler(async (request, response) => {
     const conflictId = readParam(request.params.conflictId);
@@ -485,7 +492,7 @@ adminRouter.get(
 );
 
 adminRouter.post(
-  '/sync/events/:eventId/reprocess-dry-run',
+  "/sync/events/:eventId/reprocess-dry-run",
   validateBody(adminSyncCenterDryRunBodySchema),
   asyncHandler(async (request, response) => {
     const eventId = readParam(request.params.eventId);
@@ -498,7 +505,7 @@ adminRouter.post(
 );
 
 adminRouter.post(
-  '/sync/events/:eventId/reprocess',
+  "/sync/events/:eventId/reprocess",
   validateBody(adminSyncCenterReprocessBodySchema),
   asyncHandler(async (request, response) => {
     const eventId = readParam(request.params.eventId);
@@ -508,7 +515,7 @@ adminRouter.post(
       {
         actorUserId: request.auth!.userId,
         ipAddress: request.ip ?? null,
-        userAgent: request.get('user-agent') ?? null,
+        userAgent: request.get("user-agent") ?? null,
       },
     );
     response.json(payload);
@@ -516,7 +523,7 @@ adminRouter.post(
 );
 
 adminRouter.post(
-  '/sync/conflicts/:conflictId/archive-dry-run',
+  "/sync/conflicts/:conflictId/archive-dry-run",
   validateBody(adminSyncCenterDryRunBodySchema),
   asyncHandler(async (request, response) => {
     const conflictId = readParam(request.params.conflictId);
@@ -529,7 +536,7 @@ adminRouter.post(
 );
 
 adminRouter.post(
-  '/sync/conflicts/:conflictId/archive',
+  "/sync/conflicts/:conflictId/archive",
   validateBody(adminSyncCenterArchiveBodySchema),
   asyncHandler(async (request, response) => {
     const conflictId = readParam(request.params.conflictId);
@@ -539,7 +546,7 @@ adminRouter.post(
       {
         actorUserId: request.auth!.userId,
         ipAddress: request.ip ?? null,
-        userAgent: request.get('user-agent') ?? null,
+        userAgent: request.get("user-agent") ?? null,
       },
     );
     response.json(payload);
@@ -547,7 +554,7 @@ adminRouter.post(
 );
 
 adminRouter.post(
-  '/sync/conflicts/:conflictId/manual-stock-adjustment-dry-run',
+  "/sync/conflicts/:conflictId/manual-stock-adjustment-dry-run",
   validateBody(adminSyncCenterDryRunBodySchema),
   asyncHandler(async (request, response) => {
     const conflictId = readParam(request.params.conflictId);
@@ -560,7 +567,7 @@ adminRouter.post(
 );
 
 adminRouter.post(
-  '/sync/conflicts/:conflictId/manual-stock-adjustment',
+  "/sync/conflicts/:conflictId/manual-stock-adjustment",
   validateBody(adminSyncCenterManualStockAdjustmentBodySchema),
   asyncHandler(async (request, response) => {
     const conflictId = readParam(request.params.conflictId);
@@ -573,7 +580,7 @@ adminRouter.post(
 );
 
 adminRouter.get(
-  '/sync/summary',
+  "/sync/summary",
   validateQuery(adminSyncQuerySchema),
   asyncHandler(async (request, response) => {
     const summary = await adminService.getSyncSummary(
@@ -584,7 +591,7 @@ adminRouter.get(
 );
 
 adminRouter.get(
-  '/sync/operational-summary',
+  "/sync/operational-summary",
   validateQuery(adminSyncOperationalQuerySchema),
   asyncHandler(async (request, response) => {
     const summary = await adminService.getSyncOperationalSummary(

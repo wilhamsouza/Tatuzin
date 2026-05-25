@@ -3,22 +3,27 @@ import type {
   LicenseStatus,
   Prisma,
   SessionAuditLog,
-} from '@prisma/client';
+} from "@prisma/client";
 
-import { prisma } from '../../database/prisma';
-import {
-  buildAdminListResponse,
-} from '../../shared/http/api-response';
-import { toPaginationParams } from '../../shared/http/pagination';
-import { logger } from '../../shared/observability/logger';
-import { AppError } from '../../shared/http/app-error';
-import { AuthSessionService } from '../auth/auth-session.service';
+import { prisma } from "../../database/prisma";
+import { buildAdminListResponse } from "../../shared/http/api-response";
+import { toPaginationParams } from "../../shared/http/pagination";
+import { logger } from "../../shared/observability/logger";
+import { AppError } from "../../shared/http/app-error";
+import { AuthSessionService } from "../auth/auth-session.service";
 import {
   classifySyncOperationalStatus,
   observedSyncFeatureCatalog,
   telemetryGapFeatures,
   unavailableOperationalSignals,
-} from './admin-sync-operational';
+} from "./admin-sync-operational";
+import {
+  EMPLOYEE_PERMISSIONS,
+  defaultPermissionsForRole,
+  effectivePermissionsForEmployee,
+  parseStoredPermissions,
+  roleFromMembershipRole,
+} from "../employees/employee-permissions";
 import type {
   AdminAuditQueryInput,
   AdminCompaniesQueryInput,
@@ -26,7 +31,7 @@ import type {
   AdminLicensesQueryInput,
   AdminSyncOperationalQueryInput,
   AdminSyncQueryInput,
-} from './admin.schemas';
+} from "./admin.schemas";
 
 type CompanyWithCounts = Prisma.CompanyGetPayload<{
   include: {
@@ -57,7 +62,7 @@ type CompanyIdentity = {
 
 type AdminAuditEventDto = {
   id: string;
-  source: 'admin' | 'session';
+  source: "admin" | "session";
   action: string;
   createdAt: string;
   actorUser: {
@@ -100,7 +105,7 @@ type SyncObservedFeatureAggregate = {
 };
 
 type SyncObservedFeatureSnapshot = SyncObservedFeatureAggregate & {
-  observationKind: 'remote_mirror';
+  observationKind: "remote_mirror";
 };
 
 export class AdminService {
@@ -161,7 +166,7 @@ export class AdminService {
       include: {
         license: true,
         memberships: {
-          orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+          orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
           include: {
             user: {
               select: {
@@ -192,9 +197,9 @@ export class AdminService {
 
     if (!company) {
       throw new AppError(
-        'Empresa nao encontrada.',
+        "Empresa nao encontrada.",
         404,
-        'ADMIN_COMPANY_NOT_FOUND',
+        "ADMIN_COMPANY_NOT_FOUND",
       );
     }
 
@@ -220,8 +225,357 @@ export class AdminService {
     };
   }
 
+  async getCompanyAccessSummary(companyId: string) {
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      include: { license: true },
+    });
+
+    if (!company) {
+      throw new AppError(
+        "Empresa nao encontrada.",
+        404,
+        "ADMIN_COMPANY_NOT_FOUND",
+      );
+    }
+
+    const [
+      memberships,
+      employeeProfiles,
+      sessions,
+      adminAuditLogs,
+      sessionAuditLogs,
+    ] = await prisma.$transaction([
+      prisma.membership.findMany({
+        where: { companyId },
+        orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              isActive: true,
+              isPlatformAdmin: true,
+              mustChangePassword: true,
+              temporaryPasswordExpiresAt: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+          employeeProfiles: true,
+        },
+      }),
+      prisma.employeeProfile.findMany({
+        where: { companyId },
+        orderBy: [{ role: "asc" }, { name: "asc" }],
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              isActive: true,
+              isPlatformAdmin: true,
+              mustChangePassword: true,
+              temporaryPasswordExpiresAt: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+          membership: {
+            select: {
+              id: true,
+              role: true,
+              isDefault: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+        },
+      }),
+      prisma.deviceSession.findMany({
+        where: { companyId },
+        orderBy: { lastSeenAt: "desc" },
+        take: 100,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          membership: {
+            select: {
+              id: true,
+              role: true,
+            },
+          },
+        },
+      }),
+      prisma.adminAuditLog.findMany({
+        where: { targetCompanyId: companyId },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        include: {
+          actorUser: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      }),
+      prisma.sessionAuditLog.findMany({
+        where: { companyId },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        include: {
+          actorUser: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          subjectUser: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const employeeByMembershipId = new Map(
+      employeeProfiles
+        .filter((employee) => employee.membershipId != null)
+        .map((employee) => [employee.membershipId!, employee]),
+    );
+    const employeeByUserId = new Map(
+      employeeProfiles
+        .filter((employee) => employee.userId != null)
+        .map((employee) => [employee.userId!, employee]),
+    );
+
+    const deviceDtos = sessions.map((session) => ({
+      id: session.id,
+      userId: session.userId,
+      membershipId: session.membershipId,
+      userName: session.user.name,
+      userEmail: session.user.email,
+      membershipRole: session.membership.role,
+      clientType: session.clientType,
+      clientInstanceId: session.clientInstanceId,
+      deviceLabel: session.deviceLabel,
+      platform: session.platform,
+      appVersion: session.appVersion,
+      status: session.revokedAt == null ? "ACTIVE" : "REVOKED",
+      lastSeenAt: session.lastSeenAt.toISOString(),
+      lastRefreshedAt: session.lastRefreshedAt?.toISOString() ?? null,
+      createdAt: session.createdAt.toISOString(),
+      updatedAt: session.updatedAt.toISOString(),
+    }));
+
+    const users = memberships.map((membership) => {
+      const employee =
+        employeeByMembershipId.get(membership.id) ??
+        employeeByUserId.get(membership.userId) ??
+        null;
+      const role = employee?.role ?? roleFromMembershipRole(membership.role);
+      const status =
+        employee?.status ?? (membership.user.isActive ? "ACTIVE" : "DISABLED");
+      const effectivePermissions =
+        employee == null
+          ? membership.user.isActive
+            ? defaultPermissionsForRole(roleFromMembershipRole(membership.role))
+            : []
+          : effectivePermissionsForEmployee(employee);
+      const userDevices = deviceDtos.filter(
+        (device) => device.userId === membership.userId,
+      );
+
+      return {
+        userId: membership.user.id,
+        membershipId: membership.id,
+        employeeProfileId: employee?.id ?? null,
+        name: membership.user.name,
+        email: membership.user.email,
+        membershipRole: membership.role,
+        employeeRole: role,
+        status,
+        accountStatus: membership.user.isActive ? "ACTIVE" : "DISABLED",
+        effectivePermissions,
+        isOwner: membership.role === "OWNER" || role === "OWNER",
+        isProtectedOwner: membership.role === "OWNER" || role === "OWNER",
+        hasUserAccount: true,
+        hasEmployeeProfile: employee != null,
+        invitationStatus: employee?.status === "INVITED" ? "PENDING" : null,
+        invitationSentAt: employee?.invitedAt?.toISOString() ?? null,
+        lastSeenAt: userDevices[0]?.lastSeenAt ?? null,
+        createdAt: membership.createdAt.toISOString(),
+        updatedAt: membership.updatedAt.toISOString(),
+        devices: userDevices,
+      };
+    });
+
+    const employees = employeeProfiles.map((employee) => {
+      const role = employee.role;
+      const status = employee.status;
+      const effectivePermissions = effectivePermissionsForEmployee(employee);
+      return {
+        employeeProfileId: employee.id,
+        userId: employee.userId,
+        membershipId: employee.membershipId,
+        name: employee.name,
+        email: employee.email,
+        phone: employee.phone,
+        employeeRole: role,
+        membershipRole: employee.membership?.role ?? null,
+        status,
+        savedPermissions: parseStoredPermissions(employee.permissions) ?? [],
+        effectivePermissions,
+        isOwner: role === "OWNER" || employee.membership?.role === "OWNER",
+        isProtectedOwner:
+          role === "OWNER" || employee.membership?.role === "OWNER",
+        hasUserAccount: employee.userId != null,
+        hasEmployeeProfile: true,
+        invitationStatus: status === "INVITED" ? "PENDING" : null,
+        invitationSentAt: employee.invitedAt?.toISOString() ?? null,
+        inviteExpiresAt: employee.inviteExpiresAt?.toISOString() ?? null,
+        acceptedAt: employee.acceptedAt?.toISOString() ?? null,
+        disabledAt: employee.disabledAt?.toISOString() ?? null,
+        createdAt: employee.createdAt.toISOString(),
+        updatedAt: employee.updatedAt.toISOString(),
+      };
+    });
+
+    const summary = {
+      totalUsers: users.length,
+      totalEmployees: employees.length,
+      activeEmployees: employees.filter(
+        (employee) => employee.status === "ACTIVE",
+      ).length,
+      invitedEmployees: employees.filter(
+        (employee) => employee.status === "INVITED",
+      ).length,
+      disabledEmployees: employees.filter(
+        (employee) => employee.status === "DISABLED",
+      ).length,
+      owners: users.filter((user) => user.isOwner).length,
+      admins: users.filter(
+        (user) =>
+          user.membershipRole === "ADMIN" || user.employeeRole === "MANAGER",
+      ).length,
+      operators: users.filter(
+        (user) =>
+          user.membershipRole === "OPERATOR" && user.employeeRole !== "MANAGER",
+      ).length,
+      usersWithoutEmployeeProfile: users.filter(
+        (user) => !user.hasEmployeeProfile,
+      ).length,
+      employeeProfilesWithoutUser: employees.filter(
+        (employee) => !employee.hasUserAccount,
+      ).length,
+      lastSeenAt: deviceDtos[0]?.lastSeenAt ?? null,
+      lastPermissionChangeAt:
+        employees
+          .map((employee) => employee.updatedAt)
+          .sort()
+          .reverse()[0] ?? null,
+    };
+
+    return {
+      company: {
+        id: company.id,
+        name: company.name,
+        slug: company.slug,
+        license:
+          company.license == null
+            ? null
+            : {
+                plan: company.license.plan,
+                status: company.license.status,
+                pendingPlan: company.license.pendingPlan,
+              },
+      },
+      summary,
+      users,
+      employees,
+      permissionsCatalog: EMPLOYEE_PERMISSIONS.map((permission) => ({
+        key: permission,
+        description: this.describeEmployeePermission(permission),
+        owner: true,
+        admin: defaultPermissionsForRole("MANAGER").includes(permission),
+        operator: defaultPermissionsForRole("CASHIER").includes(permission),
+      })),
+      devices: deviceDtos,
+      audit: [
+        ...adminAuditLogs.map((event) => ({
+          id: event.id,
+          source: "admin",
+          action: event.action,
+          actorName: event.actorUser.name,
+          actorEmail: event.actorUser.email,
+          target: company.name,
+          reason: null,
+          metadata: this.sanitizeAuditDetails(event.details),
+          createdAt: event.createdAt.toISOString(),
+        })),
+        ...sessionAuditLogs.map((event) => ({
+          id: event.id,
+          source: "session",
+          action: event.action,
+          actorName: event.actorUser?.name ?? null,
+          actorEmail: event.actorUser?.email ?? null,
+          target: event.subjectUser?.name ?? company.name,
+          reason: null,
+          metadata: this.sanitizeAuditDetails(event.details),
+          createdAt: event.createdAt.toISOString(),
+        })),
+      ]
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+        .slice(0, 20),
+    };
+  }
+
   async revokeSession(input: { sessionId: string; actorUserId: string }) {
     await this.sessionService.revokeSessionAsPlatformAdmin(input);
+  }
+
+  private describeEmployeePermission(permission: string) {
+    const descriptions: Record<string, string> = {
+      "sales.create": "Criar vendas e pedidos operacionais.",
+      "sales.cancel": "Cancelar vendas quando autorizado.",
+      "sales.discount": "Aplicar descontos em vendas.",
+      "cash.open": "Abrir caixa.",
+      "cash.close": "Fechar caixa.",
+      "cash.withdraw": "Registrar retiradas de caixa.",
+      "products.read": "Consultar produtos.",
+      "products.write": "Criar e alterar produtos.",
+      "stock.adjust": "Ajustar estoque.",
+      "customers.read": "Consultar clientes.",
+      "customers.write": "Criar e alterar clientes.",
+      "fiado.read": "Consultar fiado.",
+      "fiado.receive": "Receber pagamentos de fiado.",
+      "reports.basic": "Acessar relatorios basicos.",
+      "reports.advanced": "Acessar relatorios avancados.",
+      "employees.manage": "Gerenciar funcionarios.",
+      "devices.manage": "Gerenciar dispositivos.",
+      "subscription.manage": "Gerenciar assinatura.",
+    };
+    return descriptions[permission] ?? "Permissao nao reconhecida.";
+  }
+
+  private sanitizeAuditDetails(value: Prisma.JsonValue | null) {
+    if (value == null) {
+      return null;
+    }
+    return sanitizeAdminAccessValue(value);
   }
 
   async listLicenses(query: AdminLicensesQueryInput) {
@@ -287,9 +641,9 @@ export class AdminService {
 
     if (!license) {
       throw new AppError(
-        'Licenca nao encontrada para esta empresa.',
+        "Licenca nao encontrada para esta empresa.",
         404,
-        'LICENSE_NOT_FOUND',
+        "LICENSE_NOT_FOUND",
       );
     }
 
@@ -314,9 +668,9 @@ export class AdminService {
 
     if (!company) {
       throw new AppError(
-        'Empresa nao encontrada.',
+        "Empresa nao encontrada.",
         404,
-        'ADMIN_COMPANY_NOT_FOUND',
+        "ADMIN_COMPANY_NOT_FOUND",
       );
     }
 
@@ -354,7 +708,7 @@ export class AdminService {
       data: {
         actorUserId,
         targetCompanyId: companyId,
-        action: 'license.updated',
+        action: "license.updated",
         details: {
           before: current == null ? null : this.serializeLicense(current),
           after: this.serializeLicense(license),
@@ -362,7 +716,7 @@ export class AdminService {
       },
     });
 
-    logger.info('admin.license.updated', {
+    logger.info("admin.license.updated", {
       actorUserId,
       companyId,
       status: license.status,
@@ -397,9 +751,9 @@ export class AdminService {
       prisma.adminAuditLog.count({ where: adminWhere }),
       prisma.adminAuditLog.groupBy({
         where: adminWhere,
-        by: ['action'],
+        by: ["action"],
         orderBy: {
-          action: 'asc',
+          action: "asc",
         },
         _count: {
           _all: true,
@@ -407,7 +761,7 @@ export class AdminService {
       }),
       prisma.adminAuditLog.findMany({
         where: adminWhere,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: fetchTake,
         include: {
           actorUser: {
@@ -429,9 +783,9 @@ export class AdminService {
       prisma.sessionAuditLog.count({ where: sessionWhere }),
       prisma.sessionAuditLog.groupBy({
         where: sessionWhere,
-        by: ['action'],
+        by: ["action"],
         orderBy: {
-          action: 'asc',
+          action: "asc",
         },
         _count: {
           _all: true,
@@ -439,7 +793,7 @@ export class AdminService {
       }),
       prisma.sessionAuditLog.findMany({
         where: sessionWhere,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: fetchTake,
         include: {
           actorUser: {
@@ -476,7 +830,8 @@ export class AdminService {
     ]
       .sort((left, right) => {
         return (
-          new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+          new Date(right.createdAt).getTime() -
+          new Date(left.createdAt).getTime()
         );
       })
       .slice((query.page - 1) * query.pageSize, query.page * query.pageSize);
@@ -544,7 +899,7 @@ export class AdminService {
     const companySummaries = companies.map((company) => {
       const license = company.license;
       const statusKey =
-        license == null ? 'without_license' : license.status.toLowerCase();
+        license == null ? "without_license" : license.status.toLowerCase();
       statusCounts[statusKey] = (statusCounts[statusKey] ?? 0) + 1;
       if (license?.syncEnabled === true) {
         syncEnabledCompanies += 1;
@@ -637,7 +992,9 @@ export class AdminService {
 
     const companySummaries = companies.map((company) => {
       const licenseStatus =
-        company.license == null ? 'without_license' : company.license.status.toLowerCase();
+        company.license == null
+          ? "without_license"
+          : company.license.status.toLowerCase();
       const companySessionSignals = sessionSignals.get(company.id) ?? {
         activeSessionsCount: 0,
         activeMobileSessionsCount: 0,
@@ -662,8 +1019,7 @@ export class AdminService {
           if (latest == null) {
             return feature.lastObservedRemoteChangeAt;
           }
-          return new Date(feature.lastObservedRemoteChangeAt) >
-            new Date(latest)
+          return new Date(feature.lastObservedRemoteChangeAt) > new Date(latest)
             ? feature.lastObservedRemoteChangeAt
             : latest;
         },
@@ -675,7 +1031,8 @@ export class AdminService {
         hasLicense: company.license != null,
         licenseStatus,
         syncEnabled: company.license?.syncEnabled ?? false,
-        activeMobileSessionsCount: companySessionSignals.activeMobileSessionsCount,
+        activeMobileSessionsCount:
+          companySessionSignals.activeMobileSessionsCount,
         observedRemoteRecordCount,
       });
 
@@ -687,14 +1044,15 @@ export class AdminService {
         licenseStatus,
         syncEnabled: company.license?.syncEnabled ?? false,
         activeSessionsCount: companySessionSignals.activeSessionsCount,
-        activeMobileSessionsCount: companySessionSignals.activeMobileSessionsCount,
+        activeMobileSessionsCount:
+          companySessionSignals.activeMobileSessionsCount,
         lastSessionSeenAt: companySessionSignals.lastSessionSeenAt,
         observedRemoteRecordCount,
         lastObservedRemoteChangeAt,
         remoteCoverage: {
           observedFeatureCount: observedFeatures.length,
           featuresWithRemoteRecords,
-          telemetryScope: 'partial_remote_mirror',
+          telemetryScope: "partial_remote_mirror",
         },
         status: classification.status,
         statusSource: classification.statusSource,
@@ -745,12 +1103,12 @@ export class AdminService {
     };
     const capabilities = {
       observedSignals: [
-        'company_status',
-        'license_status',
-        'license_sync_enabled',
-        'device_sessions',
-        'remote_entity_counts',
-        'remote_entity_timestamps',
+        "company_status",
+        "license_status",
+        "license_sync_enabled",
+        "device_sessions",
+        "remote_entity_counts",
+        "remote_entity_timestamps",
       ],
       unavailableSignals: [...unavailableOperationalSignals],
       observedFeatureKeys: observedSyncFeatureCatalog.map(
@@ -758,9 +1116,9 @@ export class AdminService {
       ),
       telemetryGaps: telemetryGapFeatures,
       notes: [
-        'lastObservedRemoteChangeAt vem do maior updatedAt observado nas entidades remotas conhecidas pelo backend.',
-        'status=healthy e uma inferencia limitada: o backend nao enxerga fila local, conflito, retry ou repair do app.',
-        'status=telemetry_limited indica ausencia de telemetria suficiente, nao ausencia de problema.',
+        "lastObservedRemoteChangeAt vem do maior updatedAt observado nas entidades remotas conhecidas pelo backend.",
+        "status=healthy e uma inferencia limitada: o backend nao enxerga fila local, conflito, retry ou repair do app.",
+        "status=telemetry_limited indica ausencia de telemetria suficiente, nao ausencia de problema.",
       ],
     };
 
@@ -786,7 +1144,7 @@ export class AdminService {
   private buildCompanyWhere(
     query: Pick<
       AdminCompaniesQueryInput,
-      'search' | 'isActive' | 'licenseStatus' | 'syncEnabled'
+      "search" | "isActive" | "licenseStatus" | "syncEnabled"
     >,
   ): Prisma.CompanyWhereInput {
     const filters: Prisma.CompanyWhereInput[] = [];
@@ -797,25 +1155,25 @@ export class AdminService {
           {
             name: {
               contains: query.search,
-              mode: 'insensitive',
+              mode: "insensitive",
             },
           },
           {
             legalName: {
               contains: query.search,
-              mode: 'insensitive',
+              mode: "insensitive",
             },
           },
           {
             slug: {
               contains: query.search,
-              mode: 'insensitive',
+              mode: "insensitive",
             },
           },
           {
             documentNumber: {
               contains: query.search,
-              mode: 'insensitive',
+              mode: "insensitive",
             },
           },
         ],
@@ -827,7 +1185,7 @@ export class AdminService {
     }
 
     if (query.licenseStatus != null) {
-      if (query.licenseStatus === 'without_license') {
+      if (query.licenseStatus === "without_license") {
         filters.push({ license: { is: null } });
       } else {
         filters.push({
@@ -873,7 +1231,7 @@ export class AdminService {
   }
 
   private buildLicenseWhere(
-    query: Pick<AdminLicensesQueryInput, 'search' | 'status' | 'syncEnabled'>,
+    query: Pick<AdminLicensesQueryInput, "search" | "status" | "syncEnabled">,
   ): Prisma.LicenseWhereInput {
     const filters: Prisma.LicenseWhereInput[] = [];
 
@@ -884,19 +1242,19 @@ export class AdminService {
             {
               name: {
                 contains: query.search,
-                mode: 'insensitive',
+                mode: "insensitive",
               },
             },
             {
               legalName: {
                 contains: query.search,
-                mode: 'insensitive',
+                mode: "insensitive",
               },
             },
             {
               slug: {
                 contains: query.search,
-                mode: 'insensitive',
+                mode: "insensitive",
               },
             },
           ],
@@ -924,30 +1282,33 @@ export class AdminService {
   }
 
   private resolveCompanyOrderBy(
-    query: Pick<AdminCompaniesQueryInput, 'sortBy' | 'sortDirection'>,
+    query: Pick<AdminCompaniesQueryInput, "sortBy" | "sortDirection">,
   ): Prisma.CompanyOrderByWithRelationInput[] {
     switch (query.sortBy) {
-      case 'name':
-        return [{ name: query.sortDirection }, { createdAt: 'desc' }];
-      case 'updatedAt':
-        return [{ updatedAt: query.sortDirection }, { name: 'asc' }];
+      case "name":
+        return [{ name: query.sortDirection }, { createdAt: "desc" }];
+      case "updatedAt":
+        return [{ updatedAt: query.sortDirection }, { name: "asc" }];
       default:
-        return [{ createdAt: query.sortDirection }, { name: 'asc' }];
+        return [{ createdAt: query.sortDirection }, { name: "asc" }];
     }
   }
 
   private resolveLicenseOrderBy(
-    query: Pick<AdminLicensesQueryInput, 'sortBy' | 'sortDirection'>,
+    query: Pick<AdminLicensesQueryInput, "sortBy" | "sortDirection">,
   ): Prisma.LicenseOrderByWithRelationInput[] {
     switch (query.sortBy) {
-      case 'companyName':
-        return [{ company: { name: query.sortDirection } }, { updatedAt: 'desc' }];
-      case 'expiresAt':
-        return [{ expiresAt: query.sortDirection }, { updatedAt: 'desc' }];
-      case 'status':
-        return [{ status: query.sortDirection }, { updatedAt: 'desc' }];
+      case "companyName":
+        return [
+          { company: { name: query.sortDirection } },
+          { updatedAt: "desc" },
+        ];
+      case "expiresAt":
+        return [{ expiresAt: query.sortDirection }, { updatedAt: "desc" }];
+      case "status":
+        return [{ status: query.sortDirection }, { updatedAt: "desc" }];
       default:
-        return [{ updatedAt: query.sortDirection }, { createdAt: 'desc' }];
+        return [{ updatedAt: query.sortDirection }, { createdAt: "desc" }];
     }
   }
 
@@ -962,16 +1323,16 @@ export class AdminService {
       remoteRecordCount: number;
       licenseStatus: string | null;
     },
-    query: Pick<AdminSyncQueryInput, 'sortBy' | 'sortDirection'>,
+    query: Pick<AdminSyncQueryInput, "sortBy" | "sortDirection">,
   ) {
-    const factor = query.sortDirection === 'asc' ? 1 : -1;
+    const factor = query.sortDirection === "asc" ? 1 : -1;
 
     switch (query.sortBy) {
-      case 'remoteRecordCount':
+      case "remoteRecordCount":
         return (left.remoteRecordCount - right.remoteRecordCount) * factor;
-      case 'licenseStatus':
+      case "licenseStatus":
         return (
-          (left.licenseStatus ?? '').localeCompare(right.licenseStatus ?? '') *
+          (left.licenseStatus ?? "").localeCompare(right.licenseStatus ?? "") *
           factor
         );
       default:
@@ -990,17 +1351,17 @@ export class AdminService {
       observedRemoteRecordCount: number;
       licenseStatus: string;
     },
-    query: Pick<AdminSyncOperationalQueryInput, 'sortBy' | 'sortDirection'>,
+    query: Pick<AdminSyncOperationalQueryInput, "sortBy" | "sortDirection">,
   ) {
-    const factor = query.sortDirection === 'asc' ? 1 : -1;
+    const factor = query.sortDirection === "asc" ? 1 : -1;
 
     switch (query.sortBy) {
-      case 'remoteRecordCount':
+      case "remoteRecordCount":
         return (
           (left.observedRemoteRecordCount - right.observedRemoteRecordCount) *
           factor
         );
-      case 'licenseStatus':
+      case "licenseStatus":
         return left.licenseStatus.localeCompare(right.licenseStatus) * factor;
       default:
         return left.companyName.localeCompare(right.companyName) * factor;
@@ -1053,7 +1414,7 @@ export class AdminService {
       };
 
       current.activeSessionsCount += 1;
-      if (session.clientType === 'MOBILE_APP') {
+      if (session.clientType === "MOBILE_APP") {
         current.activeMobileSessionsCount += 1;
       }
 
@@ -1088,62 +1449,65 @@ export class AdminService {
       fiadoPayments,
     ] = await Promise.all([
       prisma.category.groupBy({
-        by: ['companyId'],
+        by: ["companyId"],
         where: { companyId: { in: companyIds } },
         _count: { _all: true },
         _max: { updatedAt: true },
       }),
       prisma.product.groupBy({
-        by: ['companyId'],
+        by: ["companyId"],
         where: { companyId: { in: companyIds } },
         _count: { _all: true },
         _max: { updatedAt: true },
       }),
       prisma.customer.groupBy({
-        by: ['companyId'],
+        by: ["companyId"],
         where: { companyId: { in: companyIds } },
         _count: { _all: true },
         _max: { updatedAt: true },
       }),
       prisma.supplier.groupBy({
-        by: ['companyId'],
+        by: ["companyId"],
         where: { companyId: { in: companyIds } },
         _count: { _all: true },
         _max: { updatedAt: true },
       }),
       prisma.purchase.groupBy({
-        by: ['companyId'],
+        by: ["companyId"],
         where: { companyId: { in: companyIds } },
         _count: { _all: true },
         _max: { updatedAt: true },
       }),
       prisma.sale.groupBy({
-        by: ['companyId'],
+        by: ["companyId"],
         where: { companyId: { in: companyIds } },
         _count: { _all: true },
         _max: { updatedAt: true },
       }),
       prisma.financialEvent.groupBy({
-        by: ['companyId'],
+        by: ["companyId"],
         where: { companyId: { in: companyIds } },
         _count: { _all: true },
         _max: { updatedAt: true },
       }),
       prisma.cashEvent.groupBy({
-        by: ['companyId'],
+        by: ["companyId"],
         where: { companyId: { in: companyIds } },
         _count: { _all: true },
         _max: { updatedAt: true },
       }),
       prisma.fiadoPayment.groupBy({
-        by: ['companyId'],
+        by: ["companyId"],
         where: { companyId: { in: companyIds } },
         _count: { _all: true },
         _max: { updatedAt: true },
       }),
     ]);
 
-    const byCompany = new Map<string, Map<string, SyncObservedFeatureAggregate>>();
+    const byCompany = new Map<
+      string,
+      Map<string, SyncObservedFeatureAggregate>
+    >();
 
     const registerFeature = (
       featureKey: string,
@@ -1166,15 +1530,15 @@ export class AdminService {
       }
     };
 
-    registerFeature('categories', 'Categorias', categories);
-    registerFeature('products', 'Produtos', products);
-    registerFeature('customers', 'Clientes', customers);
-    registerFeature('suppliers', 'Fornecedores', suppliers);
-    registerFeature('purchases', 'Compras', purchases);
-    registerFeature('sales', 'Vendas', sales);
-    registerFeature('financial_events', 'Eventos financeiros', financialEvents);
-    registerFeature('cash_events', 'Eventos de caixa', cashEvents);
-    registerFeature('fiado_payments', 'Pagamentos de fiado', fiadoPayments);
+    registerFeature("categories", "Categorias", categories);
+    registerFeature("products", "Produtos", products);
+    registerFeature("customers", "Clientes", customers);
+    registerFeature("suppliers", "Fornecedores", suppliers);
+    registerFeature("purchases", "Compras", purchases);
+    registerFeature("sales", "Vendas", sales);
+    registerFeature("financial_events", "Eventos financeiros", financialEvents);
+    registerFeature("cash_events", "Eventos de caixa", cashEvents);
+    registerFeature("fiado_payments", "Pagamentos de fiado", fiadoPayments);
 
     return byCompany;
   }
@@ -1192,7 +1556,7 @@ export class AdminService {
         remoteRecordCount: aggregate?.remoteRecordCount ?? 0,
         lastObservedRemoteChangeAt:
           aggregate?.lastObservedRemoteChangeAt ?? null,
-        observationKind: 'remote_mirror' as const,
+        observationKind: "remote_mirror" as const,
       };
     });
   }
@@ -1219,7 +1583,7 @@ export class AdminService {
   ): AdminAuditEventDto {
     return {
       id: event.id,
-      source: 'admin',
+      source: "admin",
       action: event.action,
       createdAt: event.createdAt.toISOString(),
       actorUser: event.actorUser,
@@ -1233,7 +1597,7 @@ export class AdminService {
   ): AdminAuditEventDto {
     return {
       id: event.id,
-      source: 'session',
+      source: "session",
       action: event.action,
       createdAt: event.createdAt.toISOString(),
       actorUser: event.actorUser,
@@ -1326,8 +1690,8 @@ export class AdminService {
     return {
       id: `license_${companyId}`,
       companyId,
-      plan: 'trial',
-      status: 'TRIAL',
+      plan: "trial",
+      status: "TRIAL",
       startsAt: now,
       expiresAt: null,
       maxDevices: null,
@@ -1347,4 +1711,50 @@ export class AdminService {
       updatedAt: now,
     };
   }
+}
+
+function sanitizeAdminAccessValue(value: unknown): unknown {
+  if (
+    value == null ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const lower = value.toLowerCase();
+    if (
+      lower.startsWith("bearer ") ||
+      lower.includes("token=") ||
+      lower.includes("authorization") ||
+      lower.includes("secret") ||
+      lower.includes("password")
+    ) {
+      return "[redacted]";
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeAdminAccessValue);
+  }
+  if (typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, rawValue] of Object.entries(value)) {
+      const normalized = key.toLowerCase().replace(/[\s_-]/g, "");
+      if (
+        normalized.includes("token") ||
+        normalized.includes("secret") ||
+        normalized.includes("authorization") ||
+        normalized.includes("password") ||
+        normalized.includes("hash") ||
+        normalized.includes("header")
+      ) {
+        result.campo_sensivel_removido = "[redacted]";
+        continue;
+      }
+      result[key] = sanitizeAdminAccessValue(rawValue);
+    }
+    return result;
+  }
+  return String(value);
 }

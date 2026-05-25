@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:http/testing.dart';
 import 'package:tatuzin_admin_web/src/core/auth/admin_auth_storage.dart';
 import 'package:tatuzin_admin_web/src/core/auth/admin_providers.dart';
+import 'package:tatuzin_admin_web/src/core/models/admin_access_models.dart';
 import 'package:tatuzin_admin_web/src/core/models/admin_billing_models.dart';
 import 'package:tatuzin_admin_web/src/core/models/admin_models.dart';
 import 'package:tatuzin_admin_web/src/core/models/admin_sync_center_models.dart';
@@ -15,6 +16,7 @@ import 'package:tatuzin_admin_web/src/core/network/admin_api_service.dart';
 import 'package:tatuzin_admin_web/src/core/widgets/admin_shell_scaffold.dart';
 import 'package:tatuzin_admin_web/src/features/companies/presentation/companies_page.dart';
 import 'package:tatuzin_admin_web/src/features/companies/presentation/company_detail_page.dart';
+import 'package:tatuzin_admin_web/src/features/companies/presentation/company_users_page.dart';
 import 'package:tatuzin_admin_web/src/features/dashboard/presentation/dashboard_page.dart';
 import 'package:tatuzin_admin_web/src/features/devices/presentation/devices_page.dart';
 import 'package:tatuzin_admin_web/src/features/licenses/presentation/licenses_page.dart';
@@ -36,6 +38,8 @@ void main() {
       "path: '/companies/:companyId'",
       "path: '/companies/:companyId/sync'",
       "path: '/companies/:companyId/license'",
+      "path: '/companies/:companyId/users'",
+      "path: '/companies/:companyId/employees'",
       "path: '/sync'",
       "path: '/sync/:companyId'",
       "path: '/devices'",
@@ -153,13 +157,122 @@ void main() {
     expect(find.text('Resumo'), findsOneWidget);
     expect(find.text('Resumo de sync'), findsOneWidget);
     expect(find.text('Licenca e assinatura'), findsOneWidget);
+    expect(find.text('Usuarios e funcionarios'), findsOneWidget);
     expect(find.text('Abrir console de sync'), findsWidgets);
     expect(find.text('Ver licenca e assinatura'), findsWidgets);
+    expect(find.text('Ver usuarios e funcionarios'), findsWidgets);
     expect(find.text('Sync'), findsOneWidget);
     expect(find.text('Licenca'), findsOneWidget);
     expect(find.text('Dispositivos'), findsWidgets);
-    expect(find.text('Funcionarios'), findsOneWidget);
+    expect(find.text('Funcionarios'), findsWidgets);
     expect(find.text('Auditoria'), findsOneWidget);
+  });
+
+  testWidgets('Usuarios e funcionarios renderiza abas read-only', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/companies/company-1/users',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Usuarios'), findsWidgets);
+    expect(find.text('Resumo'), findsOneWidget);
+    expect(find.text('Usuarios'), findsWidgets);
+    expect(find.text('Funcionarios'), findsWidgets);
+    expect(find.text('Permissoes'), findsOneWidget);
+    expect(find.text('Dispositivos'), findsOneWidget);
+    expect(find.text('Auditoria'), findsOneWidget);
+    expect(find.text('Usuario com perfil protegido'), findsOneWidget);
+    expect(find.text('Plano atual nao libera Funcionarios PRO'), findsWidgets);
+    expect(find.text('pendingPlan PRO nao libera recursos'), findsOneWidget);
+  });
+
+  testWidgets('/companies/:companyId/employees e alias de usuarios', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/companies/company-1/employees',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Usuarios'), findsWidgets);
+    expect(find.text('Usuarios'), findsWidgets);
+    expect(find.text('Permissoes'), findsOneWidget);
+  });
+
+  testWidgets('Usuarios e funcionarios exibem dados seguros por aba', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeReadOnlyApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/companies/company-1/users',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Usuarios').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Dona Tatuzin'), findsWidgets);
+    expect(find.text('Gerente Loja'), findsOneWidget);
+    expect(find.text('Protegido'), findsWidgets);
+    await tester.scrollUntilVisible(
+      find.text('Detalhes').first,
+      500,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(find.text('Detalhes').first);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Resetar senha'), findsOneWidget);
+    expect(find.textContaining('Alterar permissoes'), findsOneWidget);
+    await tester.tap(find.textContaining('Resetar senha'));
+    await tester.pumpAndSettle();
+    expect(service.mutableBillingCalls, 0);
+    expect(service.supportDryRunCalls, 0);
+    expect(service.supportCreateCalls, 0);
+    expect(
+      find.text(
+        'Acao administrativa sera implementada em fase posterior com dry-run, confirmacao explicita e auditoria.',
+      ),
+      findsWidgets,
+    );
+    await tester.tap(find.text('Fechar'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Funcionarios').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Operadora Convidada'), findsOneWidget);
+    expect(find.text('Ex Operador'), findsOneWidget);
+    expect(find.text('Bloqueadas'), findsOneWidget);
+    expect(find.textContaining('inviteToken'), findsNothing);
+    expect(find.textContaining('secret'), findsNothing);
+
+    await tester.tap(find.text('Permissoes'));
+    await tester.pumpAndSettle();
+    expect(find.text('employees.manage'), findsOneWidget);
+    expect(find.text('Nao reconhecida'), findsOneWidget);
+
+    await tester.tap(find.text('Dispositivos'));
+    await tester.pumpAndSettle();
+    expect(find.text('MOBILE_APP'), findsOneWidget);
+    expect(find.text('ADMIN_WEB'), findsOneWidget);
+    expect(find.text('client-instance-secret-long-id'), findsNothing);
+
+    await tester.tap(find.text('Auditoria'));
+    await tester.pumpAndSettle();
+    expect(find.text('ACCESS_VIEW'), findsOneWidget);
+    expect(find.textContaining('Bearer secret'), findsNothing);
   });
 
   testWidgets('Sync Center renderiza abas read-only', (tester) async {
@@ -619,6 +732,14 @@ Widget _adminRouterTestApp({
     initialLocation: initialLocation,
     routes: [
       GoRoute(
+        path: '/companies/:companyId/sync',
+        builder: (context, state) => Scaffold(
+          body: SyncCompanyPage(
+            companyId: state.pathParameters['companyId'] ?? '',
+          ),
+        ),
+      ),
+      GoRoute(
         path: '/companies/:companyId',
         builder: (context, state) => Scaffold(
           body: CompanyDetailPage(
@@ -627,9 +748,17 @@ Widget _adminRouterTestApp({
         ),
       ),
       GoRoute(
-        path: '/companies/:companyId/sync',
+        path: '/companies/:companyId/users',
         builder: (context, state) => Scaffold(
-          body: SyncCompanyPage(
+          body: CompanyUsersPage(
+            companyId: state.pathParameters['companyId'] ?? '',
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/companies/:companyId/employees',
+        builder: (context, state) => Scaffold(
+          body: CompanyUsersPage(
             companyId: state.pathParameters['companyId'] ?? '',
           ),
         ),
@@ -749,6 +878,32 @@ class _FakeReadOnlyApiService extends AdminApiService {
       ],
       'sessions': [_mobileSessionMap(), _adminSessionMap()],
     });
+  }
+
+  @override
+  Future<AdminCompanyAccessSummary> fetchCompanyAccessSummary(
+    String companyId,
+  ) async {
+    if (throwCompanySync) {
+      throw const AdminApiException(message: 'falha controlada');
+    }
+    if (emptyCompanySync) {
+      return AdminCompanyAccessSummary.fromMap({
+        'company': {
+          'id': companyId,
+          'name': 'Loja Moda Sul',
+          'slug': 'loja-moda-sul',
+          'license': {'plan': 'PRO', 'status': 'ACTIVE'},
+        },
+        'summary': const {},
+        'users': const [],
+        'employees': const [],
+        'permissionsCatalog': const [],
+        'devices': const [],
+        'audit': const [],
+      });
+    }
+    return AdminCompanyAccessSummary.fromMap(_accessSummaryMap(companyId));
   }
 
   @override
@@ -1330,6 +1485,229 @@ Map<String, dynamic> _licenseMap() {
     'syncEnabled': true,
     'createdAt': '2026-01-01T00:00:00.000Z',
     'updatedAt': '2026-05-24T00:00:00.000Z',
+  };
+}
+
+Map<String, dynamic> _accessSummaryMap(String companyId) {
+  return {
+    'company': {
+      'id': companyId,
+      'name': 'Loja Moda Sul',
+      'slug': 'loja-moda-sul',
+      'license': {'plan': 'BASIC', 'status': 'ACTIVE', 'pendingPlan': 'PRO'},
+    },
+    'summary': {
+      'totalUsers': 2,
+      'totalEmployees': 3,
+      'activeEmployees': 1,
+      'invitedEmployees': 1,
+      'disabledEmployees': 1,
+      'owners': 1,
+      'admins': 1,
+      'operators': 1,
+      'usersWithoutEmployeeProfile': 0,
+      'employeeProfilesWithoutUser': 1,
+      'lastSeenAt': '2026-05-24T12:00:00.000Z',
+      'lastPermissionChangeAt': '2026-05-23T12:00:00.000Z',
+    },
+    'users': [
+      {
+        'userId': 'user-owner-secret-long-id',
+        'membershipId': 'membership-owner-secret-long-id',
+        'employeeProfileId': 'employee-owner-secret-long-id',
+        'name': 'Dona Tatuzin',
+        'email': 'owner@tatuzin.test',
+        'membershipRole': 'OWNER',
+        'employeeRole': 'OWNER',
+        'status': 'ACTIVE',
+        'accountStatus': 'ACTIVE',
+        'effectivePermissions': ['employees.manage', 'subscription.manage'],
+        'isOwner': true,
+        'isProtectedOwner': true,
+        'hasUserAccount': true,
+        'hasEmployeeProfile': true,
+        'lastSeenAt': '2026-05-24T12:00:00.000Z',
+        'createdAt': '2026-01-01T00:00:00.000Z',
+        'updatedAt': '2026-05-24T00:00:00.000Z',
+        'devices': [
+          {
+            'id': 'session-mobile-1',
+            'userId': 'user-owner-secret-long-id',
+            'membershipId': 'membership-owner-secret-long-id',
+            'userName': 'Dona Tatuzin',
+            'userEmail': 'owner@tatuzin.test',
+            'membershipRole': 'OWNER',
+            'clientType': 'MOBILE_APP',
+            'clientInstanceId': 'client-instance-secret-long-id',
+            'deviceLabel': 'PDV Android',
+            'platform': 'android',
+            'appVersion': '1.2.3',
+            'status': 'ACTIVE',
+            'lastSeenAt': '2026-05-24T12:00:00.000Z',
+            'createdAt': '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      },
+      {
+        'userId': 'user-admin-secret-long-id',
+        'membershipId': 'membership-admin-secret-long-id',
+        'employeeProfileId': 'employee-admin-secret-long-id',
+        'name': 'Gerente Loja',
+        'email': 'gerente@tatuzin.test',
+        'membershipRole': 'ADMIN',
+        'employeeRole': 'MANAGER',
+        'status': 'ACTIVE',
+        'accountStatus': 'ACTIVE',
+        'effectivePermissions': ['sales.create'],
+        'isOwner': false,
+        'isProtectedOwner': false,
+        'hasUserAccount': true,
+        'hasEmployeeProfile': true,
+        'lastSeenAt': '2026-05-24T11:00:00.000Z',
+        'createdAt': '2026-01-02T00:00:00.000Z',
+        'updatedAt': '2026-05-24T00:00:00.000Z',
+        'devices': [
+          {
+            'id': 'session-admin-1',
+            'userId': 'user-admin-secret-long-id',
+            'membershipId': 'membership-admin-secret-long-id',
+            'userName': 'Gerente Loja',
+            'userEmail': 'gerente@tatuzin.test',
+            'membershipRole': 'ADMIN',
+            'clientType': 'ADMIN_WEB',
+            'clientInstanceId': 'admin-client-instance-secret-long-id',
+            'deviceLabel': 'Admin Chrome',
+            'platform': 'web',
+            'appVersion': 'admin',
+            'status': 'ACTIVE',
+            'lastSeenAt': '2026-05-24T11:00:00.000Z',
+            'createdAt': '2026-01-02T00:00:00.000Z',
+          },
+        ],
+      },
+    ],
+    'employees': [
+      {
+        'employeeProfileId': 'employee-owner-secret-long-id',
+        'userId': 'user-owner-secret-long-id',
+        'membershipId': 'membership-owner-secret-long-id',
+        'name': 'Dona Tatuzin',
+        'email': 'owner@tatuzin.test',
+        'phone': '(11) 99999-0000',
+        'employeeRole': 'OWNER',
+        'membershipRole': 'OWNER',
+        'status': 'ACTIVE',
+        'savedPermissions': const [],
+        'effectivePermissions': ['employees.manage', 'subscription.manage'],
+        'isOwner': true,
+        'isProtectedOwner': true,
+        'hasUserAccount': true,
+        'createdAt': '2026-01-01T00:00:00.000Z',
+        'updatedAt': '2026-05-24T00:00:00.000Z',
+      },
+      {
+        'employeeProfileId': 'employee-invited-secret-long-id',
+        'name': 'Operadora Convidada',
+        'email': 'convite@tatuzin.test',
+        'phone': '(11) 98888-0000',
+        'employeeRole': 'CASHIER',
+        'status': 'INVITED',
+        'savedPermissions': ['sales.create'],
+        'effectivePermissions': ['sales.create'],
+        'isOwner': false,
+        'isProtectedOwner': false,
+        'hasUserAccount': false,
+        'invitationStatus': 'PENDING',
+        'invitationSentAt': '2026-05-20T00:00:00.000Z',
+        'inviteExpiresAt': '2026-05-27T00:00:00.000Z',
+        'createdAt': '2026-05-20T00:00:00.000Z',
+        'updatedAt': '2026-05-20T00:00:00.000Z',
+      },
+      {
+        'employeeProfileId': 'employee-disabled-secret-long-id',
+        'name': 'Ex Operador',
+        'email': 'disabled@tatuzin.test',
+        'employeeRole': 'SELLER',
+        'status': 'DISABLED',
+        'savedPermissions': ['sales.create'],
+        'effectivePermissions': const [],
+        'isOwner': false,
+        'isProtectedOwner': false,
+        'hasUserAccount': false,
+        'disabledAt': '2026-05-21T00:00:00.000Z',
+        'createdAt': '2026-05-01T00:00:00.000Z',
+        'updatedAt': '2026-05-21T00:00:00.000Z',
+      },
+    ],
+    'permissionsCatalog': [
+      {
+        'key': 'employees.manage',
+        'description': 'Gerenciar funcionarios.',
+        'owner': true,
+        'admin': true,
+        'operator': false,
+      },
+      {
+        'key': 'sales.create',
+        'description': 'Criar vendas.',
+        'owner': true,
+        'admin': true,
+        'operator': true,
+      },
+      {
+        'key': 'unknown.future',
+        'description': '',
+        'owner': false,
+        'admin': false,
+        'operator': false,
+      },
+    ],
+    'devices': [
+      {
+        'id': 'session-mobile-1',
+        'userId': 'user-owner-secret-long-id',
+        'membershipId': 'membership-owner-secret-long-id',
+        'userName': 'Dona Tatuzin',
+        'userEmail': 'owner@tatuzin.test',
+        'membershipRole': 'OWNER',
+        'clientType': 'MOBILE_APP',
+        'clientInstanceId': 'client-instance-secret-long-id',
+        'deviceLabel': 'PDV Android',
+        'platform': 'android',
+        'appVersion': '1.2.3',
+        'status': 'ACTIVE',
+        'lastSeenAt': '2026-05-24T12:00:00.000Z',
+        'createdAt': '2026-01-01T00:00:00.000Z',
+      },
+      {
+        'id': 'session-admin-1',
+        'userId': 'user-admin-secret-long-id',
+        'membershipId': 'membership-admin-secret-long-id',
+        'userName': 'Gerente Loja',
+        'userEmail': 'gerente@tatuzin.test',
+        'membershipRole': 'ADMIN',
+        'clientType': 'ADMIN_WEB',
+        'clientInstanceId': 'admin-client-instance-secret-long-id',
+        'deviceLabel': 'Admin Chrome',
+        'platform': 'web',
+        'appVersion': 'admin',
+        'status': 'ACTIVE',
+        'lastSeenAt': '2026-05-24T11:00:00.000Z',
+        'createdAt': '2026-01-02T00:00:00.000Z',
+      },
+    ],
+    'audit': [
+      {
+        'id': 'audit-access-1',
+        'source': 'admin',
+        'action': 'ACCESS_VIEW',
+        'actorName': 'Admin',
+        'actorEmail': 'admin@tatuzin.test',
+        'target': 'Loja Moda Sul',
+        'metadata': {'Authorization': 'Bearer secret', 'public': 'ok'},
+        'createdAt': '2026-05-24T12:00:00.000Z',
+      },
+    ],
   };
 }
 

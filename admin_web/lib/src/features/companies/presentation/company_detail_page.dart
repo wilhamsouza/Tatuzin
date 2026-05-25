@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/admin_providers.dart';
+import '../../../core/models/admin_access_models.dart';
 import '../../../core/models/admin_billing_models.dart';
 import '../../../core/models/admin_models.dart';
 import '../../../core/utils/admin_formatters.dart';
@@ -106,6 +107,11 @@ class _CompanyHeader extends StatelessWidget {
             icon: const Icon(Icons.workspace_premium_rounded),
             label: const Text('Ver licenca e assinatura'),
           ),
+          OutlinedButton.icon(
+            onPressed: () => context.go('/companies/${company.id}/users'),
+            icon: const Icon(Icons.people_alt_rounded),
+            label: const Text('Ver usuarios e funcionarios'),
+          ),
         ],
       ),
       child: Wrap(
@@ -190,6 +196,9 @@ class _OverviewTab extends StatelessWidget {
             companyId: company.id,
             fallbackLicense: company.license,
           );
+          final accessSummary = _CompanyAccessSummaryCard(
+            companyId: company.id,
+          );
           if (compact) {
             return Column(
               children: [
@@ -200,6 +209,8 @@ class _OverviewTab extends StatelessWidget {
                 sync,
                 const SizedBox(height: 16),
                 licenseSummary,
+                const SizedBox(height: 16),
+                accessSummary,
               ],
             );
           }
@@ -217,9 +228,82 @@ class _OverviewTab extends StatelessWidget {
               sync,
               const SizedBox(height: 16),
               licenseSummary,
+              const SizedBox(height: 16),
+              accessSummary,
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _CompanyAccessSummaryCard extends ConsumerWidget {
+  const _CompanyAccessSummaryCard({required this.companyId});
+
+  final String companyId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final accessAsync = ref.watch(adminCompanyAccessSummaryProvider(companyId));
+    return accessAsync.when(
+      data: (access) => _CompanyAccessSummarySurface(access: access),
+      loading: () => const AdminSurface(
+        title: 'Usuarios e funcionarios',
+        child: LinearProgressIndicator(),
+      ),
+      error: (error, _) => AdminSurface(
+        title: 'Usuarios e funcionarios',
+        subtitle: _safeError(error),
+        trailing: FilledButton.tonalIcon(
+          onPressed: () => context.go('/companies/$companyId/users'),
+          icon: const Icon(Icons.people_alt_rounded),
+          label: const Text('Ver usuarios e funcionarios'),
+        ),
+        child: const Text('Nao disponivel nesta versao.'),
+      ),
+    );
+  }
+}
+
+class _CompanyAccessSummarySurface extends StatelessWidget {
+  const _CompanyAccessSummarySurface({required this.access});
+
+  final AdminCompanyAccessSummary access;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminSurface(
+      title: 'Usuarios e funcionarios',
+      subtitle: 'Resumo read-only de contas, perfis e acesso.',
+      trailing: FilledButton.tonalIcon(
+        onPressed: () => context.go('/companies/${access.company.id}/users'),
+        icon: const Icon(Icons.people_alt_rounded),
+        label: const Text('Ver usuarios e funcionarios'),
+      ),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          _MiniMetric(label: 'Usuarios', value: '${access.summary.totalUsers}'),
+          _MiniMetric(
+            label: 'Funcionarios',
+            value: '${access.summary.totalEmployees}',
+          ),
+          _MiniMetric(
+            label: 'Ativos',
+            value: '${access.summary.activeEmployees}',
+          ),
+          _MiniMetric(
+            label: 'Convidados',
+            value: '${access.summary.invitedEmployees}',
+          ),
+          _MiniMetric(
+            label: 'Desativados',
+            value: '${access.summary.disabledEmployees}',
+          ),
+          _MiniMetric(label: 'Owners', value: '${access.summary.owners}'),
+        ],
       ),
     );
   }

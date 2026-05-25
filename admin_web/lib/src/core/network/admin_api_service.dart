@@ -1,5 +1,6 @@
 import '../auth/admin_auth_storage.dart';
 import '../auth/admin_debug_log.dart';
+import '../models/admin_access_models.dart';
 import '../models/admin_analytics_models.dart';
 import '../models/admin_billing_models.dart';
 import '../models/admin_crm_models.dart';
@@ -171,6 +172,24 @@ class AdminApiService {
     }
 
     return AdminCompanyDetail.fromMap(response);
+  }
+
+  Future<AdminCompanyAccessSummary> fetchCompanyAccessSummary(
+    String companyId,
+  ) async {
+    final response = await _apiClient.getJson(
+      '/admin/companies/$companyId/access-summary',
+      accessToken: await _readRequiredToken(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message:
+            'A API nao retornou usuarios e funcionarios no formato esperado.',
+      );
+    }
+
+    return AdminCompanyAccessSummary.fromMap(response);
   }
 
   Future<AdminCompanySyncHealth> fetchCompanySyncHealth(
