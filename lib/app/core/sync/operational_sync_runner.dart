@@ -171,6 +171,10 @@ class OperationalSyncRunner {
     );
   }
 
+  Future<OperationalSyncDiagnosticReport?> reportDiagnosticsOnly() {
+    return _reportDiagnosticsSafely();
+  }
+
   Future<_RefreshOutcome> _pullAndRefreshSnapshot() async {
     var pullFailed = false;
     var snapshotFailed = false;

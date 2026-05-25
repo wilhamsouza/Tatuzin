@@ -2921,6 +2921,7 @@ describe("operational local-first sync routes", () => {
           "operationalOrderItem precisa de totalCents maior ou igual a zero.",
         lastLocalErrorEntity: "operationalOrderItem",
         appVersion: "2.1.0",
+        platform: "android",
         safeDetails: {
           eventIds: ["safe-event-id"],
           headers: { authorization: "Bearer secret" },
@@ -2942,6 +2943,9 @@ describe("operational local-first sync routes", () => {
     assert.equal(diagnostic.resolvedConflictCount, 4);
     assert.equal(diagnostic.ignoredConflictCount, 1);
     assert.equal(diagnostic.lastLocalErrorEntity, "operationalOrderItem");
+    assert.equal(diagnostic.clientType, "MOBILE_APP");
+    assert.equal(diagnostic.appVersion, "2.1.0");
+    assert.equal(diagnostic.platform, "android");
     assert.doesNotMatch(JSON.stringify(diagnostic.safeDetails), /Bearer secret/);
   });
 

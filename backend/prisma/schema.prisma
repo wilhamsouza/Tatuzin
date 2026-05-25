@@ -569,7 +569,9 @@ model DeviceSyncDiagnostic {
   deviceId              String
   userId                String?
   clientInstanceId      String?
+  clientType            String?
   appVersion            String?
+  platform              String?
   localSchemaVersion    String?
   pendingCount          Int           @default(0)
   failedCount           Int           @default(0)

@@ -33,6 +33,19 @@ const syncConflictService = new SyncConflictService();
 const syncSupportService = new SyncSupportService();
 
 syncRouter.use(requireAppContext);
+
+syncRouter.post(
+  "/diagnostics",
+  validateBody(syncSupportDiagnosticSchema),
+  asyncHandler(async (request, response) => {
+    const payload = await syncSupportService.reportDiagnostic(
+      request.appContext!,
+      request.body as SyncSupportDiagnosticInput,
+    );
+    response.json(payload);
+  }),
+);
+
 syncRouter.use(requireSyncContext);
 
 syncRouter.get(
@@ -63,18 +76,6 @@ syncRouter.post(
       request.body,
     );
     response.status(202).json(payload);
-  }),
-);
-
-syncRouter.post(
-  "/diagnostics",
-  validateBody(syncSupportDiagnosticSchema),
-  asyncHandler(async (request, response) => {
-    const payload = await syncSupportService.reportDiagnostic(
-      request.appContext!,
-      request.body as SyncSupportDiagnosticInput,
-    );
-    response.json(payload);
   }),
 );
 

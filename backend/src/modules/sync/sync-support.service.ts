@@ -58,7 +58,9 @@ export class SyncSupportService {
         deviceId: context.device.id,
         userId: context.user.id,
         clientInstanceId: context.clientInstanceId,
+        clientType: "MOBILE_APP",
         appVersion: input.appVersion ?? context.device.appVersion,
+        platform: input.platform ?? context.device.platform,
         localSchemaVersion: input.localSchemaVersion,
         pendingCount: input.pendingCount,
         failedCount: input.failedCount,
@@ -77,7 +79,9 @@ export class SyncSupportService {
       update: {
         userId: context.user.id,
         clientInstanceId: context.clientInstanceId,
+        clientType: "MOBILE_APP",
         appVersion: input.appVersion ?? context.device.appVersion,
+        platform: input.platform ?? context.device.platform,
         localSchemaVersion: input.localSchemaVersion,
         pendingCount: input.pendingCount,
         failedCount: input.failedCount,
@@ -686,7 +690,9 @@ export class SyncSupportService {
     deviceId: string;
     userId: string | null;
     clientInstanceId: string | null;
+    clientType?: string | null;
     appVersion: string | null;
+    platform?: string | null;
     localSchemaVersion: string | null;
     pendingCount: number;
     failedCount: number;
@@ -708,7 +714,9 @@ export class SyncSupportService {
       deviceId: diagnostic.deviceId,
       userId: diagnostic.userId,
       clientInstanceId: diagnostic.clientInstanceId,
+      clientType: diagnostic.clientType ?? null,
       appVersion: diagnostic.appVersion,
+      platform: diagnostic.platform ?? null,
       localSchemaVersion: diagnostic.localSchemaVersion,
       pendingCount: diagnostic.pendingCount,
       failedCount: diagnostic.failedCount,

@@ -93,6 +93,7 @@ const optionalDateBody = z
 
 export const syncSupportDiagnosticSchema = z.object({
   appVersion: optionalTrimmedString(80),
+  platform: optionalTrimmedString(80),
   localSchemaVersion: optionalTrimmedString(80),
   pendingCount: z.coerce.number().int().min(0).default(0),
   failedCount: z.coerce.number().int().min(0).default(0),

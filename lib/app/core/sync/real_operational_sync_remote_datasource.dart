@@ -101,12 +101,25 @@ class RealOperationalSyncRemoteDataSource
 
   @override
   Future<void> reportDiagnostics(OperationalSyncDiagnosticReport report) async {
+    final clientContext = await _tokenStorage.readClientContext();
+    final body = report.toJson();
+    if (clientContext != null) {
+      if (_notBlank(clientContext.appVersion) &&
+          !body.containsKey('appVersion')) {
+        body['appVersion'] = clientContext.appVersion;
+      }
+      if (_notBlank(clientContext.platform) && !body.containsKey('platform')) {
+        body['platform'] = clientContext.platform;
+      }
+    }
     await _apiClient.postJson(
       '/sync/diagnostics',
-      body: report.toJson(),
+      body: body,
       options: await _authorizedOptions(),
     );
   }
+
+  bool _notBlank(String? value) => value != null && value.trim().isNotEmpty;
 
   @override
   Future<List<OperationalSyncSupportCommand>> fetchSupportCommands() async {

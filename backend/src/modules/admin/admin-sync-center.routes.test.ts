@@ -232,7 +232,9 @@ describe("admin sync center routes", () => {
         deviceId: fixture.deviceId,
         userId: fixture.operatorUserId,
         clientInstanceId: `${runId}-pdv`,
+        clientType: "MOBILE_APP",
         appVersion: "2.1.0",
+        platform: "android",
         pendingCount: 0,
         failedCount: 3,
         openConflictCount: 0,
@@ -256,11 +258,13 @@ describe("admin sync center routes", () => {
       items: Array<{
         id: string;
         status: string;
+        platform: string;
         diagnostic: { failedCount: number; resolvedConflictCount: number };
       }>;
     };
     assert.equal(devicesPayload.items[0]?.id, fixture.deviceId);
     assert.equal(devicesPayload.items[0]?.status, "local_failure");
+    assert.equal(devicesPayload.items[0]?.platform, "android");
     assert.equal(devicesPayload.items[0]?.diagnostic.failedCount, 3);
 
     const wrongCompany = await requestJson(

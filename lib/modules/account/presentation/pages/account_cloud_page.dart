@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -21,11 +23,35 @@ import '../../../billing/presentation/providers/billing_providers.dart';
 import '../../../system/presentation/providers/system_providers.dart';
 import '../providers/account_cloud_providers.dart';
 
-class AccountCloudPage extends ConsumerWidget {
+class AccountCloudPage extends ConsumerStatefulWidget {
   const AccountCloudPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AccountCloudPage> createState() => _AccountCloudPageState();
+}
+
+class _AccountCloudPageState extends ConsumerState<AccountCloudPage> {
+  bool _diagnosticReported = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_diagnosticReported) {
+      return;
+    }
+    _diagnosticReported = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(
+        ref.read(operationalSyncRunnerProvider).reportDiagnosticsOnly(),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
     final authStatus = ref.watch(authStatusProvider);
     final session = ref.watch(appSessionProvider);
@@ -180,9 +206,7 @@ class AccountCloudPage extends ConsumerWidget {
         return;
       }
       final currentCloudStatus = ref.read(accountCloudStatusProvider);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_syncResultMessage(result, currentCloudStatus))),
       );
     } catch (error) {

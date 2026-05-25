@@ -264,6 +264,7 @@ class OperationalSyncDiagnosticReport {
     required this.resolvedConflictCount,
     required this.ignoredConflictCount,
     this.appVersion,
+    this.platform,
     this.localSchemaVersion,
     this.lastLocalError,
     this.lastLocalErrorCode,
@@ -280,6 +281,7 @@ class OperationalSyncDiagnosticReport {
   final int resolvedConflictCount;
   final int ignoredConflictCount;
   final String? appVersion;
+  final String? platform;
   final String? localSchemaVersion;
   final String? lastLocalError;
   final String? lastLocalErrorCode;
@@ -297,6 +299,7 @@ class OperationalSyncDiagnosticReport {
       'resolvedConflictCount': resolvedConflictCount,
       'ignoredConflictCount': ignoredConflictCount,
       if (_notBlank(appVersion)) 'appVersion': appVersion,
+      if (_notBlank(platform)) 'platform': platform,
       if (_notBlank(localSchemaVersion))
         'localSchemaVersion': localSchemaVersion,
       if (_notBlank(lastLocalError)) 'lastLocalError': lastLocalError,
