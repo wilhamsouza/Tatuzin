@@ -1,5 +1,6 @@
 import { LicenseStatus, Prisma, type License } from "@prisma/client";
 
+import { env } from "../../config/env";
 import { prisma } from "../../database/prisma";
 import { buildAdminListResponse } from "../../shared/http/api-response";
 import { AppError } from "../../shared/http/app-error";
@@ -10,6 +11,8 @@ import type {
   AdminBillingCompaniesQueryInput,
   AdminBillingForcePlanInput,
   AdminBillingListQueryInput,
+  AdminBillingReconcileDryRunInput,
+  AdminBillingReconcileInput,
   AdminBillingRefreshInput,
   AdminBillingStatusInput,
   AdminLicenseEmergencyExtensionDryRunInput,
@@ -38,6 +41,8 @@ type CompanyIdentity = {
   isActive: boolean;
 };
 
+const BILLING_PROVIDER = "mercadopago";
+const BILLING_RECONCILE_CONFIRMATION = "RECONCILIAR";
 const EMERGENCY_EXTENSION_CONFIRMATION = "ESTENDER";
 const EMERGENCY_EXTENSION_MAX_DAYS = 7;
 
@@ -240,6 +245,129 @@ export class BillingAdminService {
         "Nao foi possivel reconciliar a assinatura com o Mercado Pago.",
         error instanceof AppError ? error.statusCode : 502,
         error instanceof AppError ? error.code : "BILLING_REFRESH_FAILED",
+      );
+    }
+  }
+
+  async dryRunBillingReconcile(
+    input: AdminActionContext & AdminBillingReconcileDryRunInput,
+  ) {
+    const context = this.assertAdminActionContext(input);
+    await this.assertCompanyExists(context.companyId);
+    return this.buildBillingReconcileDryRun({
+      companyId: context.companyId,
+      note: input.note,
+    });
+  }
+
+  async applyBillingReconcile(
+    input: AdminActionContext & AdminBillingReconcileInput,
+  ) {
+    const context = this.assertAdminActionContext(input);
+    if (input.confirmationText !== BILLING_RECONCILE_CONFIRMATION) {
+      throw new AppError(
+        "Digite RECONCILIAR para confirmar a reconciliacao de billing.",
+        422,
+        "BILLING_RECONCILE_CONFIRMATION_REQUIRED",
+        { expectedConfirmationText: BILLING_RECONCILE_CONFIRMATION },
+      );
+    }
+
+    await this.assertCompanyExists(context.companyId);
+    const dryRun = await this.buildBillingReconcileDryRun({
+      companyId: context.companyId,
+      note: input.note,
+    });
+    if (!dryRun.allowed) {
+      throw new AppError(
+        "Reconciliacao de billing bloqueada.",
+        409,
+        "BILLING_RECONCILE_BLOCKED",
+        { blockers: dryRun.blockers },
+      );
+    }
+
+    const before = await this.getSafeLicenseSnapshot(context.companyId);
+    const beforeCheckoutSessions = await this.listReconcileCheckoutSessions(
+      context.companyId,
+    );
+    const beforeInvoicesCount = await prisma.billingInvoice.count({
+      where: { companyId: context.companyId },
+    });
+
+    try {
+      const status = await this.billingService.refreshCompanyFromProvider(
+        context.companyId,
+      );
+      const after = await this.getSafeLicenseSnapshot(context.companyId);
+      const afterCheckoutSessions = await this.listReconcileCheckoutSessions(
+        context.companyId,
+      );
+      const afterInvoicesCount = await prisma.billingInvoice.count({
+        where: { companyId: context.companyId },
+      });
+      const checkoutSessionsUpdated = this.countChangedCheckoutSessions(
+        beforeCheckoutSessions,
+        afterCheckoutSessions,
+      );
+      const invoicesReconciled = Math.max(
+        0,
+        afterInvoicesCount - beforeInvoicesCount,
+      );
+      const warnings = this.readWarnings(status);
+
+      await this.createAuditLog({
+        ...context,
+        action: "billing.reconcile",
+        before,
+        after,
+        metadata: {
+          source: "admin_web",
+          confirmationTextExpected: BILLING_RECONCILE_CONFIRMATION,
+          checkoutSessionIds: beforeCheckoutSessions.map(
+            (session) => session.id,
+          ),
+          providerStatus: this.buildProviderStatusSummary(status),
+          warnings,
+          invoicesReconciled,
+          checkoutSessionsUpdated,
+          note: input.note ?? null,
+        },
+      });
+
+      return {
+        success: true,
+        message:
+          "Billing reconciliado pelo fluxo seguro existente, sem forcar plano manualmente.",
+        updatedStatus: this.sanitizeBillingStatus(status),
+        invoicesReconciled,
+        checkoutSessionsUpdated,
+        warnings,
+      };
+    } catch (error) {
+      const after = await this.getSafeLicenseSnapshot(context.companyId);
+      await this.createAuditLog({
+        ...context,
+        action: "billing.reconcile.failed",
+        before,
+        after,
+        metadata: {
+          source: "admin_web",
+          confirmationTextExpected: BILLING_RECONCILE_CONFIRMATION,
+          checkoutSessionIds: beforeCheckoutSessions.map(
+            (session) => session.id,
+          ),
+          error:
+            error instanceof AppError
+              ? { code: error.code, statusCode: error.statusCode }
+              : { code: "BILLING_RECONCILE_FAILED" },
+          note: input.note ?? null,
+        },
+      });
+      throw new AppError(
+        "Nao foi possivel reconciliar o billing com o Mercado Pago.",
+        error instanceof AppError ? error.statusCode : 502,
+        error instanceof AppError ? error.code : "BILLING_RECONCILE_FAILED",
       );
     }
   }
@@ -569,6 +697,93 @@ export class BillingAdminService {
     };
   }
 
+  private async buildBillingReconcileDryRun(input: {
+    companyId: string;
+    note?: string;
+  }) {
+    const license = await prisma.license.findUnique({
+      where: { companyId: input.companyId },
+    });
+    const pendingCheckoutSessions = await this.listReconcileCheckoutSessions(
+      input.companyId,
+    );
+    const blockers: string[] = [];
+    const providerConfigured =
+      env.MERCADO_PAGO_ACCESS_TOKEN != null &&
+      env.MERCADO_PAGO_ACCESS_TOKEN.trim().length > 0;
+    const hasProviderSubscription = license?.providerSubscriptionId != null;
+    const hasPendingCheckout = pendingCheckoutSessions.length > 0;
+    const unsupportedProvider =
+      license?.billingProvider != null &&
+      license.billingProvider !== BILLING_PROVIDER;
+
+    if (license == null) {
+      blockers.push("Empresa sem licenca cadastrada.");
+    }
+    if (unsupportedProvider) {
+      blockers.push("Provider de billing nao suportado para reconciliacao.");
+    }
+    if (!providerConfigured) {
+      blockers.push("Mercado Pago nao configurado para billing.");
+    }
+    if (license != null && !hasProviderSubscription && !hasPendingCheckout) {
+      blockers.push(
+        "Nao ha assinatura provider nem checkout pendente para reconciliar.",
+      );
+    }
+
+    const likelyActions = [
+      "Consultar Mercado Pago pelo fluxo BillingService.refreshCompanyFromProvider.",
+      ...(hasPendingCheckout
+        ? [
+            "Verificar checkout pendente e atualizar sessao/licenca apenas se o provider confirmar.",
+          ]
+        : []),
+      ...(hasProviderSubscription
+        ? ["Reconciliar faturas por pagamentos autorizados da assinatura."]
+        : []),
+      "Aplicar transicoes agendadas ja previstas pelo billing.",
+    ];
+    const risks = [
+      "Nao forca plano manualmente; license.plan so muda pela regra existente de refresh quando o provider confirma.",
+      "Nao edita providerSubscriptionId manualmente.",
+      "pendingPlan nao libera recursos ate confirmacao segura.",
+      "O fluxo existente pode cancelar assinatura provider antiga substituida quando um novo checkout autorizado e confirmado.",
+    ];
+
+    return {
+      allowed: blockers.length === 0,
+      expectedConfirmationText: BILLING_RECONCILE_CONFIRMATION,
+      summary:
+        license == null
+          ? "Nao foi possivel simular a reconciliacao porque a licenca nao existe."
+          : "Reconciliar billing consultando Mercado Pago pelo fluxo seguro existente, sem force-plan manual.",
+      risks,
+      blockers,
+      currentBillingStatus:
+        license == null
+          ? null
+          : this.serializeLicenseForEmergencyAudit(license),
+      pendingCheckoutSessions: pendingCheckoutSessions.map((session) =>
+        this.serializeCheckoutSessionForReconcile(session),
+      ),
+      likelyActions,
+      providerCheckSummary: {
+        consulted: false,
+        providerConfigured,
+        provider: BILLING_PROVIDER,
+        maskedProviderSubscriptionId: maskProviderSubscriptionId(
+          license?.providerSubscriptionId,
+        ),
+        pendingProviderReferences: pendingCheckoutSessions.map((session) =>
+          maskProviderSubscriptionId(session.providerReference),
+        ),
+        note: "Dry-run nao executa refresh nem altera Mercado Pago; a consulta efetiva ocorre somente apos confirmacao.",
+      },
+      note: input.note ?? null,
+    };
+  }
+
   private buildCompanyWhere(
     query: AdminBillingCompaniesQueryInput,
   ): Prisma.CompanyWhereInput {
@@ -743,6 +958,13 @@ export class BillingAdminService {
     return license == null ? null : this.serializeLicense(license);
   }
 
+  private async getSafeLicenseSnapshot(companyId: string) {
+    const license = await prisma.license.findUnique({ where: { companyId } });
+    return license == null
+      ? null
+      : this.serializeLicenseForEmergencyAudit(license);
+  }
+
   private async getCompany(companyId: string) {
     const company = await prisma.company.findUnique({
       where: { id: companyId },
@@ -811,6 +1033,103 @@ export class BillingAdminService {
       createdAt: license.createdAt.toISOString(),
       updatedAt: license.updatedAt.toISOString(),
     };
+  }
+
+  private async listReconcileCheckoutSessions(companyId: string) {
+    return prisma.billingCheckoutSession.findMany({
+      where: {
+        companyId,
+        provider: BILLING_PROVIDER,
+        providerReference: { not: null },
+        status: { in: ["PENDING", "COMPLETED"] },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        plan: true,
+        billingCycle: true,
+        status: true,
+        provider: true,
+        providerReference: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  private serializeCheckoutSessionForReconcile(
+    session: Awaited<
+      ReturnType<BillingAdminService["listReconcileCheckoutSessions"]>
+    >[number],
+  ) {
+    return {
+      id: session.id,
+      plan: session.plan,
+      billingCycle: session.billingCycle,
+      status: session.status,
+      provider: session.provider,
+      maskedProviderReference: maskProviderSubscriptionId(
+        session.providerReference,
+      ),
+      createdAt: session.createdAt.toISOString(),
+      updatedAt: session.updatedAt.toISOString(),
+    };
+  }
+
+  private countChangedCheckoutSessions(
+    before: Awaited<
+      ReturnType<BillingAdminService["listReconcileCheckoutSessions"]>
+    >,
+    after: Awaited<
+      ReturnType<BillingAdminService["listReconcileCheckoutSessions"]>
+    >,
+  ) {
+    const afterById = new Map(after.map((session) => [session.id, session]));
+    return before.filter((session) => {
+      const updated = afterById.get(session.id);
+      return (
+        updated != null &&
+        (updated.status !== session.status ||
+          updated.updatedAt.getTime() !== session.updatedAt.getTime())
+      );
+    }).length;
+  }
+
+  private sanitizeBillingStatus(status: unknown) {
+    if (status == null || typeof status !== "object") {
+      return sanitizeForAdmin(status);
+    }
+    const sanitized = sanitizeForAdmin(status) as Record<string, unknown>;
+    delete sanitized.providerSubscriptionId;
+    return sanitized;
+  }
+
+  private buildProviderStatusSummary(status: unknown) {
+    const sanitized = this.sanitizeBillingStatus(status) as Record<
+      string,
+      unknown
+    >;
+    return {
+      provider: sanitized.provider ?? null,
+      billingSubscriptionStatus: sanitized.billingSubscriptionStatus ?? null,
+      hasProviderSubscription: sanitized.hasProviderSubscription ?? null,
+      maskedProviderSubscriptionId:
+        sanitized.maskedProviderSubscriptionId ?? null,
+    };
+  }
+
+  private readWarnings(status: unknown) {
+    if (status == null || typeof status !== "object") {
+      return [];
+    }
+    const warnings = (status as { warnings?: unknown }).warnings;
+    if (!Array.isArray(warnings)) {
+      return [];
+    }
+    return warnings.flatMap((warning) =>
+      typeof warning === "string" ? [warning] : [],
+    );
   }
 
   private serializeLicenseForEmergencyAudit(license: License) {

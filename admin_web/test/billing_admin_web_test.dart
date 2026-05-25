@@ -93,6 +93,18 @@ void main() {
       ),
       throwsA(isA<AdminApiException>()),
     );
+    expect(
+      () => service.dryRunBillingReconcile(companyId: 'company-1', reason: ' '),
+      throwsA(isA<AdminApiException>()),
+    );
+    expect(
+      () => service.applyBillingReconcile(
+        companyId: 'company-1',
+        reason: '',
+        confirmationText: 'RECONCILIAR',
+      ),
+      throwsA(isA<AdminApiException>()),
+    );
   });
 
   testWidgets('Billing Admin lista empresas com provider mascarado', (
@@ -412,6 +424,112 @@ void main() {
     expect(confirm.onPressed, isNull);
     expect(service.extensionApplyCalls, 0);
   });
+
+  testWidgets('Reconciliar billing exige motivo antes do dry-run', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeAdminApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/licenses/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _openReconcileDialog(tester);
+    await tester.tap(find.text('Simular dry-run'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Informe o motivo da acao administrativa.'),
+      findsOneWidget,
+    );
+    expect(service.billingReconcileDryRunCalls, 0);
+    expect(service.billingReconcileApplyCalls, 0);
+  });
+
+  testWidgets('Reconciliar billing usa dry-run e confirmacao RECONCILIAR', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeAdminApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/licenses/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _openReconcileDialog(tester);
+    await tester.enterText(find.byType(TextField).at(0), 'Atualizar cobranca');
+    await tester.tap(find.text('Simular dry-run'));
+    await tester.pumpAndSettle();
+
+    expect(service.billingReconcileDryRunCalls, 1);
+    expect(service.billingReconcileApplyCalls, 0);
+    expect(find.text('Confirmacao exigida: RECONCILIAR'), findsOneWidget);
+    expect(find.text('Plano ativo: BASIC'), findsWidgets);
+    expect(find.text('PendingPlan: PRO'), findsWidgets);
+    expect(find.text('Assinatura provider: pre_..._7890'), findsOneWidget);
+    expect(find.textContaining('preapproval-secret-full-id'), findsNothing);
+
+    await tester.enterText(find.byType(TextField).last, 'ERRADO');
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Digite RECONCILIAR para liberar a confirmacao.'),
+      findsOneWidget,
+    );
+    final disabledConfirm = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Confirmar reconciliacao'),
+    );
+    expect(disabledConfirm.onPressed, isNull);
+
+    await tester.enterText(find.byType(TextField).last, 'RECONCILIAR');
+    await tester.pumpAndSettle();
+    final enabledConfirm = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Confirmar reconciliacao'),
+    );
+    expect(enabledConfirm.onPressed, isNotNull);
+    await tester.tap(find.text('Confirmar reconciliacao'));
+    await tester.pumpAndSettle();
+
+    expect(service.billingReconcileApplyCalls, 1);
+    expect(service.statusFetchCount, greaterThanOrEqualTo(2));
+    expect(find.text('Billing reconciliado.'), findsOneWidget);
+  });
+
+  testWidgets('Reconciliar billing bloqueado mostra blockers e nao executa', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeAdminApiService(blockReconcile: true);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/licenses/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _openReconcileDialog(tester);
+    await tester.enterText(find.byType(TextField).at(0), 'Atualizar cobranca');
+    await tester.tap(find.text('Simular dry-run'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bloqueios:'), findsOneWidget);
+    expect(
+      find.textContaining('Nao ha assinatura provider ou checkout pendente'),
+      findsOneWidget,
+    );
+    final confirm = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Confirmar reconciliacao'),
+    );
+    expect(confirm.onPressed, isNull);
+    expect(service.billingReconcileApplyCalls, 0);
+  });
 }
 
 void _setLargeViewport(WidgetTester tester) {
@@ -425,6 +543,17 @@ void _setLargeViewport(WidgetTester tester) {
 
 Future<void> _openExtensionDialog(WidgetTester tester) async {
   final button = find.widgetWithText(FilledButton, 'Extensao emergencial');
+  await tester.ensureVisible(button);
+  await tester.pumpAndSettle();
+  await tester.tap(button);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _openReconcileDialog(WidgetTester tester) async {
+  final button = find.widgetWithText(
+    OutlinedButton,
+    'Reconciliar Mercado Pago',
+  );
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
   await tester.tap(button);
@@ -481,23 +610,28 @@ Widget _adminRouterTestApp({
 }
 
 class _FakeAdminApiService extends AdminApiService {
-  _FakeAdminApiService({this.blockExtension = false})
-    : super(
-        apiClient: AdminApiClient(
-          baseUrl: 'https://api.test/api',
-          authStorage: AdminAuthStorage(),
-          httpClient: MockClient((request) async {
-            throw UnimplementedError(request.url.toString());
-          }),
-        ),
-        authStorage: AdminAuthStorage(),
-      );
+  _FakeAdminApiService({
+    this.blockExtension = false,
+    this.blockReconcile = false,
+  }) : super(
+         apiClient: AdminApiClient(
+           baseUrl: 'https://api.test/api',
+           authStorage: AdminAuthStorage(),
+           httpClient: MockClient((request) async {
+             throw UnimplementedError(request.url.toString());
+           }),
+         ),
+         authStorage: AdminAuthStorage(),
+       );
 
   final bool blockExtension;
+  final bool blockReconcile;
   int statusFetchCount = 0;
   int forcePlanCalls = 0;
   int extensionDryRunCalls = 0;
   int extensionApplyCalls = 0;
+  int billingReconcileDryRunCalls = 0;
+  int billingReconcileApplyCalls = 0;
   String? lastForcePlan;
   String? lastForcePlanStatus;
   String? lastForcePlanReason;
@@ -636,6 +770,87 @@ class _FakeAdminApiService extends AdminApiService {
         'pendingPlanBefore': 'PRO',
         'pendingPlanAfter': 'PRO',
       },
+    });
+  }
+
+  @override
+  Future<AdminBillingReconcileDryRun> dryRunBillingReconcile({
+    required String companyId,
+    required String reason,
+    String? note,
+  }) async {
+    if (reason.trim().isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    billingReconcileDryRunCalls += 1;
+    return AdminBillingReconcileDryRun.fromMap({
+      'allowed': !blockReconcile,
+      'expectedConfirmationText': 'RECONCILIAR',
+      'summary': blockReconcile
+          ? 'Reconciliacao bloqueada.'
+          : 'Billing pode ser reconciliado pelo fluxo seguro existente.',
+      'risks': const [
+        'Nao forca troca manual de plano.',
+        'Nao edita providerSubscriptionId manualmente.',
+      ],
+      'blockers': blockReconcile
+          ? const ['Nao ha assinatura provider ou checkout pendente.']
+          : const [],
+      'currentBillingStatus': const {
+        'plan': 'BASIC',
+        'status': 'SUSPENDED',
+        'pendingPlan': 'PRO',
+        'maskedProviderSubscriptionId': 'pre_..._7890',
+      },
+      'pendingCheckoutSessions': const [
+        {
+          'id': 'checkout-1',
+          'plan': 'PRO',
+          'status': 'pending',
+          'maskedProviderReference': 'pre_..._7890',
+        },
+      ],
+      'likelyActions': const [
+        'Consultar Mercado Pago pelo fluxo seguro existente.',
+        'Reconciliar faturas autorizadas.',
+      ],
+      'providerCheckSummary': const {
+        'provider': 'mercadopago',
+        'maskedProviderSubscriptionId': 'pre_..._7890',
+        'consulted': false,
+      },
+    });
+  }
+
+  @override
+  Future<AdminBillingReconcileResult> applyBillingReconcile({
+    required String companyId,
+    required String reason,
+    required String confirmationText,
+    String? note,
+  }) async {
+    if (reason.trim().isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    billingReconcileApplyCalls += 1;
+    return AdminBillingReconcileResult.fromMap({
+      'success': true,
+      'message': 'Billing reconciliado.',
+      'updatedStatus': const {
+        'plan': 'BASIC',
+        'status': 'ACTIVE',
+        'pendingPlan': 'PRO',
+        'maskedProviderSubscriptionId': 'pre_..._7890',
+      },
+      'invoicesReconciled': 1,
+      'checkoutSessionsUpdated': 1,
+      'warnings': const [],
     });
   }
 

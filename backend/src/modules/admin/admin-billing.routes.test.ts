@@ -473,6 +473,173 @@ describe("admin billing routes", () => {
     assert.equal(serializedAudit.includes("ESTENDER"), true);
   });
 
+  it("dry-runs billing reconcile without mutating or exposing provider id", async () => {
+    const fixture = await createFixture({ plan: "BASIC" });
+    const before = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+
+    const missingReason = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/billing/reconcile/dry-run`,
+      { token: fixture.adminToken, body: {} },
+    );
+    assert.equal(missingReason.status, 422);
+
+    const response = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/billing/reconcile/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: { reason: "Atualizar billing pelo provider" },
+      },
+    );
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      allowed: boolean;
+      expectedConfirmationText: string;
+      currentBillingStatus: { plan: string; pendingPlan: string | null };
+      providerCheckSummary: {
+        consulted: boolean;
+        maskedProviderSubscriptionId: string | null;
+      };
+      likelyActions: string[];
+    };
+    assert.equal(payload.allowed, true);
+    assert.equal(payload.expectedConfirmationText, "RECONCILIAR");
+    assert.equal(payload.currentBillingStatus.plan, "BASIC");
+    assert.equal(payload.currentBillingStatus.pendingPlan, "PRO");
+    assert.equal(payload.providerCheckSummary.consulted, false);
+    assert.equal(
+      payload.providerCheckSummary.maskedProviderSubscriptionId,
+      "prea...9999",
+    );
+    assert.equal(payload.likelyActions.length > 0, true);
+    assert.equal(JSON.stringify(payload).includes(fixture.providerId), false);
+
+    const after = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(after.plan, before.plan);
+    assert.equal(after.pendingPlan, before.pendingPlan);
+    assert.equal(after.providerSubscriptionId, before.providerSubscriptionId);
+    assert.equal(
+      after.currentPeriodEnd?.toISOString(),
+      before.currentPeriodEnd?.toISOString(),
+    );
+  });
+
+  it("applies billing reconcile through provider refresh and audits safely", async () => {
+    const fixture = await createFixture({ plan: "BASIC" });
+    const before = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    globalThis.fetch = jsonFetch(async (url) => {
+      if (url.includes("/authorized_payments/search")) {
+        return {
+          results: [
+            {
+              id: `${runId}-admin-reconcile-paid`,
+              preapproval_id: fixture.providerId,
+              status: "approved",
+              transaction_amount: 35,
+              currency_id: "BRL",
+              external_resource_url:
+                "https://mercadopago.test/invoices/admin-reconcile?token=secret",
+              payment_date: "2026-05-07T10:00:00.000Z",
+              card: { card_number: "4111111111111111", cvv: "123" },
+              access_token: "secret",
+            },
+          ],
+        };
+      }
+      return {
+        id: fixture.providerId,
+        status: "authorized",
+        next_payment_date: before.currentPeriodEnd?.toISOString(),
+        auto_recurring: { transaction_amount: 35 },
+      };
+    });
+
+    const wrongConfirmation = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/billing/reconcile`,
+      {
+        token: fixture.adminToken,
+        body: {
+          reason: "Conciliar provider",
+          confirmationText: "CONFIRMAR",
+        },
+      },
+    );
+    assert.equal(wrongConfirmation.status, 422);
+
+    const response = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/billing/reconcile`,
+      {
+        token: fixture.adminToken,
+        body: {
+          reason: "Conciliar provider",
+          note: "Chamado billing 456",
+          confirmationText: "RECONCILIAR",
+        },
+      },
+    );
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      success: boolean;
+      updatedStatus: {
+        plan: string;
+        pendingPlan: string | null;
+        providerSubscriptionId?: string;
+      };
+      invoicesReconciled: number;
+    };
+    assert.equal(payload.success, true);
+    assert.equal(payload.updatedStatus.plan, "BASIC");
+    assert.equal(payload.updatedStatus.pendingPlan, "PRO");
+    assert.equal(payload.updatedStatus.providerSubscriptionId, undefined);
+    assert.equal(payload.invoicesReconciled, 1);
+    assert.equal(JSON.stringify(payload).includes(fixture.providerId), false);
+    assert.equal(JSON.stringify(payload).includes("4111111111111111"), false);
+
+    const after = await prisma.license.findUniqueOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(after.plan, "BASIC");
+    assert.equal(after.pendingPlan, "PRO");
+    assert.equal(after.providerSubscriptionId, before.providerSubscriptionId);
+    assert.equal(after.billingProvider, before.billingProvider);
+    assert.equal(
+      after.currentPeriodEnd?.toISOString(),
+      before.currentPeriodEnd?.toISOString(),
+    );
+
+    const invoice = await prisma.billingInvoice.findFirstOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    assert.equal(invoice.providerSubscriptionId, fixture.providerId);
+    assert.equal(
+      JSON.stringify(invoice.payload).includes("4111111111111111"),
+      false,
+    );
+
+    const audit = await prisma.billingAdminAuditLog.findFirstOrThrow({
+      where: { companyId: fixture.companyId, action: "billing.reconcile" },
+      orderBy: { createdAt: "desc" },
+    });
+    assert.equal(audit.reason, "Conciliar provider");
+    const serializedAudit = JSON.stringify({
+      before: audit.before,
+      after: audit.after,
+      metadata: audit.metadata,
+    });
+    assert.equal(serializedAudit.includes(fixture.providerId), false);
+    assert.equal(serializedAudit.includes("Chamado billing 456"), true);
+    assert.equal(serializedAudit.includes("RECONCILIAR"), true);
+  });
+
   it("requires reason for refresh and audits provider refresh failures without activating plan", async () => {
     const fixture = await createFixture({ plan: "free" });
 
@@ -1081,6 +1248,24 @@ async function requestJson(
 function failFetch(message: string) {
   return (async () => {
     throw new Error(message);
+  }) as typeof globalThis.fetch;
+}
+
+function jsonFetch(
+  handler: (
+    url: string,
+    init: { method?: string; body?: string },
+  ) => Promise<Record<string, unknown>> | Record<string, unknown>,
+) {
+  return (async (url: string | URL | Request, init?: RequestInit) => {
+    const payload = await handler(String(url), {
+      method: init?.method,
+      body: typeof init?.body === "string" ? init.body : undefined,
+    });
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   }) as typeof globalThis.fetch;
 }
 

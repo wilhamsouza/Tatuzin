@@ -705,6 +705,74 @@ class AdminLicenseExtensionResult {
   }
 }
 
+class AdminBillingReconcileDryRun {
+  const AdminBillingReconcileDryRun({
+    required this.allowed,
+    required this.expectedConfirmationText,
+    required this.summary,
+    required this.risks,
+    required this.blockers,
+    required this.currentBillingStatus,
+    required this.pendingCheckoutSessions,
+    required this.likelyActions,
+    required this.providerCheckSummary,
+  });
+
+  final bool allowed;
+  final String expectedConfirmationText;
+  final String summary;
+  final List<String> risks;
+  final List<String> blockers;
+  final Map<String, dynamic>? currentBillingStatus;
+  final List<Map<String, dynamic>> pendingCheckoutSessions;
+  final List<String> likelyActions;
+  final Map<String, dynamic>? providerCheckSummary;
+
+  factory AdminBillingReconcileDryRun.fromMap(Map<String, dynamic> map) {
+    return AdminBillingReconcileDryRun(
+      allowed: map['allowed'] == true,
+      expectedConfirmationText:
+          _readOptionalString(map, 'expectedConfirmationText') ?? 'RECONCILIAR',
+      summary: _readOptionalString(map, 'summary') ?? 'Sem resumo.',
+      risks: _readStringList(map, 'risks'),
+      blockers: _readStringList(map, 'blockers'),
+      currentBillingStatus: _readNullableSafeMap(map, 'currentBillingStatus'),
+      pendingCheckoutSessions: _readSafeMapList(map, 'pendingCheckoutSessions'),
+      likelyActions: _readStringList(map, 'likelyActions'),
+      providerCheckSummary: _readNullableSafeMap(map, 'providerCheckSummary'),
+    );
+  }
+}
+
+class AdminBillingReconcileResult {
+  const AdminBillingReconcileResult({
+    required this.success,
+    this.message,
+    this.updatedStatus,
+    required this.invoicesReconciled,
+    required this.checkoutSessionsUpdated,
+    required this.warnings,
+  });
+
+  final bool success;
+  final String? message;
+  final Map<String, dynamic>? updatedStatus;
+  final int invoicesReconciled;
+  final int checkoutSessionsUpdated;
+  final List<String> warnings;
+
+  factory AdminBillingReconcileResult.fromMap(Map<String, dynamic> map) {
+    return AdminBillingReconcileResult(
+      success: map['success'] == true,
+      message: _readOptionalString(map, 'message'),
+      updatedStatus: _readNullableSafeMap(map, 'updatedStatus'),
+      invoicesReconciled: _readInt(map, 'invoicesReconciled') ?? 0,
+      checkoutSessionsUpdated: _readInt(map, 'checkoutSessionsUpdated') ?? 0,
+      warnings: _readStringList(map, 'warnings'),
+    );
+  }
+}
+
 class AdminBillingActionResult {
   const AdminBillingActionResult({
     this.message,
@@ -760,6 +828,21 @@ List<Map<String, dynamic>> _readList(Map<String, dynamic> map, String key) {
     return const <Map<String, dynamic>>[];
   }
   return value.whereType<Map<String, dynamic>>().toList(growable: false);
+}
+
+List<Map<String, dynamic>> _readSafeMapList(
+  Map<String, dynamic> map,
+  String key,
+) {
+  return _readList(map, key)
+      .map((item) {
+        final sanitized = sanitizeAdminBillingValue(item);
+        return sanitized is Map
+            ? Map<String, dynamic>.from(sanitized)
+            : <String, dynamic>{};
+      })
+      .where((item) => item.isNotEmpty)
+      .toList(growable: false);
 }
 
 Map<String, dynamic> _readMap(Map<String, dynamic> map, String key) {

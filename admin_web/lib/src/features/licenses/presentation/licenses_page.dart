@@ -611,7 +611,7 @@ class _PlaceholderActions extends StatelessWidget {
     return AdminSurface(
       title: 'Proximos passos',
       subtitle:
-          'Extensao emergencial segue dry-run, motivo, confirmacao explicita e auditoria. Demais acoes permanecem placeholder.',
+          'Extensao emergencial e reconciliacao de billing seguem dry-run, motivo, confirmacao explicita e auditoria. Demais acoes permanecem placeholder.',
       child: Wrap(
         spacing: 10,
         runSpacing: 10,
@@ -633,9 +633,10 @@ class _PlaceholderActions extends StatelessWidget {
             label: 'Reativar licenca',
             icon: Icons.lock_open_rounded,
           ),
-          const _PlaceholderButton(
-            label: 'Reconciliar Mercado Pago',
-            icon: Icons.receipt_long_rounded,
+          OutlinedButton.icon(
+            onPressed: () => _openBillingReconcile(context),
+            icon: const Icon(Icons.receipt_long_rounded),
+            label: const Text('Reconciliar Mercado Pago'),
           ),
         ],
       ),
@@ -654,6 +655,22 @@ class _PlaceholderActions extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Extensao emergencial aplicada.')),
         );
+      }
+    }
+  }
+
+  Future<void> _openBillingReconcile(BuildContext context) async {
+    final applied = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _BillingReconcileDialog(companyId: companyId),
+    );
+    if (applied == true) {
+      await onApplied();
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Billing reconciliado.')));
       }
     }
   }
@@ -874,6 +891,199 @@ class _EmergencyExtensionDialogState
   }
 }
 
+class _BillingReconcileDialog extends ConsumerStatefulWidget {
+  const _BillingReconcileDialog({required this.companyId});
+
+  final String companyId;
+
+  @override
+  ConsumerState<_BillingReconcileDialog> createState() =>
+      _BillingReconcileDialogState();
+}
+
+class _BillingReconcileDialogState
+    extends ConsumerState<_BillingReconcileDialog> {
+  final _reasonController = TextEditingController();
+  final _noteController = TextEditingController();
+  final _confirmationController = TextEditingController();
+  AdminBillingReconcileDryRun? _dryRun;
+  String? _error;
+  bool _loadingDryRun = false;
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    _noteController.dispose();
+    _confirmationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final expected = _dryRun?.expectedConfirmationText ?? 'RECONCILIAR';
+    final reasonFilled = _reasonController.text.trim().isNotEmpty;
+    final confirmationMatches = _confirmationController.text.trim() == expected;
+    final canSubmit =
+        !_submitting &&
+        _dryRun?.allowed == true &&
+        reasonFilled &&
+        confirmationMatches;
+
+    return AlertDialog(
+      title: const Text('Reconciliar Mercado Pago'),
+      content: SizedBox(
+        width: 620,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Esta acao consulta/reconcilia o estado de billing pelo fluxo seguro existente. Ela nao forca troca manual de plano e nao edita providerSubscriptionId manualmente.',
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'license.plan continua sendo a fonte real de entitlement; pendingPlan nao libera recursos ate confirmacao segura.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _reasonController,
+                decoration: const InputDecoration(
+                  labelText: 'Motivo obrigatorio',
+                ),
+                minLines: 2,
+                maxLines: 3,
+                onChanged: (_) => setState(() => _dryRun = null),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _noteController,
+                decoration: const InputDecoration(labelText: 'Nota opcional'),
+                onChanged: (_) => setState(() => _dryRun = null),
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: _loadingDryRun ? null : _runDryRun,
+                icon: _loadingDryRun
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.fact_check_rounded),
+                label: const Text('Simular dry-run'),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+              if (_dryRun != null) ...[
+                const SizedBox(height: 16),
+                _BillingReconcilePreview(dryRun: _dryRun!),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _confirmationController,
+                  decoration: InputDecoration(
+                    labelText: 'Texto de confirmacao',
+                    helperText: confirmationMatches
+                        ? 'Confirmacao correta.'
+                        : 'Digite $expected para liberar a confirmacao.',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting
+              ? null
+              : () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton.icon(
+          onPressed: canSubmit ? _submit : null,
+          icon: _submitting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.check_rounded),
+          label: const Text('Confirmar reconciliacao'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _runDryRun() async {
+    if (_reasonController.text.trim().isEmpty) {
+      setState(() => _error = 'Informe o motivo da acao administrativa.');
+      return;
+    }
+    setState(() {
+      _loadingDryRun = true;
+      _error = null;
+      _dryRun = null;
+      _confirmationController.clear();
+    });
+    try {
+      final result = await ref
+          .read(adminApiServiceProvider)
+          .dryRunBillingReconcile(
+            companyId: widget.companyId,
+            reason: _reasonController.text,
+            note: _noteController.text,
+          );
+      if (mounted) {
+        setState(() => _dryRun = result);
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = _safeError(error));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loadingDryRun = false);
+      }
+    }
+  }
+
+  Future<void> _submit() async {
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(adminApiServiceProvider)
+          .applyBillingReconcile(
+            companyId: widget.companyId,
+            reason: _reasonController.text,
+            note: _noteController.text,
+            confirmationText: _confirmationController.text,
+          );
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = _safeError(error));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
+  }
+}
+
 class _DryRunPreview extends StatelessWidget {
   const _DryRunPreview({required this.dryRun});
 
@@ -906,6 +1116,84 @@ class _DryRunPreview extends StatelessWidget {
             Text(
               'PendingPlan: ${proposed['pendingPlanBefore'] ?? 'nenhum'} -> ${proposed['pendingPlanAfter'] ?? 'nenhum'}',
             ),
+          ],
+          if (dryRun.risks.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Text('Riscos/garantias:'),
+            ...dryRun.risks.map((risk) => Text('- $risk')),
+          ],
+          if (dryRun.blockers.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Bloqueios:',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            ...dryRun.blockers.map((blocker) => Text('- $blocker')),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BillingReconcilePreview extends StatelessWidget {
+  const _BillingReconcilePreview({required this.dryRun});
+
+  final AdminBillingReconcileDryRun dryRun;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = dryRun.currentBillingStatus;
+    final provider = dryRun.providerCheckSummary;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(dryRun.summary),
+          const SizedBox(height: 8),
+          Text('Confirmacao exigida: ${dryRun.expectedConfirmationText}'),
+          if (current != null) ...[
+            const SizedBox(height: 8),
+            const Text('Status atual seguro:'),
+            Text('Plano ativo: ${_previewValue(current['plan'])}'),
+            Text('PendingPlan: ${_previewValue(current['pendingPlan'])}'),
+            Text('Status: ${_previewValue(current['status'])}'),
+            Text(
+              'Assinatura provider: ${_previewValue(current['maskedProviderSubscriptionId'])}',
+            ),
+          ],
+          if (provider != null) ...[
+            const SizedBox(height: 8),
+            const Text('Resumo provider:'),
+            Text(
+              'Provider: ${_previewValue(provider['provider'] ?? provider['billingProvider'])}',
+            ),
+            Text(
+              'Referencia: ${_previewValue(provider['maskedProviderSubscriptionId'] ?? provider['providerSubscriptionId'])}',
+            ),
+            Text('Consulta externa: ${_previewValue(provider['consulted'])}'),
+          ],
+          if (dryRun.pendingCheckoutSessions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Text('Sessoes pendentes:'),
+            ...dryRun.pendingCheckoutSessions
+                .take(4)
+                .map(
+                  (session) => Text(
+                    '- ${_previewValue(session['plan'])} / ${_previewValue(session['status'])} / ${_previewValue(session['maskedProviderReference'] ?? session['providerReference'])}',
+                  ),
+                ),
+          ],
+          if (dryRun.likelyActions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Text('Acoes provaveis:'),
+            ...dryRun.likelyActions.map((action) => Text('- $action')),
           ],
           if (dryRun.risks.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -1522,6 +1810,15 @@ String _safeShort(String? value) {
     return 'Nenhum';
   }
   return text.length > 80 ? '${text.substring(0, 80)}...' : text;
+}
+
+String _previewValue(Object? value) {
+  final sanitized = sanitizeAdminBillingValue(value);
+  final text = sanitized?.toString().trim();
+  if (text == null || text.isEmpty || text == 'null') {
+    return 'Nao disponivel';
+  }
+  return _maskIdentifier(text);
 }
 
 void _showSafeDetails(

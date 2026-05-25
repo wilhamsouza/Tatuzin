@@ -11,6 +11,8 @@ import {
   adminBillingCompaniesQuerySchema,
   adminBillingForcePlanSchema,
   adminBillingListQuerySchema,
+  adminBillingReconcileDryRunSchema,
+  adminBillingReconcileSchema,
   adminBillingRefreshSchema,
   adminLicenseEmergencyExtensionDryRunSchema,
   adminLicenseEmergencyExtensionSchema,
@@ -231,6 +233,38 @@ adminRouter.post(
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
     const payload = await billingAdminService.refreshCompany({
+      ...request.body,
+      companyId,
+      actorUserId: request.auth?.userId,
+      ipAddress: request.ip,
+      userAgent: request.get("user-agent") ?? null,
+    });
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  "/companies/:companyId/billing/reconcile/dry-run",
+  validateBody(adminBillingReconcileDryRunSchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await billingAdminService.dryRunBillingReconcile({
+      ...request.body,
+      companyId,
+      actorUserId: request.auth?.userId,
+      ipAddress: request.ip,
+      userAgent: request.get("user-agent") ?? null,
+    });
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  "/companies/:companyId/billing/reconcile",
+  validateBody(adminBillingReconcileSchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await billingAdminService.applyBillingReconcile({
       ...request.body,
       companyId,
       actorUserId: request.auth?.userId,
