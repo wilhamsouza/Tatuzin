@@ -228,7 +228,7 @@ void main() {
     expect(service.statusFetchCount, greaterThanOrEqualTo(2));
   });
 
-  testWidgets('/licenses mostra aviso legado e continua acessivel', (
+  testWidgets('/licenses mostra modo read-only e continua acessivel', (
     tester,
   ) async {
     _setLargeViewport(tester);
@@ -240,13 +240,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Licenças'), findsOneWidget);
-    expect(
-      find.text(
-        'Esta tela usa fluxo legado de licença. Para assinaturas Mercado Pago, use Billing Admin.',
-      ),
-      findsOneWidget,
-    );
+    expect(find.text('Licencas read-only'), findsOneWidget);
+    expect(find.textContaining('Modo seguro/read-only'), findsOneWidget);
   });
 }
 

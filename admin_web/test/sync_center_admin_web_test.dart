@@ -7,299 +7,235 @@ import 'package:go_router/go_router.dart';
 import 'package:http/testing.dart';
 import 'package:tatuzin_admin_web/src/core/auth/admin_auth_storage.dart';
 import 'package:tatuzin_admin_web/src/core/auth/admin_providers.dart';
+import 'package:tatuzin_admin_web/src/core/models/admin_billing_models.dart';
 import 'package:tatuzin_admin_web/src/core/models/admin_models.dart';
 import 'package:tatuzin_admin_web/src/core/models/admin_sync_center_models.dart';
 import 'package:tatuzin_admin_web/src/core/network/admin_api_client.dart';
 import 'package:tatuzin_admin_web/src/core/network/admin_api_service.dart';
+import 'package:tatuzin_admin_web/src/core/widgets/admin_shell_scaffold.dart';
+import 'package:tatuzin_admin_web/src/features/companies/presentation/companies_page.dart';
+import 'package:tatuzin_admin_web/src/features/companies/presentation/company_detail_page.dart';
+import 'package:tatuzin_admin_web/src/features/dashboard/presentation/dashboard_page.dart';
+import 'package:tatuzin_admin_web/src/features/devices/presentation/devices_page.dart';
+import 'package:tatuzin_admin_web/src/features/licenses/presentation/licenses_page.dart';
+import 'package:tatuzin_admin_web/src/features/plans/presentation/plans_page.dart';
 import 'package:tatuzin_admin_web/src/features/sync_center/presentation/sync_center_pages.dart';
 
 void main() {
-  test('menu e router registram Sincronização sem owner_web', () {
-    final shellSource = File(
-      'lib/src/core/widgets/admin_shell_scaffold.dart',
-    ).readAsStringSync();
+  test('router registra arquitetura nova sem owner_web', () {
     final routerSource = File(
       'lib/src/app/admin_web_router.dart',
     ).readAsStringSync();
+    final shellSource = File(
+      'lib/src/core/widgets/admin_shell_scaffold.dart',
+    ).readAsStringSync();
 
-    expect(shellSource, contains('Sincronização'));
-    expect(routerSource, contains("path: '/sync'"));
-    expect(routerSource, contains("path: '/sync/:companyId'"));
-    expect(routerSource, contains("path: '/sync/:companyId/events/:eventId'"));
-    expect(
-      routerSource,
-      contains("path: '/sync/:companyId/conflicts/:conflictId'"),
-    );
+    for (final route in [
+      "path: '/dashboard'",
+      "path: '/companies'",
+      "path: '/companies/:companyId'",
+      "path: '/companies/:companyId/sync'",
+      "path: '/companies/:companyId/license'",
+      "path: '/sync'",
+      "path: '/sync/:companyId'",
+      "path: '/devices'",
+      "path: '/licenses'",
+      "path: '/licenses/:companyId'",
+      "path: '/plans'",
+      "path: '/audit'",
+    ]) {
+      expect(routerSource, contains(route));
+    }
+    for (final label in [
+      'Dashboard',
+      'Empresas',
+      'Sync global',
+      'Dispositivos',
+      'Licencas',
+      'Planos',
+      'Auditoria',
+    ]) {
+      expect(shellSource, contains(label));
+    }
     expect(routerSource, isNot(contains("path: '/owner'")));
   });
 
-  test('AdminApiService exige reason e confirmationText antes da rede', () {
-    final service = _baseService();
-
-    expect(
-      service.dryRunSyncEventReprocess(
-        companyId: 'company-1',
-        eventId: 'event-1',
-        reason: '',
-      ),
-      throwsA(isA<AdminApiException>()),
-    );
-    expect(
-      service.reprocessSyncEvent(
-        companyId: 'company-1',
-        eventId: 'event-1',
-        reason: 'revisao',
-        confirmationText: 'ERRADO',
-      ),
-      throwsA(isA<AdminApiException>()),
-    );
-    expect(
-      service.archiveSyncConflict(
-        companyId: 'company-1',
-        conflictId: 'conflict-1',
-        reason: 'revisao',
-        confirmationText: '',
-      ),
-      throwsA(isA<AdminApiException>()),
-    );
-  });
-
-  testWidgets('/sync lista empresas com problemas', (tester) async {
+  testWidgets('renderiza nova navegacao', (tester) async {
     _setLargeViewport(tester);
     await tester.pumpWidget(
-      _adminTestApp(
-        service: _FakeSyncApiService(),
-        child: const SyncCenterPage(),
+      const ProviderScope(
+        child: MaterialApp(
+          home: AdminShellScaffold(
+            currentLocation: '/dashboard',
+            title: 'Dashboard',
+            child: SizedBox.shrink(),
+          ),
+        ),
       ),
     );
-    await tester.pumpAndSettle();
 
-    expect(find.text('Sincronização'), findsOneWidget);
-    expect(find.text('café oliveira'), findsOneWidget);
-    expect(find.text('Empresas com revisão'), findsOneWidget);
-    expect(find.text('Conflitos abertos'), findsOneWidget);
-    expect(find.text('Falhas'), findsWidgets);
-    expect(find.text('Eventos pendentes'), findsOneWidget);
-  });
-
-  testWidgets('/sync/:companyId mostra resumo e abas', (tester) async {
-    _setLargeViewport(tester);
-    final service = _FakeSyncApiService();
-    await tester.pumpWidget(
-      _adminRouterTestApp(service: service, initialLocation: '/sync/company-1'),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('café oliveira'), findsWidgets);
-    expect(find.text('currentVersion'), findsOneWidget);
-    expect(find.text('25'), findsWidgets);
-    expect(find.text('Eventos'), findsOneWidget);
-    expect(find.text('Conflitos'), findsWidgets);
-    expect(find.text('Dispositivos'), findsOneWidget);
-    expect(find.text('Incidentes'), findsOneWidget);
+    expect(find.text('Dashboard'), findsWidgets);
+    expect(find.text('Empresas'), findsOneWidget);
+    expect(find.text('Sync global'), findsOneWidget);
+    expect(find.text('Dispositivos'), findsWidgets);
+    expect(find.text('Licencas'), findsOneWidget);
+    expect(find.text('Planos'), findsOneWidget);
     expect(find.text('Auditoria'), findsOneWidget);
   });
 
-  testWidgets('dispositivos mostram diagnostico e criam comando com dry-run', (
-    tester,
-  ) async {
+  testWidgets('menu lateral destaca apenas a secao ativa', (tester) async {
     _setLargeViewport(tester);
-    final service = _FakeSyncApiService();
     await tester.pumpWidget(
-      _adminRouterTestApp(service: service, initialLocation: '/sync/company-1'),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Dispositivos'));
-    await tester.pumpAndSettle();
-    expect(find.text('PDV cafe oliveira'), findsOneWidget);
-    expect(find.text('Falha local'), findsOneWidget);
-    expect(find.text('3'), findsWidgets);
-    expect(find.text('Detalhes'), findsOneWidget);
-    expect(find.text('Suporte'), findsOneWidget);
-
-    await tester.tap(find.text('PDV cafe oliveira'));
-    await tester.pumpAndSettle();
-    expect(
-      find.text('Suporte de sincronizacao por dispositivo'),
-      findsOneWidget,
-    );
-    expect(find.text('Client instance'), findsOneWidget);
-    expect(find.text('device...0001'), findsWidgets);
-    expect(find.text('operador@tatuzin.test'), findsWidgets);
-    expect(find.text('Ultimo sync ok'), findsOneWidget);
-    expect(find.text('Entidade do erro'), findsOneWidget);
-    expect(find.text('Comandos enviados'), findsOneWidget);
-    expect(find.text('Reparar eventos recuperaveis'), findsOneWidget);
-    expect(
-      find.text('Limpar conflitos resolvidos no dispositivo'),
-      findsOneWidget,
-    );
-    expect(find.text('Forcar atualizacao da nuvem'), findsOneWidget);
-    expect(find.text('Recalcular status de sync'), findsOneWidget);
-    expect(
-      find.textContaining('totalCents maior ou igual a zero'),
-      findsWidgets,
+      const ProviderScope(
+        child: MaterialApp(
+          home: AdminShellScaffold(
+            currentLocation: '/companies/company-1/license',
+            title: 'Licenca da empresa',
+            child: SizedBox.shrink(),
+          ),
+        ),
+      ),
     );
 
-    await tester.ensureVisible(find.text('Reparar eventos recuperaveis'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Reparar eventos recuperaveis'));
-    await tester.pumpAndSettle();
-    expect(find.text('Motivo obrigatorio'), findsOneWidget);
-    expect(find.text('Enviar comando'), findsOneWidget);
-    expect(
-      tester
-          .widget<FilledButton>(
-            find.widgetWithText(FilledButton, 'Enviar comando'),
-          )
-          .enabled,
-      isFalse,
+    final selectedTiles = tester.widgetList<ListTile>(
+      find.byWidgetPredicate((widget) => widget is ListTile && widget.selected),
     );
-
-    await tester.enterText(find.byType(TextField).first, 'reparar fila antiga');
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Executar dry-run'));
-    await tester.pumpAndSettle();
-    expect(service.supportDryRunCalls, 1);
-    expect(find.text('Digite REPARAR para confirmar.'), findsOneWidget);
-
-    await tester.enterText(find.byType(TextField).last, 'ERRADO');
-    await tester.pumpAndSettle();
-    expect(
-      find.text('Digite REPARAR para liberar a confirmacao.'),
-      findsOneWidget,
-    );
-    expect(
-      tester
-          .widget<FilledButton>(
-            find.widgetWithText(FilledButton, 'Enviar comando'),
-          )
-          .enabled,
-      isFalse,
-    );
-
-    await tester.enterText(find.byType(TextField).last, 'REPARAR');
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<FilledButton>(
-            find.widgetWithText(FilledButton, 'Enviar comando'),
-          )
-          .enabled,
-      isTrue,
-    );
-    await tester.tap(find.text('Enviar comando'));
-    await tester.pumpAndSettle();
-
-    expect(service.supportActionCalls, 1);
-    expect(
-      service.lastSupportCommand,
-      'REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS',
-    );
+    expect(selectedTiles.length, 1);
+    expect(selectedTiles.single.title, isA<Text>());
+    expect((selectedTiles.single.title as Text).data, 'Licencas');
   });
 
-  testWidgets('tabela de eventos mostra ações e traduções seguras', (
+  testWidgets('dashboard mostra KPIs e CTAs', (tester) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminTestApp(
+        service: _FakeReadOnlyApiService(),
+        child: const DashboardPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Empresas ativas'), findsOneWidget);
+    expect(find.text('Sync com atencao'), findsOneWidget);
+    expect(find.text('Licencas vencendo'), findsOneWidget);
+    expect(find.text('Dispositivos online'), findsOneWidget);
+    expect(find.text('Empresas com problemas ativos'), findsOneWidget);
+    expect(find.text('Abrir empresa'), findsOneWidget);
+    expect(find.text('Abrir Sync Center'), findsWidgets);
+  });
+
+  testWidgets('/companies renderiza listagem preservada', (tester) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminTestApp(
+        service: _FakeReadOnlyApiService(),
+        child: const CompaniesPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Empresas'), findsOneWidget);
+    expect(find.text('Loja Moda Sul'), findsOneWidget);
+    expect(find.text('Abrir'), findsOneWidget);
+  });
+
+  testWidgets('empresa abre visao 360', (tester) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/companies/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Loja Moda Sul'), findsWidgets);
+    expect(find.text('Resumo'), findsOneWidget);
+    expect(find.text('Resumo de sync'), findsOneWidget);
+    expect(find.text('Abrir console de sync'), findsWidgets);
+    expect(find.text('Sync'), findsOneWidget);
+    expect(find.text('Licenca'), findsOneWidget);
+    expect(find.text('Dispositivos'), findsWidgets);
+    expect(find.text('Funcionarios'), findsOneWidget);
+    expect(find.text('Auditoria'), findsOneWidget);
+  });
+
+  testWidgets('Sync Center renderiza abas read-only', (tester) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/companies/company-1/sync',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Resumo'), findsOneWidget);
+    expect(find.text('Eventos'), findsOneWidget);
+    expect(find.text('Conflitos'), findsOneWidget);
+    expect(find.text('Incidentes'), findsOneWidget);
+    expect(find.text('Dispositivos'), findsOneWidget);
+    expect(find.text('Auditoria'), findsOneWidget);
+    expect(find.textContaining('Modo seguro/read-only'), findsWidgets);
+    expect(find.textContaining('Reprocessar'), findsNothing);
+    expect(find.textContaining('Arquivar legado'), findsNothing);
+  });
+
+  testWidgets('/sync/:companyId e /companies/:companyId/sync sao aliases', (
     tester,
   ) async {
     _setLargeViewport(tester);
     await tester.pumpWidget(
       _adminRouterTestApp(
-        service: _FakeSyncApiService(),
+        service: _FakeReadOnlyApiService(),
         initialLocation: '/sync/company-1',
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Ações'), findsWidgets);
-    expect(find.text('Entidade'), findsWidgets);
-    expect(find.text('Operação'), findsWidgets);
-    expect(find.text('Módulo'), findsWidgets);
-    expect(find.text('Baixa de estoque'), findsWidgets);
-    expect(find.text('Sessão de caixa'), findsWidgets);
-    expect(find.text('Perigoso'), findsWidgets);
-    expect(find.text('Bloqueado por segurança'), findsWidgets);
-    expect(find.text('Ver conflito'), findsOneWidget);
-    expect(find.text('Dry-run'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Reprocessar'), findsOneWidget);
-
-    final reprocessButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Reprocessar'),
-    );
-    expect(reprocessButton.enabled, isFalse);
-    expect(find.textContaining('token-super-secreto'), findsNothing);
+    expect(find.text('Loja Moda Sul'), findsWidgets);
+    expect(find.text('Eventos'), findsOneWidget);
+    expect(find.textContaining('Modo seguro/read-only'), findsWidgets);
   });
 
-  testWidgets(
-    'cashSession reprocessável exige dry-run antes de write e recarrega',
-    (tester) async {
-      _setLargeViewport(tester);
-      final service = _FakeSyncApiService();
-      await tester.pumpWidget(
-        _adminRouterTestApp(
-          service: service,
-          initialLocation: '/sync/company-1',
-        ),
-      );
-      await tester.pumpAndSettle();
+  testWidgets('Sync global aplica filtro all real', (tester) async {
+    _setLargeViewport(tester);
+    final service = _FakeReadOnlyApiService();
+    await tester.pumpWidget(
+      _adminTestApp(service: service, child: const SyncCenterPage()),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Dry-run'));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).first, 'corrigir caixa');
-      await tester.tap(find.text('Continuar'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.text('Com atencao'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Todas').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Aplicar'));
+    await tester.pumpAndSettle();
 
-      expect(service.dryRunReprocessCalls, 1);
-      expect(find.text('Resultado do dry-run'), findsOneWidget);
-      expect(find.text('Pode executar'), findsOneWidget);
-      expect(find.text('Sim'), findsOneWidget);
+    expect(service.lastCompaniesQuery?.status, 'all');
+  });
 
-      await tester.tap(find.text('Fechar'));
-      await tester.pumpAndSettle();
-
-      final enabledReprocessButton = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Reprocessar'),
-      );
-      expect(enabledReprocessButton.enabled, isTrue);
-
-      final reprocessFinder = find.widgetWithText(FilledButton, 'Reprocessar');
-      await tester.ensureVisible(reprocessFinder);
-      await tester.pumpAndSettle();
-      await tester.tap(reprocessFinder);
-      await tester.pumpAndSettle();
-      expect(find.text('Motivo obrigatório'), findsOneWidget);
-      expect(find.text('Texto de confirmação'), findsOneWidget);
-
-      await tester.enterText(find.byType(TextField).at(0), 'corrigir caixa');
-      await tester.enterText(find.byType(TextField).at(1), 'REPROCESSAR');
-      await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<FilledButton>(
-              find.widgetWithText(FilledButton, 'Confirmar'),
-            )
-            .enabled,
-        isTrue,
-      );
-      await tester.tap(find.text('Confirmar'));
-      await tester.pumpAndSettle();
-
-      expect(service.reprocessCalls, 1);
-      expect(service.lastReprocessReason, 'corrigir caixa');
-      expect(service.fetchSummaryCalls, greaterThan(1));
-      expect(service.fetchEventsCalls, greaterThan(1));
-      expect(service.fetchConflictsCalls, greaterThan(1));
-    },
-  );
-
-  testWidgets('tabela de conflitos permite dry-run antes de arquivar legado', (
+  testWidgets('Dispositivos usa inventario global sem filtrar atencao', (
     tester,
   ) async {
     _setLargeViewport(tester);
+    final service = _FakeReadOnlyApiService();
+    await tester.pumpWidget(
+      _adminTestApp(service: service, child: const DevicesPage()),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dispositivos por empresa'), findsOneWidget);
+    expect(service.lastCompaniesQuery?.status, 'all');
+  });
+
+  testWidgets('Conflitos RESOLVED nao aparecem como pendentes', (tester) async {
+    _setLargeViewport(tester);
     await tester.pumpWidget(
       _adminRouterTestApp(
-        service: _FakeSyncApiService(),
-        initialLocation: '/sync/company-1',
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/companies/company-1/sync',
       ),
     );
     await tester.pumpAndSettle();
@@ -307,214 +243,202 @@ void main() {
     await tester.tap(find.widgetWithText(Tab, 'Conflitos'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Arquivar legado'), findsWidgets);
-    expect(find.text('Ajuste manual indisponível'), findsWidgets);
-    final archiveButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Arquivar legado').first,
+    final openSection = find.text('Ativos: OPEN');
+    final historySection = find.text('Historico: RESOLVED e IGNORED');
+    expect(openSection, findsOneWidget);
+    expect(historySection, findsOneWidget);
+    expect(
+      find.text('RESOLVED'),
+      findsOneWidget,
+      reason: 'RESOLVED deve aparecer apenas no historico.',
     );
-    expect(archiveButton.enabled, isFalse);
+    expect(find.text('OPEN'), findsWidgets);
   });
 
-  testWidgets('conflito legado exibe classificação amigável e bloqueios', (
-    tester,
-  ) async {
+  testWidgets('Eventos mostra lista e detalhe read-only', (tester) async {
     _setLargeViewport(tester);
     await tester.pumpWidget(
-      _adminTestApp(
-        service: _FakeSyncApiService(),
-        child: const SyncConflictDetailPage(
-          companyId: 'company-1',
-          conflictId: 'conflict-legacy',
-        ),
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/companies/company-1/sync',
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Evento legado'), findsWidgets);
-    expect(
-      find.text(
-        'Evento antigo sem identificação remota segura. Não é recomendado reprocessar automaticamente. Revise estoque manualmente ou arquive como evento legado de teste.',
-      ),
-      findsWidgets,
-    );
-    expect(find.text('Dry-run arquivar'), findsOneWidget);
-    expect(find.text('Arquivar legado'), findsOneWidget);
+    await tester.tap(find.widgetWithText(Tab, 'Eventos'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('stockDeduction'), findsOneWidget);
+    expect(find.text('STOCK_VARIANT_NOT_FOUND'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Detalhes').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Evento client-event-1'), findsOneWidget);
     expect(find.text('Payload preview'), findsOneWidget);
-    expect(find.textContaining('productId: 5'), findsOneWidget);
-    expect(find.textContaining('Bearer secret'), findsNothing);
-    expect(find.textContaining('api-key-secret'), findsNothing);
+    expect(find.textContaining('Variante nao encontrada'), findsWidgets);
+    expect(find.textContaining('Reprocessar'), findsNothing);
   });
 
-  testWidgets(
-    'evento legado não mostra reprocessamento automático habilitado',
-    (tester) async {
-      _setLargeViewport(tester);
-      await tester.pumpWidget(
-        _adminTestApp(
-          service: _FakeSyncApiService(),
-          child: const SyncEventDetailPage(
-            companyId: 'company-1',
-            eventId: 'event-legacy',
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('Dry-run reprocessar'), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, 'Reprocessar'), findsNothing);
-      expect(
-        find.widgetWithText(OutlinedButton, 'Bloqueado por segurança'),
-        findsOneWidget,
-      );
-      expect(find.text('Reprocessamento automático bloqueado'), findsOneWidget);
-      expect(find.textContaining('token-super-secreto'), findsNothing);
-      await tester.tap(find.text('Payload sanitizado avançado'));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('[redacted]'), findsWidgets);
-    },
-  );
-
-  testWidgets('modal de arquivamento exige reason e confirmationText', (
+  testWidgets('Dispositivos diferencia MOBILE_APP de ADMIN_WEB', (
     tester,
   ) async {
     _setLargeViewport(tester);
-    final service = _FakeSyncApiService();
     await tester.pumpWidget(
-      _adminTestApp(
-        service: service,
-        child: const SyncConflictDetailPage(
-          companyId: 'company-1',
-          conflictId: 'conflict-legacy',
-        ),
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/companies/company-1/sync',
       ),
     );
     await tester.pumpAndSettle();
 
-    final disabledArchiveButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Arquivar legado'),
-    );
-    expect(disabledArchiveButton.enabled, isFalse);
-
-    await tester.tap(find.text('Dry-run arquivar'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byType(TextField).first,
-      'evento legado de teste',
-    );
-    await tester.tap(find.text('Continuar'));
-    await tester.pumpAndSettle();
-    expect(service.dryRunArchiveCalls, 1);
-    expect(find.text('Resultado do dry-run'), findsOneWidget);
-    await tester.tap(find.text('Fechar'));
+    await tester.tap(find.widgetWithText(Tab, 'Dispositivos'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Arquivar legado'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Digite ARQUIVAR para confirmar.'), findsOneWidget);
-    expect(find.text('Motivo obrigatório'), findsOneWidget);
-    expect(find.text('Texto de confirmação'), findsOneWidget);
+    expect(find.text('MOBILE_APP'), findsOneWidget);
+    expect(find.text('ADMIN_WEB'), findsOneWidget);
+    expect(find.text('Pendentes locais'), findsOneWidget);
+    expect(find.text('Falhas locais'), findsWidgets);
+    expect(find.text('totalCents antigo'), findsOneWidget);
     expect(
-      tester
-          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Confirmar'))
-          .enabled,
-      isFalse,
-    );
-
-    await tester.enterText(
-      find.byType(TextField).at(0),
-      'evento legado de teste',
-    );
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Confirmar'))
-          .enabled,
-      isFalse,
-    );
-
-    await tester.enterText(find.byType(TextField).at(1), 'ERRADO');
-    await tester.pumpAndSettle();
-    expect(
-      find.text('Digite ARQUIVAR para liberar a confirmacao.'),
+      find.textContaining('Acoes remotas de suporte serao implementadas'),
       findsOneWidget,
     );
-    expect(
-      tester
-          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Confirmar'))
-          .enabled,
-      isFalse,
-    );
+    expect(find.textContaining('Comando remoto'), findsNothing);
 
-    await tester.enterText(find.byType(TextField).at(1), 'ARQUIVAR');
+    final deviceTableScroller = find
+        .ancestor(
+          of: find.byType(DataTable).first,
+          matching: find.byType(SingleChildScrollView),
+        )
+        .last;
+    await tester.drag(deviceTableScroller, const Offset(-1800, 0));
     await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Confirmar'))
-          .enabled,
-      isTrue,
-    );
-
-    await tester.tap(find.text('Confirmar'));
+    await tester.tap(find.widgetWithText(TextButton, 'Detalhes').first);
     await tester.pumpAndSettle();
 
-    expect(service.archiveCalls, 1);
-    expect(service.lastArchiveReason, 'evento legado de teste');
+    expect(find.text('Pendentes locais'), findsWidgets);
+    expect(find.text('Detalhes seguros'), findsOneWidget);
+    expect(find.text('operationalOrderItem'), findsWidgets);
   });
 
-  testWidgets('dry-run bloqueado mostra motivo e nao libera arquivamento', (
+  testWidgets('refresh chama providers por empresa novamente', (tester) async {
+    _setLargeViewport(tester);
+    final service = _FakeReadOnlyApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/companies/company-1/sync',
+      ),
+    );
+    await tester.pumpAndSettle();
+    final initialHealthFetches = service.companyHealthFetchCount;
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Atualizar'));
+    await tester.pumpAndSettle();
+
+    expect(service.companyHealthFetchCount, greaterThan(initialHealthFetches));
+  });
+
+  testWidgets('Sync Center por empresa exibe estados vazio e erro', (
     tester,
   ) async {
     _setLargeViewport(tester);
-    final service = _FakeSyncApiService(archiveDryRunAllowed: false);
     await tester.pumpWidget(
-      _adminTestApp(
-        service: service,
-        child: const SyncConflictDetailPage(
-          companyId: 'company-1',
-          conflictId: 'conflict-legacy',
-        ),
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(emptyCompanySync: true),
+        initialLocation: '/companies/company-1/sync',
       ),
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Dry-run arquivar'));
+    await tester.tap(find.widgetWithText(Tab, 'Eventos'));
     await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byType(TextField).first,
-      'avaliar conflito legado',
-    );
-    await tester.tap(find.text('Continuar'));
-    await tester.pumpAndSettle();
+    expect(find.text('Nenhum evento encontrado.'), findsOneWidget);
 
-    expect(find.text('Resultado do dry-run'), findsOneWidget);
-    expect(find.text('Conflito bloqueado para arquivamento.'), findsWidgets);
-    await tester.tap(find.text('Fechar'));
-    await tester.pumpAndSettle();
-
-    final archiveButton = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Arquivar legado'),
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(throwCompanySync: true),
+        initialLocation: '/companies/company-1/sync',
+      ),
     );
-    expect(archiveButton.enabled, isFalse);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Nao foi possivel carregar o console de sync'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('falha controlada'), findsOneWidget);
   });
-}
 
-AdminApiService _baseService() {
-  final storage = AdminAuthStorage();
-  return AdminApiService(
-    apiClient: AdminApiClient(
-      baseUrl: 'https://api.test/api',
-      authStorage: storage,
-      httpClient: MockClient((request) async {
-        throw UnimplementedError(request.url.toString());
-      }),
-    ),
-    authStorage: storage,
-  );
+  testWidgets('Licenca mostra acoes placeholder', (tester) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/licenses/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Plano atual'), findsOneWidget);
+    expect(find.text('Pending plan'), findsOneWidget);
+    expect(find.textContaining('Extensao emergencial'), findsOneWidget);
+    expect(find.textContaining('Trocar plano'), findsOneWidget);
+    expect(find.textContaining('Suspender'), findsOneWidget);
+    expect(find.textContaining('Reativar'), findsOneWidget);
+
+    await tester.tap(find.textContaining('Trocar plano'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Acao administrativa sera implementada em fase posterior com dry-run, confirmacao e auditoria.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Planos mostra matriz', (tester) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: PlansPage())),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Planos read-only'), findsOneWidget);
+    expect(find.text('Matriz de features'), findsOneWidget);
+    expect(find.text('FREE'), findsWidgets);
+    expect(find.text('BASIC'), findsWidgets);
+    expect(find.text('PRO'), findsWidgets);
+    expect(find.text('Max dispositivos'), findsOneWidget);
+  });
+
+  testWidgets('estados vazio e erro funcionam', (tester) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminTestApp(
+        service: _FakeReadOnlyApiService(emptyLicenses: true),
+        child: const LicensesPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Nenhuma licenca encontrada para os filtros.'),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(
+      _adminTestApp(
+        service: _FakeReadOnlyApiService(throwDashboard: true),
+        child: const DashboardPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Nao foi possivel carregar o dashboard'), findsOneWidget);
+    expect(find.textContaining('falha controlada'), findsOneWidget);
+  });
 }
 
 void _setLargeViewport(WidgetTester tester) {
-  tester.view.physicalSize = const Size(2400, 1400);
+  tester.view.physicalSize = const Size(1800, 1200);
   tester.view.devicePixelRatio = 1;
   addTearDown(() {
     tester.view.resetPhysicalSize();
@@ -540,13 +464,33 @@ Widget _adminRouterTestApp({
     initialLocation: initialLocation,
     routes: [
       GoRoute(
-        path: '/sync',
-        builder: (context, state) => const Scaffold(body: SyncCenterPage()),
+        path: '/companies/:companyId',
+        builder: (context, state) => Scaffold(
+          body: CompanyDetailPage(
+            companyId: state.pathParameters['companyId'] ?? '',
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/companies/:companyId/sync',
+        builder: (context, state) => Scaffold(
+          body: SyncCompanyPage(
+            companyId: state.pathParameters['companyId'] ?? '',
+          ),
+        ),
       ),
       GoRoute(
         path: '/sync/:companyId',
         builder: (context, state) => Scaffold(
           body: SyncCompanyPage(
+            companyId: state.pathParameters['companyId'] ?? '',
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/licenses/:companyId',
+        builder: (context, state) => Scaffold(
+          body: LicenseCompanyPage(
             companyId: state.pathParameters['companyId'] ?? '',
           ),
         ),
@@ -578,41 +522,146 @@ Widget _adminRouterTestApp({
   );
 }
 
-class _FakeSyncApiService extends AdminApiService {
-  _FakeSyncApiService({this.archiveDryRunAllowed = true})
-    : super(
-        apiClient: AdminApiClient(
-          baseUrl: 'https://api.test/api',
-          authStorage: AdminAuthStorage(),
-          httpClient: MockClient((request) async {
-            throw UnimplementedError(request.url.toString());
-          }),
-        ),
-        authStorage: AdminAuthStorage(),
-      );
+class _FakeReadOnlyApiService extends AdminApiService {
+  _FakeReadOnlyApiService({
+    this.emptyLicenses = false,
+    this.throwDashboard = false,
+    this.emptyCompanySync = false,
+    this.throwCompanySync = false,
+  }) : super(
+         apiClient: AdminApiClient(
+           baseUrl: 'https://api.test/api',
+           authStorage: AdminAuthStorage(),
+           httpClient: MockClient((request) async {
+             throw UnimplementedError(request.url.toString());
+           }),
+         ),
+         authStorage: AdminAuthStorage(),
+       );
 
-  final bool archiveDryRunAllowed;
+  final bool emptyLicenses;
+  final bool throwDashboard;
+  final bool emptyCompanySync;
+  final bool throwCompanySync;
+  AdminSyncCenterCompaniesQuery? lastCompaniesQuery;
+  int companyHealthFetchCount = 0;
 
-  int archiveCalls = 0;
-  int dryRunArchiveCalls = 0;
-  int dryRunReprocessCalls = 0;
-  int reprocessCalls = 0;
-  int fetchSummaryCalls = 0;
-  int fetchEventsCalls = 0;
-  int fetchConflictsCalls = 0;
-  int fetchSupportDevicesCalls = 0;
-  int fetchSupportDeviceDetailCalls = 0;
-  int supportDryRunCalls = 0;
-  int supportActionCalls = 0;
-  String? lastArchiveReason;
-  String? lastReprocessReason;
-  String? lastSupportCommand;
+  @override
+  Future<AdminDashboardSnapshot> fetchDashboard() async {
+    if (throwDashboard) {
+      throw const AdminApiException(message: 'falha controlada');
+    }
+    return AdminDashboardSnapshot(
+      companies: [AdminCompanySummary.fromMap(_companyMap())],
+      auditSummary: AdminAuditSummary.fromMap(_auditSummaryMap()),
+      syncSummary: AdminSyncSummary.fromMap(_syncSummaryMap()),
+    );
+  }
+
+  @override
+  Future<AdminCompanyDetail> fetchCompanyDetail(String companyId) async {
+    return AdminCompanyDetail.fromMap({
+      'company': _companyMap(),
+      'memberships': [
+        {
+          'id': 'membership-1',
+          'role': 'OWNER',
+          'isDefault': true,
+          'createdAt': '2026-01-01T00:00:00.000Z',
+          'updatedAt': '2026-05-24T12:00:00.000Z',
+          'user': {
+            'id': 'user-1',
+            'name': 'Operador Local',
+            'email': 'operador@tatuzin.test',
+            'isActive': true,
+            'isPlatformAdmin': false,
+          },
+        },
+      ],
+      'sessions': [_mobileSessionMap(), _adminSessionMap()],
+    });
+  }
+
+  @override
+  Future<AdminPaginatedResult<AdminCompanySummary>> fetchCompanies({
+    AdminCompaniesQuery? query,
+  }) async {
+    return AdminPaginatedResult<AdminCompanySummary>(
+      items: [AdminCompanySummary.fromMap(_companyMap())],
+      pagination: const AdminPaginationMeta(
+        page: 1,
+        pageSize: 20,
+        total: 1,
+        count: 1,
+        hasNext: false,
+        hasPrevious: false,
+      ),
+      filters: const {},
+      sort: const AdminSortMeta(by: 'createdAt', direction: 'desc'),
+    );
+  }
+
+  @override
+  Future<AdminPaginatedResult<AdminLicenseSnapshot>> fetchLicenses({
+    AdminLicensesQuery? query,
+  }) async {
+    return AdminPaginatedResult<AdminLicenseSnapshot>(
+      items: emptyLicenses ? [] : [AdminLicenseSnapshot.fromMap(_licenseMap())],
+      pagination: AdminPaginationMeta(
+        page: 1,
+        pageSize: 20,
+        total: emptyLicenses ? 0 : 1,
+        count: emptyLicenses ? 0 : 1,
+        hasNext: false,
+        hasPrevious: false,
+      ),
+      filters: const {},
+      sort: const AdminSortMeta(by: 'expiresAt', direction: 'asc'),
+    );
+  }
+
+  @override
+  Future<AdminBillingCompanyStatus> fetchBillingCompanyStatus(
+    String companyId,
+  ) async {
+    return AdminBillingCompanyStatus.fromMap({
+      'company': {'id': companyId, 'name': 'Loja Moda Sul'},
+      'license': {
+        'plan': 'PRO',
+        'status': 'ACTIVE',
+        'currentPeriodEnd': '2026-06-30T00:00:00.000Z',
+        'nextPaymentDate': '2026-06-30T00:00:00.000Z',
+        'pendingPlan': 'BASIC',
+        'billingSubscriptionStatus': 'authorized',
+      },
+      'billing': {
+        'provider': 'mercadopago',
+        'hasProviderSubscription': true,
+        'maskedProviderSubscriptionId': 'pre_..._7890',
+        'currentPeriodEnd': '2026-06-30T00:00:00.000Z',
+        'nextPaymentDate': '2026-06-30T00:00:00.000Z',
+        'pendingPlan': 'BASIC',
+        'billingSubscriptionStatus': 'authorized',
+      },
+      'events': [
+        {
+          'id': 'billing-event-1',
+          'provider': 'mercadopago',
+          'eventType': 'payment.created',
+          'status': 'processed',
+        },
+      ],
+      'invoices': const [],
+      'checkoutSessions': const [],
+    });
+  }
 
   @override
   Future<AdminPaginatedResult<AdminSyncCenterCompany>>
   fetchSyncCenterCompanies({AdminSyncCenterCompaniesQuery? query}) async {
+    lastCompaniesQuery = query;
     return AdminPaginatedResult<AdminSyncCenterCompany>(
-      items: [AdminSyncCenterCompany.fromMap(_companyMap())],
+      items: [AdminSyncCenterCompany.fromMap(_syncCompanyMap())],
       pagination: const AdminPaginationMeta(
         page: 1,
         pageSize: 20,
@@ -630,58 +679,53 @@ class _FakeSyncApiService extends AdminApiService {
   Future<AdminSyncCenterCompanySummary> fetchSyncCenterCompanySummary(
     String companyId,
   ) async {
-    fetchSummaryCalls += 1;
     return AdminSyncCenterCompanySummary.fromMap({
       'company': {
         'companyId': companyId,
-        'companyName': 'café oliveira',
+        'companyName': 'Loja Moda Sul',
         'plan': 'PRO',
       },
-      'syncState': {'currentVersion': '25', 'serverFirstSnapshotVersion': '0'},
+      'syncState': {
+        'currentVersion': '42',
+        'serverFirstSnapshotVersion': '40',
+        'updatedAt': '2026-05-24T12:00:00.000Z',
+      },
       'eventStatusCounts': {
-        'accepted': 17,
-        'duplicate': 3,
-        'conflict': 8,
+        'accepted': 10,
+        'duplicate': 1,
+        'pending': 2,
+        'conflict': 1,
         'failed': 1,
-        'pending': 0,
         'rejected': 0,
       },
-      'entityOperationStatusCounts': [
-        {
-          'entity': 'stockDeduction',
-          'operation': 'create',
-          'status': 'conflict',
-          'count': 8,
-        },
-        {
-          'entity': 'cashSession',
-          'operation': 'update',
-          'status': 'failed',
-          'count': 1,
-        },
-      ],
+      'entityOperationStatusCounts': const [],
       'conflictCounts': [
         {
           'code': 'STOCK_VARIANT_NOT_FOUND',
           'entity': 'stockDeduction',
           'status': 'open',
-          'count': 8,
+          'count': 1,
+        },
+        {
+          'code': 'OLD_CONFLICT',
+          'entity': 'cashSession',
+          'status': 'resolved',
+          'count': 1,
         },
       ],
       'incidentCounts': const [],
-      'latestEvents': [_legacyEventMap(), _cashEventMap()],
-      'latestConflicts': [_legacyConflictMap()],
+      'latestEvents': [_eventMap()],
+      'latestConflicts': [_openConflictMap(), _resolvedConflictMap()],
       'latestIncidents': [
         {
           'id': 'incident-1',
-          'code': 'SYNC_MATERIALIZATION_FAILED',
-          'message': 'Falha inesperada ao materializar evento operacional.',
+          'code': 'SYNC_FAILED',
+          'message': 'Falha de materializacao.',
           'severity': 'error',
-          'createdAt': '2026-05-06T20:45:01.211999Z',
+          'createdAt': '2026-05-24T12:00:00.000Z',
         },
       ],
-      'recommendation':
-          'Existem falhas e conflitos. Use dry-run antes de qualquer ação.',
+      'recommendation': 'Existe problema ativo.',
       'requiresReview': true,
     });
   }
@@ -690,18 +734,13 @@ class _FakeSyncApiService extends AdminApiService {
   Future<AdminPaginatedResult<AdminSyncCenterEvent>> fetchSyncCenterEvents({
     required AdminSyncCenterEventsQuery query,
   }) async {
-    fetchEventsCalls += 1;
     return AdminPaginatedResult<AdminSyncCenterEvent>(
-      items: [
-        AdminSyncCenterEvent.fromMap(_legacyEventMap()),
-        AdminSyncCenterEvent.fromMap(_cashEventMap()),
-        AdminSyncCenterEvent.fromMap(_dangerousEventMap()),
-      ],
+      items: [AdminSyncCenterEvent.fromMap(_eventMap())],
       pagination: const AdminPaginationMeta(
         page: 1,
         pageSize: 20,
-        total: 3,
-        count: 3,
+        total: 1,
+        count: 1,
         hasNext: false,
         hasPrevious: false,
       ),
@@ -715,9 +754,8 @@ class _FakeSyncApiService extends AdminApiService {
   fetchSyncCenterConflicts({
     required AdminSyncCenterConflictsQuery query,
   }) async {
-    fetchConflictsCalls += 1;
     return AdminPaginatedResult<AdminSyncCenterConflict>(
-      items: [AdminSyncCenterConflict.fromMap(_legacyConflictMap())],
+      items: [AdminSyncCenterConflict.fromMap(_openConflictMap())],
       pagination: const AdminPaginationMeta(
         page: 1,
         pageSize: 20,
@@ -735,10 +773,7 @@ class _FakeSyncApiService extends AdminApiService {
   Future<List<AdminSyncSupportDevice>> fetchSyncSupportDevices({
     required String companyId,
   }) async {
-    fetchSupportDevicesCalls += 1;
-    return <AdminSyncSupportDevice>[
-      AdminSyncSupportDevice.fromMap(_supportDeviceMap()),
-    ];
+    return [AdminSyncSupportDevice.fromMap(_supportDeviceMap())];
   }
 
   @override
@@ -746,235 +781,310 @@ class _FakeSyncApiService extends AdminApiService {
     required String companyId,
     required String deviceId,
   }) async {
-    fetchSupportDeviceDetailCalls += 1;
     return AdminSyncSupportDeviceDetail.fromMap({
       'device': _supportDeviceMap(),
       'diagnostic': _supportDiagnosticMap(),
-      'failedEvents': [
-        {
-          'id': 'event-failed-1',
-          'eventId': 'local-event-failed-1',
-          'entity': 'operationalOrderItem',
-          'operation': 'create',
-          'errorCode': 'SYNC_PUSH_FAILED',
-          'errorMessage':
-              'operationalOrderItem precisa de totalCents maior ou igual a zero.',
-          'updatedAt': '2026-05-06T20:45:01.211999Z',
-          'payloadSummary': '{"entity":"operationalOrderItem"}',
-        },
-      ],
+      'failedEvents': const [],
       'openConflicts': const [],
-      'resolvedConflicts': [
-        {
-          'id': 'conflict-resolved-1',
-          'entity': 'operationalOrderItem',
-          'code': 'OPERATIONAL_ORDER_NOT_FOUND',
-          'message': 'Conflito antigo resolvido no backend.',
-          'status': 'resolved',
-          'createdAt': '2026-05-06T20:45:01.211999Z',
-          'resolvedAt': '2026-05-07T20:45:01.211999Z',
-        },
-      ],
+      'resolvedConflicts': const [],
       'commands': const [],
     });
   }
 
   @override
-  Future<AdminSyncSupportDryRunResult> dryRunSyncSupportAction({
-    required String companyId,
-    required String deviceId,
-    required String command,
-    required String reason,
-  }) async {
-    supportDryRunCalls += 1;
-    lastSupportCommand = command;
-    return AdminSyncSupportDryRunResult.fromMap({
-      'allowed': true,
-      'command': command,
-      'label': 'Reparar totalCents de itens',
-      'expectedConfirmationText': 'REPARAR',
-      'blockers': const [],
-      'risks': ['Nenhuma venda, pedido ou estoque sera apagado.'],
-      'summary': 'Comando pode ser enviado com seguranca para execucao local.',
-    });
-  }
-
-  @override
-  Future<AdminSyncSupportActionResult> createSyncSupportAction({
-    required String companyId,
-    required String deviceId,
-    required String command,
-    required String reason,
-    required String confirmationText,
-  }) async {
-    supportActionCalls += 1;
-    lastSupportCommand = command;
-    return AdminSyncSupportActionResult.fromMap({
-      'ok': true,
-      'message': 'Comando enviado ao dispositivo.',
-      'command': {
-        'id': 'cmd-1',
-        'command': command,
-        'label': 'Reparar totalCents de itens',
-        'status': 'PENDING',
-        'reason': reason,
-        'requestedAt': '2026-05-06T20:45:01.211999Z',
-        'expiresAt': '2026-05-07T20:45:01.211999Z',
-      },
-    });
-  }
-
-  @override
-  Future<AdminSyncCenterEventDetail> fetchSyncCenterEventDetail({
-    required String companyId,
-    required String eventId,
-  }) async {
-    final event = eventId == 'event-cash' ? _cashEventMap() : _legacyEventMap();
-    return AdminSyncCenterEventDetail.fromMap({
-      'event': {
-        ...event,
-        'payload': {
-          ...event['safePayloadPreview'] as Map<String, dynamic>,
-          'token': '[redacted]',
-        },
-      },
-      'conflict': eventId == 'event-cash' ? null : _legacyConflictMap(),
-      'incidents': const [],
-      'classification': event['classification'],
-      'recommendedAction': event['recommendedAction'],
-      'canReprocess': event['canReprocess'],
-      'canArchive': event['canArchive'],
-      'risks': ['Reprocessar pode alterar estoque remoto.'],
-      'blockers': event['canReprocess'] == true
-          ? const []
-          : ['O payload usa id local em campo remoto.'],
-      'message':
-          'Evento antigo sem identificação remota segura. Não é recomendado reprocessar automaticamente. Revise estoque manualmente ou arquive como evento legado de teste.',
-    });
-  }
-
-  @override
-  Future<AdminSyncCenterConflictDetail> fetchSyncCenterConflictDetail({
-    required String companyId,
-    required String conflictId,
-  }) async {
-    return AdminSyncCenterConflictDetail.fromMap({
-      'conflict': {
-        ..._legacyConflictMap(),
-        'payload': _legacyPayload(),
-        'resolution': const {},
-      },
-      'event': {..._legacyEventMap(), 'payload': _legacyPayload()},
-      'incidents': const [],
-      'classification': 'IRRECOVERABLE_LEGACY_EVENT',
-      'recommendedAction': 'ARCHIVE_LEGACY',
-      'canReprocess': false,
-      'canArchive': true,
-      'canCreateManualStockAdjustment': false,
-      'risks': ['Baixa automática poderia atingir produto errado.'],
-      'blockers': ['O payload usa id local em campo remoto.'],
-      'message':
-          'Evento antigo sem identificação remota segura. Não é recomendado reprocessar automaticamente. Revise estoque manualmente ou arquive como evento legado de teste.',
-    });
-  }
-
-  @override
-  Future<AdminSyncCenterDryRunResult> dryRunSyncEventReprocess({
-    required String companyId,
-    required String eventId,
-    required String reason,
-  }) async {
-    dryRunReprocessCalls += 1;
-    if (eventId == 'event-cash') {
-      return AdminSyncCenterDryRunResult.fromMap({
-        'wouldReprocess': true,
-        'classification': 'REPROCESSABLE',
-        'expectedAction': 'REPROCESS',
-        'blockers': const [],
-        'risks': ['Atualiza sessão de caixa de forma idempotente.'],
-        'message': 'Evento pode ser reprocessado com segurança.',
-      });
+  Future<AdminCompanySyncHealth> fetchCompanySyncHealth(
+    String companyId,
+  ) async {
+    companyHealthFetchCount++;
+    if (throwCompanySync) {
+      throw const AdminApiException(message: 'falha controlada');
     }
-    return AdminSyncCenterDryRunResult.fromMap({
-      'wouldReprocess': false,
-      'classification': 'IRRECOVERABLE_LEGACY_EVENT',
-      'blockers': ['Bloqueado por segurança.'],
-      'risks': const [],
-      'message': 'Dry-run concluído. Evento bloqueado.',
-    });
+    return AdminCompanySyncHealth.fromMap(_companySyncHealthMap());
   }
 
   @override
-  Future<AdminSyncCenterActionResult> reprocessSyncEvent({
-    required String companyId,
-    required String eventId,
-    required String reason,
-    required String confirmationText,
-  }) async {
-    reprocessCalls += 1;
-    lastReprocessReason = reason;
-    return AdminSyncCenterActionResult.fromMap({
-      'ok': true,
-      'message': 'Evento reprocessado.',
-    });
+  Future<List<AdminCompanySyncDevice>> fetchCompanySyncDevices(
+    String companyId,
+  ) async {
+    if (throwCompanySync) {
+      throw const AdminApiException(message: 'falha controlada');
+    }
+    if (emptyCompanySync) {
+      return const [];
+    }
+    return [AdminCompanySyncDevice.fromMap(_companyDeviceMap())];
   }
 
   @override
-  Future<AdminSyncCenterDryRunResult> dryRunSyncConflictArchive({
-    required String companyId,
-    required String conflictId,
-    required String reason,
-  }) async {
-    dryRunArchiveCalls += 1;
-    return AdminSyncCenterDryRunResult.fromMap({
-      'wouldArchive': archiveDryRunAllowed,
-      'classification': 'IRRECOVERABLE_LEGACY_EVENT',
-      'expectedConfirmationText': 'ARQUIVAR',
-      'blockers': archiveDryRunAllowed
-          ? const []
-          : const ['Conflito bloqueado para arquivamento.'],
-      'risks': ['Nenhum dado operacional será alterado.'],
-      'message': archiveDryRunAllowed
-          ? 'Conflito pode ser arquivado com auditoria.'
-          : 'Conflito bloqueado para arquivamento.',
-    });
+  Future<AdminPaginatedResult<AdminSyncEventDiagnostic>>
+  fetchCompanySyncEvents({required AdminCompanySyncEventsQuery query}) async {
+    if (throwCompanySync) {
+      throw const AdminApiException(message: 'falha controlada');
+    }
+    return AdminPaginatedResult<AdminSyncEventDiagnostic>(
+      items: emptyCompanySync
+          ? []
+          : [AdminSyncEventDiagnostic.fromMap(_companyEventMap())],
+      pagination: AdminPaginationMeta(
+        page: 1,
+        pageSize: 20,
+        total: emptyCompanySync ? 0 : 1,
+        count: emptyCompanySync ? 0 : 1,
+        hasNext: false,
+        hasPrevious: false,
+      ),
+      filters: const {},
+      sort: const AdminSortMeta(by: 'createdAt', direction: 'desc'),
+    );
   }
 
   @override
-  Future<AdminSyncCenterActionResult> archiveSyncConflict({
-    required String companyId,
-    required String conflictId,
-    required String reason,
-    required String confirmationText,
-    String? note,
+  Future<AdminPaginatedResult<AdminSyncConflictDiagnostic>>
+  fetchCompanySyncConflicts({
+    required AdminCompanySyncConflictsQuery query,
   }) async {
-    archiveCalls += 1;
-    lastArchiveReason = reason;
-    return AdminSyncCenterActionResult.fromMap({
-      'ok': true,
-      'message': 'Conflito arquivado com auditoria.',
-    });
+    if (throwCompanySync) {
+      throw const AdminApiException(message: 'falha controlada');
+    }
+    final items = query.status == 'open'
+        ? [_companyOpenConflictMap()]
+        : [_companyOpenConflictMap(), _companyResolvedConflictMap()];
+    return AdminPaginatedResult<AdminSyncConflictDiagnostic>(
+      items: emptyCompanySync
+          ? []
+          : items.map(AdminSyncConflictDiagnostic.fromMap).toList(),
+      pagination: AdminPaginationMeta(
+        page: 1,
+        pageSize: 20,
+        total: emptyCompanySync ? 0 : items.length,
+        count: emptyCompanySync ? 0 : items.length,
+        hasNext: false,
+        hasPrevious: false,
+      ),
+      filters: const {},
+      sort: const AdminSortMeta(by: 'createdAt', direction: 'desc'),
+    );
+  }
+
+  @override
+  Future<AdminPaginatedResult<AdminSyncIncidentDiagnostic>>
+  fetchCompanySyncIncidents({
+    required AdminCompanySyncIncidentsQuery query,
+  }) async {
+    if (throwCompanySync) {
+      throw const AdminApiException(message: 'falha controlada');
+    }
+    return AdminPaginatedResult<AdminSyncIncidentDiagnostic>(
+      items: emptyCompanySync
+          ? []
+          : [AdminSyncIncidentDiagnostic.fromMap(_companyIncidentMap())],
+      pagination: AdminPaginationMeta(
+        page: 1,
+        pageSize: 20,
+        total: emptyCompanySync ? 0 : 1,
+        count: emptyCompanySync ? 0 : 1,
+        hasNext: false,
+        hasPrevious: false,
+      ),
+      filters: const {},
+      sort: const AdminSortMeta(by: 'createdAt', direction: 'desc'),
+    );
   }
 }
 
 Map<String, dynamic> _companyMap() {
   return {
+    'id': 'company-1',
+    'name': 'Loja Moda Sul',
+    'legalName': 'Loja Moda Sul LTDA',
+    'documentNumber': '00.000.000/0001-00',
+    'slug': 'loja-moda-sul',
+    'isActive': true,
+    'createdAt': '2026-01-01T00:00:00.000Z',
+    'updatedAt': '2026-05-24T00:00:00.000Z',
+    'license': _licenseMap(),
+    'counts': {
+      'memberships': 1,
+      'categories': 2,
+      'products': 10,
+      'customers': 3,
+      'suppliers': 1,
+      'purchases': 2,
+      'sales': 5,
+      'financialEvents': 4,
+      'cashEvents': 2,
+    },
+  };
+}
+
+Map<String, dynamic> _licenseMap() {
+  return {
+    'id': 'license-1',
     'companyId': 'company-1',
-    'companyName': 'café oliveira',
+    'companyName': 'Loja Moda Sul',
+    'companyLegalName': 'Loja Moda Sul LTDA',
+    'companySlug': 'loja-moda-sul',
+    'companyIsActive': true,
+    'plan': 'PRO',
+    'status': 'active',
+    'startsAt': '2026-01-01T00:00:00.000Z',
+    'expiresAt': '2026-05-29T00:00:00.000Z',
+    'maxDevices': 100,
+    'syncEnabled': true,
+    'createdAt': '2026-01-01T00:00:00.000Z',
+    'updatedAt': '2026-05-24T00:00:00.000Z',
+  };
+}
+
+Map<String, dynamic> _auditSummaryMap() {
+  return {
+    'overview': {
+      'totalEvents': 1,
+      'countsByAction': {'login': 1},
+    },
+    'items': [
+      {
+        'id': 'audit-1',
+        'action': 'ADMIN_VIEW',
+        'actorUserId': 'user-1',
+        'actorUserName': 'Admin',
+        'actorUserEmail': 'admin@tatuzin.test',
+        'targetCompanyId': 'company-1',
+        'targetCompanyName': 'Loja Moda Sul',
+        'metadata': const {},
+        'createdAt': '2026-05-24T00:00:00.000Z',
+      },
+    ],
+    'pagination': {
+      'page': 1,
+      'pageSize': 20,
+      'total': 1,
+      'count': 1,
+      'hasNext': false,
+      'hasPrevious': false,
+    },
+    'filters': const {},
+  };
+}
+
+Map<String, dynamic> _syncSummaryMap() {
+  return {
+    'overview': {
+      'totalCompanies': 1,
+      'syncEnabledCompanies': 0,
+      'licenseStatusCounts': {'active': 1},
+    },
+    'items': [
+      {
+        'companyId': 'company-1',
+        'companyName': 'Loja Moda Sul',
+        'companySlug': 'loja-moda-sul',
+        'licenseStatus': 'active',
+        'licensePlan': 'PRO',
+        'syncEnabled': false,
+        'remoteRecordCount': 29,
+        'entityCounts': {
+          'memberships': 1,
+          'categories': 2,
+          'products': 10,
+          'customers': 3,
+          'suppliers': 1,
+          'purchases': 2,
+          'sales': 5,
+          'financialEvents': 4,
+          'cashEvents': 2,
+        },
+      },
+    ],
+    'pagination': {
+      'page': 1,
+      'pageSize': 20,
+      'total': 1,
+      'count': 1,
+      'hasNext': false,
+      'hasPrevious': false,
+    },
+    'filters': const {},
+  };
+}
+
+Map<String, dynamic> _syncCompanyMap() {
+  return {
+    'companyId': 'company-1',
+    'companyName': 'Loja Moda Sul',
     'plan': 'PRO',
     'syncStatus': 'failed',
-    'currentVersion': '25',
-    'serverFirstSnapshotVersion': '0',
-    'acceptedCount': 17,
-    'duplicateCount': 3,
-    'pendingCount': 0,
-    'conflictCount': 8,
+    'currentVersion': '42',
+    'serverFirstSnapshotVersion': '40',
+    'acceptedCount': 10,
+    'duplicateCount': 1,
+    'pendingCount': 2,
+    'conflictCount': 1,
     'failedCount': 1,
-    'openConflictCount': 8,
+    'openConflictCount': 1,
     'incidentCount': 1,
-    'lastEventAt': '2026-05-06T20:45:01.211999Z',
-    'lastIncidentAt': '2026-05-06T20:45:01.211999Z',
+    'lastEventAt': '2026-05-24T12:00:00.000Z',
+    'lastIncidentAt': '2026-05-24T12:00:00.000Z',
     'requiresReview': true,
+  };
+}
+
+Map<String, dynamic> _eventMap() {
+  return {
+    'id': 'event-1',
+    'eventId': 'client-event-1',
+    'feature': 'pdv',
+    'entity': 'stockDeduction',
+    'operation': 'create',
+    'entityLocalId': 'local-1',
+    'entityServerId': null,
+    'status': 'failed',
+    'serverVersion': '42',
+    'rejectionCode': 'STOCK_VARIANT_NOT_FOUND',
+    'rejectionMessage': 'Variante nao encontrada.',
+    'occurredAt': '2026-05-24T12:00:00.000Z',
+    'createdAt': '2026-05-24T12:00:00.000Z',
+    'updatedAt': '2026-05-24T12:00:00.000Z',
+    'materializedAt': null,
+    'relatedConflictId': 'conflict-open',
+    'classification': 'READ_ONLY',
+    'recommendedAction': 'CONTACT_SUPPORT',
+    'canReprocess': false,
+    'canArchive': false,
+    'safePayloadPreview': {'entity': 'stockDeduction'},
+  };
+}
+
+Map<String, dynamic> _openConflictMap() {
+  return {
+    'conflictId': 'conflict-open',
+    'syncEventId': 'event-1',
+    'entity': 'stockDeduction',
+    'entityLocalId': 'local-1',
+    'entityServerId': null,
+    'code': 'STOCK_VARIANT_NOT_FOUND',
+    'message': 'Produto remoto nao encontrado.',
+    'status': 'open',
+    'createdAt': '2026-05-24T12:00:00.000Z',
+    'updatedAt': '2026-05-24T12:00:00.000Z',
+    'resolvedAt': null,
+    'classification': 'READ_ONLY',
+    'recommendedAction': 'CONTACT_SUPPORT',
+    'canReprocess': false,
+    'canArchive': false,
+    'canCreateManualStockAdjustment': false,
+    'safePayloadPreview': {'entity': 'stockDeduction'},
+    'resolution': const {},
+  };
+}
+
+Map<String, dynamic> _resolvedConflictMap() {
+  return {
+    ..._openConflictMap(),
+    'conflictId': 'conflict-resolved',
+    'code': 'OLD_CONFLICT',
+    'status': 'resolved',
+    'resolvedAt': '2026-05-24T13:00:00.000Z',
   };
 }
 
@@ -983,170 +1093,250 @@ Map<String, dynamic> _supportDeviceMap() {
     'id': 'device-1',
     'maskedDeviceId': 'device...0001',
     'clientInstanceId': 'client...0001',
-    'deviceLabel': 'PDV cafe oliveira',
+    'deviceLabel': 'PDV Loja Moda Sul',
     'platform': 'android',
     'appVersion': '2.1.0',
     'status': 'local_failure',
     'deviceStatus': 'active',
-    'lastSeenAt': '2026-05-06T20:45:01.211999Z',
-    'lastPushAt': '2026-05-06T20:45:01.211999Z',
-    'lastPullAt': '2026-05-06T20:45:01.211999Z',
+    'lastSeenAt': '2026-05-24T12:00:00.000Z',
+    'lastPushAt': '2026-05-24T12:00:00.000Z',
+    'lastPullAt': '2026-05-24T12:00:00.000Z',
     'user': {
       'id': 'user-1',
-      'name': 'Operador local',
+      'name': 'Operador Local',
       'email': 'operador@tatuzin.test',
     },
-    'diagnostic': _supportDiagnosticSummaryMap(),
+    'diagnostic': {
+      'pendingCount': 2,
+      'failedCount': 1,
+      'openConflictCount': 1,
+      'resolvedConflictCount': 1,
+      'ignoredConflictCount': 0,
+      'lastLocalError': 'totalCents antigo',
+      'reportedAt': '2026-05-24T12:00:00.000Z',
+    },
     'remoteConflictCounts': {
-      'openConflictCount': 0,
-      'resolvedConflictCount': 4,
+      'openConflictCount': 1,
+      'resolvedConflictCount': 1,
       'ignoredConflictCount': 0,
     },
-  };
-}
-
-Map<String, dynamic> _supportDiagnosticSummaryMap() {
-  return {
-    'pendingCount': 0,
-    'failedCount': 3,
-    'openConflictCount': 0,
-    'resolvedConflictCount': 4,
-    'ignoredConflictCount': 0,
-    'lastLocalError':
-        'operationalOrderItem precisa de totalCents maior ou igual a zero.',
-    'reportedAt': '2026-05-06T20:45:01.211999Z',
   };
 }
 
 Map<String, dynamic> _supportDiagnosticMap() {
   return {
     'id': 'diagnostic-1',
-    ..._supportDiagnosticSummaryMap(),
+    'pendingCount': 2,
+    'failedCount': 1,
+    'openConflictCount': 1,
+    'resolvedConflictCount': 1,
+    'ignoredConflictCount': 0,
+    'lastLocalError': 'totalCents antigo',
     'lastLocalErrorCode': 'SYNC_PUSH_FAILED',
     'lastLocalErrorEntity': 'operationalOrderItem',
     'appVersion': '2.1.0',
+    'platform': 'android',
     'localSchemaVersion': '37',
-    'lastPushAt': '2026-05-06T20:45:01.211999Z',
-    'lastPullAt': '2026-05-06T20:45:01.211999Z',
-    'lastSuccessfulSyncAt': '2026-05-06T20:45:01.211999Z',
+    'lastPushAt': '2026-05-24T12:00:00.000Z',
+    'lastPullAt': '2026-05-24T12:00:00.000Z',
+    'lastSuccessfulSyncAt': '2026-05-24T12:00:00.000Z',
     'safeDetails': {'entity': 'operationalOrderItem'},
+    'reportedAt': '2026-05-24T12:00:00.000Z',
   };
 }
 
-Map<String, dynamic> _legacyEventMap() {
+Map<String, dynamic> _companySyncHealthMap() {
   return {
-    'id': 'event-legacy',
-    'eventId': 'event-legacy-client',
-    'feature': 'pdv',
-    'entity': 'stockDeduction',
-    'operation': 'create',
-    'entityLocalId': '1778111101212016-10299ac7:5:0',
-    'entityServerId': null,
-    'status': 'conflict',
-    'serverVersion': '25',
-    'rejectionCode': 'STOCK_VARIANT_NOT_FOUND',
-    'rejectionMessage':
-        'Produto/variante remoto não encontrado para estoque operacional.',
-    'occurredAt': '2026-05-06T20:45:01.211999Z',
-    'createdAt': '2026-05-06T20:45:01.211999Z',
-    'updatedAt': '2026-05-06T20:45:01.211999Z',
-    'materializedAt': null,
-    'relatedConflictId': 'conflict-legacy',
-    'classification': 'IRRECOVERABLE_LEGACY_EVENT',
-    'recommendedAction': 'ARCHIVE_LEGACY',
-    'canReprocess': false,
-    'canArchive': true,
-    'safePayloadPreview': _legacyPayload(),
-  };
-}
-
-Map<String, dynamic> _cashEventMap() {
-  return {
-    'id': 'event-cash',
-    'eventId': 'event-cash-client',
-    'feature': 'cash',
-    'entity': 'cashSession',
-    'operation': 'update',
-    'entityLocalId': '1778110868189821-7df2cc20',
-    'entityServerId': null,
-    'status': 'failed',
-    'serverVersion': null,
-    'rejectionCode': 'SYNC_MATERIALIZATION_FAILED',
-    'rejectionMessage': 'Falha inesperada.',
-    'occurredAt': '2026-05-06T20:41:08.169407Z',
-    'createdAt': '2026-05-06T20:41:08.169407Z',
-    'updatedAt': '2026-05-06T20:41:08.169407Z',
-    'materializedAt': null,
-    'classification': 'REPROCESSABLE',
-    'recommendedAction': 'REPROCESS',
-    'canReprocess': true,
-    'canArchive': false,
-    'safePayloadPreview': {
-      'uuid': '1778110868189821-7df2cc20',
-      'status': 'aberto',
-      'openedAt': '2026-05-06T20:41:08.169407',
-      'expectedBalanceCents': 130400,
+    'companyId': 'company-1',
+    'companyName': 'Loja Moda Sul',
+    'companySlug': 'loja-moda-sul',
+    'currentServerVersion': '42',
+    'serverFirstSnapshotVersion': '40',
+    'status': 'attention',
+    'syncEnabled': true,
+    'license': _licenseMap(),
+    'devices': {
+      'active': 1,
+      'blocked': 0,
+      'revoked': 0,
+      'pending': 0,
+      'total': 1,
+    },
+    'events': {
+      'accepted': 10,
+      'rejected': 1,
+      'conflict': 2,
+      'failed': 1,
+      'duplicate': 0,
+      'pending': 0,
+      'total': 14,
+    },
+    'openConflictsCount': 1,
+    'lastMaterializedAt': '2026-05-24T12:00:00.000Z',
+    'lastSyncAt': '2026-05-24T12:05:00.000Z',
+    'deviceSyncStates': [
+      {
+        'deviceId': 'device-1',
+        'deviceLabel': 'PDV Loja Moda Sul',
+        'clientInstanceId': 'client-mobile-1',
+        'status': 'active',
+        'lastSyncAt': '2026-05-24T12:05:00.000Z',
+        'lastSeenAt': '2026-05-24T12:00:00.000Z',
+      },
+    ],
+    'lastIncident': {
+      'id': 'incident-1',
+      'code': 'SYNC_FAILED',
+      'message': 'Falha de materializacao.',
+      'severity': 'error',
+      'createdAt': '2026-05-24T12:00:00.000Z',
     },
   };
 }
 
-Map<String, dynamic> _dangerousEventMap() {
+Map<String, dynamic> _companyDeviceRefMap() {
   return {
-    'id': 'event-dangerous',
-    'eventId': 'event-dangerous-client',
-    'feature': 'pdv',
-    'entity': 'unknownEntity',
-    'operation': 'create',
-    'entityLocalId': 'dangerous-local',
-    'entityServerId': null,
-    'status': 'failed',
-    'serverVersion': null,
-    'rejectionCode': 'SENSITIVE_PAYLOAD',
-    'rejectionMessage': 'Payload sensível bloqueado.',
-    'occurredAt': '2026-05-06T20:41:08.169407Z',
-    'createdAt': '2026-05-06T20:41:08.169407Z',
-    'updatedAt': '2026-05-06T20:41:08.169407Z',
-    'materializedAt': null,
-    'classification': 'DANGEROUS',
-    'recommendedAction': 'CONTACT_SUPPORT',
-    'canReprocess': false,
-    'canArchive': false,
-    'safePayloadPreview': {'status': '[redacted]'},
+    'id': 'device-1',
+    'deviceLabel': 'PDV Loja Moda Sul',
+    'clientInstanceId': 'client-mobile-1',
+    'status': 'active',
   };
 }
 
-Map<String, dynamic> _legacyConflictMap() {
+Map<String, dynamic> _companyUserRefMap() {
   return {
-    'conflictId': 'conflict-legacy',
-    'syncEventId': 'event-legacy',
+    'id': 'user-1',
+    'name': 'Operador Local',
+    'email': 'operador@tatuzin.test',
+  };
+}
+
+Map<String, dynamic> _companyEventRefMap() {
+  return {
+    'id': 'event-1',
+    'eventId': 'client-event-1',
+    'feature': 'pdv',
     'entity': 'stockDeduction',
-    'entityLocalId': '1778111101212016-10299ac7:5:0',
+    'operation': 'create',
+    'status': 'failed',
+    'serverVersion': '42',
+  };
+}
+
+Map<String, dynamic> _companyEventMap() {
+  return {
+    ..._companyEventRefMap(),
+    'entityLocalId': 'local-1',
+    'entityServerId': null,
+    'occurredAt': '2026-05-24T12:00:00.000Z',
+    'createdAt': '2026-05-24T12:00:00.000Z',
+    'materializedAt': null,
+    'errorCode': 'STOCK_VARIANT_NOT_FOUND',
+    'errorMessage': 'Variante nao encontrada.',
+    'payloadSummary': '{"entity":"stockDeduction"}',
+    'device': _companyDeviceRefMap(),
+    'user': _companyUserRefMap(),
+  };
+}
+
+Map<String, dynamic> _companyOpenConflictMap() {
+  return {
+    'id': 'conflict-open',
+    'entity': 'stockDeduction',
+    'entityLocalId': 'local-1',
     'entityServerId': null,
     'code': 'STOCK_VARIANT_NOT_FOUND',
-    'message':
-        'Produto/variante remoto não encontrado para estoque operacional.',
+    'message': 'Produto remoto nao encontrado.',
     'status': 'open',
-    'createdAt': '2026-05-06T20:45:01.211999Z',
-    'updatedAt': '2026-05-06T20:45:01.211999Z',
+    'createdAt': '2026-05-24T12:00:00.000Z',
     'resolvedAt': null,
-    'classification': 'IRRECOVERABLE_LEGACY_EVENT',
-    'recommendedAction': 'ARCHIVE_LEGACY',
-    'canReprocess': false,
-    'canArchive': true,
-    'canCreateManualStockAdjustment': false,
-    'safePayloadPreview': _legacyPayload(),
+    'payloadSummary': '{"entity":"stockDeduction"}',
+    'resolutionSummary': null,
+    'device': _companyDeviceRefMap(),
+    'user': _companyUserRefMap(),
+    'resolvedBy': null,
+    'event': _companyEventRefMap(),
   };
 }
 
-Map<String, dynamic> _legacyPayload() {
+Map<String, dynamic> _companyResolvedConflictMap() {
   return {
-    'saleUuid': '1778111101212016-10299ac7',
-    'saleLocalId': 23,
-    'productId': 5,
-    'productVariantId': null,
-    'quantityDeltaMil': -21000,
-    'stockBeforeMil': 200000,
-    'stockAfterMil': 179000,
-    'occurredAt': '2026-05-06T20:45:01.211999',
+    ..._companyOpenConflictMap(),
+    'id': 'conflict-resolved',
+    'code': 'OLD_CONFLICT',
+    'message': 'Conflito antigo resolvido.',
+    'status': 'resolved',
+    'resolvedAt': '2026-05-24T13:00:00.000Z',
+    'resolutionSummary': '{"decision":"ignored old"}',
+    'resolvedBy': _companyUserRefMap(),
+  };
+}
+
+Map<String, dynamic> _companyIncidentMap() {
+  return {
+    'id': 'incident-1',
+    'code': 'SYNC_FAILED',
+    'message': 'Falha de materializacao.',
+    'severity': 'error',
+    'createdAt': '2026-05-24T12:00:00.000Z',
+    'detailsSummary': '{"cause":"stock"}',
+    'device': _companyDeviceRefMap(),
+    'user': _companyUserRefMap(),
+    'event': _companyEventRefMap(),
+  };
+}
+
+Map<String, dynamic> _companyDeviceMap() {
+  return {
+    'id': 'device-1',
+    'deviceLabel': 'PDV Loja Moda Sul',
+    'platform': 'android',
+    'appVersion': '2.1.0',
+    'status': 'active',
+    'lastSeenAt': '2026-05-24T12:00:00.000Z',
+    'userId': 'user-1',
+    'userName': 'Operador Local',
+    'userEmail': 'operador@tatuzin.test',
+    'clientInstanceId': 'client-mobile-1',
+    'createdAt': '2026-05-24T00:00:00.000Z',
+    'approvedAt': '2026-05-24T00:00:00.000Z',
+    'revokedAt': null,
+    'revokedReason': null,
+  };
+}
+
+Map<String, dynamic> _mobileSessionMap() {
+  return {
+    'id': 'session-mobile',
+    'userId': 'user-1',
+    'userName': 'Operador Local',
+    'userEmail': 'operador@tatuzin.test',
+    'companyId': 'company-1',
+    'companyName': 'Loja Moda Sul',
+    'membershipId': 'membership-1',
+    'membershipRole': 'OWNER',
+    'clientType': 'mobile_app',
+    'clientInstanceId': 'client-mobile-1',
+    'deviceLabel': 'PDV Loja Moda Sul',
+    'platform': 'android',
+    'appVersion': '2.1.0',
+    'status': 'active',
+    'createdAt': '2026-05-24T00:00:00.000Z',
+    'lastSeenAt': '2026-05-24T12:00:00.000Z',
+    'lastRefreshedAt': '2026-05-24T12:00:00.000Z',
+    'refreshTokenExpiresAt': '2026-06-24T12:00:00.000Z',
+    'revokedAt': null,
+    'revokedReason': null,
+  };
+}
+
+Map<String, dynamic> _adminSessionMap() {
+  return {
+    ..._mobileSessionMap(),
+    'id': 'session-admin',
+    'clientType': 'admin_web',
+    'clientInstanceId': 'client-admin-1',
+    'deviceLabel': 'Admin web',
+    'platform': 'web',
   };
 }

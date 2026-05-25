@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/admin_providers.dart';
 import '../../../core/models/admin_models.dart';
-import '../../../core/network/admin_api_client.dart';
 import '../../../core/utils/admin_formatters.dart';
-import '../../../core/widgets/admin_confirmation_dialog.dart';
 import '../../../core/widgets/admin_surface.dart';
-import '../../../core/widgets/license_editor_dialog.dart';
 import 'company_sync_health_tab.dart';
 
 class CompanyDetailPage extends ConsumerWidget {
@@ -22,9 +20,15 @@ class CompanyDetailPage extends ConsumerWidget {
       data: (payload) => _CompanyDetailContent(payload: payload),
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => AdminSurface(
-        title: 'Não foi possível carregar o detalhe da empresa',
-        subtitle: error.toString(),
-        child: const SizedBox.shrink(),
+        title: 'Nao foi possivel carregar a empresa',
+        subtitle: _safeError(error),
+        trailing: FilledButton.tonalIcon(
+          onPressed: () =>
+              ref.invalidate(adminCompanyDetailProvider(companyId)),
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Tentar novamente'),
+        ),
+        child: const Text('Nenhum payload sensivel foi exibido.'),
       ),
     );
   }
@@ -40,255 +44,34 @@ class _CompanyDetailContent extends ConsumerWidget {
     final company = payload.company;
     final license = company.license;
 
-    final companySurface = AdminSurface(
-      title: company.name,
-      subtitle: company.legalName,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _DetailRow(label: 'Tenant', value: company.slug),
-          _DetailRow(
-            label: 'Documento',
-            value: company.documentNumber ?? 'Não informado',
-          ),
-          _DetailRow(
-            label: 'Criada em',
-            value: AdminFormatters.formatDateTime(company.createdAt),
-          ),
-          _DetailRow(
-            label: 'Atualizada em',
-            value: AdminFormatters.formatDateTime(company.updatedAt),
-          ),
-        ],
-      ),
-    );
-
-    final licenseSurface = AdminSurface(
-      title: 'Licenca atual',
-      subtitle: 'Plano, validade e controle cloud da empresa.',
-      trailing: license == null
-          ? null
-          : FilledButton.tonalIcon(
-              onPressed: () => _editLicense(context, ref, license),
-              icon: const Icon(Icons.edit_rounded),
-              label: const Text('Editar'),
-            ),
-      child: license == null
-          ? Text(
-              'Esta empresa ainda não possui licença cadastrada.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _DetailRow(
-                  label: 'Plano',
-                  value: AdminFormatters.formatPlan(license.plan),
-                ),
-                _DetailRow(
-                  label: 'Status',
-                  value: AdminFormatters.formatLicenseStatus(license.status),
-                ),
-                _DetailRow(
-                  label: 'Início',
-                  value: AdminFormatters.formatDate(license.startsAt),
-                ),
-                _DetailRow(
-                  label: 'Expira em',
-                  value: AdminFormatters.formatDate(license.expiresAt),
-                ),
-                _DetailRow(
-                  label: 'Sync cloud',
-                  value: AdminFormatters.formatBool(
-                    license.syncEnabled,
-                    yes: 'Habilitada',
-                    no: 'Desativada',
-                  ),
-                ),
-                _DetailRow(
-                  label: 'Máximo de dispositivos',
-                  value: license.maxDevices?.toString() ?? 'Não definido',
-                ),
-              ],
-            ),
-    );
-
-    final membershipsSurface = AdminSurface(
-      title: 'Memberships',
-      subtitle: 'Usuarios com acesso remoto a esta empresa.',
-      child: Column(
-        children: payload.memberships.map((membership) {
-          return ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(membership.userName),
-            subtitle: Text(
-              '${membership.userEmail} - ${AdminFormatters.formatMembershipRole(membership.role)}',
-            ),
-            trailing: Wrap(
-              spacing: 8,
-              children: [
-                if (membership.isDefault) const Chip(label: Text('Padrao')),
-                if (membership.userIsPlatformAdmin)
-                  const Chip(label: Text('Platform admin')),
-              ],
-            ),
-          );
-        }).toList(),
-      ),
-    );
-
-    final sessionsSurface = AdminSurface(
-      title: 'Sessoes e dispositivos',
-      subtitle:
-          'Inventario minimo das sessoes cloud ativas e historicas da empresa.',
-      child: payload.sessions.isEmpty
-          ? Text(
-              'Nenhuma sessão registrada para esta empresa até agora.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            )
-          : Column(
-              children: payload.sessions.map((session) {
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.devices_other_rounded),
-                  title: Text(session.deviceLabel ?? session.clientInstanceId),
-                  subtitle: Text(
-                    '${session.userName} - ${_sessionClientLabel(session)} - ${_sessionStatusLabel(session.status)}',
-                  ),
-                  trailing: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        'Ultimo acesso ${AdminFormatters.formatDateTime(session.lastSeenAt)}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      if (session.status == 'active')
-                        FilledButton.tonalIcon(
-                          onPressed: () =>
-                              _revokeSession(context, ref, session),
-                          icon: const Icon(Icons.block_rounded),
-                          label: const Text('Revogar'),
-                        ),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
-    );
-
-    final healthSurface = AdminSurface(
-      title: 'Saude remota',
-      subtitle: 'Volume de espelhos remotos registrados para a empresa.',
-      child: Column(
-        children: [
-          _CountRow(label: 'Categorias', value: company.counts.categories),
-          _CountRow(label: 'Produtos', value: company.counts.products),
-          _CountRow(label: 'Clientes', value: company.counts.customers),
-          _CountRow(label: 'Fornecedores', value: company.counts.suppliers),
-          _CountRow(label: 'Compras', value: company.counts.purchases),
-          _CountRow(label: 'Vendas', value: company.counts.sales),
-          _CountRow(
-            label: 'Eventos financeiros',
-            value: company.counts.financialEvents,
-          ),
-          _CountRow(
-            label: 'Eventos de caixa',
-            value: company.counts.cashEvents,
-          ),
-          const Divider(height: 24),
-          _CountRow(
-            label: 'Total remoto',
-            value: company.counts.totalRemoteRecords,
-            emphasize: true,
-          ),
-        ],
-      ),
-    );
-
-    final overviewTab = SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              if (constraints.maxWidth < 1200) {
-                return Column(
-                  children: [
-                    companySurface,
-                    const SizedBox(height: 24),
-                    licenseSurface,
-                  ],
-                );
-              }
-
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: companySurface),
-                  const SizedBox(width: 24),
-                  Expanded(child: licenseSurface),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 24),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              if (constraints.maxWidth < 1200) {
-                return Column(
-                  children: [
-                    membershipsSurface,
-                    const SizedBox(height: 24),
-                    sessionsSurface,
-                    const SizedBox(height: 24),
-                    healthSurface,
-                  ],
-                );
-              }
-
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: Column(
-                      children: [
-                        membershipsSurface,
-                        const SizedBox(height: 24),
-                        sessionsSurface,
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 24),
-                  Expanded(flex: 2, child: healthSurface),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-
     return DefaultTabController(
-      length: 2,
+      length: 6,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _CompanyHeader(company: company),
+          const SizedBox(height: 16),
           const TabBar(
             isScrollable: true,
             tabs: [
-              Tab(icon: Icon(Icons.info_outline_rounded), text: 'Visao geral'),
-              Tab(icon: Icon(Icons.sync_rounded), text: 'Sync Health'),
+              Tab(icon: Icon(Icons.info_outline_rounded), text: 'Resumo'),
+              Tab(icon: Icon(Icons.sync_rounded), text: 'Sync'),
+              Tab(icon: Icon(Icons.workspace_premium_rounded), text: 'Licenca'),
+              Tab(icon: Icon(Icons.devices_rounded), text: 'Dispositivos'),
+              Tab(icon: Icon(Icons.people_alt_rounded), text: 'Funcionarios'),
+              Tab(icon: Icon(Icons.fact_check_rounded), text: 'Auditoria'),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           Expanded(
             child: TabBarView(
               children: [
-                overviewTab,
+                _OverviewTab(payload: payload),
                 CompanySyncHealthTab(companyId: company.id),
+                _LicenseTab(company: company, license: license),
+                _DevicesTab(sessions: payload.sessions),
+                _EmployeesTab(memberships: payload.memberships),
+                const _AuditPlaceholder(),
               ],
             ),
           ),
@@ -296,132 +79,401 @@ class _CompanyDetailContent extends ConsumerWidget {
       ),
     );
   }
+}
 
-  String _sessionClientLabel(AdminDeviceSession session) {
-    switch (session.clientType) {
-      case 'mobile_app':
-        return 'App mobile';
-      case 'admin_web':
-        return 'Admin web';
-      default:
-        return session.clientType;
-    }
-  }
+class _CompanyHeader extends StatelessWidget {
+  const _CompanyHeader({required this.company});
 
-  String _sessionStatusLabel(String status) {
-    switch (status) {
-      case 'active':
-        return 'Ativa';
-      case 'revoked':
-        return 'Revogada';
-      case 'expired':
-        return 'Expirada';
-      default:
-        return status;
-    }
-  }
+  final AdminCompanySummary company;
 
-  Future<void> _editLicense(
-    BuildContext context,
-    WidgetRef ref,
-    AdminLicenseSnapshot license,
-  ) async {
-    final edit = await showLicenseEditorDialog(
-      context: context,
-      license: license,
+  @override
+  Widget build(BuildContext context) {
+    return AdminSurface(
+      title: company.name,
+      subtitle: company.legalName,
+      trailing: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          FilledButton.icon(
+            onPressed: () => context.go('/companies/${company.id}/sync'),
+            icon: const Icon(Icons.sync_problem_rounded),
+            label: const Text('Abrir console de sync'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => context.go('/companies/${company.id}/license'),
+            icon: const Icon(Icons.workspace_premium_rounded),
+            label: const Text('Ver licenca'),
+          ),
+        ],
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          Chip(label: Text(company.slug)),
+          Chip(
+            label: Text(company.isActive ? 'Empresa ativa' : 'Empresa inativa'),
+          ),
+          Chip(
+            label: Text(
+              AdminFormatters.formatLicenseStatus(company.license?.status),
+            ),
+          ),
+        ],
+      ),
     );
-    if (edit == null || !context.mounted) {
-      return;
-    }
+  }
+}
 
-    final confirmed = await showAdminConfirmationDialog(
-      context: context,
-      title: 'Confirmar edição legada',
-      message:
-          'Esta alteração usa o endpoint legado de licença. Para assinaturas Mercado Pago, prefira Billing Admin.',
-      confirmLabel: 'Salvar licença',
-      isDestructive: true,
-      details: [
-        'Empresa: ${license.companyName}',
-        'Plano alvo: ${edit.plan}',
-        'Status alvo: ${edit.status}',
-        'Max devices: ${edit.maxDevices?.toString() ?? 'livre'}',
-        'Motivo local: ${edit.reason}',
-        'O motivo não será auditado pelo backend legado.',
-      ],
-    );
-    if (!confirmed || !context.mounted) {
-      return;
-    }
+class _OverviewTab extends StatelessWidget {
+  const _OverviewTab({required this.payload});
 
-    try {
-      await ref
-          .read(adminApiServiceProvider)
-          .updateLicense(
-            companyId: license.companyId,
-            plan: edit.plan,
-            status: edit.status,
-            startsAt: edit.startsAt,
-            expiresAt: edit.expiresAt,
-            syncEnabled: edit.syncEnabled,
-            maxDevices: edit.maxDevices,
+  final AdminCompanyDetail payload;
+
+  @override
+  Widget build(BuildContext context) {
+    final company = payload.company;
+    return SingleChildScrollView(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 1000;
+          final info = AdminSurface(
+            title: 'Resumo da conta',
+            child: Column(
+              children: [
+                _DetailRow(label: 'Tenant', value: company.slug),
+                _DetailRow(
+                  label: 'Documento',
+                  value: company.documentNumber ?? 'Nao informado',
+                ),
+                _DetailRow(
+                  label: 'Criada em',
+                  value: AdminFormatters.formatDateTime(company.createdAt),
+                ),
+                _DetailRow(
+                  label: 'Atualizada em',
+                  value: AdminFormatters.formatDateTime(company.updatedAt),
+                ),
+              ],
+            ),
           );
-      ref.read(adminRefreshTickProvider.notifier).state++;
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Licença atualizada com sucesso.')),
-      );
-    } on AdminApiException catch (error) {
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
-    }
-  }
-
-  Future<void> _revokeSession(
-    BuildContext context,
-    WidgetRef ref,
-    AdminDeviceSession session,
-  ) async {
-    final confirmed = await showAdminConfirmationDialog(
-      context: context,
-      title: 'Revogar sessão',
-      message:
-          'A sessão será encerrada e o dispositivo precisará autenticar novamente.',
-      confirmLabel: 'Revogar sessão',
-      isDestructive: true,
-      details: [
-        'Usuário: ${session.userName}',
-        'Dispositivo: ${session.deviceLabel ?? session.clientInstanceId}',
-        'Client: ${session.clientType}',
-      ],
+          final counts = AdminSurface(
+            title: 'Dados remotos',
+            subtitle: 'Contadores lidos da plataforma.',
+            child: Column(
+              children: [
+                _CountRow(
+                  label: 'Categorias',
+                  value: company.counts.categories,
+                ),
+                _CountRow(label: 'Produtos', value: company.counts.products),
+                _CountRow(label: 'Clientes', value: company.counts.customers),
+                _CountRow(
+                  label: 'Fornecedores',
+                  value: company.counts.suppliers,
+                ),
+                _CountRow(label: 'Compras', value: company.counts.purchases),
+                _CountRow(label: 'Vendas', value: company.counts.sales),
+                const Divider(height: 22),
+                _CountRow(
+                  label: 'Total remoto',
+                  value: company.counts.totalRemoteRecords,
+                  emphasize: true,
+                ),
+              ],
+            ),
+          );
+          final sync = _SyncSummaryCard(companyId: company.id);
+          if (compact) {
+            return Column(
+              children: [
+                info,
+                const SizedBox(height: 16),
+                counts,
+                const SizedBox(height: 16),
+                sync,
+              ],
+            );
+          }
+          return Column(
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: info),
+                  const SizedBox(width: 16),
+                  Expanded(child: counts),
+                ],
+              ),
+              const SizedBox(height: 16),
+              sync,
+            ],
+          );
+        },
+      ),
     );
-    if (!confirmed || !context.mounted) {
-      return;
-    }
+  }
+}
 
-    try {
-      await ref.read(adminApiServiceProvider).revokeSession(session.id);
-      ref.read(adminRefreshTickProvider.notifier).state++;
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sessão revogada com sucesso.')),
+class _SyncSummaryCard extends ConsumerWidget {
+  const _SyncSummaryCard({required this.companyId});
+
+  final String companyId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final syncAsync = ref.watch(adminCompanySyncHealthProvider(companyId));
+    return syncAsync.when(
+      data: (health) => AdminSurface(
+        title: 'Resumo de sync',
+        subtitle: 'Dados read-only do endpoint de saude por empresa.',
+        trailing: FilledButton.tonalIcon(
+          onPressed: () => context.go('/companies/$companyId/sync'),
+          icon: const Icon(Icons.sync_rounded),
+          label: const Text('Abrir console de sync'),
+        ),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _MiniMetric(
+              label: 'Status',
+              value: _syncStatusLabel(health.status),
+            ),
+            _MiniMetric(
+              label: 'Conflitos abertos',
+              value: '${health.openConflictsCount}',
+            ),
+            _MiniMetric(
+              label: 'Incidentes recentes',
+              value: health.lastIncident == null ? 'Sem dados' : '1',
+            ),
+            _MiniMetric(
+              label: 'Dispositivos',
+              value: '${health.devices.total}',
+            ),
+            _MiniMetric(
+              label: 'Ultimo evento',
+              value: AdminFormatters.formatDateTime(health.lastSyncAt),
+            ),
+          ],
+        ),
+      ),
+      loading: () => const AdminSurface(
+        title: 'Resumo de sync',
+        child: LinearProgressIndicator(),
+      ),
+      error: (error, _) => AdminSurface(
+        title: 'Resumo de sync',
+        subtitle: _safeError(error),
+        child: const Text('Resumo indisponivel nesta versao.'),
+      ),
+    );
+  }
+}
+
+class _MiniMetric extends StatelessWidget {
+  const _MiniMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 190,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: 4),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LicenseTab extends StatelessWidget {
+  const _LicenseTab({required this.company, required this.license});
+
+  final AdminCompanySummary company;
+  final AdminLicenseSnapshot? license;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      child: AdminSurface(
+        title: 'Licenca read-only',
+        subtitle: 'Plano, status, validade e limites sem edicao real.',
+        trailing: FilledButton.tonalIcon(
+          onPressed: () => context.go('/companies/${company.id}/license'),
+          icon: const Icon(Icons.open_in_new_rounded),
+          label: const Text('Abrir detalhe'),
+        ),
+        child: license == null
+            ? const _EmptyState(message: 'Empresa sem licenca cadastrada.')
+            : Column(
+                children: [
+                  _DetailRow(
+                    label: 'Plano atual',
+                    value: AdminFormatters.formatPlan(license!.plan),
+                  ),
+                  _DetailRow(
+                    label: 'Status',
+                    value: AdminFormatters.formatLicenseStatus(license!.status),
+                  ),
+                  _DetailRow(
+                    label: 'Inicio',
+                    value: AdminFormatters.formatDate(license!.startsAt),
+                  ),
+                  _DetailRow(
+                    label: 'Vencimento',
+                    value: AdminFormatters.formatDate(license!.expiresAt),
+                  ),
+                  _DetailRow(
+                    label: 'Sync cloud',
+                    value: AdminFormatters.formatBool(
+                      license!.syncEnabled,
+                      yes: 'Habilitada',
+                      no: 'Desativada',
+                    ),
+                  ),
+                  _DetailRow(
+                    label: 'Max dispositivos',
+                    value: license!.maxDevices?.toString() ?? 'Livre',
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+class _DevicesTab extends StatelessWidget {
+  const _DevicesTab({required this.sessions});
+
+  final List<AdminDeviceSession> sessions;
+
+  @override
+  Widget build(BuildContext context) {
+    if (sessions.isEmpty) {
+      return const SingleChildScrollView(
+        child: AdminSurface(
+          title: 'Dispositivos',
+          child: _EmptyState(message: 'Nenhuma sessao registrada.'),
+        ),
       );
-    } on AdminApiException catch (error) {
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
     }
+    return SingleChildScrollView(
+      child: AdminSurface(
+        title: 'Sessoes e dispositivos',
+        subtitle: 'MOBILE_APP e ADMIN_WEB aparecem separados para suporte.',
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            columns: const [
+              DataColumn(label: Text('Dispositivo')),
+              DataColumn(label: Text('Tipo')),
+              DataColumn(label: Text('Plataforma')),
+              DataColumn(label: Text('Versao')),
+              DataColumn(label: Text('Status')),
+              DataColumn(label: Text('Ultimo acesso')),
+              DataColumn(label: Text('Usuario')),
+            ],
+            rows: sessions
+                .map((session) {
+                  return DataRow(
+                    cells: [
+                      DataCell(
+                        Text(session.deviceLabel ?? session.clientInstanceId),
+                      ),
+                      DataCell(Text(_clientTypeLabel(session.clientType))),
+                      DataCell(Text(session.platform ?? 'Nao informado')),
+                      DataCell(Text(session.appVersion ?? 'Nao informado')),
+                      DataCell(Text(_sessionStatusLabel(session.status))),
+                      DataCell(
+                        Text(
+                          AdminFormatters.formatDateTime(session.lastSeenAt),
+                        ),
+                      ),
+                      DataCell(Text(session.userName)),
+                    ],
+                  );
+                })
+                .toList(growable: false),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmployeesTab extends StatelessWidget {
+  const _EmployeesTab({required this.memberships});
+
+  final List<AdminMembershipSummary> memberships;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      child: AdminSurface(
+        title: 'Funcionarios',
+        subtitle: 'Acesso remoto e papeis vinculados a empresa.',
+        child: memberships.isEmpty
+            ? const _EmptyState(message: 'Nenhum funcionario vinculado.')
+            : Column(
+                children: memberships
+                    .map((membership) {
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.person_outline_rounded),
+                        title: Text(membership.userName),
+                        subtitle: Text(membership.userEmail),
+                        trailing: Wrap(
+                          spacing: 8,
+                          children: [
+                            Chip(
+                              label: Text(
+                                AdminFormatters.formatMembershipRole(
+                                  membership.role,
+                                ),
+                              ),
+                            ),
+                            if (membership.isDefault)
+                              const Chip(label: Text('Padrao')),
+                          ],
+                        ),
+                      );
+                    })
+                    .toList(growable: false),
+              ),
+      ),
+    );
+  }
+}
+
+class _AuditPlaceholder extends StatelessWidget {
+  const _AuditPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SingleChildScrollView(
+      child: AdminSurface(
+        title: 'Auditoria',
+        subtitle: 'Historico administrativo por empresa.',
+        child: _EmptyState(
+          message:
+              'Use a tela Auditoria para consultar eventos globais. A trilha por empresa sera consolidada aqui em fase posterior.',
+        ),
+      ),
+    );
   }
 }
 
@@ -452,7 +504,7 @@ class _DetailRow extends StatelessWidget {
               textAlign: TextAlign.right,
               style: Theme.of(
                 context,
-              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
           ),
         ],
@@ -489,4 +541,66 @@ class _CountRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 26),
+      child: Text(message),
+    );
+  }
+}
+
+String _clientTypeLabel(String value) {
+  switch (value.toLowerCase()) {
+    case 'mobile_app':
+      return 'MOBILE_APP';
+    case 'admin_web':
+      return 'ADMIN_WEB';
+    default:
+      return value.toUpperCase();
+  }
+}
+
+String _sessionStatusLabel(String status) {
+  switch (status) {
+    case 'active':
+      return 'Ativa';
+    case 'revoked':
+      return 'Revogada';
+    case 'expired':
+      return 'Expirada';
+    default:
+      return status;
+  }
+}
+
+String _syncStatusLabel(String status) {
+  switch (status.toLowerCase()) {
+    case 'healthy':
+      return 'Saudavel';
+    case 'attention':
+    case 'warning':
+      return 'Atencao';
+    case 'critical':
+      return 'Critico';
+    case 'disabled':
+      return 'Sync desativada';
+    default:
+      return status;
+  }
+}
+
+String _safeError(Object error) {
+  final message = error.toString();
+  if (message.contains('Exception:')) {
+    return message.split('Exception:').last.trim();
+  }
+  return message;
 }

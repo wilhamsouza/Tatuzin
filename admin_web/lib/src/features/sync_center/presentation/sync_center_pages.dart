@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,9 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../../core/auth/admin_providers.dart';
 import '../../../core/models/admin_models.dart';
 import '../../../core/models/admin_sync_center_models.dart';
-import '../../../core/network/admin_api_client.dart';
 import '../../../core/utils/admin_formatters.dart';
 import '../../../core/widgets/admin_surface.dart';
+import 'company_sync_center_page.dart';
 
 class SyncCenterPage extends ConsumerStatefulWidget {
   const SyncCenterPage({super.key});
@@ -22,7 +20,6 @@ class _SyncCenterPageState extends ConsumerState<SyncCenterPage> {
   late final TextEditingController _searchController;
   String _status = 'requires_review';
   int _page = 1;
-  int _pageSize = 20;
 
   @override
   void initState() {
@@ -40,7 +37,7 @@ class _SyncCenterPageState extends ConsumerState<SyncCenterPage> {
   Widget build(BuildContext context) {
     final query = AdminSyncCenterCompaniesQuery(
       page: _page,
-      pageSize: _pageSize,
+      pageSize: 20,
       search: _searchController.text,
       status: _status,
     );
@@ -48,106 +45,107 @@ class _SyncCenterPageState extends ConsumerState<SyncCenterPage> {
 
     return companiesAsync.when(
       data: (result) {
-        final reviewCount = result.items
-            .where((company) => company.requiresReview)
-            .length;
         final openConflicts = result.items.fold<int>(
           0,
-          (total, company) => total + company.openConflictCount,
+          (sum, company) => sum + company.openConflictCount,
         );
-        final failures = result.items.fold<int>(
+        final failed = result.items.fold<int>(
           0,
-          (total, company) => total + company.failedCount,
+          (sum, company) => sum + company.failedCount,
         );
         final pending = result.items.fold<int>(
           0,
-          (total, company) => total + company.pendingCount,
+          (sum, company) => sum + company.pendingCount,
         );
-        return SingleChildScrollView(
-          child: AdminSurface(
-            title: 'Sincronização',
-            subtitle:
-                'Centro interno para diagnosticar e resolver problemas de sync operacional com auditoria.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    _MetricCard(
-                      label: 'Empresas com revisão',
-                      value: '$reviewCount',
-                      icon: Icons.fact_check_rounded,
-                    ),
-                    _MetricCard(
-                      label: 'Conflitos abertos',
-                      value: '$openConflicts',
-                      icon: Icons.report_problem_rounded,
-                    ),
-                    _MetricCard(
-                      label: 'Falhas',
-                      value: '$failures',
-                      icon: Icons.error_outline_rounded,
-                    ),
-                    _MetricCard(
-                      label: 'Eventos pendentes',
-                      value: '$pending',
-                      icon: Icons.pending_actions_rounded,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                _CompanyFilters(
-                  searchController: _searchController,
-                  status: _status,
-                  pageSize: _pageSize,
-                  onApply: ({required status, required pageSize}) {
-                    setState(() {
-                      _status = status;
-                      _pageSize = pageSize;
-                      _page = 1;
-                    });
-                  },
-                  onClear: () {
-                    _searchController.clear();
-                    setState(() {
-                      _status = 'requires_review';
-                      _pageSize = 20;
-                      _page = 1;
-                    });
-                  },
-                ),
-                const SizedBox(height: 20),
-                if (result.items.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 32),
-                    child: Text('Nenhuma empresa encontrada para os filtros.'),
-                  )
-                else
-                  _CompaniesTable(
-                    companies: result.items,
-                    onOpen: (companyId) => context.go('/sync/$companyId'),
+        return RefreshIndicator(
+          onRefresh: () async =>
+              ref.invalidate(adminSyncCenterCompaniesProvider(query)),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: AdminSurface(
+              title: 'Sync global',
+              subtitle:
+                  'Centro read-only para priorizar empresas com conflito, falha e incidente.',
+              trailing: OutlinedButton.icon(
+                onPressed: () =>
+                    ref.invalidate(adminSyncCenterCompaniesProvider(query)),
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Atualizar'),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _ReadOnlyNotice(),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      _MetricCard(
+                        label: 'Empresas com atencao',
+                        value: '${result.items.length}',
+                        icon: Icons.apartment_rounded,
+                      ),
+                      _MetricCard(
+                        label: 'Conflitos OPEN',
+                        value: '$openConflicts',
+                        icon: Icons.report_problem_rounded,
+                      ),
+                      _MetricCard(
+                        label: 'Eventos failed',
+                        value: '$failed',
+                        icon: Icons.error_outline_rounded,
+                      ),
+                      _MetricCard(
+                        label: 'Eventos pending',
+                        value: '$pending',
+                        icon: Icons.pending_actions_rounded,
+                      ),
+                    ],
                   ),
-                const SizedBox(height: 20),
-                _PaginationBar(
-                  pagination: result.pagination,
-                  itemLabel: 'empresas',
-                  onPrevious: result.pagination.hasPrevious
-                      ? () => setState(() => _page--)
-                      : null,
-                  onNext: result.pagination.hasNext
-                      ? () => setState(() => _page++)
-                      : null,
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  _CompanyFilters(
+                    searchController: _searchController,
+                    status: _status,
+                    onApply: (status) => setState(() {
+                      _status = status;
+                      _page = 1;
+                    }),
+                    onClear: () {
+                      _searchController.clear();
+                      setState(() {
+                        _status = 'requires_review';
+                        _page = 1;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  if (result.items.isEmpty)
+                    const _EmptyState(
+                      message: 'Nenhuma empresa encontrada para os filtros.',
+                    )
+                  else
+                    _CompaniesTable(companies: result.items),
+                  const SizedBox(height: 16),
+                  _PaginationBar(
+                    pagination: result.pagination,
+                    label: 'empresas',
+                    onPrevious: result.pagination.hasPrevious
+                        ? () => setState(() => _page--)
+                        : null,
+                    onNext: result.pagination.hasNext
+                        ? () => setState(() => _page++)
+                        : null,
+                  ),
+                ],
+              ),
             ),
           ),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => _ErrorSurface(
-        title: 'Não foi possível carregar Sincronização',
+        title: 'Nao foi possivel carregar Sync global',
         error: error,
         onRetry: () => ref.invalidate(adminSyncCenterCompaniesProvider(query)),
       ),
@@ -155,129 +153,11 @@ class _SyncCenterPageState extends ConsumerState<SyncCenterPage> {
   }
 }
 
-class SyncCompanyPage extends ConsumerStatefulWidget {
-  const SyncCompanyPage({super.key, required this.companyId});
-
-  final String companyId;
-
-  @override
-  ConsumerState<SyncCompanyPage> createState() => _SyncCompanyPageState();
+class SyncCompanyPage extends AdminCompanySyncCenterPage {
+  const SyncCompanyPage({super.key, required super.companyId});
 }
 
-class _SyncCompanyPageState extends ConsumerState<SyncCompanyPage> {
-  int _eventsPage = 1;
-  int _conflictsPage = 1;
-
-  @override
-  Widget build(BuildContext context) {
-    final summaryAsync = ref.watch(
-      adminSyncCenterCompanySummaryProvider(widget.companyId),
-    );
-    final eventsQuery = AdminSyncCenterEventsQuery(
-      companyId: widget.companyId,
-      page: _eventsPage,
-      pageSize: 20,
-    );
-    final conflictsQuery = AdminSyncCenterConflictsQuery(
-      companyId: widget.companyId,
-      page: _conflictsPage,
-      pageSize: 20,
-    );
-    final eventsAsync = ref.watch(adminSyncCenterEventsProvider(eventsQuery));
-    final conflictsAsync = ref.watch(
-      adminSyncCenterConflictsProvider(conflictsQuery),
-    );
-    final devicesAsync = ref.watch(
-      adminSyncSupportDevicesProvider(widget.companyId),
-    );
-
-    return summaryAsync.when(
-      data: (summary) => SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AdminSurface(
-              title: summary.company.companyName,
-              subtitle: summary.recommendation,
-              child: _CompanySummary(summary: summary),
-            ),
-            const SizedBox(height: 24),
-            DefaultTabController(
-              length: 5,
-              child: AdminSurface(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const TabBar(
-                      isScrollable: true,
-                      tabs: [
-                        Tab(text: 'Eventos'),
-                        Tab(text: 'Conflitos'),
-                        Tab(text: 'Dispositivos'),
-                        Tab(text: 'Incidentes'),
-                        Tab(text: 'Auditoria'),
-                      ],
-                    ),
-                    SizedBox(
-                      height: 620,
-                      child: TabBarView(
-                        children: [
-                          _EventsTab(
-                            companyId: widget.companyId,
-                            eventsAsync: eventsAsync,
-                            onPrevious:
-                                eventsAsync.value?.pagination.hasPrevious ==
-                                    true
-                                ? () => setState(() => _eventsPage--)
-                                : null,
-                            onNext:
-                                eventsAsync.value?.pagination.hasNext == true
-                                ? () => setState(() => _eventsPage++)
-                                : null,
-                          ),
-                          _ConflictsTab(
-                            companyId: widget.companyId,
-                            conflictsAsync: conflictsAsync,
-                            onPrevious:
-                                conflictsAsync.value?.pagination.hasPrevious ==
-                                    true
-                                ? () => setState(() => _conflictsPage--)
-                                : null,
-                            onNext:
-                                conflictsAsync.value?.pagination.hasNext == true
-                                ? () => setState(() => _conflictsPage++)
-                                : null,
-                          ),
-                          _DevicesTab(
-                            companyId: widget.companyId,
-                            devicesAsync: devicesAsync,
-                          ),
-                          _IncidentsTab(incidents: summary.latestIncidents),
-                          const _AuditTab(),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => _ErrorSurface(
-        title: 'Não foi possível carregar resumo da empresa',
-        error: error,
-        onRetry: () => ref.invalidate(
-          adminSyncCenterCompanySummaryProvider(widget.companyId),
-        ),
-      ),
-    );
-  }
-}
-
-class SyncEventDetailPage extends ConsumerStatefulWidget {
+class SyncEventDetailPage extends ConsumerWidget {
   const SyncEventDetailPage({
     super.key,
     required this.companyId,
@@ -288,197 +168,53 @@ class SyncEventDetailPage extends ConsumerStatefulWidget {
   final String eventId;
 
   @override
-  ConsumerState<SyncEventDetailPage> createState() =>
-      _SyncEventDetailPageState();
-}
-
-class _SyncEventDetailPageState extends ConsumerState<SyncEventDetailPage> {
-  bool _isRunning = false;
-  bool _dryRunApproved = false;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final key = AdminSyncCenterDetailKey(
-      companyId: widget.companyId,
-      targetId: widget.eventId,
+      companyId: companyId,
+      targetId: eventId,
     );
     final detailAsync = ref.watch(adminSyncCenterEventDetailProvider(key));
-
     return detailAsync.when(
       data: (detail) => SingleChildScrollView(
         child: AdminSurface(
-          title:
-              'Evento ${adminSyncCenterEntityLabel(detail.event.entity)} / ${adminSyncCenterOperationLabel(detail.event.operation)}',
+          title: 'Evento ${detail.event.eventId}',
           subtitle: detail.message,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _DiagnosticHeader(
-                classification: detail.classification,
-                recommendedAction: detail.recommendedAction,
-                canReprocess: detail.canReprocess,
-                canArchive: detail.canArchive,
-              ),
-              const SizedBox(height: 20),
+              const _ReadOnlyNotice(),
+              const SizedBox(height: 16),
               _DetailGrid(
                 rows: {
-                  'Status': adminSyncCenterStatusLabel(detail.event.status),
-                  'Módulo': adminSyncCenterFeatureLabel(detail.event.feature),
-                  'Entidade': adminSyncCenterEntityLabel(detail.event.entity),
-                  'Operação': adminSyncCenterOperationLabel(
-                    detail.event.operation,
-                  ),
-                  'Código de rejeição':
-                      detail.event.rejectionCode ?? 'Sem rejeição',
+                  'Status': _eventStatusLabel(detail.event.status),
+                  'Modulo': detail.event.feature,
+                  'Entidade': detail.event.entity,
+                  'Operacao': detail.event.operation,
+                  'Classificacao': detail.classification,
                   'Criado em': AdminFormatters.formatDateTime(
                     detail.event.createdAt,
                   ),
-                  if (detail.conflict != null)
-                    'Conflito relacionado': detail.conflict!.conflictId,
                 },
               ),
-              const SizedBox(height: 20),
-              _RiskBlock(risks: detail.risks, blockers: detail.blockers),
-              const SizedBox(height: 20),
-              _PayloadPreview(payload: detail.event.safePayloadPreview),
-              const SizedBox(height: 20),
-              _AdvancedPayload(payload: detail.event.payload),
-              const SizedBox(height: 20),
-              _RelatedIncidents(incidents: detail.incidents),
-              const SizedBox(height: 20),
-              _EventActions(
-                canReprocess: detail.canReprocess,
-                dryRunApproved: _dryRunApproved,
-                relatedConflictId: detail.conflict?.conflictId,
-                companyId: widget.companyId,
-                isRunning: _isRunning,
-                onDryRun: () => _dryRunReprocess(detail),
-                onReprocess: () => _reprocess(detail),
-              ),
+              const SizedBox(height: 16),
+              _SafePayload(payload: detail.event.safePayloadPreview),
+              const SizedBox(height: 16),
+              const _ReadonlyActionPlaceholder(),
             ],
           ),
         ),
       ),
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => _ErrorSurface(
-        title: 'Não foi possível carregar evento',
+        title: 'Nao foi possivel carregar evento',
         error: error,
         onRetry: () => ref.invalidate(adminSyncCenterEventDetailProvider(key)),
       ),
     );
   }
-
-  Future<void> _dryRunReprocess(AdminSyncCenterEventDetail detail) async {
-    final reason = await _askReason(context, title: 'Dry-run reprocessar');
-    if (reason == null || !mounted) {
-      return;
-    }
-    if (_isRunning) {
-      return;
-    }
-    setState(() => _isRunning = true);
-    try {
-      final result = await ref
-          .read(adminApiServiceProvider)
-          .dryRunSyncEventReprocess(
-            companyId: widget.companyId,
-            eventId: detail.event.id,
-            reason: reason,
-          );
-      if (mounted) {
-        setState(() => _dryRunApproved = result.wouldReprocess);
-        await _showDryRunResultDialog(context, result);
-      }
-    } on AdminApiException catch (error) {
-      if (!mounted) {
-        return;
-      }
-      _showActionError(context, error.message);
-    } finally {
-      if (mounted) {
-        setState(() => _isRunning = false);
-      }
-    }
-  }
-
-  Future<void> _reprocess(AdminSyncCenterEventDetail detail) async {
-    if (!_dryRunApproved) {
-      _showActionError(
-        context,
-        'Rode o dry-run e confirme que o evento pode ser reprocessado antes do write.',
-      );
-      return;
-    }
-    final input = await _showSyncWriteDialog(
-      context: context,
-      title: 'Reprocessar evento',
-      warning:
-          'Reprocessar pode materializar dados operacionais. Use somente se o dry-run estiver limpo.',
-      expectedConfirmation: 'REPROCESSAR',
-    );
-    if (input == null || !mounted) {
-      return;
-    }
-    await _runAction(
-      () => ref
-          .read(adminApiServiceProvider)
-          .reprocessSyncEvent(
-            companyId: widget.companyId,
-            eventId: detail.event.id,
-            reason: input.reason,
-            confirmationText: input.confirmationText,
-          ),
-      successBuilder: (result) => result.message ?? 'Evento reprocessado.',
-      refreshKey: AdminSyncCenterDetailKey(
-        companyId: widget.companyId,
-        targetId: widget.eventId,
-      ),
-    );
-    if (mounted) {
-      setState(() => _dryRunApproved = false);
-    }
-  }
-
-  Future<void> _runAction<T>(
-    Future<T> Function() action, {
-    required String Function(T result) successBuilder,
-    AdminSyncCenterDetailKey? refreshKey,
-  }) async {
-    if (_isRunning) {
-      return;
-    }
-    setState(() => _isRunning = true);
-    try {
-      final result = await action();
-      ref.read(adminRefreshTickProvider.notifier).state++;
-      if (refreshKey != null) {
-        ref.invalidate(adminSyncCenterEventDetailProvider(refreshKey));
-      }
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(successBuilder(result))));
-    } on AdminApiException catch (error) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.message),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isRunning = false);
-      }
-    }
-  }
 }
 
-class SyncConflictDetailPage extends ConsumerStatefulWidget {
+class SyncConflictDetailPage extends ConsumerWidget {
   const SyncConflictDetailPage({
     super.key,
     required this.companyId,
@@ -489,24 +225,12 @@ class SyncConflictDetailPage extends ConsumerStatefulWidget {
   final String conflictId;
 
   @override
-  ConsumerState<SyncConflictDetailPage> createState() =>
-      _SyncConflictDetailPageState();
-}
-
-class _SyncConflictDetailPageState
-    extends ConsumerState<SyncConflictDetailPage> {
-  bool _isRunning = false;
-  bool _archiveDryRunApproved = false;
-  String? _archiveExpectedConfirmationText;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final key = AdminSyncCenterDetailKey(
-      companyId: widget.companyId,
-      targetId: widget.conflictId,
+      companyId: companyId,
+      targetId: conflictId,
     );
     final detailAsync = ref.watch(adminSyncCenterConflictDetailProvider(key));
-
     return detailAsync.when(
       data: (detail) => SingleChildScrollView(
         child: AdminSurface(
@@ -515,2062 +239,149 @@ class _SyncConflictDetailPageState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _DiagnosticHeader(
-                classification: detail.classification,
-                recommendedAction: detail.recommendedAction,
-                canReprocess: detail.canReprocess,
-                canArchive: detail.canArchive,
-              ),
-              const SizedBox(height: 20),
-              _LegacyStockMessage(detail: detail),
-              const SizedBox(height: 20),
+              const _ReadOnlyNotice(),
+              const SizedBox(height: 16),
               _DetailGrid(
                 rows: {
-                  'Status': adminSyncCenterStatusLabel(detail.conflict.status),
-                  'Entidade': adminSyncCenterEntityLabel(
-                    detail.conflict.entity,
-                  ),
-                  'Código': detail.conflict.code,
-                  'Mensagem': detail.conflict.message,
+                  'Status': _conflictStatusLabel(detail.conflict.status),
+                  'Entidade': detail.conflict.entity,
+                  'Codigo': detail.conflict.code,
+                  'Classificacao': detail.classification,
                   'Criado em': AdminFormatters.formatDateTime(
                     detail.conflict.createdAt,
                   ),
-                  'Evento relacionado': detail.event.eventId,
+                  'Evento': detail.event.eventId,
                 },
               ),
-              const SizedBox(height: 20),
-              _RiskBlock(risks: detail.risks, blockers: detail.blockers),
-              const SizedBox(height: 20),
-              _PayloadPreview(payload: detail.event.safePayloadPreview),
-              const SizedBox(height: 20),
-              _AdvancedPayload(payload: detail.event.payload),
-              const SizedBox(height: 20),
-              _RelatedIncidents(incidents: detail.incidents),
-              const SizedBox(height: 20),
-              _ConflictActions(
-                canArchive: detail.canArchive,
-                archiveDryRunApproved: _archiveDryRunApproved,
-                canCreateManualStockAdjustment:
-                    detail.canCreateManualStockAdjustment,
-                isRunning: _isRunning,
-                onDryRunArchive: () => _dryRunArchive(detail),
-                onArchive: () => _archive(detail),
-                onDryRunStock: () => _dryRunStock(detail),
-              ),
+              const SizedBox(height: 16),
+              _SafePayload(payload: detail.conflict.safePayloadPreview),
+              const SizedBox(height: 16),
+              const _ReadonlyActionPlaceholder(),
             ],
           ),
         ),
       ),
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => _ErrorSurface(
-        title: 'Não foi possível carregar conflito',
+        title: 'Nao foi possivel carregar conflito',
         error: error,
         onRetry: () =>
             ref.invalidate(adminSyncCenterConflictDetailProvider(key)),
       ),
     );
   }
+}
 
-  Future<void> _dryRunArchive(AdminSyncCenterConflictDetail detail) async {
-    final reason = await _askReason(context, title: 'Dry-run arquivar');
-    if (reason == null || !mounted) {
-      return;
-    }
-    if (_isRunning) {
-      return;
-    }
-    setState(() => _isRunning = true);
-    try {
-      final result = await ref
-          .read(adminApiServiceProvider)
-          .dryRunSyncConflictArchive(
-            companyId: widget.companyId,
-            conflictId: detail.conflict.conflictId,
-            reason: reason,
-          );
-      if (mounted) {
-        setState(() {
-          _archiveDryRunApproved = result.wouldArchive;
-          _archiveExpectedConfirmationText = result.wouldArchive
-              ? result.expectedConfirmationText ?? 'ARQUIVAR'
-              : null;
-        });
-        await _showDryRunResultDialog(context, result);
-      }
-    } on AdminApiException catch (error) {
-      if (!mounted) {
-        return;
-      }
-      _showActionError(context, _friendlySyncActionError(error));
-    } finally {
-      if (mounted) {
-        setState(() => _isRunning = false);
-      }
-    }
-  }
+class _CompaniesTable extends StatelessWidget {
+  const _CompaniesTable({required this.companies});
 
-  Future<void> _archive(AdminSyncCenterConflictDetail detail) async {
-    if (!_archiveDryRunApproved) {
-      _showActionError(
-        context,
-        'Rode o dry-run e confirme que o conflito pode ser arquivado antes do write.',
-      );
-      return;
-    }
-    final input = await _showSyncWriteDialog(
-      context: context,
-      title: 'Arquivar conflito',
-      warning:
-          'Arquivar não apaga evento, venda, produto ou incidente. A ação registra auditoria.',
-      expectedConfirmation: _archiveExpectedConfirmationText ?? 'ARQUIVAR',
-      includeNote: true,
-    );
-    if (input == null || !mounted) {
-      return;
-    }
-    await _runAction(
-      () => ref
-          .read(adminApiServiceProvider)
-          .archiveSyncConflict(
-            companyId: widget.companyId,
-            conflictId: detail.conflict.conflictId,
-            reason: input.reason,
-            confirmationText: input.confirmationText,
-            note: input.note,
-          ),
-      successBuilder: (result) => result.message ?? 'Conflito arquivado.',
-      refreshKey: AdminSyncCenterDetailKey(
-        companyId: widget.companyId,
-        targetId: widget.conflictId,
+  final List<AdminSyncCenterCompany> companies;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: DataTable(
+        columns: const [
+          DataColumn(label: Text('Empresa')),
+          DataColumn(label: Text('Plano')),
+          DataColumn(label: Text('Sync')),
+          DataColumn(label: Text('OPEN')),
+          DataColumn(label: Text('Failed')),
+          DataColumn(label: Text('Pending')),
+          DataColumn(label: Text('Acao')),
+        ],
+        rows: companies
+            .map((company) {
+              return DataRow(
+                cells: [
+                  DataCell(Text(company.companyName)),
+                  DataCell(
+                    Text(AdminFormatters.formatPlan(company.plan ?? 'FREE')),
+                  ),
+                  DataCell(
+                    _StatusChip(label: _syncStatusLabel(company.syncStatus)),
+                  ),
+                  DataCell(Text('${company.openConflictCount}')),
+                  DataCell(Text('${company.failedCount}')),
+                  DataCell(Text('${company.pendingCount}')),
+                  DataCell(
+                    FilledButton.tonalIcon(
+                      onPressed: () =>
+                          context.go('/companies/${company.companyId}/sync'),
+                      icon: const Icon(Icons.open_in_new_rounded),
+                      label: const Text('Abrir'),
+                    ),
+                  ),
+                ],
+              );
+            })
+            .toList(growable: false),
       ),
     );
-    if (mounted) {
-      setState(() {
-        _archiveDryRunApproved = false;
-        _archiveExpectedConfirmationText = null;
-      });
-    }
-  }
-
-  Future<void> _dryRunStock(AdminSyncCenterConflictDetail detail) async {
-    final reason = await _askReason(context, title: 'Dry-run ajuste manual');
-    if (reason == null || !mounted) {
-      return;
-    }
-    if (_isRunning) {
-      return;
-    }
-    setState(() => _isRunning = true);
-    try {
-      final result = await ref
-          .read(adminApiServiceProvider)
-          .dryRunManualStockAdjustment(
-            companyId: widget.companyId,
-            conflictId: detail.conflict.conflictId,
-            reason: reason,
-          );
-      if (mounted) {
-        await _showDryRunResultDialog(context, result);
-      }
-    } on AdminApiException catch (error) {
-      if (!mounted) {
-        return;
-      }
-      _showActionError(context, error.message);
-    } finally {
-      if (mounted) {
-        setState(() => _isRunning = false);
-      }
-    }
-  }
-
-  Future<void> _runAction<T>(
-    Future<T> Function() action, {
-    required String Function(T result) successBuilder,
-    AdminSyncCenterDetailKey? refreshKey,
-  }) async {
-    if (_isRunning) {
-      return;
-    }
-    setState(() => _isRunning = true);
-    try {
-      final result = await action();
-      ref.read(adminRefreshTickProvider.notifier).state++;
-      if (refreshKey != null) {
-        ref.invalidate(adminSyncCenterConflictDetailProvider(refreshKey));
-      }
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(successBuilder(result))));
-    } on AdminApiException catch (error) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.message),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isRunning = false);
-      }
-    }
   }
 }
 
-class _CompanyFilters extends StatelessWidget {
+class _CompanyFilters extends StatefulWidget {
   const _CompanyFilters({
     required this.searchController,
     required this.status,
-    required this.pageSize,
     required this.onApply,
     required this.onClear,
   });
 
   final TextEditingController searchController;
   final String status;
-  final int pageSize;
-  final void Function({required String status, required int pageSize}) onApply;
+  final ValueChanged<String> onApply;
   final VoidCallback onClear;
 
   @override
-  Widget build(BuildContext context) {
-    var selectedStatus = status;
-    var selectedPageSize = pageSize;
-    return StatefulBuilder(
-      builder: (context, setLocalState) => Wrap(
-        spacing: 12,
-        runSpacing: 12,
-        crossAxisAlignment: WrapCrossAlignment.end,
-        children: [
-          SizedBox(
-            width: 320,
-            child: TextField(
-              controller: searchController,
-              decoration: const InputDecoration(
-                labelText: 'Buscar empresa',
-                prefixIcon: Icon(Icons.search_rounded),
-              ),
-              onSubmitted: (_) =>
-                  onApply(status: selectedStatus, pageSize: selectedPageSize),
-            ),
-          ),
-          SizedBox(
-            width: 280,
-            child: DropdownButtonFormField<String>(
-              initialValue: selectedStatus,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Status'),
-              items: const [
-                DropdownMenuItem(
-                  value: 'requires_review',
-                  child: Text('Requer revisão'),
-                ),
-                DropdownMenuItem(value: 'failed', child: Text('Falhas')),
-                DropdownMenuItem(value: 'conflict', child: Text('Conflitos')),
-                DropdownMenuItem(value: 'healthy', child: Text('Saudáveis')),
-                DropdownMenuItem(value: 'all', child: Text('Todas')),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  setLocalState(() => selectedStatus = value);
-                }
-              },
-            ),
-          ),
-          SizedBox(
-            width: 120,
-            child: DropdownButtonFormField<int>(
-              initialValue: selectedPageSize,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Itens'),
-              items: const [
-                DropdownMenuItem(value: 10, child: Text('10')),
-                DropdownMenuItem(value: 20, child: Text('20')),
-                DropdownMenuItem(value: 50, child: Text('50')),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  setLocalState(() => selectedPageSize = value);
-                }
-              },
-            ),
-          ),
-          FilledButton.icon(
-            onPressed: () =>
-                onApply(status: selectedStatus, pageSize: selectedPageSize),
-            icon: const Icon(Icons.filter_alt_rounded),
-            label: const Text('Aplicar'),
-          ),
-          TextButton(onPressed: onClear, child: const Text('Limpar')),
-        ],
-      ),
-    );
-  }
+  State<_CompanyFilters> createState() => _CompanyFiltersState();
 }
 
-class _CompaniesTable extends StatelessWidget {
-  const _CompaniesTable({required this.companies, required this.onOpen});
-
-  final List<AdminSyncCenterCompany> companies;
-  final ValueChanged<String> onOpen;
+class _CompanyFiltersState extends State<_CompanyFilters> {
+  late String _status = widget.status;
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        dataRowMinHeight: 76,
-        dataRowMaxHeight: 104,
-        columns: const [
-          DataColumn(label: Text('Empresa')),
-          DataColumn(label: Text('Status')),
-          DataColumn(label: Text('Conflitos')),
-          DataColumn(label: Text('Erros')),
-          DataColumn(label: Text('Pendências')),
-          DataColumn(label: Text('Último evento')),
-          DataColumn(label: Text('Último incidente')),
-          DataColumn(label: Text('Ação')),
-        ],
-        rows: companies
-            .map(
-              (company) => DataRow(
-                cells: [
-                  DataCell(
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          company.companyName,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        Text(company.companyId),
-                      ],
-                    ),
-                    onTap: () => onOpen(company.companyId),
-                  ),
-                  DataCell(
-                    _StatusChip(
-                      label: adminSyncCenterStatusLabel(company.syncStatus),
-                    ),
-                  ),
-                  DataCell(Text('${company.openConflictCount}')),
-                  DataCell(Text('${company.failedCount}')),
-                  DataCell(Text('${company.pendingCount}')),
-                  DataCell(
-                    Text(AdminFormatters.formatDateTime(company.lastEventAt)),
-                  ),
-                  DataCell(
-                    Text(
-                      AdminFormatters.formatDateTime(company.lastIncidentAt),
-                    ),
-                  ),
-                  DataCell(
-                    FilledButton.tonalIcon(
-                      onPressed: () => onOpen(company.companyId),
-                      icon: const Icon(Icons.arrow_forward_rounded),
-                      label: const Text('Abrir'),
-                    ),
-                  ),
-                ],
-              ),
-            )
-            .toList(growable: false),
-      ),
-    );
-  }
-}
-
-class _CompanySummary extends StatelessWidget {
-  const _CompanySummary({required this.summary});
-
-  final AdminSyncCenterCompanySummary summary;
-
-  @override
-  Widget build(BuildContext context) {
-    final counts = summary.eventStatusCounts;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            _MetricCard(
-              label: 'currentVersion',
-              value: summary.syncState.currentVersion,
-              icon: Icons.tag_rounded,
+        SizedBox(
+          width: 280,
+          child: TextField(
+            controller: widget.searchController,
+            decoration: const InputDecoration(
+              labelText: 'Buscar empresa',
+              prefixIcon: Icon(Icons.search_rounded),
             ),
-            _MetricCard(
-              label: 'serverFirstSnapshotVersion',
-              value: summary.syncState.serverFirstSnapshotVersion,
-              icon: Icons.cloud_sync_rounded,
+            onSubmitted: (_) => widget.onApply(_status),
+          ),
+        ),
+        DropdownButton<String>(
+          value: _status,
+          items: const [
+            DropdownMenuItem(
+              value: 'requires_review',
+              child: Text('Com atencao'),
             ),
-            _MetricCard(
-              label: 'Aceitos',
-              value: '${counts.accepted}',
-              icon: Icons.check_circle_outline_rounded,
-            ),
-            _MetricCard(
-              label: 'Duplicados',
-              value: '${counts.duplicate}',
-              icon: Icons.copy_rounded,
-            ),
-            _MetricCard(
-              label: 'Conflitos',
-              value: '${counts.conflict}',
-              icon: Icons.report_problem_rounded,
-            ),
-            _MetricCard(
-              label: 'Falhas',
-              value: '${counts.failed}',
-              icon: Icons.error_outline_rounded,
-            ),
-            _MetricCard(
-              label: 'Pendentes',
-              value: '${counts.pending}',
-              icon: Icons.pending_actions_rounded,
-            ),
+            DropdownMenuItem(value: 'all', child: Text('Todas')),
+            DropdownMenuItem(value: 'healthy', child: Text('Saudaveis')),
           ],
-        ),
-        const SizedBox(height: 20),
-        _StatusChip(
-          label: summary.requiresReview ? 'Requer revisão' : 'Saudável',
-        ),
-        const SizedBox(height: 20),
-        _EntityCountsTable(counts: summary.entityOperationStatusCounts),
-      ],
-    );
-  }
-}
-
-class _EventsTab extends ConsumerStatefulWidget {
-  const _EventsTab({
-    required this.companyId,
-    required this.eventsAsync,
-    required this.onPrevious,
-    required this.onNext,
-  });
-
-  final String companyId;
-  final AsyncValue<AdminPaginatedResult<AdminSyncCenterEvent>> eventsAsync;
-  final VoidCallback? onPrevious;
-  final VoidCallback? onNext;
-
-  @override
-  ConsumerState<_EventsTab> createState() => _EventsTabState();
-}
-
-class _EventsTabState extends ConsumerState<_EventsTab> {
-  final Set<String> _approvedDryRuns = <String>{};
-  final Set<String> _runningEvents = <String>{};
-
-  @override
-  Widget build(BuildContext context) {
-    return widget.eventsAsync.when(
-      data: (events) => Padding(
-        padding: const EdgeInsets.only(top: 16),
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                child: _EventsTable(
-                  companyId: widget.companyId,
-                  events: events.items,
-                  approvedDryRuns: _approvedDryRuns,
-                  runningEvents: _runningEvents,
-                  onDryRun: _dryRunReprocess,
-                  onReprocess: _reprocess,
-                ),
-              ),
-            ),
-            _PaginationBar(
-              pagination: events.pagination,
-              itemLabel: 'eventos',
-              onPrevious: widget.onPrevious,
-              onNext: widget.onNext,
-            ),
-          ],
-        ),
-      ),
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text(error.toString())),
-    );
-  }
-
-  Future<void> _dryRunReprocess(AdminSyncCenterEvent event) async {
-    final reason = await _askReason(context, title: 'Dry-run reprocessar');
-    if (reason == null || !mounted) {
-      return;
-    }
-    if (_runningEvents.contains(event.id)) {
-      return;
-    }
-    setState(() => _runningEvents.add(event.id));
-    try {
-      final result = await ref
-          .read(adminApiServiceProvider)
-          .dryRunSyncEventReprocess(
-            companyId: widget.companyId,
-            eventId: event.id,
-            reason: reason,
-          );
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        if (result.wouldReprocess) {
-          _approvedDryRuns.add(event.id);
-        } else {
-          _approvedDryRuns.remove(event.id);
-        }
-      });
-      await _showDryRunResultDialog(context, result);
-    } on AdminApiException catch (error) {
-      if (mounted) {
-        _showActionError(context, error.message);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _runningEvents.remove(event.id));
-      }
-    }
-  }
-
-  Future<void> _reprocess(AdminSyncCenterEvent event) async {
-    if (!_approvedDryRuns.contains(event.id)) {
-      _showActionError(
-        context,
-        'Rode o dry-run e confirme que o evento pode ser reprocessado antes do write.',
-      );
-      return;
-    }
-    final input = await _showSyncWriteDialog(
-      context: context,
-      title: 'Reprocessar evento',
-      warning:
-          'Reprocessar pode materializar dados operacionais. Use somente se o dry-run estiver limpo.',
-      expectedConfirmation: 'REPROCESSAR',
-    );
-    if (input == null || !mounted) {
-      return;
-    }
-    setState(() => _runningEvents.add(event.id));
-    try {
-      final result = await ref
-          .read(adminApiServiceProvider)
-          .reprocessSyncEvent(
-            companyId: widget.companyId,
-            eventId: event.id,
-            reason: input.reason,
-            confirmationText: input.confirmationText,
-          );
-      _approvedDryRuns.remove(event.id);
-      ref.read(adminRefreshTickProvider.notifier).state++;
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result.message ?? 'Evento reprocessado.')),
-        );
-      }
-    } on AdminApiException catch (error) {
-      if (mounted) {
-        _showActionError(context, error.message);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _runningEvents.remove(event.id));
-      }
-    }
-  }
-}
-
-class _EventsTable extends StatelessWidget {
-  const _EventsTable({
-    required this.companyId,
-    required this.events,
-    required this.approvedDryRuns,
-    required this.runningEvents,
-    required this.onDryRun,
-    required this.onReprocess,
-  });
-
-  final String companyId;
-  final List<AdminSyncCenterEvent> events;
-  final Set<String> approvedDryRuns;
-  final Set<String> runningEvents;
-  final ValueChanged<AdminSyncCenterEvent> onDryRun;
-  final ValueChanged<AdminSyncCenterEvent> onReprocess;
-
-  @override
-  Widget build(BuildContext context) {
-    if (events.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 32),
-        child: Text('Nenhum evento encontrado.'),
-      );
-    }
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        dataRowMinHeight: 76,
-        dataRowMaxHeight: 104,
-        columns: const [
-          DataColumn(label: Text('Status')),
-          DataColumn(label: Text('Ações')),
-          DataColumn(label: Text('Entidade')),
-          DataColumn(label: Text('Operação')),
-          DataColumn(label: Text('Módulo')),
-          DataColumn(label: Text('Código de rejeição')),
-          DataColumn(label: Text('Classificação')),
-          DataColumn(label: Text('Ação recomendada')),
-          DataColumn(label: Text('Criado em')),
-        ],
-        rows: events
-            .map(
-              (event) => DataRow(
-                cells: [
-                  DataCell(
-                    _StatusChip(
-                      label: adminSyncCenterStatusLabel(event.status),
-                    ),
-                  ),
-                  DataCell(
-                    _EventRowActions(
-                      companyId: companyId,
-                      event: event,
-                      dryRunApproved: approvedDryRuns.contains(event.id),
-                      isRunning: runningEvents.contains(event.id),
-                      onDryRun: () => onDryRun(event),
-                      onReprocess: () => onReprocess(event),
-                    ),
-                  ),
-                  DataCell(_CellText(adminSyncCenterEntityLabel(event.entity))),
-                  DataCell(
-                    _CellText(adminSyncCenterOperationLabel(event.operation)),
-                  ),
-                  DataCell(
-                    _CellText(adminSyncCenterFeatureLabel(event.feature)),
-                  ),
-                  DataCell(_CellText(event.rejectionCode ?? 'Sem rejeição')),
-                  DataCell(
-                    _CellText(
-                      adminSyncCenterClassificationLabel(event.classification),
-                    ),
-                  ),
-                  DataCell(
-                    _CellText(
-                      adminSyncCenterActionLabel(event.recommendedAction),
-                    ),
-                  ),
-                  DataCell(
-                    Text(AdminFormatters.formatDateTime(event.createdAt)),
-                  ),
-                ],
-              ),
-            )
-            .toList(growable: false),
-      ),
-    );
-  }
-}
-
-class _ConflictsTab extends ConsumerStatefulWidget {
-  const _ConflictsTab({
-    required this.companyId,
-    required this.conflictsAsync,
-    required this.onPrevious,
-    required this.onNext,
-  });
-
-  final String companyId;
-  final AsyncValue<AdminPaginatedResult<AdminSyncCenterConflict>>
-  conflictsAsync;
-  final VoidCallback? onPrevious;
-  final VoidCallback? onNext;
-
-  @override
-  ConsumerState<_ConflictsTab> createState() => _ConflictsTabState();
-}
-
-class _ConflictsTabState extends ConsumerState<_ConflictsTab> {
-  final Set<String> _approvedArchiveDryRuns = <String>{};
-  final Map<String, String> _archiveExpectedConfirmationTexts =
-      <String, String>{};
-  final Set<String> _runningConflicts = <String>{};
-
-  @override
-  Widget build(BuildContext context) {
-    return widget.conflictsAsync.when(
-      data: (conflicts) => Padding(
-        padding: const EdgeInsets.only(top: 16),
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                child: _ConflictsTable(
-                  companyId: widget.companyId,
-                  conflicts: conflicts.items,
-                  approvedArchiveDryRuns: _approvedArchiveDryRuns,
-                  runningConflicts: _runningConflicts,
-                  onDryRunArchive: _dryRunArchive,
-                  onArchive: _archive,
-                ),
-              ),
-            ),
-            _PaginationBar(
-              pagination: conflicts.pagination,
-              itemLabel: 'conflitos',
-              onPrevious: widget.onPrevious,
-              onNext: widget.onNext,
-            ),
-          ],
-        ),
-      ),
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text(error.toString())),
-    );
-  }
-
-  Future<void> _dryRunArchive(AdminSyncCenterConflict conflict) async {
-    final reason = await _askReason(context, title: 'Dry-run arquivar');
-    if (reason == null || !mounted) {
-      return;
-    }
-    if (_runningConflicts.contains(conflict.conflictId)) {
-      return;
-    }
-    setState(() => _runningConflicts.add(conflict.conflictId));
-    try {
-      final result = await ref
-          .read(adminApiServiceProvider)
-          .dryRunSyncConflictArchive(
-            companyId: widget.companyId,
-            conflictId: conflict.conflictId,
-            reason: reason,
-          );
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        if (result.wouldArchive) {
-          _approvedArchiveDryRuns.add(conflict.conflictId);
-          _archiveExpectedConfirmationTexts[conflict.conflictId] =
-              result.expectedConfirmationText ?? 'ARQUIVAR';
-        } else {
-          _approvedArchiveDryRuns.remove(conflict.conflictId);
-          _archiveExpectedConfirmationTexts.remove(conflict.conflictId);
-        }
-      });
-      await _showDryRunResultDialog(context, result);
-    } on AdminApiException catch (error) {
-      if (mounted) {
-        _showActionError(context, _friendlySyncActionError(error));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _runningConflicts.remove(conflict.conflictId));
-      }
-    }
-  }
-
-  Future<void> _archive(AdminSyncCenterConflict conflict) async {
-    if (!_approvedArchiveDryRuns.contains(conflict.conflictId)) {
-      _showActionError(
-        context,
-        'Rode o dry-run e confirme que o conflito pode ser arquivado antes do write.',
-      );
-      return;
-    }
-    final input = await _showSyncWriteDialog(
-      context: context,
-      title: 'Arquivar conflito',
-      warning:
-          'Arquivar não apaga evento, venda, produto ou incidente. A ação registra auditoria.',
-      expectedConfirmation:
-          _archiveExpectedConfirmationTexts[conflict.conflictId] ?? 'ARQUIVAR',
-      includeNote: true,
-    );
-    if (input == null || !mounted) {
-      return;
-    }
-    setState(() => _runningConflicts.add(conflict.conflictId));
-    try {
-      final result = await ref
-          .read(adminApiServiceProvider)
-          .archiveSyncConflict(
-            companyId: widget.companyId,
-            conflictId: conflict.conflictId,
-            reason: input.reason,
-            confirmationText: input.confirmationText,
-            note: input.note,
-          );
-      _approvedArchiveDryRuns.remove(conflict.conflictId);
-      _archiveExpectedConfirmationTexts.remove(conflict.conflictId);
-      ref.read(adminRefreshTickProvider.notifier).state++;
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result.message ?? 'Conflito arquivado.')),
-        );
-      }
-    } on AdminApiException catch (error) {
-      if (mounted) {
-        _showActionError(context, _friendlySyncActionError(error));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _runningConflicts.remove(conflict.conflictId));
-      }
-    }
-  }
-}
-
-class _ConflictsTable extends StatelessWidget {
-  const _ConflictsTable({
-    required this.companyId,
-    required this.conflicts,
-    required this.approvedArchiveDryRuns,
-    required this.runningConflicts,
-    required this.onDryRunArchive,
-    required this.onArchive,
-  });
-
-  final String companyId;
-  final List<AdminSyncCenterConflict> conflicts;
-  final Set<String> approvedArchiveDryRuns;
-  final Set<String> runningConflicts;
-  final ValueChanged<AdminSyncCenterConflict> onDryRunArchive;
-  final ValueChanged<AdminSyncCenterConflict> onArchive;
-
-  @override
-  Widget build(BuildContext context) {
-    if (conflicts.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 32),
-        child: Text('Nenhum conflito encontrado.'),
-      );
-    }
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        columns: const [
-          DataColumn(label: Text('Status')),
-          DataColumn(label: Text('Ações')),
-          DataColumn(label: Text('Código')),
-          DataColumn(label: Text('Entidade')),
-          DataColumn(label: Text('Mensagem')),
-          DataColumn(label: Text('Classificação')),
-          DataColumn(label: Text('Ação recomendada')),
-          DataColumn(label: Text('Criado em')),
-        ],
-        rows: conflicts
-            .map(
-              (conflict) => DataRow(
-                cells: [
-                  DataCell(
-                    _StatusChip(
-                      label: adminSyncCenterStatusLabel(conflict.status),
-                    ),
-                  ),
-                  DataCell(
-                    _ConflictRowActions(
-                      companyId: companyId,
-                      conflict: conflict,
-                      archiveDryRunApproved: approvedArchiveDryRuns.contains(
-                        conflict.conflictId,
-                      ),
-                      isRunning: runningConflicts.contains(conflict.conflictId),
-                      onDryRunArchive: () => onDryRunArchive(conflict),
-                      onArchive: () => onArchive(conflict),
-                    ),
-                  ),
-                  DataCell(_CellText(conflict.code, width: 180)),
-                  DataCell(
-                    _CellText(adminSyncCenterEntityLabel(conflict.entity)),
-                  ),
-                  DataCell(_CellText(conflict.message, width: 320)),
-                  DataCell(
-                    _CellText(
-                      adminSyncCenterClassificationLabel(
-                        conflict.classification,
-                      ),
-                    ),
-                  ),
-                  DataCell(
-                    _CellText(
-                      adminSyncCenterActionLabel(conflict.recommendedAction),
-                    ),
-                  ),
-                  DataCell(
-                    Text(AdminFormatters.formatDateTime(conflict.createdAt)),
-                  ),
-                ],
-              ),
-            )
-            .toList(growable: false),
-      ),
-    );
-  }
-}
-
-class _EventRowActions extends StatelessWidget {
-  const _EventRowActions({
-    required this.companyId,
-    required this.event,
-    required this.dryRunApproved,
-    required this.isRunning,
-    required this.onDryRun,
-    required this.onReprocess,
-  });
-
-  final String companyId;
-  final AdminSyncCenterEvent event;
-  final bool dryRunApproved;
-  final bool isRunning;
-  final VoidCallback onDryRun;
-  final VoidCallback onReprocess;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 560,
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          FilledButton.tonalIcon(
-            onPressed: () => context.go('/sync/$companyId/events/${event.id}'),
-            icon: const Icon(Icons.visibility_rounded),
-            label: const Text('Detalhes'),
-          ),
-          if (event.canReprocess) ...[
-            FilledButton.tonalIcon(
-              onPressed: isRunning ? null : onDryRun,
-              icon: const Icon(Icons.science_rounded),
-              label: const Text('Dry-run'),
-            ),
-            Tooltip(
-              message: dryRunApproved
-                  ? 'Dry-run aprovado para este evento.'
-                  : 'Rode o dry-run antes de reprocessar.',
-              child: FilledButton.icon(
-                onPressed: isRunning || !dryRunApproved ? null : onReprocess,
-                icon: const Icon(Icons.sync_rounded),
-                label: const Text('Reprocessar'),
-              ),
-            ),
-          ] else
-            Tooltip(
-              message: _eventBlockedMessage(event),
-              child: OutlinedButton.icon(
-                onPressed: null,
-                icon: const Icon(Icons.lock_rounded),
-                label: const Text('Bloqueado por segurança'),
-              ),
-            ),
-          if (event.relatedConflictId != null)
-            FilledButton.tonalIcon(
-              onPressed: () => context.go(
-                '/sync/$companyId/conflicts/${event.relatedConflictId}',
-              ),
-              icon: const Icon(Icons.report_problem_rounded),
-              label: const Text('Ver conflito'),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ConflictRowActions extends StatelessWidget {
-  const _ConflictRowActions({
-    required this.companyId,
-    required this.conflict,
-    required this.archiveDryRunApproved,
-    required this.isRunning,
-    required this.onDryRunArchive,
-    required this.onArchive,
-  });
-
-  final String companyId;
-  final AdminSyncCenterConflict conflict;
-  final bool archiveDryRunApproved;
-  final bool isRunning;
-  final VoidCallback onDryRunArchive;
-  final VoidCallback onArchive;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 620,
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          FilledButton.tonalIcon(
-            onPressed: () =>
-                context.go('/sync/$companyId/conflicts/${conflict.conflictId}'),
-            icon: const Icon(Icons.visibility_rounded),
-            label: const Text('Detalhes'),
-          ),
-          FilledButton.tonalIcon(
-            onPressed: isRunning ? null : onDryRunArchive,
-            icon: const Icon(Icons.science_rounded),
-            label: const Text('Dry-run arquivar'),
-          ),
-          if (conflict.canArchive)
-            Tooltip(
-              message: archiveDryRunApproved
-                  ? 'Dry-run aprovado para este conflito.'
-                  : 'Rode o dry-run antes de arquivar.',
-              child: FilledButton.icon(
-                onPressed: isRunning || !archiveDryRunApproved
-                    ? null
-                    : onArchive,
-                icon: const Icon(Icons.archive_rounded),
-                label: const Text('Arquivar legado'),
-              ),
-            )
-          else
-            Tooltip(
-              message:
-                  'Arquivamento bloqueado pela classificação de segurança.',
-              child: OutlinedButton.icon(
-                onPressed: null,
-                icon: const Icon(Icons.lock_rounded),
-                label: const Text('Bloqueado por segurança'),
-              ),
-            ),
-          if (conflict.canCreateManualStockAdjustment)
-            FilledButton.tonalIcon(
-              onPressed: () => context.go(
-                '/sync/$companyId/conflicts/${conflict.conflictId}',
-              ),
-              icon: const Icon(Icons.inventory_2_rounded),
-              label: const Text('Ajuste manual'),
-            )
-          else
-            const Chip(label: Text('Ajuste manual indisponível')),
-        ],
-      ),
-    );
-  }
-}
-
-class _DevicesTab extends ConsumerWidget {
-  const _DevicesTab({required this.companyId, required this.devicesAsync});
-
-  final String companyId;
-  final AsyncValue<List<AdminSyncSupportDevice>> devicesAsync;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return devicesAsync.when(
-      data: (devices) {
-        if (devices.isEmpty) {
-          return const Center(
-            child: Text('Nenhum dispositivo reportou sincronizacao ainda.'),
-          );
-        }
-        return SingleChildScrollView(
-          padding: const EdgeInsets.only(top: 16),
-          child: _DevicesTable(
-            companyId: companyId,
-            devices: devices,
-            onOpen: (device) => _showDeviceDetail(context, ref, device.id),
-          ),
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => _ErrorSurface(
-        title: 'Nao foi possivel carregar dispositivos',
-        error: error,
-        onRetry: () =>
-            ref.invalidate(adminSyncSupportDevicesProvider(companyId)),
-      ),
-    );
-  }
-
-  Future<void> _showDeviceDetail(
-    BuildContext context,
-    WidgetRef ref,
-    String deviceId,
-  ) {
-    final key = AdminSyncCenterDetailKey(
-      companyId: companyId,
-      targetId: deviceId,
-    );
-    return showDialog<void>(
-      context: context,
-      builder: (dialogContext) => Dialog(
-        insetPadding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 960, maxHeight: 760),
-          child: Consumer(
-            builder: (context, ref, _) {
-              final detailAsync = ref.watch(
-                adminSyncSupportDeviceDetailProvider(key),
-              );
-              return detailAsync.when(
-                data: (detail) => _DeviceDetailPanel(
-                  companyId: companyId,
-                  detail: detail,
-                  onClose: () => Navigator.of(dialogContext).pop(),
-                  onAction: (action) =>
-                      _showSupportActionDialog(context, ref, deviceId, action),
-                ),
-                loading: () => const Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-                error: (error, _) => Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: _ErrorSurface(
-                    title: 'Nao foi possivel carregar diagnostico',
-                    error: error,
-                    onRetry: () => ref.invalidate(
-                      adminSyncSupportDeviceDetailProvider(key),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showSupportActionDialog(
-    BuildContext context,
-    WidgetRef ref,
-    String deviceId,
-    _SupportActionSpec action,
-  ) {
-    return showDialog<void>(
-      context: context,
-      builder: (dialogContext) => _SupportActionDialog(
-        companyId: companyId,
-        deviceId: deviceId,
-        action: action,
-        onCompleted: () {
-          ref.read(adminRefreshTickProvider.notifier).state++;
-          ref.invalidate(adminSyncSupportDevicesProvider(companyId));
-          ref.invalidate(
-            adminSyncSupportDeviceDetailProvider(
-              AdminSyncCenterDetailKey(
-                companyId: companyId,
-                targetId: deviceId,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _DevicesTable extends StatelessWidget {
-  const _DevicesTable({
-    required this.companyId,
-    required this.devices,
-    required this.onOpen,
-  });
-
-  final String companyId;
-  final List<AdminSyncSupportDevice> devices;
-  final ValueChanged<AdminSyncSupportDevice> onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        showCheckboxColumn: false,
-        columns: const [
-          DataColumn(label: Text('Dispositivo')),
-          DataColumn(label: Text('Usuario')),
-          DataColumn(label: Text('Status')),
-          DataColumn(label: Text('Pendente')),
-          DataColumn(label: Text('Falhas')),
-          DataColumn(label: Text('Conflitos')),
-          DataColumn(label: Text('Ultimo report')),
-          DataColumn(label: Text('Acoes')),
-        ],
-        rows: devices
-            .map(
-              (device) => DataRow(
-                onSelectChanged: (_) => onOpen(device),
-                cells: [
-                  DataCell(
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          device.title,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        Text(
-                          '${device.maskedDeviceId} · ${device.appVersion ?? 'sem versao'}',
-                        ),
-                      ],
-                    ),
-                  ),
-                  DataCell(_CellText(device.user?.email ?? 'Nao informado')),
-                  DataCell(
-                    _StatusChip(label: _deviceStatusLabel(device.status)),
-                  ),
-                  DataCell(Text('${device.pendingCount}')),
-                  DataCell(Text('${device.failedCount}')),
-                  DataCell(Text('${device.openConflictCount}')),
-                  DataCell(
-                    Text(
-                      AdminFormatters.formatDateTime(
-                        device.diagnostic?.reportedAt,
-                      ),
-                    ),
-                  ),
-                  DataCell(
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        FilledButton.tonalIcon(
-                          onPressed: () => onOpen(device),
-                          icon: const Icon(Icons.manage_search_rounded),
-                          label: const Text('Detalhes'),
-                        ),
-                        const SizedBox(width: 8),
-                        TextButton.icon(
-                          onPressed: () => onOpen(device),
-                          icon: const Icon(Icons.support_agent_rounded),
-                          label: const Text('Suporte'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            )
-            .toList(growable: false),
-      ),
-    );
-  }
-}
-
-class _DeviceDetailPanel extends StatelessWidget {
-  const _DeviceDetailPanel({
-    required this.companyId,
-    required this.detail,
-    required this.onClose,
-    required this.onAction,
-  });
-
-  final String companyId;
-  final AdminSyncSupportDeviceDetail detail;
-  final VoidCallback onClose;
-  final ValueChanged<_SupportActionSpec> onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final diagnostic = detail.diagnostic;
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      detail.device.title,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const Text('Suporte de sincronizacao por dispositivo'),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: 'Fechar',
-                onPressed: onClose,
-                icon: const Icon(Icons.close_rounded),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _NoticeBox(
-                    message:
-                        'Executar reparo nao apaga vendas, pedidos ou estoque. O comando fica pendente ate o app deste dispositivo sincronizar.',
-                  ),
-                  const SizedBox(height: 8),
-                  const _NoticeBox(
-                    message:
-                        'Use estas acoes quando o app ainda mostra atencao na nuvem, mas os conflitos remotos ja foram resolvidos.',
-                  ),
-                  const SizedBox(height: 16),
-                  _DetailGrid(
-                    rows: {
-                      'Status': _deviceStatusLabel(detail.device.status),
-                      'Device ID': detail.device.maskedDeviceId,
-                      'Usuario': detail.device.user?.email ?? 'Nao informado',
-                      'Client instance': detail.device.clientInstanceId,
-                      'Pendentes locais': '${diagnostic?.pendingCount ?? 0}',
-                      'Falhas locais': '${diagnostic?.failedCount ?? 0}',
-                      'Conflitos OPEN': '${diagnostic?.openConflictCount ?? 0}',
-                      'Resolvidos/Ignorados':
-                          '${diagnostic?.resolvedConflictCount ?? 0}/${diagnostic?.ignoredConflictCount ?? 0}',
-                      'Ultimo push': AdminFormatters.formatDateTime(
-                        diagnostic?.lastPushAt ?? detail.device.lastPushAt,
-                      ),
-                      'Ultimo pull': AdminFormatters.formatDateTime(
-                        diagnostic?.lastPullAt ?? detail.device.lastPullAt,
-                      ),
-                      'Ultimo sync ok': AdminFormatters.formatDateTime(
-                        diagnostic?.lastSuccessfulSyncAt,
-                      ),
-                      'Ultimo diagnostico': AdminFormatters.formatDateTime(
-                        diagnostic?.reportedAt ??
-                            detail.device.diagnostic?.reportedAt,
-                      ),
-                      'Versao app':
-                          diagnostic?.appVersion ??
-                          detail.device.appVersion ??
-                          '-',
-                      'Schema local': diagnostic?.localSchemaVersion ?? '-',
-                      'Entidade do erro':
-                          diagnostic?.lastLocalErrorEntity ?? '-',
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: _supportActions
-                        .map(
-                          (action) => FilledButton.tonalIcon(
-                            onPressed: () => onAction(action),
-                            icon: Icon(action.icon),
-                            label: Text(action.label),
-                          ),
-                        )
-                        .toList(growable: false),
-                  ),
-                  const SizedBox(height: 16),
-                  if (diagnostic?.lastLocalError != null)
-                    _NoticeBox(message: diagnostic!.lastLocalError!),
-                  const SizedBox(height: 12),
-                  _SupportCommandsList(commands: detail.commands),
-                  const SizedBox(height: 12),
-                  _FailedEventsList(events: detail.failedEvents),
-                  const SizedBox(height: 12),
-                  _SupportConflictsList(
-                    title: 'Conflitos remotos OPEN',
-                    conflicts: detail.openConflicts,
-                  ),
-                  const SizedBox(height: 12),
-                  _SupportConflictsList(
-                    title: 'Conflitos antigos resolvidos/ignorados',
-                    conflicts: detail.resolvedConflicts,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SupportCommandsList extends StatelessWidget {
-  const _SupportCommandsList({required this.commands});
-
-  final List<AdminSyncSupportCommand> commands;
-
-  @override
-  Widget build(BuildContext context) {
-    return AdminSurface(
-      title: 'Comandos enviados',
-      padding: const EdgeInsets.all(16),
-      child: commands.isEmpty
-          ? const Text('Nenhum comando enviado para este dispositivo.')
-          : Column(
-              children: commands
-                  .map(
-                    (command) => ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.task_alt_rounded),
-                      title: Text(command.label),
-                      subtitle: Text(command.reason),
-                      trailing: _StatusChip(label: command.status),
-                    ),
-                  )
-                  .toList(growable: false),
-            ),
-    );
-  }
-}
-
-class _FailedEventsList extends StatelessWidget {
-  const _FailedEventsList({required this.events});
-
-  final List<AdminSyncSupportFailedEvent> events;
-
-  @override
-  Widget build(BuildContext context) {
-    return AdminSurface(
-      title: 'Eventos locais com falha reportados',
-      padding: const EdgeInsets.all(16),
-      child: events.isEmpty
-          ? const Text('Sem falhas locais reportadas.')
-          : Column(
-              children: events
-                  .map(
-                    (event) => ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.error_outline_rounded),
-                      title: Text(
-                        '${adminSyncCenterEntityLabel(event.entity)} / ${adminSyncCenterOperationLabel(event.operation)}',
-                      ),
-                      subtitle: Text(
-                        event.errorMessage ?? 'Falha local sem detalhe.',
-                      ),
-                    ),
-                  )
-                  .toList(growable: false),
-            ),
-    );
-  }
-}
-
-class _SupportConflictsList extends StatelessWidget {
-  const _SupportConflictsList({required this.title, required this.conflicts});
-
-  final String title;
-  final List<AdminSyncSupportConflict> conflicts;
-
-  @override
-  Widget build(BuildContext context) {
-    return AdminSurface(
-      title: title,
-      padding: const EdgeInsets.all(16),
-      child: conflicts.isEmpty
-          ? const Text('Nenhum registro.')
-          : Column(
-              children: conflicts
-                  .map(
-                    (conflict) => ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.report_problem_rounded),
-                      title: Text(conflict.code),
-                      subtitle: Text(conflict.message),
-                      trailing: _StatusChip(label: conflict.status),
-                    ),
-                  )
-                  .toList(growable: false),
-            ),
-    );
-  }
-}
-
-class _SupportActionDialog extends ConsumerStatefulWidget {
-  const _SupportActionDialog({
-    required this.companyId,
-    required this.deviceId,
-    required this.action,
-    required this.onCompleted,
-  });
-
-  final String companyId;
-  final String deviceId;
-  final _SupportActionSpec action;
-  final VoidCallback onCompleted;
-
-  @override
-  ConsumerState<_SupportActionDialog> createState() =>
-      _SupportActionDialogState();
-}
-
-class _SupportActionDialogState extends ConsumerState<_SupportActionDialog> {
-  final _reasonController = TextEditingController();
-  final _confirmationController = TextEditingController();
-  AdminSyncSupportDryRunResult? _dryRun;
-  String? _error;
-  bool _isRunning = false;
-
-  @override
-  void dispose() {
-    _reasonController.dispose();
-    _confirmationController.dispose();
-    super.dispose();
-  }
-
-  bool get _reasonOk => _reasonController.text.trim().isNotEmpty;
-  String get _expected =>
-      _dryRun?.expectedConfirmationText ?? widget.action.confirmationText;
-  bool get _confirmationOk =>
-      _confirmationController.text.trim().toUpperCase() == _expected;
-  bool get _canConfirm =>
-      _reasonOk && _confirmationOk && (_dryRun?.allowed ?? false);
-
-  @override
-  Widget build(BuildContext context) {
-    final dryRun = _dryRun;
-    return AlertDialog(
-      title: Text(widget.action.label),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(widget.action.description),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _reasonController,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  labelText: 'Motivo obrigatorio',
-                  border: OutlineInputBorder(),
-                ),
-                minLines: 2,
-                maxLines: 3,
-              ),
-              const SizedBox(height: 12),
-              FilledButton.tonalIcon(
-                onPressed: _isRunning || !_reasonOk ? null : _runDryRun,
-                icon: const Icon(Icons.science_rounded),
-                label: const Text('Executar dry-run'),
-              ),
-              if (!_reasonOk)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text('Informe o motivo para liberar o dry-run.'),
-                ),
-              if (dryRun != null) ...[
-                const SizedBox(height: 16),
-                _RiskBlock(risks: dryRun.risks, blockers: dryRun.blockers),
-                const SizedBox(height: 12),
-                Text(dryRun.summary),
-                const SizedBox(height: 16),
-                Text('Digite $_expected para confirmar.'),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _confirmationController,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    labelText: 'Texto de confirmacao',
-                    helperText: _confirmationOk
-                        ? 'Confirmacao correta.'
-                        : 'Digite $_expected para liberar a confirmacao.',
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
-              ],
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: _isRunning ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
+          onChanged: (value) {
+            if (value != null) {
+              setState(() => _status = value);
+            }
+          },
         ),
         FilledButton.icon(
-          onPressed: _isRunning || !_canConfirm ? null : _confirm,
-          icon: const Icon(Icons.send_rounded),
-          label: const Text('Enviar comando'),
+          onPressed: () => widget.onApply(_status),
+          icon: const Icon(Icons.filter_alt_rounded),
+          label: const Text('Aplicar'),
         ),
-      ],
-    );
-  }
-
-  Future<void> _runDryRun() async {
-    setState(() {
-      _isRunning = true;
-      _error = null;
-    });
-    try {
-      final result = await ref
-          .read(adminApiServiceProvider)
-          .dryRunSyncSupportAction(
-            companyId: widget.companyId,
-            deviceId: widget.deviceId,
-            command: widget.action.command,
-            reason: _reasonController.text,
-          );
-      if (mounted) {
-        setState(() {
-          _dryRun = result;
-          _confirmationController.clear();
-        });
-      }
-    } on AdminApiException catch (error) {
-      if (mounted) {
-        setState(() => _error = error.message);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _error = 'Nao foi possivel validar a acao.');
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isRunning = false);
-      }
-    }
-  }
-
-  Future<void> _confirm() async {
-    setState(() {
-      _isRunning = true;
-      _error = null;
-    });
-    try {
-      final result = await ref
-          .read(adminApiServiceProvider)
-          .createSyncSupportAction(
-            companyId: widget.companyId,
-            deviceId: widget.deviceId,
-            command: widget.action.command,
-            reason: _reasonController.text,
-            confirmationText: _confirmationController.text,
-          );
-      if (!mounted) {
-        return;
-      }
-      Navigator.of(context).pop();
-      widget.onCompleted();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.message ?? 'Comando enviado.')),
-      );
-    } on AdminApiException catch (error) {
-      if (mounted) {
-        setState(() => _error = error.message);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _error = 'Nao foi possivel enviar o comando.');
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isRunning = false);
-      }
-    }
-  }
-}
-
-class _SupportActionSpec {
-  const _SupportActionSpec({
-    required this.command,
-    required this.label,
-    required this.confirmationText,
-    required this.icon,
-    required this.description,
-  });
-
-  final String command;
-  final String label;
-  final String confirmationText;
-  final IconData icon;
-  final String description;
-}
-
-const _supportActions = <_SupportActionSpec>[
-  _SupportActionSpec(
-    command: 'REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS',
-    label: 'Reparar eventos recuperaveis',
-    confirmationText: 'REPARAR',
-    icon: Icons.build_rounded,
-    description:
-        'Repara eventos antigos operationalOrderItem sem totalCents e devolve para a fila local.',
-  ),
-  _SupportActionSpec(
-    command: 'RETRY_FAILED_SYNC_EVENTS',
-    label: 'Reprocessar falhas locais',
-    confirmationText: 'REPROCESSAR',
-    icon: Icons.sync_rounded,
-    description:
-        'Recoloca eventos recuperaveis na fila para novo envio idempotente.',
-  ),
-  _SupportActionSpec(
-    command: 'CLEAR_RESOLVED_CONFLICT_CACHE',
-    label: 'Limpar conflitos resolvidos no dispositivo',
-    confirmationText: 'LIMPAR',
-    icon: Icons.cleaning_services_rounded,
-    description:
-        'Remove alertas locais de conflitos que ja estao resolvidos ou ignorados no backend.',
-  ),
-  _SupportActionSpec(
-    command: 'FORCE_SYNC_PULL',
-    label: 'Forcar atualizacao da nuvem',
-    confirmationText: 'ATUALIZAR',
-    icon: Icons.cloud_sync_rounded,
-    description:
-        'Solicita que o app faca pull remoto de status, conflitos e eventos.',
-  ),
-  _SupportActionSpec(
-    command: 'REFRESH_SYNC_STATUS',
-    label: 'Recalcular status de sync',
-    confirmationText: 'RECALCULAR',
-    icon: Icons.fact_check_rounded,
-    description:
-        'Recalcula o status local de sincronizacao e reporta novo diagnostico.',
-  ),
-];
-
-class _IncidentsTab extends StatelessWidget {
-  const _IncidentsTab({required this.incidents});
-
-  final List<AdminSyncCenterIncident> incidents;
-
-  @override
-  Widget build(BuildContext context) {
-    if (incidents.isEmpty) {
-      return const Center(child: Text('Nenhum incidente recente.'));
-    }
-    return ListView.separated(
-      padding: const EdgeInsets.only(top: 16),
-      itemCount: incidents.length,
-      separatorBuilder: (_, __) => const Divider(),
-      itemBuilder: (context, index) {
-        final incident = incidents[index];
-        return ListTile(
-          leading: const Icon(Icons.warning_amber_rounded),
-          title: Text(incident.code),
-          subtitle: Text(incident.message),
-          trailing: Text(AdminFormatters.formatDateTime(incident.createdAt)),
-        );
-      },
-    );
-  }
-}
-
-class _AuditTab extends StatelessWidget {
-  const _AuditTab();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Text('Auditoria registrada no log administrativo da plataforma.'),
-    );
-  }
-}
-
-class _EntityCountsTable extends StatelessWidget {
-  const _EntityCountsTable({required this.counts});
-
-  final List<AdminSyncCenterEntityOperationStatusCount> counts;
-
-  @override
-  Widget build(BuildContext context) {
-    if (counts.isEmpty) {
-      return const Text('Sem contadores por entidade.');
-    }
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        columns: const [
-          DataColumn(label: Text('Entidade')),
-          DataColumn(label: Text('Operação')),
-          DataColumn(label: Text('Status')),
-          DataColumn(label: Text('Total')),
-        ],
-        rows: counts
-            .map(
-              (count) => DataRow(
-                cells: [
-                  DataCell(_CellText(adminSyncCenterEntityLabel(count.entity))),
-                  DataCell(
-                    _CellText(adminSyncCenterOperationLabel(count.operation)),
-                  ),
-                  DataCell(Text(adminSyncCenterStatusLabel(count.status))),
-                  DataCell(Text('${count.count}')),
-                ],
-              ),
-            )
-            .toList(growable: false),
-      ),
-    );
-  }
-}
-
-class _DiagnosticHeader extends StatelessWidget {
-  const _DiagnosticHeader({
-    required this.classification,
-    required this.recommendedAction,
-    required this.canReprocess,
-    required this.canArchive,
-  });
-
-  final String classification;
-  final String recommendedAction;
-  final bool canReprocess;
-  final bool canArchive;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        _StatusChip(label: adminSyncCenterClassificationLabel(classification)),
-        _StatusChip(label: adminSyncCenterActionLabel(recommendedAction)),
-        _StatusChip(
-          label: canReprocess ? 'Reprocessável' : 'Bloqueado por segurança',
-        ),
-        _StatusChip(
-          label: canArchive ? 'Pode arquivar' : 'Arquivamento bloqueado',
-        ),
-      ],
-    );
-  }
-}
-
-class _LegacyStockMessage extends StatelessWidget {
-  const _LegacyStockMessage({required this.detail});
-
-  final AdminSyncCenterConflictDetail detail;
-
-  @override
-  Widget build(BuildContext context) {
-    if (detail.classification != 'IRRECOVERABLE_LEGACY_EVENT' ||
-        detail.conflict.entity != 'stockDeduction') {
-      return const SizedBox.shrink();
-    }
-    return const _NoticeBox(
-      message:
-          'Evento antigo sem identificação remota segura. Não é recomendado reprocessar automaticamente. Revise estoque manualmente ou arquive como evento legado de teste.',
-    );
-  }
-}
-
-class _RiskBlock extends StatelessWidget {
-  const _RiskBlock({required this.risks, required this.blockers});
-
-  final List<String> risks;
-  final List<String> blockers;
-
-  @override
-  Widget build(BuildContext context) {
-    if (risks.isEmpty && blockers.isEmpty) {
-      return const Text('Sem bloqueios adicionais registrados.');
-    }
-    return Wrap(
-      spacing: 16,
-      runSpacing: 16,
-      children: [
-        _TextList(title: 'Riscos', items: risks),
-        _TextList(title: 'Bloqueios', items: blockers),
-      ],
-    );
-  }
-}
-
-class _PayloadPreview extends StatelessWidget {
-  const _PayloadPreview({required this.payload});
-
-  final Map<String, dynamic> payload;
-
-  @override
-  Widget build(BuildContext context) {
-    return AdminSurface(
-      title: 'Payload preview',
-      subtitle: 'Campos seguros para diagnóstico.',
-      padding: const EdgeInsets.all(16),
-      child: _JsonLines(payload: payload),
-    );
-  }
-}
-
-class _AdvancedPayload extends StatelessWidget {
-  const _AdvancedPayload({required this.payload});
-
-  final Map<String, dynamic> payload;
-
-  @override
-  Widget build(BuildContext context) {
-    return ExpansionTile(
-      tilePadding: EdgeInsets.zero,
-      title: const Text('Payload sanitizado avançado'),
-      children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: SelectableText(
-            const JsonEncoder.withIndent('  ').convert(payload),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _RelatedIncidents extends StatelessWidget {
-  const _RelatedIncidents({required this.incidents});
-
-  final List<AdminSyncCenterIncident> incidents;
-
-  @override
-  Widget build(BuildContext context) {
-    if (incidents.isEmpty) {
-      return const Text('Sem incidente relacionado.');
-    }
-    return AdminSurface(
-      title: 'Incidente relacionado',
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: incidents
-            .map(
-              (incident) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.warning_amber_rounded),
-                title: Text(incident.code),
-                subtitle: Text(incident.message),
-                trailing: Text(
-                  AdminFormatters.formatDateTime(incident.createdAt),
-                ),
-              ),
-            )
-            .toList(growable: false),
-      ),
-    );
-  }
-}
-
-class _EventActions extends StatelessWidget {
-  const _EventActions({
-    required this.canReprocess,
-    required this.dryRunApproved,
-    required this.relatedConflictId,
-    required this.companyId,
-    required this.isRunning,
-    required this.onDryRun,
-    required this.onReprocess,
-  });
-
-  final bool canReprocess;
-  final bool dryRunApproved;
-  final String? relatedConflictId;
-  final String companyId;
-  final bool isRunning;
-  final VoidCallback onDryRun;
-  final VoidCallback onReprocess;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        FilledButton.tonalIcon(
-          onPressed: isRunning ? null : onDryRun,
-          icon: const Icon(Icons.science_rounded),
-          label: const Text('Dry-run reprocessar'),
-        ),
-        if (canReprocess)
-          Tooltip(
-            message: dryRunApproved
-                ? 'Dry-run aprovado para este evento.'
-                : 'Rode o dry-run antes de reprocessar.',
-            child: FilledButton.icon(
-              onPressed: !dryRunApproved || isRunning ? null : onReprocess,
-              icon: const Icon(Icons.sync_rounded),
-              label: const Text('Reprocessar'),
-            ),
-          )
-        else
-          OutlinedButton.icon(
-            onPressed: null,
-            icon: const Icon(Icons.lock_rounded),
-            label: const Text('Bloqueado por segurança'),
-          ),
-        if (!canReprocess)
-          const Chip(label: Text('Reprocessamento automático bloqueado')),
-        if (relatedConflictId != null)
-          FilledButton.tonalIcon(
-            onPressed: () =>
-                context.go('/sync/$companyId/conflicts/$relatedConflictId'),
-            icon: const Icon(Icons.report_problem_rounded),
-            label: const Text('Ver conflito'),
-          ),
-      ],
-    );
-  }
-}
-
-class _ConflictActions extends StatelessWidget {
-  const _ConflictActions({
-    required this.canArchive,
-    required this.archiveDryRunApproved,
-    required this.canCreateManualStockAdjustment,
-    required this.isRunning,
-    required this.onDryRunArchive,
-    required this.onArchive,
-    required this.onDryRunStock,
-  });
-
-  final bool canArchive;
-  final bool archiveDryRunApproved;
-  final bool canCreateManualStockAdjustment;
-  final bool isRunning;
-  final VoidCallback onDryRunArchive;
-  final VoidCallback onArchive;
-  final VoidCallback onDryRunStock;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        FilledButton.tonalIcon(
-          onPressed: isRunning ? null : onDryRunArchive,
-          icon: const Icon(Icons.science_rounded),
-          label: const Text('Dry-run arquivar'),
-        ),
-        Tooltip(
-          message: archiveDryRunApproved
-              ? 'Dry-run aprovado para este conflito.'
-              : 'Rode o dry-run antes de arquivar.',
-          child: FilledButton.icon(
-            onPressed: !canArchive || !archiveDryRunApproved || isRunning
-                ? null
-                : onArchive,
-            icon: const Icon(Icons.archive_rounded),
-            label: const Text('Arquivar legado'),
-          ),
-        ),
-        if (canCreateManualStockAdjustment)
-          FilledButton.tonalIcon(
-            onPressed: isRunning ? null : onDryRunStock,
-            icon: const Icon(Icons.inventory_2_rounded),
-            label: const Text('Dry-run ajuste manual'),
-          )
-        else
-          const Chip(label: Text('Ajuste manual indisponível')),
+        TextButton(onPressed: widget.onClear, child: const Text('Limpar')),
       ],
     );
   }
@@ -2589,15 +400,14 @@ class _MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return SizedBox(
-      width: 220,
+      width: 210,
       child: Card(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              Icon(icon, color: theme.colorScheme.primary),
+              Icon(icon, color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -2605,7 +415,7 @@ class _MetricCard extends StatelessWidget {
                   children: [
                     Text(
                       value,
-                      style: theme.textTheme.titleLarge?.copyWith(
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -2621,31 +431,43 @@ class _MetricCard extends StatelessWidget {
   }
 }
 
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.label});
-
-  final String label;
+class _ReadOnlyNotice extends StatelessWidget {
+  const _ReadOnlyNotice();
 
   @override
   Widget build(BuildContext context) {
-    return Chip(label: Text(label));
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        'Modo seguro/read-only: nenhuma acao remota, reprocessamento, arquivamento ou comando de suporte e criado nesta fase.',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: scheme.onSecondaryContainer,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
   }
 }
 
-class _CellText extends StatelessWidget {
-  const _CellText(this.value, {this.width = 160});
-
-  final String value;
-  final double width;
+class _ReadonlyActionPlaceholder extends StatelessWidget {
+  const _ReadonlyActionPlaceholder();
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: value,
-      child: SizedBox(
-        width: width,
-        child: Text(value, maxLines: 2, overflow: TextOverflow.ellipsis),
-      ),
+    return const Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        Chip(label: Text('Acoes remotas bloqueadas nesta fase')),
+        Chip(label: Text('Dry-run sera fase posterior')),
+        Chip(label: Text('Auditoria obrigatoria futura')),
+      ],
     );
   }
 }
@@ -2661,8 +483,8 @@ class _DetailGrid extends StatelessWidget {
       spacing: 12,
       runSpacing: 12,
       children: rows.entries
-          .map(
-            (entry) => SizedBox(
+          .map((entry) {
+            return SizedBox(
               width: 260,
               child: Card(
                 child: Padding(
@@ -2672,7 +494,9 @@ class _DetailGrid extends StatelessWidget {
                     children: [
                       Text(
                         entry.key,
-                        style: Theme.of(context).textTheme.bodySmall,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       SelectableText(
@@ -2683,113 +507,61 @@ class _DetailGrid extends StatelessWidget {
                   ),
                 ),
               ),
-            ),
-          )
+            );
+          })
           .toList(growable: false),
     );
   }
 }
 
-class _JsonLines extends StatelessWidget {
-  const _JsonLines({required this.payload});
+class _SafePayload extends StatelessWidget {
+  const _SafePayload({required this.payload});
 
   final Map<String, dynamic> payload;
 
   @override
   Widget build(BuildContext context) {
-    if (payload.isEmpty) {
-      return const Text('Sem preview seguro disponível.');
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: payload.entries
-          .map(
-            (entry) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: SelectableText('${entry.key}: ${entry.value}'),
+    return AdminSurface(
+      title: 'Payload seguro',
+      subtitle: 'Somente preview sanitizado retornado pelo backend.',
+      child: payload.isEmpty
+          ? const Text('Sem preview seguro disponivel.')
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: payload.entries
+                  .map((entry) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: SelectableText('${entry.key}: ${entry.value}'),
+                    );
+                  })
+                  .toList(growable: false),
             ),
-          )
-          .toList(growable: false),
     );
   }
 }
 
-class _TextList extends StatelessWidget {
-  const _TextList({required this.title, required this.items});
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.label});
 
-  final String title;
-  final List<String> items;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 360,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              if (items.isEmpty)
-                const Text('Nenhum.')
-              else
-                ...items.map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Text(item),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NoticeBox extends StatelessWidget {
-  const _NoticeBox({required this.message});
-
-  final String message;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: scheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        message,
-        style: TextStyle(
-          color: scheme.onSecondaryContainer,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
+    return Chip(label: Text(label));
   }
 }
 
 class _PaginationBar extends StatelessWidget {
   const _PaginationBar({
     required this.pagination,
-    required this.itemLabel,
+    required this.label,
     required this.onPrevious,
     required this.onNext,
   });
 
   final AdminPaginationMeta pagination;
-  final String itemLabel;
+  final String label;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
 
@@ -2799,7 +571,7 @@ class _PaginationBar extends StatelessWidget {
       children: [
         Expanded(
           child: Text(
-            '${pagination.count} de ${pagination.total} $itemLabel. Página ${pagination.page}.',
+            'Pagina ${pagination.page}: ${pagination.count} de ${pagination.total} $label.',
           ),
         ),
         IconButton(
@@ -2808,11 +580,24 @@ class _PaginationBar extends StatelessWidget {
           icon: const Icon(Icons.chevron_left_rounded),
         ),
         IconButton(
-          tooltip: 'Próxima',
+          tooltip: 'Proxima',
           onPressed: onNext,
           icon: const Icon(Icons.chevron_right_rounded),
         ),
       ],
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(padding: const EdgeInsets.all(28), child: Text(message)),
     );
   }
 }
@@ -2832,327 +617,72 @@ class _ErrorSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     return AdminSurface(
       title: title,
-      subtitle: error.toString(),
+      subtitle: _safeError(error),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: FilledButton.tonal(
+        child: FilledButton.tonalIcon(
           onPressed: onRetry,
-          child: const Text('Tentar novamente'),
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Tentar novamente'),
         ),
       ),
     );
   }
 }
 
-String _eventBlockedMessage(AdminSyncCenterEvent event) {
-  if (event.classification == 'IRRECOVERABLE_LEGACY_EVENT' &&
-      event.entity == 'stockDeduction') {
-    return 'Evento antigo sem identificação remota segura. Não é recomendado reprocessar automaticamente.';
+String _syncStatusLabel(String status) {
+  final normalized = status.toLowerCase();
+  if (normalized.contains('fail')) {
+    return 'Com falha';
   }
-  if (event.rejectionMessage != null && event.rejectionMessage!.isNotEmpty) {
-    return event.rejectionMessage!;
+  if (normalized.contains('conflict')) {
+    return 'Com conflito';
   }
-  return 'A classificação de segurança bloqueia o reprocessamento automático.';
+  if (normalized.contains('pending')) {
+    return 'Pendente';
+  }
+  if (normalized.contains('attention')) {
+    return 'Atencao';
+  }
+  return 'Saudavel';
 }
 
-String _deviceStatusLabel(String value) {
-  switch (value) {
-    case 'cloud_ok':
-      return 'Nuvem em dia';
-    case 'local_failure':
-      return 'Falha local';
-    case 'remote_conflict':
-      return 'Conflito remoto';
-    case 'attention':
-      return 'Atencao';
+String _eventStatusLabel(String status) {
+  switch (status.toLowerCase()) {
+    case 'accepted':
+      return 'Sincronizado';
+    case 'pending':
+      return 'Pendente';
+    case 'conflict':
+      return 'Com conflito';
+    case 'failed':
+      return 'Com erro';
+    case 'rejected':
+      return 'Rejeitado';
+    case 'duplicate':
+      return 'Duplicado';
     default:
-      return value;
+      return status;
   }
 }
 
-void _showActionError(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(message),
-      backgroundColor: Theme.of(context).colorScheme.error,
-    ),
-  );
-}
-
-String _friendlySyncActionError(AdminApiException error) {
-  if (error.statusCode == 403) {
-    return 'Voce nao tem permissao para tratar este conflito.';
-  }
-  if (error.code == 'SYNC_CONFLICT_ALREADY_HANDLED') {
-    return 'Este conflito ja foi tratado.';
-  }
-  return error.message;
-}
-
-Future<void> _showDryRunResultDialog(
-  BuildContext context,
-  AdminSyncCenterDryRunResult result,
-) {
-  final canExecute =
-      result.wouldReprocess ||
-      result.wouldArchive ||
-      result.canCreateManualStockAdjustment;
-  return showDialog<void>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('Resultado do dry-run'),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _DetailGrid(
-                rows: {
-                  'Pode executar': canExecute ? 'Sim' : 'Não',
-                  'Classificação': adminSyncCenterClassificationLabel(
-                    result.classification,
-                  ),
-                  if (result.expectedAction != null)
-                    'Ação esperada': adminSyncCenterActionLabel(
-                      result.expectedAction!,
-                    ),
-                  if (result.expectedConfirmationText != null)
-                    'Texto de confirmacao': result.expectedConfirmationText!,
-                },
-              ),
-              const SizedBox(height: 16),
-              if (result.message.isNotEmpty) Text(result.message),
-              const SizedBox(height: 16),
-              _RiskBlock(risks: result.risks, blockers: result.blockers),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        FilledButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('Fechar'),
-        ),
-      ],
-    ),
-  );
-}
-
-Future<String?> _askReason(
-  BuildContext context, {
-  required String title,
-}) async {
-  return showDialog<String>(
-    context: context,
-    builder: (dialogContext) => _ReasonDialog(title: title),
-  );
-}
-
-class _ReasonDialog extends StatefulWidget {
-  const _ReasonDialog({required this.title});
-
-  final String title;
-
-  @override
-  State<_ReasonDialog> createState() => _ReasonDialogState();
-}
-
-class _ReasonDialogState extends State<_ReasonDialog> {
-  late final TextEditingController _controller;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.title),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        maxLines: 3,
-        decoration: InputDecoration(
-          labelText: 'Motivo obrigatório',
-          errorText: _error,
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final reason = _controller.text.trim();
-            if (reason.isEmpty) {
-              setState(() => _error = 'Informe um motivo.');
-              return;
-            }
-            Navigator.of(context).pop(reason);
-          },
-          child: const Text('Continuar'),
-        ),
-      ],
-    );
+String _conflictStatusLabel(String status) {
+  switch (status.toLowerCase()) {
+    case 'open':
+      return 'OPEN';
+    case 'resolved':
+      return 'RESOLVED';
+    case 'ignored':
+      return 'IGNORED';
+    default:
+      return status.toUpperCase();
   }
 }
 
-Future<_SyncActionInput?> _showSyncWriteDialog({
-  required BuildContext context,
-  required String title,
-  required String warning,
-  required String expectedConfirmation,
-  bool includeNote = false,
-}) async {
-  return showDialog<_SyncActionInput>(
-    context: context,
-    builder: (dialogContext) => _SyncWriteDialog(
-      title: title,
-      warning: warning,
-      expectedConfirmation: expectedConfirmation,
-      includeNote: includeNote,
-    ),
-  );
-}
-
-class _SyncWriteDialog extends StatefulWidget {
-  const _SyncWriteDialog({
-    required this.title,
-    required this.warning,
-    required this.expectedConfirmation,
-    required this.includeNote,
-  });
-
-  final String title;
-  final String warning;
-  final String expectedConfirmation;
-  final bool includeNote;
-
-  @override
-  State<_SyncWriteDialog> createState() => _SyncWriteDialogState();
-}
-
-class _SyncWriteDialogState extends State<_SyncWriteDialog> {
-  late final TextEditingController _reasonController;
-  late final TextEditingController _confirmationController;
-  late final TextEditingController _noteController;
-
-  @override
-  void initState() {
-    super.initState();
-    _reasonController = TextEditingController();
-    _confirmationController = TextEditingController();
-    _noteController = TextEditingController();
+String _safeError(Object error) {
+  final message = error.toString();
+  if (message.contains('Exception:')) {
+    return message.split('Exception:').last.trim();
   }
-
-  @override
-  void dispose() {
-    _reasonController.dispose();
-    _confirmationController.dispose();
-    _noteController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final reason = _reasonController.text.trim();
-    final confirmation = _confirmationController.text.trim();
-    final canSubmit =
-        reason.isNotEmpty && confirmation == widget.expectedConfirmation;
-    final confirmationTyped = confirmation.isNotEmpty;
-    final confirmationMismatch =
-        confirmationTyped && confirmation != widget.expectedConfirmation;
-    final confirmationInstruction =
-        'Digite ${widget.expectedConfirmation} para confirmar.';
-
-    return AlertDialog(
-      title: Text(widget.title),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(widget.warning),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _reasonController,
-                maxLines: 3,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  labelText: 'Motivo obrigatório',
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _confirmationController,
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  labelText: 'Texto de confirmação',
-                  hintText: widget.expectedConfirmation,
-                  helperText: confirmationTyped
-                      ? null
-                      : confirmationInstruction,
-                  errorText: confirmationMismatch
-                      ? 'Digite ${widget.expectedConfirmation} para liberar a confirmacao.'
-                      : null,
-                ),
-              ),
-              if (widget.includeNote) ...[
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _noteController,
-                  maxLines: 2,
-                  decoration: const InputDecoration(labelText: 'Nota opcional'),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: canSubmit
-              ? () => Navigator.of(context).pop(
-                  _SyncActionInput(
-                    reason: reason,
-                    confirmationText: confirmation,
-                    note: _noteController.text.trim(),
-                  ),
-                )
-              : null,
-          child: const Text('Confirmar'),
-        ),
-      ],
-    );
-  }
-}
-
-class _SyncActionInput {
-  const _SyncActionInput({
-    required this.reason,
-    required this.confirmationText,
-    required this.note,
-  });
-
-  final String reason;
-  final String confirmationText;
-  final String note;
+  return message;
 }

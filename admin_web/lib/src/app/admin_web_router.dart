@@ -11,12 +11,14 @@ import '../features/billing/presentation/billing_company_detail_page.dart';
 import '../features/companies/presentation/companies_page.dart';
 import '../features/companies/presentation/company_detail_page.dart';
 import '../features/dashboard/presentation/dashboard_page.dart';
+import '../features/devices/presentation/devices_page.dart';
 import '../features/licenses/presentation/licenses_page.dart';
 import '../features/management/crm/presentation/crm_customer_detail_page.dart';
 import '../features/management/crm/presentation/crm_customers_page.dart';
 import '../features/management/dashboard/presentation/management_dashboard_page.dart';
 import '../features/management/governance/presentation/hybrid_governance_page.dart';
 import '../features/management/reports/presentation/management_reports_page.dart';
+import '../features/plans/presentation/plans_page.dart';
 import '../features/sync_center/presentation/sync_center_pages.dart';
 import '../features/sync_health/presentation/sync_health_page.dart';
 
@@ -99,6 +101,91 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const DashboardPage(),
           ),
           GoRoute(
+            path: '/companies',
+            builder: (context, state) => const CompaniesPage(),
+          ),
+          GoRoute(
+            path: '/companies/:companyId',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              return CompanyDetailPage(companyId: companyId);
+            },
+          ),
+          GoRoute(
+            path: '/companies/:companyId/sync',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              return SyncCompanyPage(companyId: companyId);
+            },
+          ),
+          GoRoute(
+            path: '/companies/:companyId/license',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              return LicenseCompanyPage(companyId: companyId);
+            },
+          ),
+          GoRoute(
+            path: '/sync',
+            builder: (context, state) => const SyncCenterPage(),
+          ),
+          GoRoute(
+            path: '/sync/:companyId',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              // Alias operacional de /companies/:companyId/sync.
+              // Mantido para deep links antigos do Sync Center.
+              return SyncCompanyPage(companyId: companyId);
+            },
+          ),
+          GoRoute(
+            path: '/sync/:companyId/events/:eventId',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              final eventId = state.pathParameters['eventId'] ?? '';
+              return SyncEventDetailPage(
+                companyId: companyId,
+                eventId: eventId,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/sync/:companyId/conflicts/:conflictId',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              final conflictId = state.pathParameters['conflictId'] ?? '';
+              return SyncConflictDetailPage(
+                companyId: companyId,
+                conflictId: conflictId,
+              );
+            },
+          ),
+          GoRoute(
+            path: '/devices',
+            builder: (context, state) => const DevicesPage(),
+          ),
+          GoRoute(
+            path: '/licenses',
+            builder: (context, state) => const LicensesPage(),
+          ),
+          GoRoute(
+            path: '/licenses/:companyId',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              return LicenseCompanyPage(companyId: companyId);
+            },
+          ),
+          GoRoute(
+            path: '/plans',
+            builder: (context, state) => const PlansPage(),
+          ),
+          GoRoute(
+            path: '/audit',
+            builder: (context, state) => const AuditPage(),
+          ),
+
+          // Rotas legadas mantidas para compatibilidade interna, fora do menu.
+          GoRoute(
             path: '/management/dashboard',
             builder: (context, state) => const ManagementDashboardPage(),
           ),
@@ -129,21 +216,6 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
             },
           ),
           GoRoute(
-            path: '/companies',
-            builder: (context, state) => const CompaniesPage(),
-          ),
-          GoRoute(
-            path: '/companies/:companyId',
-            builder: (context, state) {
-              final companyId = state.pathParameters['companyId'] ?? '';
-              return CompanyDetailPage(companyId: companyId);
-            },
-          ),
-          GoRoute(
-            path: '/licenses',
-            builder: (context, state) => const LicensesPage(),
-          ),
-          GoRoute(
             path: '/billing',
             builder: (context, state) => const BillingAdminPage(),
           ),
@@ -158,43 +230,6 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
             path: '/sync-health',
             builder: (context, state) => const SyncHealthPage(),
           ),
-          GoRoute(
-            path: '/sync',
-            builder: (context, state) => const SyncCenterPage(),
-          ),
-          GoRoute(
-            path: '/sync/:companyId',
-            builder: (context, state) {
-              final companyId = state.pathParameters['companyId'] ?? '';
-              return SyncCompanyPage(companyId: companyId);
-            },
-          ),
-          GoRoute(
-            path: '/sync/:companyId/events/:eventId',
-            builder: (context, state) {
-              final companyId = state.pathParameters['companyId'] ?? '';
-              final eventId = state.pathParameters['eventId'] ?? '';
-              return SyncEventDetailPage(
-                companyId: companyId,
-                eventId: eventId,
-              );
-            },
-          ),
-          GoRoute(
-            path: '/sync/:companyId/conflicts/:conflictId',
-            builder: (context, state) {
-              final companyId = state.pathParameters['companyId'] ?? '';
-              final conflictId = state.pathParameters['conflictId'] ?? '';
-              return SyncConflictDetailPage(
-                companyId: companyId,
-                conflictId: conflictId,
-              );
-            },
-          ),
-          GoRoute(
-            path: '/audit',
-            builder: (context, state) => const AuditPage(),
-          ),
         ],
       ),
     ],
@@ -202,17 +237,44 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
 });
 
 String _titleForLocation(String location) {
+  if (location.startsWith('/companies/') && location.endsWith('/sync')) {
+    return 'Sync Center';
+  }
+  if (location.startsWith('/companies/') && location.endsWith('/license')) {
+    return 'Licenca da empresa';
+  }
+  if (location.startsWith('/licenses/')) {
+    return 'Licenca da empresa';
+  }
   if (location.startsWith('/companies/')) {
-    return 'Detalhe da empresa';
+    return 'Visao 360 da empresa';
+  }
+  if (location.startsWith('/companies')) {
+    return 'Empresas';
+  }
+  if (location.startsWith('/sync')) {
+    return 'Sync global';
+  }
+  if (location.startsWith('/devices')) {
+    return 'Dispositivos';
+  }
+  if (location.startsWith('/licenses')) {
+    return 'Licencas';
+  }
+  if (location.startsWith('/plans')) {
+    return 'Planos';
+  }
+  if (location.startsWith('/audit')) {
+    return 'Auditoria';
   }
   if (location.startsWith('/management/dashboard')) {
     return 'Dashboard Gerencial';
   }
   if (location.startsWith('/management/reports')) {
-    return 'Relatórios Gerenciais';
+    return 'Relatorios Gerenciais';
   }
   if (location.startsWith('/management/governance')) {
-    return 'Governança Híbrida';
+    return 'Governanca Hibrida';
   }
   if (location.startsWith('/management/crm/customers/')) {
     return 'Cliente CRM';
@@ -220,26 +282,11 @@ String _titleForLocation(String location) {
   if (location.startsWith('/management/crm/customers')) {
     return 'CRM Gerencial';
   }
-  if (location.startsWith('/companies')) {
-    return 'Empresas';
-  }
-  if (location.startsWith('/licenses')) {
-    return 'Licenças';
-  }
-  if (location.startsWith('/billing/')) {
-    return 'Billing Admin';
-  }
   if (location.startsWith('/billing')) {
     return 'Billing Admin';
   }
   if (location.startsWith('/sync-health')) {
-    return 'Saúde da sync';
-  }
-  if (location.startsWith('/sync')) {
-    return 'Sincronização';
-  }
-  if (location.startsWith('/audit')) {
-    return 'Auditoria';
+    return 'Saude da sync';
   }
   return 'Dashboard da Plataforma';
 }

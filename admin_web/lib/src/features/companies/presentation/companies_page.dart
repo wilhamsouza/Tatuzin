@@ -305,7 +305,7 @@ class _CompaniesFiltersState extends State<_CompaniesFilters> {
               ),
             ),
             SizedBox(
-              width: 180,
+              width: 220,
               child: DropdownButtonFormField<String?>(
                 initialValue: _licenseStatus,
                 decoration: const InputDecoration(labelText: 'Licenca'),
@@ -336,7 +336,7 @@ class _CompaniesFiltersState extends State<_CompaniesFilters> {
               ),
             ),
             SizedBox(
-              width: 170,
+              width: 210,
               child: DropdownButtonFormField<bool?>(
                 initialValue: _syncEnabled,
                 decoration: const InputDecoration(labelText: 'Sync'),
@@ -363,7 +363,7 @@ class _CompaniesFiltersState extends State<_CompaniesFilters> {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             SizedBox(
-              width: 180,
+              width: 220,
               child: DropdownButtonFormField<String>(
                 initialValue: _sortBy,
                 decoration: const InputDecoration(labelText: 'Ordenar por'),
@@ -383,7 +383,7 @@ class _CompaniesFiltersState extends State<_CompaniesFilters> {
               ),
             ),
             SizedBox(
-              width: 160,
+              width: 210,
               child: DropdownButtonFormField<String>(
                 initialValue: _sortDirection,
                 decoration: const InputDecoration(labelText: 'Direcao'),

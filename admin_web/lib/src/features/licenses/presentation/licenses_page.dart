@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/admin_providers.dart';
+import '../../../core/models/admin_billing_models.dart';
 import '../../../core/models/admin_models.dart';
-import '../../../core/network/admin_api_client.dart';
 import '../../../core/utils/admin_formatters.dart';
-import '../../../core/widgets/admin_confirmation_dialog.dart';
 import '../../../core/widgets/admin_surface.dart';
-import '../../../core/widgets/license_editor_dialog.dart';
+
+const _placeholderMessage =
+    'Acao administrativa sera implementada em fase posterior com dry-run, confirmacao e auditoria.';
 
 class LicensesPage extends ConsumerStatefulWidget {
   const LicensesPage({super.key});
@@ -19,11 +21,7 @@ class LicensesPage extends ConsumerStatefulWidget {
 class _LicensesPageState extends ConsumerState<LicensesPage> {
   late final TextEditingController _searchController;
   String? _status;
-  bool? _syncEnabled;
-  String _sortBy = 'updatedAt';
-  String _sortDirection = 'desc';
   int _page = 1;
-  int _pageSize = 20;
 
   @override
   void initState() {
@@ -41,510 +39,449 @@ class _LicensesPageState extends ConsumerState<LicensesPage> {
   Widget build(BuildContext context) {
     final query = AdminLicensesQuery(
       page: _page,
-      pageSize: _pageSize,
+      pageSize: 20,
       search: _searchController.text,
       status: _status,
-      syncEnabled: _syncEnabled,
-      sortBy: _sortBy,
-      sortDirection: _sortDirection,
+      sortBy: 'expiresAt',
+      sortDirection: 'asc',
     );
     final licensesAsync = ref.watch(adminLicensesProvider(query));
 
     return licensesAsync.when(
-      data: (result) {
-        return AdminSurface(
-          title: 'Licenças',
-          subtitle:
-              'Fluxo legado de suporte. Para assinaturas Mercado Pago, use Billing Admin.',
+      data: (result) => RefreshIndicator(
+        onRefresh: () async => ref.invalidate(adminLicensesProvider(query)),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: AdminSurface(
+            title: 'Licencas read-only',
+            subtitle:
+                'Consulta de planos, validade e status. Nenhuma alteracao real e enviada nesta fase.',
+            trailing: OutlinedButton.icon(
+              onPressed: () => ref.invalidate(adminLicensesProvider(query)),
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Atualizar'),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _ReadOnlyBanner(),
+                const SizedBox(height: 16),
+                _Filters(
+                  searchController: _searchController,
+                  status: _status,
+                  onApply: (status) => setState(() {
+                    _status = status;
+                    _page = 1;
+                  }),
+                  onClear: () {
+                    _searchController.clear();
+                    setState(() {
+                      _status = null;
+                      _page = 1;
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                if (result.items.isEmpty)
+                  const _EmptyState(
+                    message: 'Nenhuma licenca encontrada para os filtros.',
+                  )
+                else
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: DataTable(
+                      columns: const [
+                        DataColumn(label: Text('Empresa')),
+                        DataColumn(label: Text('Plano atual')),
+                        DataColumn(label: Text('Status')),
+                        DataColumn(label: Text('Vencimento')),
+                        DataColumn(label: Text('Renovacao')),
+                        DataColumn(label: Text('Sync')),
+                        DataColumn(label: Text('Acoes')),
+                      ],
+                      rows: result.items
+                          .map((license) {
+                            return DataRow(
+                              cells: [
+                                DataCell(
+                                  Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(license.companyName),
+                                      Text(
+                                        license.companySlug,
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall,
+                                      ),
+                                    ],
+                                  ),
+                                  onTap: () => context.go(
+                                    '/licenses/${license.companyId}',
+                                  ),
+                                ),
+                                DataCell(
+                                  Text(
+                                    AdminFormatters.formatPlan(license.plan),
+                                  ),
+                                ),
+                                DataCell(
+                                  _StatusChip(
+                                    label: _statusLabel(license.status),
+                                  ),
+                                ),
+                                DataCell(
+                                  Text(
+                                    AdminFormatters.formatDate(
+                                      license.expiresAt,
+                                    ),
+                                  ),
+                                ),
+                                DataCell(
+                                  Text(_renewalLabel(license.expiresAt)),
+                                ),
+                                DataCell(
+                                  Text(
+                                    AdminFormatters.formatBool(
+                                      license.syncEnabled,
+                                      yes: 'Habilitada',
+                                      no: 'Desativada',
+                                    ),
+                                  ),
+                                ),
+                                DataCell(
+                                  FilledButton.tonalIcon(
+                                    onPressed: () => context.go(
+                                      '/licenses/${license.companyId}',
+                                    ),
+                                    icon: const Icon(Icons.open_in_new_rounded),
+                                    label: const Text('Abrir'),
+                                  ),
+                                ),
+                              ],
+                            );
+                          })
+                          .toList(growable: false),
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                _PaginationBar(
+                  pagination: result.pagination,
+                  onPrevious: result.pagination.hasPrevious
+                      ? () => setState(() => _page--)
+                      : null,
+                  onNext: result.pagination.hasNext
+                      ? () => setState(() => _page++)
+                      : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => AdminSurface(
+        title: 'Nao foi possivel carregar licencas',
+        subtitle: _safeError(error),
+        trailing: FilledButton.tonalIcon(
+          onPressed: () => ref.invalidate(adminLicensesProvider(query)),
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Tentar novamente'),
+        ),
+        child: const Text('Revise a conexao e tente novamente.'),
+      ),
+    );
+  }
+}
+
+class LicenseCompanyPage extends ConsumerWidget {
+  const LicenseCompanyPage({super.key, required this.companyId});
+
+  final String companyId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final companyAsync = ref.watch(adminCompanyDetailProvider(companyId));
+    final billingAsync = ref.watch(
+      adminBillingCompanyStatusProvider(companyId),
+    );
+
+    return companyAsync.when(
+      data: (detail) => RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(adminCompanyDetailProvider(companyId));
+          ref.invalidate(adminBillingCompanyStatusProvider(companyId));
+        },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _LegacyLicenseBanner(),
-              const SizedBox(height: 20),
-              _LicensesFilters(
-                searchController: _searchController,
-                status: _status,
-                syncEnabled: _syncEnabled,
-                sortBy: _sortBy,
-                sortDirection: _sortDirection,
-                pageSize: _pageSize,
-                onApply: _applyFilters,
-                onClear: _clearFilters,
-              ),
-              const SizedBox(height: 20),
-              if (result.items.isEmpty)
-                const _EmptyState(
-                  message: 'Nenhuma licença encontrada para os filtros.',
-                )
-              else
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
-                    columns: const [
-                      DataColumn(label: Text('Empresa')),
-                      DataColumn(label: Text('Plano')),
-                      DataColumn(label: Text('Status')),
-                      DataColumn(label: Text('Início')),
-                      DataColumn(label: Text('Expira em')),
-                      DataColumn(label: Text('Sync')),
-                      DataColumn(label: Text('Max devices')),
-                      DataColumn(label: Text('Ação')),
-                    ],
-                    rows: result.items.map((license) {
-                      return DataRow(
-                        cells: [
-                          DataCell(
-                            Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(license.companyName),
-                                Text(
-                                  license.companySlug,
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ],
-                            ),
-                          ),
-                          DataCell(
-                            Text(AdminFormatters.formatPlan(license.plan)),
-                          ),
-                          DataCell(_StatusBadge(status: license.status)),
-                          DataCell(
-                            Text(AdminFormatters.formatDate(license.startsAt)),
-                          ),
-                          DataCell(
-                            Text(AdminFormatters.formatDate(license.expiresAt)),
-                          ),
-                          DataCell(
-                            Text(
-                              AdminFormatters.formatBool(
-                                license.syncEnabled,
-                                yes: 'Habilitada',
-                                no: 'Desativada',
-                              ),
-                            ),
-                          ),
-                          DataCell(
-                            Text(license.maxDevices?.toString() ?? 'Livre'),
-                          ),
-                          DataCell(
-                            FilledButton.tonal(
-                              onPressed: () => _editLicense(context, license),
-                              child: const Text('Editar'),
-                            ),
-                          ),
-                        ],
-                      );
-                    }).toList(),
+              _CompanyLicenseHeader(company: detail.company),
+              const SizedBox(height: 16),
+              _LicenseDetailCard(license: detail.company.license),
+              const SizedBox(height: 16),
+              billingAsync.when(
+                data: (status) => _BillingReadOnlyCard(status: status),
+                loading: () => const AdminSurface(
+                  title: 'Billing',
+                  child: LinearProgressIndicator(),
+                ),
+                error: (error, _) => AdminSurface(
+                  title: 'Billing',
+                  subtitle: _safeError(error),
+                  child: const Text(
+                    'Status de billing indisponivel no momento.',
                   ),
                 ),
-              const SizedBox(height: 20),
-              _PaginationBar(
-                pagination: result.pagination,
-                itemLabel: 'licenças',
-                onPrevious: result.pagination.hasPrevious
-                    ? () => setState(() => _page--)
-                    : null,
-                onNext: result.pagination.hasNext
-                    ? () => setState(() => _page++)
-                    : null,
               ),
+              const SizedBox(height: 16),
+              const _PlaceholderActions(),
             ],
           ),
-        );
-      },
+        ),
+      ),
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => AdminSurface(
-        title: 'Não foi possível carregar as licenças',
-        subtitle: error.toString(),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton.tonal(
-            onPressed: () => ref.invalidate(adminLicensesProvider(query)),
-            child: const Text('Tentar novamente'),
-          ),
+        title: 'Nao foi possivel carregar a licenca',
+        subtitle: _safeError(error),
+        child: FilledButton.tonalIcon(
+          onPressed: () =>
+              ref.invalidate(adminCompanyDetailProvider(companyId)),
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('Tentar novamente'),
         ),
       ),
     );
   }
+}
 
-  Future<void> _editLicense(
-    BuildContext context,
-    AdminLicenseSnapshot license,
-  ) async {
-    final edit = await showLicenseEditorDialog(
-      context: context,
-      license: license,
+class _CompanyLicenseHeader extends StatelessWidget {
+  const _CompanyLicenseHeader({required this.company});
+
+  final AdminCompanySummary company;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminSurface(
+      title: company.name,
+      subtitle: 'Licenca, renovacao e billing em modo read-only.',
+      trailing: OutlinedButton.icon(
+        onPressed: () => context.go('/companies/${company.id}'),
+        icon: const Icon(Icons.business_rounded),
+        label: const Text('Abrir empresa'),
+      ),
+      child: const _ReadOnlyBanner(),
     );
-    if (edit == null || !context.mounted) {
-      return;
-    }
-
-    final confirmed = await showAdminConfirmationDialog(
-      context: context,
-      title: 'Confirmar edição legada',
-      message:
-          'Esta alteração usa o endpoint legado de licença. Para assinaturas Mercado Pago, prefira Billing Admin.',
-      confirmLabel: 'Salvar licença',
-      isDestructive: true,
-      details: [
-        'Empresa: ${license.companyName}',
-        'Plano alvo: ${edit.plan}',
-        'Status alvo: ${edit.status}',
-        'Max devices: ${edit.maxDevices?.toString() ?? 'livre'}',
-        'Motivo local: ${edit.reason}',
-        'O motivo não será auditado pelo backend legado.',
-      ],
-    );
-    if (!confirmed || !context.mounted) {
-      return;
-    }
-
-    try {
-      await ref
-          .read(adminApiServiceProvider)
-          .updateLicense(
-            companyId: license.companyId,
-            plan: edit.plan,
-            status: edit.status,
-            startsAt: edit.startsAt,
-            expiresAt: edit.expiresAt,
-            syncEnabled: edit.syncEnabled,
-            maxDevices: edit.maxDevices,
-          );
-      ref.read(adminRefreshTickProvider.notifier).state++;
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Licença atualizada com sucesso.')),
-      );
-    } on AdminApiException catch (error) {
-      if (!context.mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
-    }
-  }
-
-  void _applyFilters({
-    required String? status,
-    required bool? syncEnabled,
-    required String sortBy,
-    required String sortDirection,
-    required int pageSize,
-  }) {
-    setState(() {
-      _status = status;
-      _syncEnabled = syncEnabled;
-      _sortBy = sortBy;
-      _sortDirection = sortDirection;
-      _pageSize = pageSize;
-      _page = 1;
-    });
-  }
-
-  void _clearFilters() {
-    _searchController.clear();
-    setState(() {
-      _status = null;
-      _syncEnabled = null;
-      _sortBy = 'updatedAt';
-      _sortDirection = 'desc';
-      _pageSize = 20;
-      _page = 1;
-    });
   }
 }
 
-class _LicensesFilters extends StatefulWidget {
-  const _LicensesFilters({
+class _LicenseDetailCard extends StatelessWidget {
+  const _LicenseDetailCard({required this.license});
+
+  final AdminLicenseSnapshot? license;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminSurface(
+      title: 'Contrato',
+      subtitle: 'Dados da licenca administrativa.',
+      child: license == null
+          ? const _EmptyState(message: 'Empresa sem licenca cadastrada.')
+          : Column(
+              children: [
+                _DetailRow(
+                  label: 'Plano atual',
+                  value: AdminFormatters.formatPlan(license!.plan),
+                ),
+                _DetailRow(
+                  label: 'Status',
+                  value: _statusLabel(license!.status),
+                ),
+                _DetailRow(
+                  label: 'Inicio',
+                  value: AdminFormatters.formatDate(license!.startsAt),
+                ),
+                _DetailRow(
+                  label: 'Vencimento',
+                  value: AdminFormatters.formatDate(license!.expiresAt),
+                ),
+                _DetailRow(
+                  label: 'Renovacao',
+                  value: _renewalLabel(license!.expiresAt),
+                ),
+                _DetailRow(
+                  label: 'Max dispositivos',
+                  value: license!.maxDevices?.toString() ?? 'Livre',
+                ),
+                _DetailRow(
+                  label: 'Sync cloud',
+                  value: AdminFormatters.formatBool(
+                    license!.syncEnabled,
+                    yes: 'Habilitada',
+                    no: 'Desativada',
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _BillingReadOnlyCard extends StatelessWidget {
+  const _BillingReadOnlyCard({required this.status});
+
+  final AdminBillingCompanyStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final billing = status.billing;
+    return AdminSurface(
+      title: 'Billing status',
+      subtitle: 'Provider e historico lidos sem alterar cobranca.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _DetailRow(
+            label: 'Provider',
+            value: billing.provider ?? 'Nao informado',
+          ),
+          _DetailRow(
+            label: 'Status billing',
+            value: billing.billingSubscriptionStatus ?? 'Nao informado',
+          ),
+          _DetailRow(
+            label: 'Pending plan',
+            value:
+                billing.pendingPlan ?? status.license?.pendingPlan ?? 'Nenhum',
+          ),
+          _DetailRow(
+            label: 'Proxima cobranca',
+            value: AdminFormatters.formatDate(
+              billing.nextPaymentDate ?? status.license?.nextPaymentDate,
+            ),
+          ),
+          _DetailRow(
+            label: 'Fim do periodo',
+            value: AdminFormatters.formatDate(
+              billing.currentPeriodEnd ?? status.license?.currentPeriodEnd,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Historico',
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          if (status.events.isEmpty && status.invoices.isEmpty)
+            const Text('Nenhum evento de billing retornado pelo endpoint.')
+          else ...[
+            ...status.events
+                .take(5)
+                .map(
+                  (event) => ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.receipt_long_rounded),
+                    title: Text(event.eventType),
+                    subtitle: Text(event.status),
+                  ),
+                ),
+            ...status.invoices
+                .take(5)
+                .map(
+                  (invoice) => ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.payments_rounded),
+                    title: Text(invoice.status),
+                    subtitle: Text(
+                      '${invoice.currency} ${(invoice.amountCents / 100).toStringAsFixed(2)}',
+                    ),
+                  ),
+                ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PlaceholderActions extends StatelessWidget {
+  const _PlaceholderActions();
+
+  @override
+  Widget build(BuildContext context) {
+    return const AdminSurface(
+      title: 'Acoes administrativas',
+      subtitle:
+          'Botoes visiveis como placeholder. Nenhuma acao real sera enviada.',
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          _PlaceholderButton(
+            label: 'Extensao emergencial',
+            icon: Icons.event_available_rounded,
+          ),
+          _PlaceholderButton(
+            label: 'Trocar plano',
+            icon: Icons.swap_horiz_rounded,
+          ),
+          _PlaceholderButton(label: 'Suspender', icon: Icons.lock_rounded),
+          _PlaceholderButton(label: 'Reativar', icon: Icons.lock_open_rounded),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlaceholderButton extends StatelessWidget {
+  const _PlaceholderButton({required this.label, required this.icon});
+
+  final String label;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: _placeholderMessage,
+      child: OutlinedButton.icon(
+        onPressed: () {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text(_placeholderMessage)));
+        },
+        icon: Icon(icon),
+        label: Text('$label (placeholder)'),
+      ),
+    );
+  }
+}
+
+class _Filters extends StatefulWidget {
+  const _Filters({
     required this.searchController,
     required this.status,
-    required this.syncEnabled,
-    required this.sortBy,
-    required this.sortDirection,
-    required this.pageSize,
     required this.onApply,
     required this.onClear,
   });
 
   final TextEditingController searchController;
   final String? status;
-  final bool? syncEnabled;
-  final String sortBy;
-  final String sortDirection;
-  final int pageSize;
-  final void Function({
-    required String? status,
-    required bool? syncEnabled,
-    required String sortBy,
-    required String sortDirection,
-    required int pageSize,
-  })
-  onApply;
+  final ValueChanged<String?> onApply;
   final VoidCallback onClear;
 
   @override
-  State<_LicensesFilters> createState() => _LicensesFiltersState();
+  State<_Filters> createState() => _FiltersState();
 }
 
-class _LicensesFiltersState extends State<_LicensesFilters> {
-  late String? _status;
-  late bool? _syncEnabled;
-  late String _sortBy;
-  late String _sortDirection;
-  late int _pageSize;
-
-  @override
-  void initState() {
-    super.initState();
-    _syncFromWidget();
-  }
-
-  @override
-  void didUpdateWidget(covariant _LicensesFilters oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.status != widget.status ||
-        oldWidget.syncEnabled != widget.syncEnabled ||
-        oldWidget.sortBy != widget.sortBy ||
-        oldWidget.sortDirection != widget.sortDirection ||
-        oldWidget.pageSize != widget.pageSize) {
-      _syncFromWidget();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            SizedBox(
-              width: 280,
-              child: TextField(
-                controller: widget.searchController,
-                decoration: const InputDecoration(
-                  labelText: 'Buscar empresa',
-                  hintText: 'Nome ou tenant',
-                  prefixIcon: Icon(Icons.search_rounded),
-                ),
-                onSubmitted: (_) => _apply(),
-              ),
-            ),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _FilterChip(
-                  label: 'Todas',
-                  selected: _status == null,
-                  onTap: () => setState(() => _status = null),
-                ),
-                _FilterChip(
-                  label: 'Ativas',
-                  selected: _status == 'active',
-                  onTap: () => setState(() => _status = 'active'),
-                ),
-                _FilterChip(
-                  label: 'Trial',
-                  selected: _status == 'trial',
-                  onTap: () => setState(() => _status = 'trial'),
-                ),
-                _FilterChip(
-                  label: 'Expiradas',
-                  selected: _status == 'expired',
-                  onTap: () => setState(() => _status = 'expired'),
-                ),
-                _FilterChip(
-                  label: 'Suspensas',
-                  selected: _status == 'suspended',
-                  onTap: () => setState(() => _status = 'suspended'),
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            SizedBox(
-              width: 210,
-              child: DropdownButtonFormField<bool?>(
-                initialValue: _syncEnabled,
-                decoration: const InputDecoration(labelText: 'Sync'),
-                items: const [
-                  DropdownMenuItem<bool?>(value: null, child: Text('Todas')),
-                  DropdownMenuItem<bool?>(
-                    value: true,
-                    child: Text('Habilitada'),
-                  ),
-                  DropdownMenuItem<bool?>(
-                    value: false,
-                    child: Text('Desativada'),
-                  ),
-                ],
-                onChanged: (value) => setState(() => _syncEnabled = value),
-              ),
-            ),
-            SizedBox(
-              width: 220,
-              child: DropdownButtonFormField<String>(
-                initialValue: _sortBy,
-                decoration: const InputDecoration(labelText: 'Ordenar por'),
-                items: const [
-                  DropdownMenuItem(
-                    value: 'updatedAt',
-                    child: Text('Atualização'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'expiresAt',
-                    child: Text('Expiração'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'companyName',
-                    child: Text('Empresa'),
-                  ),
-                  DropdownMenuItem(value: 'status', child: Text('Status')),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _sortBy = value);
-                  }
-                },
-              ),
-            ),
-            SizedBox(
-              width: 230,
-              child: DropdownButtonFormField<String>(
-                initialValue: _sortDirection,
-                decoration: const InputDecoration(labelText: 'Direção'),
-                items: const [
-                  DropdownMenuItem(value: 'asc', child: Text('Crescente')),
-                  DropdownMenuItem(value: 'desc', child: Text('Decrescente')),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _sortDirection = value);
-                  }
-                },
-              ),
-            ),
-            SizedBox(
-              width: 140,
-              child: DropdownButtonFormField<int>(
-                initialValue: _pageSize,
-                decoration: const InputDecoration(labelText: 'Por página'),
-                items: const [
-                  DropdownMenuItem(value: 10, child: Text('10')),
-                  DropdownMenuItem(value: 20, child: Text('20')),
-                  DropdownMenuItem(value: 50, child: Text('50')),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _pageSize = value);
-                  }
-                },
-              ),
-            ),
-            FilledButton.icon(
-              onPressed: _apply,
-              icon: const Icon(Icons.filter_alt_rounded),
-              label: const Text('Aplicar'),
-            ),
-            TextButton(onPressed: widget.onClear, child: const Text('Limpar')),
-          ],
-        ),
-      ],
-    );
-  }
-
-  void _apply() {
-    widget.onApply(
-      status: _status,
-      syncEnabled: _syncEnabled,
-      sortBy: _sortBy,
-      sortDirection: _sortDirection,
-      pageSize: _pageSize,
-    );
-  }
-
-  void _syncFromWidget() {
-    _status = widget.status;
-    _syncEnabled = widget.syncEnabled;
-    _sortBy = widget.sortBy;
-    _sortDirection = widget.sortDirection;
-    _pageSize = widget.pageSize;
-  }
-}
-
-class _LegacyLicenseBanner extends StatelessWidget {
-  const _LegacyLicenseBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(
-        'Esta tela usa fluxo legado de licença. Para assinaturas Mercado Pago, use Billing Admin.',
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: colorScheme.onErrorContainer,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => onTap(),
-    );
-  }
-}
-
-class _PaginationBar extends StatelessWidget {
-  const _PaginationBar({
-    required this.pagination,
-    required this.itemLabel,
-    required this.onPrevious,
-    required this.onNext,
-  });
-
-  final AdminPaginationMeta pagination;
-  final String itemLabel;
-  final VoidCallback? onPrevious;
-  final VoidCallback? onNext;
+class _FiltersState extends State<_Filters> {
+  late String? _status = widget.status;
 
   @override
   Widget build(BuildContext context) {
@@ -553,18 +490,130 @@ class _PaginationBar extends StatelessWidget {
       runSpacing: 12,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Text(
-          'Página ${pagination.page} • ${pagination.count} de ${pagination.total} $itemLabel',
+        SizedBox(
+          width: 280,
+          child: TextField(
+            controller: widget.searchController,
+            decoration: const InputDecoration(
+              labelText: 'Buscar empresa',
+              prefixIcon: Icon(Icons.search_rounded),
+            ),
+            onSubmitted: (_) => widget.onApply(_status),
+          ),
         ),
-        OutlinedButton.icon(
+        DropdownButton<String?>(
+          value: _status,
+          items: const [
+            DropdownMenuItem(value: null, child: Text('Todas')),
+            DropdownMenuItem(value: 'active', child: Text('Ativas')),
+            DropdownMenuItem(value: 'trial', child: Text('Trial')),
+            DropdownMenuItem(value: 'expired', child: Text('Expiradas')),
+            DropdownMenuItem(value: 'suspended', child: Text('Suspensas')),
+          ],
+          onChanged: (value) => setState(() => _status = value),
+        ),
+        FilledButton.icon(
+          onPressed: () => widget.onApply(_status),
+          icon: const Icon(Icons.filter_alt_rounded),
+          label: const Text('Aplicar'),
+        ),
+        TextButton(onPressed: widget.onClear, child: const Text('Limpar')),
+      ],
+    );
+  }
+}
+
+class _ReadOnlyBanner extends StatelessWidget {
+  const _ReadOnlyBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        'Modo seguro/read-only: acoes reais de licenca entram apenas em fase posterior com dry-run, confirmacao e auditoria.',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: scheme.onSecondaryContainer,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(label: Text(label));
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Expanded(child: Text(label)),
+          const SizedBox(width: 16),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaginationBar extends StatelessWidget {
+  const _PaginationBar({
+    required this.pagination,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final AdminPaginationMeta pagination;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            'Pagina ${pagination.page}: ${pagination.count} de ${pagination.total} licencas.',
+          ),
+        ),
+        IconButton(
+          tooltip: 'Anterior',
           onPressed: onPrevious,
           icon: const Icon(Icons.chevron_left_rounded),
-          label: const Text('Anterior'),
         ),
-        OutlinedButton.icon(
+        IconButton(
+          tooltip: 'Proxima',
           onPressed: onNext,
           icon: const Icon(Icons.chevron_right_rounded),
-          label: const Text('Próxima'),
         ),
       ],
     );
@@ -579,32 +628,34 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 32),
-      child: Text(message, style: Theme.of(context).textTheme.bodyMedium),
+      padding: const EdgeInsets.symmetric(vertical: 28),
+      child: Text(message),
     );
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.status});
+String _statusLabel(String? status) {
+  return AdminFormatters.formatLicenseStatus(status);
+}
 
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: AdminFormatters.statusBackgroundColor(context, status),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        AdminFormatters.formatLicenseStatus(status),
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: AdminFormatters.statusColor(context, status),
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
+String _renewalLabel(DateTime? expiresAt) {
+  if (expiresAt == null) {
+    return 'Nao informada';
   }
+  final days = expiresAt.difference(DateTime.now()).inDays;
+  if (days < 0) {
+    return 'Vencida ha ${days.abs()} dias';
+  }
+  if (days <= 7) {
+    return 'Vence em $days dias';
+  }
+  return 'Ativa por $days dias';
+}
+
+String _safeError(Object error) {
+  final message = error.toString();
+  if (message.contains('Exception:')) {
+    return message.split('Exception:').last.trim();
+  }
+  return message;
 }

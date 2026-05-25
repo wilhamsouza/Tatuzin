@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../auth/admin_providers.dart';
-import '../utils/admin_formatters.dart';
 
 class AdminShellScaffold extends ConsumerWidget {
   const AdminShellScaffold({
@@ -21,27 +20,7 @@ class AdminShellScaffold extends ConsumerWidget {
     _AdminNavItem(
       route: '/dashboard',
       icon: Icons.space_dashboard_rounded,
-      label: 'Dashboard Plataforma',
-    ),
-    _AdminNavItem(
-      route: '/management/dashboard',
-      icon: Icons.insights_rounded,
-      label: 'Dashboard Gerencial',
-    ),
-    _AdminNavItem(
-      route: '/management/reports',
-      icon: Icons.assessment_rounded,
-      label: 'Relatórios Gerenciais',
-    ),
-    _AdminNavItem(
-      route: '/management/governance',
-      icon: Icons.account_tree_rounded,
-      label: 'Governança Híbrida',
-    ),
-    _AdminNavItem(
-      route: '/management/crm/customers',
-      icon: Icons.people_alt_rounded,
-      label: 'CRM Gerencial',
+      label: 'Dashboard',
     ),
     _AdminNavItem(
       route: '/companies',
@@ -49,24 +28,24 @@ class AdminShellScaffold extends ConsumerWidget {
       label: 'Empresas',
     ),
     _AdminNavItem(
-      route: '/licenses',
-      icon: Icons.workspace_premium_rounded,
-      label: 'Licenças',
-    ),
-    _AdminNavItem(
-      route: '/billing',
-      icon: Icons.payments_rounded,
-      label: 'Billing Admin',
-    ),
-    _AdminNavItem(
-      route: '/sync-health',
-      icon: Icons.cloud_done_rounded,
-      label: 'Saúde da Sync',
-    ),
-    _AdminNavItem(
       route: '/sync',
       icon: Icons.sync_problem_rounded,
-      label: 'Sincronização',
+      label: 'Sync global',
+    ),
+    _AdminNavItem(
+      route: '/devices',
+      icon: Icons.devices_rounded,
+      label: 'Dispositivos',
+    ),
+    _AdminNavItem(
+      route: '/licenses',
+      icon: Icons.workspace_premium_rounded,
+      label: 'Licencas',
+    ),
+    _AdminNavItem(
+      route: '/plans',
+      icon: Icons.table_chart_rounded,
+      label: 'Planos',
     ),
     _AdminNavItem(
       route: '/audit',
@@ -78,7 +57,9 @@ class AdminShellScaffold extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(adminAuthControllerProvider);
-    final isCompact = MediaQuery.sizeOf(context).width < 1080;
+    final isCompact = MediaQuery.sizeOf(context).width < 980;
+    final sessionName = auth.session?.user.name ?? 'Administrador';
+    final sessionEmail = auth.session?.user.email ?? 'sem sessao';
 
     if (isCompact) {
       return Scaffold(
@@ -87,9 +68,7 @@ class AdminShellScaffold extends ConsumerWidget {
           actions: [
             IconButton(
               tooltip: 'Sair',
-              onPressed: () async {
-                await ref.read(adminAuthControllerProvider).logout();
-              },
+              onPressed: () => ref.read(adminAuthControllerProvider).logout(),
               icon: const Icon(Icons.logout_rounded),
             ),
             const SizedBox(width: 8),
@@ -98,10 +77,8 @@ class AdminShellScaffold extends ConsumerWidget {
         drawer: Drawer(
           child: _Sidebar(
             currentLocation: currentLocation,
-            sessionName: auth.session?.user.name ?? 'Administrador',
-            sessionEmail: auth.session?.user.email ?? 'sem sessão',
-            companyName: auth.session?.company.name ?? 'Tatuzin Cloud',
-            licenseStatus: auth.session?.company.license?.status,
+            sessionName: sessionName,
+            sessionEmail: sessionEmail,
           ),
         ),
         body: Padding(padding: const EdgeInsets.all(16), child: child),
@@ -109,20 +86,19 @@ class AdminShellScaffold extends ConsumerWidget {
     }
 
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLowest,
       body: Row(
         children: [
           _Sidebar(
             currentLocation: currentLocation,
-            sessionName: auth.session?.user.name ?? 'Administrador',
-            sessionEmail: auth.session?.user.email ?? 'sem sessão',
-            companyName: auth.session?.company.name ?? 'Tatuzin Cloud',
-            licenseStatus: auth.session?.company.license?.status,
+            sessionName: sessionName,
+            sessionEmail: sessionEmail,
           ),
           Expanded(
             child: Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.fromLTRB(32, 24, 32, 20),
+                  padding: const EdgeInsets.fromLTRB(28, 20, 28, 18),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.surface,
                     border: Border(
@@ -142,9 +118,9 @@ class AdminShellScaffold extends ConsumerWidget {
                               style: Theme.of(context).textTheme.headlineSmall
                                   ?.copyWith(fontWeight: FontWeight.w800),
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 4),
                             Text(
-                              'Painel interno da plataforma Tatuzin para suporte e operação.',
+                              'Console interno read-only para operacao, suporte e auditoria da plataforma.',
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     color: Theme.of(
@@ -155,39 +131,12 @@ class AdminShellScaffold extends ConsumerWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 24),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              auth.session?.user.name ?? 'Administrador',
-                              style: Theme.of(context).textTheme.titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.w800),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              auth.session?.user.email ?? 'sem sessão',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 20),
+                      _SessionPill(name: sessionName, email: sessionEmail),
+                      const SizedBox(width: 10),
                       FilledButton.tonalIcon(
-                        onPressed: () async {
-                          await ref.read(adminAuthControllerProvider).logout();
-                        },
+                        onPressed: () =>
+                            ref.read(adminAuthControllerProvider).logout(),
                         icon: const Icon(Icons.logout_rounded),
                         label: const Text('Sair'),
                       ),
@@ -214,21 +163,17 @@ class _Sidebar extends StatelessWidget {
     required this.currentLocation,
     required this.sessionName,
     required this.sessionEmail,
-    required this.companyName,
-    required this.licenseStatus,
   });
 
   final String currentLocation;
   final String sessionName;
   final String sessionEmail;
-  final String companyName;
-  final String? licenseStatus;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      width: 288,
+      width: 272,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(
@@ -237,68 +182,71 @@ class _Sidebar extends StatelessWidget {
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Tatuzin Admin',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.admin_panel_settings_rounded,
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Tatuzin Admin',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Text(
+                          'Plataforma',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 18),
+              _SessionCard(name: sessionName, email: sessionEmail),
+              const SizedBox(height: 18),
               Text(
-                'Painel interno da plataforma',
-                style: theme.textTheme.bodyMedium?.copyWith(
+                'Navegacao',
+                style: theme.textTheme.labelSmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
                 ),
               ),
-              const SizedBox(height: 24),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      sessionName,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(sessionEmail, style: theme.textTheme.bodySmall),
-                    const SizedBox(height: 12),
-                    Text(
-                      companyName,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Chip(
-                      label: Text(
-                        AdminFormatters.formatLicenseStatus(licenseStatus),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 8),
               Expanded(
                 child: ListView.separated(
                   itemCount: AdminShellScaffold._items.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  separatorBuilder: (_, __) => const SizedBox(height: 4),
                   itemBuilder: (context, index) {
                     final item = AdminShellScaffold._items[index];
                     final selected = _isSelected(item.route, currentLocation);
                     return ListTile(
+                      dense: true,
                       selected: selected,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                       leading: Icon(item.icon),
                       title: Text(item.label),
                       onTap: () {
@@ -312,6 +260,8 @@ class _Sidebar extends StatelessWidget {
                   },
                 ),
               ),
+              const SizedBox(height: 10),
+              const _ReadOnlyBadge(),
             ],
           ),
         ),
@@ -323,7 +273,115 @@ class _Sidebar extends StatelessWidget {
     if (route == '/dashboard') {
       return location == '/dashboard' || location == '/';
     }
+    if (route == '/companies') {
+      return location == '/companies' ||
+          (location.startsWith('/companies/') &&
+              !location.endsWith('/sync') &&
+              !location.endsWith('/license'));
+    }
+    if (route == '/sync') {
+      return location == '/sync' ||
+          location.startsWith('/sync/') ||
+          (location.startsWith('/companies/') && location.endsWith('/sync'));
+    }
+    if (route == '/licenses') {
+      return location.startsWith('/licenses') ||
+          (location.startsWith('/companies/') && location.endsWith('/license'));
+    }
     return location == route || location.startsWith('$route/');
+  }
+}
+
+class _SessionCard extends StatelessWidget {
+  const _SessionCard({required this.name, required this.email});
+
+  final String name;
+  final String email;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(email, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ],
+      ),
+    );
+  }
+}
+
+class _SessionPill extends StatelessWidget {
+  const _SessionPill({required this.name, required this.email});
+
+  final String name;
+  final String email;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 260),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Text(email, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReadOnlyBadge extends StatelessWidget {
+  const _ReadOnlyBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        'Modo seguro/read-only: sem comandos remotos e sem alteracoes reais.',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: scheme.onSecondaryContainer,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
   }
 }
 

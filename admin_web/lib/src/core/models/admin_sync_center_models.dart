@@ -9,13 +9,13 @@ class AdminSyncCenterCompaniesQuery {
   final int page;
   final int pageSize;
   final String? search;
-  final String status;
+  final String? status;
 
   Map<String, String> toQueryParameters() {
     return <String, String>{
       'page': '$page',
       'pageSize': '$pageSize',
-      'status': status,
+      if (_normalized(status) case final value?) 'status': value,
       if (_normalized(search) case final value?) 'search': value,
     };
   }
@@ -935,6 +935,7 @@ class AdminSyncSupportDiagnostic {
     required this.lastLocalErrorCode,
     required this.lastLocalErrorEntity,
     required this.appVersion,
+    required this.platform,
     required this.localSchemaVersion,
     required this.lastPushAt,
     required this.lastPullAt,
@@ -953,6 +954,7 @@ class AdminSyncSupportDiagnostic {
   final String? lastLocalErrorCode;
   final String? lastLocalErrorEntity;
   final String? appVersion;
+  final String? platform;
   final String? localSchemaVersion;
   final DateTime? lastPushAt;
   final DateTime? lastPullAt;
@@ -973,6 +975,7 @@ class AdminSyncSupportDiagnostic {
       lastLocalErrorCode: _readOptionalString(map, 'lastLocalErrorCode'),
       lastLocalErrorEntity: _readOptionalString(map, 'lastLocalErrorEntity'),
       appVersion: _readOptionalString(map, 'appVersion'),
+      platform: _readOptionalString(map, 'platform'),
       localSchemaVersion: _readOptionalString(map, 'localSchemaVersion'),
       lastPushAt: _readOptionalDateTime(map, 'lastPushAt'),
       lastPullAt: _readOptionalDateTime(map, 'lastPullAt'),
