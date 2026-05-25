@@ -137,13 +137,33 @@ export class SyncSupportService {
         "SYNC_SUPPORT_COMMAND_NOT_PENDING",
       );
     }
-    const running = await prisma.syncSupportCommand.update({
-      where: { id: command.id },
-      data: {
-        status: SyncSupportCommandStatus.RUNNING,
-        pickedUpAt: new Date(),
+    const now = new Date();
+    const started = await prisma.syncSupportCommand.updateMany({
+      where: {
+        id: command.id,
+        companyId: context.company.id,
+        deviceId: context.device.id,
+        status: SyncSupportCommandStatus.PENDING,
+        expiresAt: { gt: now },
       },
+      data: { status: SyncSupportCommandStatus.RUNNING, pickedUpAt: now },
     });
+    if (started.count === 0) {
+      const latest = await this.requireDeviceCommand(context, commandId);
+      if (this.isExecutableExpired(latest)) {
+        const expired = await this.markExpired(latest.id);
+        return { ok: false, command: this.commandDto(expired) };
+      }
+      if (latest.status === SyncSupportCommandStatus.RUNNING) {
+        return { ok: true, command: this.commandDto(latest) };
+      }
+      throw new AppError(
+        "Comando nao esta pendente.",
+        409,
+        "SYNC_SUPPORT_COMMAND_NOT_PENDING",
+      );
+    }
+    const running = await this.requireDeviceCommand(context, commandId);
     return { ok: true, command: this.commandDto(running) };
   }
 

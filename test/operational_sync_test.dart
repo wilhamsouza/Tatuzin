@@ -666,6 +666,40 @@ void main() {
       expect(queue.cacheRefreshSignals, greaterThanOrEqualTo(1));
     });
 
+    test(
+      'nao marca FAILED quando acao local conclui mas reporte SUCCEEDED falha',
+      () async {
+        final queue = _MemoryOperationalSyncQueueRepository()
+          ..repairedEvents = 2;
+        final remote = _FakeOperationalSyncRemoteDataSource()
+          ..failCompleteSupportCommand = true
+          ..supportCommands = const <OperationalSyncSupportCommand>[
+            OperationalSyncSupportCommand(
+              id: 'cmd-repair-report-fails',
+              command: 'REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS',
+              status: 'PENDING',
+              reason: 'reparar totalCents',
+            ),
+          ];
+        final runner = OperationalSyncRunner(
+          queueRepository: queue,
+          remoteDataSource: remote,
+          snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+            version: '1',
+          ),
+          shouldContinue: () => true,
+          onCacheSnapshotChanged: () => queue.cacheRefreshSignals++,
+        );
+
+        await runner.run(retryOnly: false);
+
+        expect(queue.repairedEvents, 2);
+        expect(remote.completedSupportCommands, isEmpty);
+        expect(remote.failedSupportCommands, isEmpty);
+        expect(queue.cacheRefreshSignals, greaterThanOrEqualTo(1));
+      },
+    );
+
     test('limpa cache local de conflitos resolvidos por comando', () async {
       final queue = _MemoryOperationalSyncQueueRepository()
         ..clearedConflicts = 4;
@@ -2133,6 +2167,7 @@ class _FakeOperationalSyncRemoteDataSource
   final diagnostics = <OperationalSyncDiagnosticReport>[];
   List<OperationalSyncSupportCommand> supportCommands =
       const <OperationalSyncSupportCommand>[];
+  bool failCompleteSupportCommand = false;
   final completedSupportCommands = <String, Map<String, dynamic>>{};
   final failedSupportCommands = <String, String>{};
   final failedSupportCommandResults = <String, Map<String, dynamic>>{};
@@ -2228,6 +2263,9 @@ class _FakeOperationalSyncRemoteDataSource
     String commandId,
     Map<String, dynamic> result,
   ) async {
+    if (failCompleteSupportCommand) {
+      throw StateError('complete report offline');
+    }
     completedSupportCommands[commandId] = result;
   }
 

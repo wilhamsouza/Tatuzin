@@ -289,7 +289,16 @@ class OperationalSyncRunner {
           continue;
         }
         final result = await _executeSupportCommand(running);
-        await _remoteDataSource.completeSupportCommand(running.id, result);
+        try {
+          await _remoteDataSource.completeSupportCommand(running.id, result);
+        } catch (error, stackTrace) {
+          AppLogger.error(
+            '[OperationalSync] support_command_complete_report_failed '
+            'id=${running.id} command=${running.command}',
+            error: error,
+            stackTrace: stackTrace,
+          );
+        }
       } catch (error, stackTrace) {
         AppLogger.error(
           '[OperationalSync] support_command_failed '

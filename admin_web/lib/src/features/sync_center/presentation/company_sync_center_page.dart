@@ -1178,7 +1178,7 @@ class _SupportCommandDialogState extends ConsumerState<_SupportCommandDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Command: ${widget.option.command}'),
+              Text('Comando: ${widget.option.command}'),
               const SizedBox(height: 12),
               TextField(
                 controller: _reasonController,
