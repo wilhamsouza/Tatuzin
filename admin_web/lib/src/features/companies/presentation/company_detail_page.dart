@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/admin_providers.dart';
+import '../../../core/models/admin_billing_models.dart';
 import '../../../core/models/admin_models.dart';
 import '../../../core/utils/admin_formatters.dart';
 import '../../../core/widgets/admin_surface.dart';
@@ -103,7 +104,7 @@ class _CompanyHeader extends StatelessWidget {
           OutlinedButton.icon(
             onPressed: () => context.go('/companies/${company.id}/license'),
             icon: const Icon(Icons.workspace_premium_rounded),
-            label: const Text('Ver licenca'),
+            label: const Text('Ver licenca e assinatura'),
           ),
         ],
       ),
@@ -185,6 +186,10 @@ class _OverviewTab extends StatelessWidget {
             ),
           );
           final sync = _SyncSummaryCard(companyId: company.id);
+          final licenseSummary = _CompanyLicenseSummaryCard(
+            companyId: company.id,
+            fallbackLicense: company.license,
+          );
           if (compact) {
             return Column(
               children: [
@@ -193,6 +198,8 @@ class _OverviewTab extends StatelessWidget {
                 counts,
                 const SizedBox(height: 16),
                 sync,
+                const SizedBox(height: 16),
+                licenseSummary,
               ],
             );
           }
@@ -208,9 +215,134 @@ class _OverviewTab extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               sync,
+              const SizedBox(height: 16),
+              licenseSummary,
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _CompanyLicenseSummaryCard extends ConsumerWidget {
+  const _CompanyLicenseSummaryCard({
+    required this.companyId,
+    required this.fallbackLicense,
+  });
+
+  final String companyId;
+  final AdminLicenseSnapshot? fallbackLicense;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final billingAsync = ref.watch(
+      adminBillingCompanyStatusProvider(companyId),
+    );
+    return billingAsync.when(
+      data: (status) => _CompanyLicenseSummarySurface(
+        companyId: companyId,
+        status: status,
+        fallbackLicense: fallbackLicense,
+      ),
+      loading: () => const AdminSurface(
+        title: 'Licenca e assinatura',
+        child: LinearProgressIndicator(),
+      ),
+      error: (error, _) => AdminSurface(
+        title: 'Licenca e assinatura',
+        subtitle: _safeError(error),
+        trailing: FilledButton.tonalIcon(
+          onPressed: () => context.go('/companies/$companyId/license'),
+          icon: const Icon(Icons.workspace_premium_rounded),
+          label: const Text('Ver licenca e assinatura'),
+        ),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _MiniMetric(
+              label: 'Plano ativo',
+              value: fallbackLicense == null
+                  ? 'Nao disponivel'
+                  : AdminFormatters.formatPlan(fallbackLicense!.plan),
+            ),
+            _MiniMetric(
+              label: 'Status',
+              value: AdminFormatters.formatLicenseStatus(
+                fallbackLicense?.status,
+              ),
+            ),
+            const _MiniMetric(label: 'Billing', value: 'Nao disponivel'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CompanyLicenseSummarySurface extends StatelessWidget {
+  const _CompanyLicenseSummarySurface({
+    required this.companyId,
+    required this.status,
+    required this.fallbackLicense,
+  });
+
+  final String companyId;
+  final AdminBillingCompanyStatus status;
+  final AdminLicenseSnapshot? fallbackLicense;
+
+  @override
+  Widget build(BuildContext context) {
+    final billing = status.billing;
+    final license = status.license;
+    final plan = license?.plan ?? fallbackLicense?.plan ?? '';
+    final licenseStatus = license?.status ?? fallbackLicense?.status;
+    final pendingPlan = license?.pendingPlan ?? billing.pendingPlan;
+    final periodEnd = billing.currentPeriodEnd ?? license?.currentPeriodEnd;
+    return AdminSurface(
+      title: 'Licenca e assinatura',
+      subtitle: 'Resumo read-only. pendingPlan nao e tratado como plano ativo.',
+      trailing: FilledButton.tonalIcon(
+        onPressed: () => context.go('/companies/$companyId/license'),
+        icon: const Icon(Icons.workspace_premium_rounded),
+        label: const Text('Ver licenca e assinatura'),
+      ),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          _MiniMetric(
+            label: 'Plano ativo',
+            value: plan.isEmpty
+                ? 'Nao disponivel'
+                : AdminFormatters.formatPlan(plan),
+          ),
+          _MiniMetric(
+            label: 'Status',
+            value: AdminFormatters.formatLicenseStatus(licenseStatus),
+          ),
+          _MiniMetric(
+            label: 'Mudanca pendente',
+            value: pendingPlan == null
+                ? 'Nenhuma'
+                : AdminFormatters.formatPlan(pendingPlan),
+          ),
+          _MiniMetric(
+            label: 'Status assinatura',
+            value: billing.billingSubscriptionStatus ?? 'Nao disponivel',
+          ),
+          _MiniMetric(
+            label: 'Fim do periodo',
+            value: AdminFormatters.formatDate(periodEnd),
+          ),
+          _MiniMetric(
+            label: 'Cancelamento',
+            value: billing.cancelAtPeriodEnd
+                ? 'Cancelamento agendado'
+                : 'Nao agendado',
+          ),
+        ],
       ),
     );
   }

@@ -152,7 +152,9 @@ void main() {
     expect(find.text('Loja Moda Sul'), findsWidgets);
     expect(find.text('Resumo'), findsOneWidget);
     expect(find.text('Resumo de sync'), findsOneWidget);
+    expect(find.text('Licenca e assinatura'), findsOneWidget);
     expect(find.text('Abrir console de sync'), findsWidgets);
+    expect(find.text('Ver licenca e assinatura'), findsWidgets);
     expect(find.text('Sync'), findsOneWidget);
     expect(find.text('Licenca'), findsOneWidget);
     expect(find.text('Dispositivos'), findsWidgets);
@@ -447,28 +449,105 @@ void main() {
 
   testWidgets('Licenca mostra acoes placeholder', (tester) async {
     _setLargeViewport(tester);
+    final service = _FakeReadOnlyApiService();
     await tester.pumpWidget(
       _adminRouterTestApp(
-        service: _FakeReadOnlyApiService(),
+        service: service,
         initialLocation: '/licenses/company-1',
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Plano atual'), findsOneWidget);
-    expect(find.text('Pending plan'), findsOneWidget);
+    expect(find.text('Plano ativo'), findsWidgets);
+    expect(find.text('Plano ativo: PRO'), findsOneWidget);
+    expect(find.text('Plano ativo: BASIC'), findsNothing);
+    expect(find.text('Mudanca pendente'), findsWidgets);
+    expect(find.text('Cancelamento agendado'), findsWidgets);
+    expect(find.text('pre_..._7890'), findsWidgets);
+    expect(find.text('preapproval-secret-full-id'), findsNothing);
+    expect(find.text('checkout-secret-reference-123456789'), findsNothing);
+    expect(
+      find.text(
+        'Faturas administrativas serao exibidas aqui quando o endpoint estiver disponivel.',
+      ),
+      findsWidgets,
+    );
+    expect(find.text('Eventos de billing'), findsOneWidget);
+    expect(find.text('payment.created'), findsOneWidget);
+    expect(find.text('Sessoes de checkout'), findsOneWidget);
+    expect(find.text('Tentativa pendente'), findsOneWidget);
     expect(find.textContaining('Extensao emergencial'), findsOneWidget);
     expect(find.textContaining('Trocar plano'), findsOneWidget);
     expect(find.textContaining('Suspender'), findsOneWidget);
     expect(find.textContaining('Reativar'), findsOneWidget);
+    expect(find.textContaining('Reconciliar Mercado Pago'), findsOneWidget);
 
     await tester.tap(find.textContaining('Trocar plano'));
     await tester.pumpAndSettle();
     expect(
       find.text(
-        'Acao administrativa sera implementada em fase posterior com dry-run, confirmacao e auditoria.',
+        'Acao administrativa sera implementada em fase posterior com dry-run, confirmacao explicita e auditoria.',
       ),
       findsOneWidget,
+    );
+    expect(service.mutableBillingCalls, 0);
+  });
+
+  test('preview seguro de billing remove chaves e valores sensiveis', () {
+    final preview = formatSafeLicenseBillingDetails({
+      'Authorization': 'Bearer secret',
+      'headers': {'x-signature': 'abc'},
+      'card': {'cvv': '123'},
+      'public': 'ok',
+    });
+
+    expect(preview, contains('public'));
+    expect(preview, contains('ok'));
+    expect(preview, isNot(contains('Authorization')));
+    expect(preview, isNot(contains('Bearer secret')));
+    expect(preview, isNot(contains('headers')));
+    expect(preview, isNot(contains('x-signature')));
+    expect(preview, isNot(contains('cvv')));
+  });
+
+  testWidgets('/companies/:companyId/license abre o mesmo detalhe read-only', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/companies/company-1/license',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Loja Moda Sul'), findsWidgets);
+    expect(find.text('Plano ativo: PRO'), findsOneWidget);
+    expect(find.text('Mudanca pendente: BASIC'), findsOneWidget);
+    expect(find.text('preapproval-secret-full-id'), findsNothing);
+    expect(find.textContaining('Reconciliar Mercado Pago'), findsOneWidget);
+  });
+
+  testWidgets('Licenca mostra estados vazios de historico billing', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(emptyBillingHistory: true),
+        initialLocation: '/licenses/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nenhum evento de billing encontrado.'), findsOneWidget);
+    expect(find.text('Nenhuma sessao de checkout encontrada.'), findsOneWidget);
+    expect(
+      find.text(
+        'Faturas administrativas serao exibidas aqui quando o endpoint estiver disponivel.',
+      ),
+      findsWidgets,
     );
   });
 
@@ -572,6 +651,14 @@ Widget _adminRouterTestApp({
         ),
       ),
       GoRoute(
+        path: '/companies/:companyId/license',
+        builder: (context, state) => Scaffold(
+          body: LicenseCompanyPage(
+            companyId: state.pathParameters['companyId'] ?? '',
+          ),
+        ),
+      ),
+      GoRoute(
         path: '/sync/:companyId/events/:eventId',
         builder: (context, state) => Scaffold(
           body: SyncEventDetailPage(
@@ -601,6 +688,7 @@ Widget _adminRouterTestApp({
 class _FakeReadOnlyApiService extends AdminApiService {
   _FakeReadOnlyApiService({
     this.emptyLicenses = false,
+    this.emptyBillingHistory = false,
     this.throwDashboard = false,
     this.emptyCompanySync = false,
     this.throwCompanySync = false,
@@ -616,6 +704,7 @@ class _FakeReadOnlyApiService extends AdminApiService {
        );
 
   final bool emptyLicenses;
+  final bool emptyBillingHistory;
   final bool throwDashboard;
   final bool emptyCompanySync;
   final bool throwCompanySync;
@@ -623,6 +712,7 @@ class _FakeReadOnlyApiService extends AdminApiService {
   int companyHealthFetchCount = 0;
   int supportDryRunCalls = 0;
   int supportCreateCalls = 0;
+  int mutableBillingCalls = 0;
   final supportCommands = <Map<String, dynamic>>[];
 
   @override
@@ -700,6 +790,41 @@ class _FakeReadOnlyApiService extends AdminApiService {
   }
 
   @override
+  Future<AdminPaginatedResult<AdminBillingCompanySummary>>
+  fetchBillingCompanies({AdminBillingCompaniesQuery? query}) async {
+    return AdminPaginatedResult<AdminBillingCompanySummary>(
+      items: emptyLicenses
+          ? []
+          : [
+              AdminBillingCompanySummary.fromMap({
+                'companyId': 'company-1',
+                'companyName': 'Loja Moda Sul',
+                'plan': 'PRO',
+                'licenseStatus': 'ACTIVE',
+                'billingProvider': 'mercadopago',
+                'hasProviderSubscription': true,
+                'maskedProviderSubscriptionId': 'pre_..._7890',
+                'currentPeriodEnd': '2026-06-30T00:00:00.000Z',
+                'nextPaymentDate': '2026-06-30T00:00:00.000Z',
+                'pendingPlan': 'BASIC',
+                'cancelAtPeriodEnd': true,
+                'billingSubscriptionStatus': 'authorized',
+              }),
+            ],
+      pagination: AdminPaginationMeta(
+        page: 1,
+        pageSize: 20,
+        total: emptyLicenses ? 0 : 1,
+        count: emptyLicenses ? 0 : 1,
+        hasNext: false,
+        hasPrevious: false,
+      ),
+      filters: const {},
+      sort: const AdminSortMeta(by: 'currentPeriodEnd', direction: 'asc'),
+    );
+  }
+
+  @override
   Future<AdminBillingCompanyStatus> fetchBillingCompanyStatus(
     String companyId,
   ) async {
@@ -708,31 +833,167 @@ class _FakeReadOnlyApiService extends AdminApiService {
       'license': {
         'plan': 'PRO',
         'status': 'ACTIVE',
+        'startsAt': '2026-01-01T00:00:00.000Z',
+        'expiresAt': '2026-12-31T00:00:00.000Z',
+        'maxDevices': 100,
+        'syncEnabled': true,
+        'providerSubscriptionId': 'preapproval-secret-full-id',
         'currentPeriodEnd': '2026-06-30T00:00:00.000Z',
         'nextPaymentDate': '2026-06-30T00:00:00.000Z',
         'pendingPlan': 'BASIC',
+        'pendingPlanRequestedAt': '2026-05-20T00:00:00.000Z',
         'billingSubscriptionStatus': 'authorized',
+        'createdAt': '2026-01-01T00:00:00.000Z',
+        'updatedAt': '2026-05-24T00:00:00.000Z',
       },
       'billing': {
         'provider': 'mercadopago',
         'hasProviderSubscription': true,
+        'providerSubscriptionId': 'preapproval-secret-full-id',
         'maskedProviderSubscriptionId': 'pre_..._7890',
+        'currentPeriodStart': '2026-05-30T00:00:00.000Z',
         'currentPeriodEnd': '2026-06-30T00:00:00.000Z',
         'nextPaymentDate': '2026-06-30T00:00:00.000Z',
+        'cancelAtPeriodEnd': true,
+        'cancelRequestedAt': '2026-05-25T00:00:00.000Z',
         'pendingPlan': 'BASIC',
         'billingSubscriptionStatus': 'authorized',
       },
-      'events': [
-        {
-          'id': 'billing-event-1',
-          'provider': 'mercadopago',
-          'eventType': 'payment.created',
-          'status': 'processed',
-        },
-      ],
+      'events': emptyBillingHistory
+          ? const []
+          : [
+              {
+                'id': 'billing-event-1',
+                'provider': 'mercadopago',
+                'eventType': 'payment.created',
+                'providerEventId': 'event-secret-full-id-123456789',
+                'status': 'processed',
+                'payload': {'Authorization': 'Bearer secret', 'public': 'ok'},
+              },
+            ],
       'invoices': const [],
-      'checkoutSessions': const [],
+      'checkoutSessions': emptyBillingHistory
+          ? const []
+          : [
+              {
+                'id': 'checkout-1',
+                'plan': 'BASIC',
+                'billingCycle': 'monthly',
+                'status': 'pending',
+                'provider': 'mercadopago',
+                'providerReference': 'checkout-secret-reference-123456789',
+                'createdAt': '2026-05-24T00:00:00.000Z',
+                'updatedAt': '2026-05-24T00:00:00.000Z',
+              },
+            ],
     });
+  }
+
+  @override
+  Future<AdminPaginatedResult<AdminBillingEvent>> fetchBillingEvents({
+    required AdminBillingListQuery query,
+  }) async {
+    return AdminPaginatedResult<AdminBillingEvent>(
+      items: emptyBillingHistory
+          ? []
+          : [
+              AdminBillingEvent.fromMap({
+                'id': 'billing-event-1',
+                'provider': 'mercadopago',
+                'eventType': 'payment.created',
+                'providerEventId': 'event-secret-full-id-123456789',
+                'status': 'processed',
+                'payload': {'Authorization': 'Bearer secret', 'public': 'ok'},
+              }),
+            ],
+      pagination: AdminPaginationMeta(
+        page: 1,
+        pageSize: 20,
+        total: emptyBillingHistory ? 0 : 1,
+        count: emptyBillingHistory ? 0 : 1,
+        hasNext: false,
+        hasPrevious: false,
+      ),
+      filters: const {},
+      sort: const AdminSortMeta(by: 'createdAt', direction: 'desc'),
+    );
+  }
+
+  @override
+  Future<AdminPaginatedResult<AdminBillingCheckoutSession>>
+  fetchBillingCheckoutSessions({required AdminBillingListQuery query}) async {
+    return AdminPaginatedResult<AdminBillingCheckoutSession>(
+      items: emptyBillingHistory
+          ? []
+          : [
+              AdminBillingCheckoutSession.fromMap({
+                'id': 'checkout-1',
+                'plan': 'BASIC',
+                'billingCycle': 'monthly',
+                'status': 'pending',
+                'provider': 'mercadopago',
+                'providerReference': 'checkout-secret-reference-123456789',
+                'createdAt': '2026-05-24T00:00:00.000Z',
+                'updatedAt': '2026-05-24T00:00:00.000Z',
+              }),
+            ],
+      pagination: AdminPaginationMeta(
+        page: 1,
+        pageSize: 20,
+        total: emptyBillingHistory ? 0 : 1,
+        count: emptyBillingHistory ? 0 : 1,
+        hasNext: false,
+        hasPrevious: false,
+      ),
+      filters: const {},
+      sort: const AdminSortMeta(by: 'createdAt', direction: 'desc'),
+    );
+  }
+
+  @override
+  Future<AdminLicenseSnapshot> updateLicense({
+    required String companyId,
+    required String plan,
+    required String status,
+    required DateTime? startsAt,
+    required DateTime? expiresAt,
+    required bool syncEnabled,
+    required int? maxDevices,
+  }) async {
+    mutableBillingCalls++;
+    throw StateError('updateLicense nao deveria ser chamado');
+  }
+
+  @override
+  Future<AdminBillingActionResult> refreshBillingCompany({
+    required String companyId,
+    required String reason,
+  }) async {
+    mutableBillingCalls++;
+    throw StateError('refreshBillingCompany nao deveria ser chamado');
+  }
+
+  @override
+  Future<AdminBillingActionResult> forceBillingPlan({
+    required String companyId,
+    required String plan,
+    required String reason,
+    String? status,
+    DateTime? currentPeriodEnd,
+    bool clearProvider = false,
+  }) async {
+    mutableBillingCalls++;
+    throw StateError('forceBillingPlan nao deveria ser chamado');
+  }
+
+  @override
+  Future<AdminBillingActionResult> cancelBillingLocal({
+    required String companyId,
+    required String reason,
+    required String effective,
+  }) async {
+    mutableBillingCalls++;
+    throw StateError('cancelBillingLocal nao deveria ser chamado');
   }
 
   @override

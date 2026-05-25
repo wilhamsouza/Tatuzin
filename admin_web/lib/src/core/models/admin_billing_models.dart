@@ -391,44 +391,83 @@ class AdminBillingStatusSnapshot {
 
 class AdminBillingLicenseSnapshot {
   const AdminBillingLicenseSnapshot({
+    this.id,
+    this.companyId,
     required this.plan,
+    this.normalizedPlan,
     required this.status,
     this.providerSubscriptionId,
     this.billingProvider,
+    this.startsAt,
+    this.expiresAt,
+    this.maxDevices,
+    this.syncEnabled = false,
+    this.currentPeriodStart,
     this.currentPeriodEnd,
     this.nextPaymentDate,
     this.cancelAtPeriodEnd = false,
+    this.cancelRequestedAt,
+    this.canceledAt,
     this.pendingPlan,
+    this.pendingPlanRequestedAt,
     this.billingSubscriptionStatus,
+    this.createdAt,
+    this.updatedAt,
   });
 
+  final String? id;
+  final String? companyId;
   final String plan;
+  final String? normalizedPlan;
   final String status;
   final String? providerSubscriptionId;
   final String? billingProvider;
+  final DateTime? startsAt;
+  final DateTime? expiresAt;
+  final int? maxDevices;
+  final bool syncEnabled;
+  final DateTime? currentPeriodStart;
   final DateTime? currentPeriodEnd;
   final DateTime? nextPaymentDate;
   final bool cancelAtPeriodEnd;
+  final DateTime? cancelRequestedAt;
+  final DateTime? canceledAt;
   final String? pendingPlan;
+  final DateTime? pendingPlanRequestedAt;
   final String? billingSubscriptionStatus;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   factory AdminBillingLicenseSnapshot.fromMap(Map<String, dynamic> map) {
     return AdminBillingLicenseSnapshot(
+      id: _readOptionalString(map, 'id'),
+      companyId: _readOptionalString(map, 'companyId'),
       plan: _readString(map, 'plan', fallback: 'FREE'),
+      normalizedPlan: _readOptionalString(map, 'normalizedPlan'),
       status: _readString(map, 'status', fallback: 'ACTIVE'),
       providerSubscriptionId: _readOptionalString(
         map,
         'providerSubscriptionId',
       ),
       billingProvider: _readOptionalString(map, 'billingProvider'),
+      startsAt: _readDate(map, 'startsAt'),
+      expiresAt: _readDate(map, 'expiresAt'),
+      maxDevices: _readInt(map, 'maxDevices'),
+      syncEnabled: map['syncEnabled'] == true,
+      currentPeriodStart: _readDate(map, 'currentPeriodStart'),
       currentPeriodEnd: _readDate(map, 'currentPeriodEnd'),
       nextPaymentDate: _readDate(map, 'nextPaymentDate'),
       cancelAtPeriodEnd: map['cancelAtPeriodEnd'] == true,
+      cancelRequestedAt: _readDate(map, 'cancelRequestedAt'),
+      canceledAt: _readDate(map, 'canceledAt'),
       pendingPlan: _readOptionalString(map, 'pendingPlan'),
+      pendingPlanRequestedAt: _readDate(map, 'pendingPlanRequestedAt'),
       billingSubscriptionStatus: _readOptionalString(
         map,
         'billingSubscriptionStatus',
       ),
+      createdAt: _readDate(map, 'createdAt'),
+      updatedAt: _readDate(map, 'updatedAt'),
     );
   }
 }
