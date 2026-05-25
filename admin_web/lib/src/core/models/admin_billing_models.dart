@@ -73,6 +73,17 @@ String maskAdminBillingUrl(String? value) {
   return '${uri.scheme}://${uri.host}$suffix';
 }
 
+String maskAdminBillingIdentifier(String? value) {
+  final normalized = _normalized(value);
+  if (normalized == null) {
+    return 'NÃ£o informado';
+  }
+  if (normalized.length <= 8) {
+    return normalized;
+  }
+  return '${normalized.substring(0, 4)}...${normalized.substring(normalized.length - 4)}';
+}
+
 String _sanitizeString(String value) {
   final trimmed = value.trim();
   final lower = trimmed.toLowerCase();

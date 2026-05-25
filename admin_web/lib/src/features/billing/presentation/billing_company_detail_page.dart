@@ -543,7 +543,8 @@ class _BillingCompanyDetailPageState
   }
 }
 
-void _disposeDialogControllers(TextEditingController first, [
+void _disposeDialogControllers(
+  TextEditingController first, [
   TextEditingController? second,
 ]) {
   WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -644,10 +645,15 @@ class _BillingStatusSection extends StatelessWidget {
                   ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 8),
-                SelectableText(billing.providerSubscriptionId!),
+                SelectableText(
+                  billing.maskedProviderSubscriptionId ??
+                      maskAdminBillingIdentifier(
+                        billing.providerSubscriptionId,
+                      ),
+                ),
                 const SizedBox(height: 8),
                 Text(
-                  'Não copie automaticamente e não exponha ao owner.',
+                  'ID completo oculto por seguranca. Use o backend/admin auditado quando o identificador integral for indispensavel.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],

@@ -66,6 +66,45 @@ describe("operational local-first sync routes", () => {
     assert.equal((response.data as { code?: string }).code, "SYNC_DISABLED");
   });
 
+  it("delivers support commands with app context even when sync is disabled", async () => {
+    const fixture = await createFixture({ syncEnabled: false });
+    const command = await prisma.syncSupportCommand.create({
+      data: {
+        companyId: fixture.companyId,
+        deviceId: fixture.deviceId,
+        actorUserId: fixture.userId,
+        command: "REFRESH_SYNC_STATUS",
+        reason: "recalcular status local mesmo com sync bloqueado",
+        confirmationText: "RECALCULAR",
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+
+    const pull = await requestJson("GET", "/sync/support-commands", {
+      token: fixture.token,
+    });
+    const started = await requestJson(
+      "POST",
+      `/sync/support-commands/${command.id}/start`,
+      { token: fixture.token },
+    );
+
+    assert.equal(pull.status, 200);
+    assert.deepEqual(
+      (
+        pull.data as {
+          items: Array<{ id: string; command: string; status: string }>;
+        }
+      ).items.map((item) => [item.id, item.command, item.status]),
+      [[command.id, "REFRESH_SYNC_STATUS", "PENDING"]],
+    );
+    assert.equal(started.status, 200);
+    assert.equal(
+      (started.data as { command: { status: string } }).command.status,
+      "RUNNING",
+    );
+  });
+
   it("accepts valid sale and cashSession events", async () => {
     const fixture = await createFixture();
     const response = await push(fixture, [
@@ -2946,7 +2985,10 @@ describe("operational local-first sync routes", () => {
     assert.equal(diagnostic.clientType, "MOBILE_APP");
     assert.equal(diagnostic.appVersion, "2.1.0");
     assert.equal(diagnostic.platform, "android");
-    assert.doesNotMatch(JSON.stringify(diagnostic.safeDetails), /Bearer secret/);
+    assert.doesNotMatch(
+      JSON.stringify(diagnostic.safeDetails),
+      /Bearer secret/,
+    );
   });
 
   it("delivers support commands only to the matching device and records completion", async () => {

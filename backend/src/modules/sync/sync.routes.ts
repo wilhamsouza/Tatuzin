@@ -46,39 +46,6 @@ syncRouter.post(
   }),
 );
 
-syncRouter.use(requireSyncContext);
-
-syncRouter.get(
-  "/status",
-  asyncHandler(async (request, response) => {
-    const payload = await syncEventService.getStatus(request.appContext!);
-    response.json(payload);
-  }),
-);
-
-syncRouter.get(
-  "/pull",
-  validateQuery(syncPullQuerySchema),
-  asyncHandler(async (request, response) => {
-    const payload = await syncEventService.pull(
-      request.appContext!,
-      request.query as unknown as SyncPullQueryInput,
-    );
-    response.json(payload);
-  }),
-);
-
-syncRouter.post(
-  "/push",
-  asyncHandler(async (request, response) => {
-    const payload = await syncEventService.push(
-      request.appContext!,
-      request.body,
-    );
-    response.status(202).json(payload);
-  }),
-);
-
 syncRouter.get(
   "/support-commands",
   asyncHandler(async (request, response) => {
@@ -124,6 +91,39 @@ syncRouter.post(
       request.body as SyncSupportCommandFailInput,
     );
     response.json(payload);
+  }),
+);
+
+syncRouter.use(requireSyncContext);
+
+syncRouter.get(
+  "/status",
+  asyncHandler(async (request, response) => {
+    const payload = await syncEventService.getStatus(request.appContext!);
+    response.json(payload);
+  }),
+);
+
+syncRouter.get(
+  "/pull",
+  validateQuery(syncPullQuerySchema),
+  asyncHandler(async (request, response) => {
+    const payload = await syncEventService.pull(
+      request.appContext!,
+      request.query as unknown as SyncPullQueryInput,
+    );
+    response.json(payload);
+  }),
+);
+
+syncRouter.post(
+  "/push",
+  asyncHandler(async (request, response) => {
+    const payload = await syncEventService.push(
+      request.appContext!,
+      request.body,
+    );
+    response.status(202).json(payload);
   }),
 );
 

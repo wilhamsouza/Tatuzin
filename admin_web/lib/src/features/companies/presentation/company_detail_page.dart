@@ -608,7 +608,10 @@ class _DevicesTab extends StatelessWidget {
                   return DataRow(
                     cells: [
                       DataCell(
-                        Text(session.deviceLabel ?? session.clientInstanceId),
+                        Text(
+                          session.deviceLabel ??
+                              _maskIdentifier(session.clientInstanceId),
+                        ),
                       ),
                       DataCell(Text(_clientTypeLabel(session.clientType))),
                       DataCell(Text(session.platform ?? 'Nao informado')),
@@ -795,6 +798,14 @@ String _sessionStatusLabel(String status) {
     default:
       return status;
   }
+}
+
+String _maskIdentifier(String value) {
+  final trimmed = value.trim();
+  if (trimmed.length <= 10) {
+    return trimmed;
+  }
+  return '${trimmed.substring(0, 4)}...${trimmed.substring(trimmed.length - 4)}';
 }
 
 String _syncStatusLabel(String status) {

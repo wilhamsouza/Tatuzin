@@ -142,7 +142,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Dado interno de plataforma'), findsOneWidget);
-    expect(find.textContaining('preapproval-secret-full-id'), findsOneWidget);
+    expect(find.text('pre_..._7890'), findsWidgets);
+    expect(find.textContaining('preapproval-secret-full-id'), findsNothing);
 
     await tester.tap(find.textContaining('payment.created'));
     await tester.pumpAndSettle();
