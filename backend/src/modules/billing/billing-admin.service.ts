@@ -130,12 +130,19 @@ export class BillingAdminService {
     ]);
 
     return {
-      company,
+      company: {
+        id: company.id,
+        name: company.name,
+        legalName: company.legalName,
+        slug: company.slug,
+        isActive: company.isActive,
+      },
       license:
-        company.license == null ? null : this.serializeLicense(company.license),
+        company.license == null
+          ? null
+          : this.serializeLicenseForEmergencyAudit(company.license),
       billing: {
         provider: company.license?.billingProvider ?? null,
-        providerSubscriptionId: company.license?.providerSubscriptionId ?? null,
         hasProviderSubscription:
           company.license?.providerSubscriptionId != null,
         maskedProviderSubscriptionId: maskProviderSubscriptionId(
@@ -1299,7 +1306,9 @@ export class BillingAdminService {
       maxDevices: license.maxDevices,
       syncEnabled: license.syncEnabled,
       billingProvider: license.billingProvider,
-      providerSubscriptionId: license.providerSubscriptionId,
+      maskedProviderSubscriptionId: maskProviderSubscriptionId(
+        license.providerSubscriptionId,
+      ),
       currentPeriodStart: license.currentPeriodStart?.toISOString() ?? null,
       currentPeriodEnd: license.currentPeriodEnd?.toISOString() ?? null,
       nextPaymentDate: license.nextPaymentDate?.toISOString() ?? null,
@@ -1453,7 +1462,7 @@ export class BillingAdminService {
       billingCycle: session.billingCycle,
       status: session.status,
       provider: session.provider,
-      providerReference: session.providerReference,
+      providerReference: maskProviderSubscriptionId(session.providerReference),
       checkoutUrl: maskUrl(session.checkoutUrl),
       sandboxCheckoutUrl: maskUrl(session.sandboxCheckoutUrl),
       expiresAt: session.expiresAt?.toISOString() ?? null,
@@ -1470,7 +1479,7 @@ export class BillingAdminService {
       companyId: event.companyId,
       provider: event.provider,
       eventType: event.eventType,
-      providerEventId: event.providerEventId,
+      providerEventId: maskProviderSubscriptionId(event.providerEventId),
       dedupeKey: event.dedupeKey,
       payload: sanitizeForAdmin(event.payload),
       status: event.status,

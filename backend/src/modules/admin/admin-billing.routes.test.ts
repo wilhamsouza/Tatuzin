@@ -231,7 +231,30 @@ describe("admin billing routes", () => {
     assert.equal(JSON.stringify(payload).includes("test-mercado-token"), false);
   });
 
-  it("returns internal status with full provider id and sanitized summaries", async () => {
+  it("keeps provider ids masked in general admin company and license payloads", async () => {
+    const fixture = await createFixture();
+
+    const companies = await requestJson("GET", "/admin/companies", {
+      token: fixture.adminToken,
+    });
+    assert.equal(companies.status, 200);
+
+    const licenses = await requestJson("GET", "/admin/licenses", {
+      token: fixture.adminToken,
+    });
+    assert.equal(licenses.status, 200);
+
+    const serialized = JSON.stringify({
+      companies: companies.data,
+      licenses: licenses.data,
+    });
+    assert.equal(serialized.includes(fixture.providerId), false);
+    assert.equal(serialized.includes("prea...9999"), true);
+    assert.equal(serialized.includes("providerSubscriptionId"), false);
+    assert.equal(serialized.includes("maskedProviderSubscriptionId"), true);
+  });
+
+  it("returns internal status with masked provider id and sanitized summaries", async () => {
     const fixture = await createFixture();
     await createSensitiveBillingArtifacts(fixture);
 
@@ -243,12 +266,23 @@ describe("admin billing routes", () => {
 
     assert.equal(response.status, 200);
     const payload = response.data as {
-      billing: { providerSubscriptionId: string | null };
+      billing: {
+        providerSubscriptionId?: string;
+        maskedProviderSubscriptionId: string | null;
+      };
+      license: { providerSubscriptionId?: string };
       events: Array<{ payload: Record<string, unknown> }>;
-      checkoutSessions: Array<{ checkoutUrl: string | null }>;
+      checkoutSessions: Array<{
+        checkoutUrl: string | null;
+        providerReference: string | null;
+      }>;
     };
-    assert.equal(payload.billing.providerSubscriptionId, fixture.providerId);
+    assert.equal(payload.billing.providerSubscriptionId, undefined);
+    assert.equal(payload.license.providerSubscriptionId, undefined);
+    assert.equal(payload.billing.maskedProviderSubscriptionId, "prea...9999");
+    assert.equal(payload.checkoutSessions[0]?.providerReference, "prea...9999");
     const serialized = JSON.stringify(payload);
+    assert.equal(serialized.includes(fixture.providerId), false);
     assert.equal(serialized.includes("Bearer secret"), false);
     assert.equal(serialized.includes("access-secret"), false);
     assert.equal(serialized.includes("signature-secret"), false);

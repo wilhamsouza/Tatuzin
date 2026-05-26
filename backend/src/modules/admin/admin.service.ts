@@ -25,6 +25,7 @@ import {
   roleFromMembershipRole,
 } from "../employees/employee-permissions";
 import { BillingService } from "../billing/billing.service";
+import { maskProviderSubscriptionId } from "../billing/billing-sanitizer";
 import {
   FEATURE_KEYS,
   PLAN_KEYS,
@@ -1729,7 +1730,9 @@ export class AdminService {
       maxDevices: license.maxDevices,
       syncEnabled: license.syncEnabled,
       billingProvider: license.billingProvider,
-      providerSubscriptionId: license.providerSubscriptionId,
+      maskedProviderSubscriptionId: maskProviderSubscriptionId(
+        license.providerSubscriptionId,
+      ),
       currentPeriodStart: license.currentPeriodStart?.toISOString() ?? null,
       currentPeriodEnd: license.currentPeriodEnd?.toISOString() ?? null,
       nextPaymentDate: license.nextPaymentDate?.toISOString() ?? null,
@@ -1756,7 +1759,9 @@ export class AdminService {
       maxDevices: license.maxDevices,
       syncEnabled: license.syncEnabled,
       billingProvider: license.billingProvider,
-      providerSubscriptionId: license.providerSubscriptionId,
+      maskedProviderSubscriptionId: maskProviderSubscriptionId(
+        license.providerSubscriptionId,
+      ),
       currentPeriodStart: license.currentPeriodStart?.toISOString() ?? null,
       currentPeriodEnd: license.currentPeriodEnd?.toISOString() ?? null,
       nextPaymentDate: license.nextPaymentDate?.toISOString() ?? null,
