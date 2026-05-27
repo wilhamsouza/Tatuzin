@@ -95,6 +95,53 @@ describe("admin billing routes", () => {
     const otherCompany = await createFixture({ plan: "PRO" });
     await createAccessArtifacts(fixture);
     await createAccessArtifacts(otherCompany);
+    await prisma.adminAuditLog.createMany({
+      data: [
+        {
+          actorUserId: fixture.ownerUserId,
+          targetCompanyId: fixture.companyId,
+          action: "access.block",
+          details: {
+            reason: "Chamado acesso",
+            before: {
+              employeeProfileId: "employee-1",
+              userId: fixture.operatorUserId,
+              membershipId: fixture.operatorMembershipId,
+              name: "Operador",
+              email: "operador@teste.local",
+              status: "ACTIVE",
+              passwordHash: "hash-secret",
+            },
+            after: {
+              employeeProfileId: "employee-1",
+              userId: fixture.operatorUserId,
+              membershipId: fixture.operatorMembershipId,
+              name: "Operador",
+              email: "operador@teste.local",
+              status: "DISABLED",
+            },
+            metadata: {
+              source: "admin_web",
+              confirmationTextExpected: "BLOQUEAR",
+              Authorization: "Bearer secret",
+              headers: { authorization: "Bearer secret" },
+            },
+          },
+        },
+        {
+          actorUserId: fixture.ownerUserId,
+          targetCompanyId: fixture.companyId,
+          action: "license.updated",
+          details: { reason: "Nao deve aparecer na auditoria de acesso" },
+        },
+        {
+          actorUserId: otherCompany.ownerUserId,
+          targetCompanyId: otherCompany.companyId,
+          action: "access.reactivate",
+          details: { reason: "Outra empresa" },
+        },
+      ],
+    });
 
     const forbidden = await requestJson(
       "GET",
@@ -119,6 +166,14 @@ describe("admin billing routes", () => {
         invitationStatus: string | null;
       }>;
       devices: Array<{ clientInstanceId: string; refreshTokenHash?: string }>;
+      audit: Array<{
+        action: string;
+        reason: string | null;
+        target: string | null;
+        before: Record<string, unknown> | null;
+        after: Record<string, unknown> | null;
+        metadata: Record<string, unknown> | null;
+      }>;
     };
     assert.equal(payload.company.license.plan, "BASIC");
     assert.equal(payload.company.license.pendingPlan, "PRO");
@@ -139,12 +194,24 @@ describe("admin billing routes", () => {
       true,
     );
     assert.equal(payload.devices[0]?.refreshTokenHash, undefined);
+    assert.equal(payload.audit.length, 1);
+    assert.equal(payload.audit[0]?.action, "access.block");
+    assert.equal(payload.audit[0]?.reason, "Chamado acesso");
+    assert.equal(payload.audit[0]?.target, "Operador");
+    assert.equal(payload.audit[0]?.before?.status, "ACTIVE");
+    assert.equal(payload.audit[0]?.after?.status, "DISABLED");
     const serialized = JSON.stringify(payload);
     assert.equal(serialized.includes("passwordHash"), false);
     assert.equal(serialized.includes("resetToken"), false);
     assert.equal(serialized.includes("invite-token-secret"), false);
     assert.equal(serialized.includes("refresh-token-secret"), false);
     assert.equal(serialized.includes("Bearer secret"), false);
+    assert.equal(serialized.includes("Authorization"), false);
+    assert.equal(serialized.includes("headers"), false);
+    assert.equal(
+      serialized.includes("Nao deve aparecer na auditoria de acesso"),
+      false,
+    );
     assert.equal(serialized.includes(otherCompany.companyId), false);
     assert.equal(serialized.includes(otherCompany.ownerUserId), false);
     assert.equal(serialized.includes(otherCompany.operatorUserId), false);
@@ -1686,6 +1753,7 @@ async function requestJson(
         ? {}
         : { Authorization: `Bearer ${options.token}` }),
       ...(options?.body == null ? {} : { "Content-Type": "application/json" }),
+      ...(options?.headers ?? {}),
     },
     body: options?.body == null ? undefined : JSON.stringify(options.body),
   });

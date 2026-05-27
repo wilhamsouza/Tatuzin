@@ -358,10 +358,17 @@ class AdminCompanyAccessAuditEvent {
     required this.id,
     required this.source,
     required this.action,
+    required this.actorUserId,
     required this.actorName,
     required this.actorEmail,
     required this.target,
+    required this.targetEmail,
+    required this.targetUserId,
+    required this.targetEmployeeId,
+    required this.membershipId,
     required this.reason,
+    required this.before,
+    required this.after,
     required this.metadata,
     required this.createdAt,
   });
@@ -369,10 +376,17 @@ class AdminCompanyAccessAuditEvent {
   final String id;
   final String source;
   final String action;
+  final String? actorUserId;
   final String? actorName;
   final String? actorEmail;
   final String? target;
+  final String? targetEmail;
+  final String? targetUserId;
+  final String? targetEmployeeId;
+  final String? membershipId;
   final String? reason;
+  final Object? before;
+  final Object? after;
   final Object? metadata;
   final DateTime? createdAt;
 
@@ -381,12 +395,75 @@ class AdminCompanyAccessAuditEvent {
       id: _readString(map, 'id'),
       source: _readString(map, 'source'),
       action: _readString(map, 'action'),
+      actorUserId: _readOptionalString(map, 'actorUserId'),
       actorName: _readOptionalString(map, 'actorName'),
       actorEmail: _readOptionalString(map, 'actorEmail'),
       target: _readOptionalString(map, 'target'),
+      targetEmail: _readOptionalString(map, 'targetEmail'),
+      targetUserId: _readOptionalString(map, 'targetUserId'),
+      targetEmployeeId: _readOptionalString(map, 'targetEmployeeId'),
+      membershipId: _readOptionalString(map, 'membershipId'),
       reason: _readOptionalString(map, 'reason'),
+      before: sanitizeAdminBillingValue(map['before']),
+      after: sanitizeAdminBillingValue(map['after']),
       metadata: sanitizeAdminBillingValue(map['metadata']),
       createdAt: _readDate(map, 'createdAt'),
+    );
+  }
+}
+
+class AdminAccessActionDryRun {
+  const AdminAccessActionDryRun({
+    required this.allowed,
+    required this.expectedConfirmationText,
+    required this.summary,
+    required this.risks,
+    required this.blockers,
+    required this.currentAccess,
+    required this.proposedChange,
+  });
+
+  final bool allowed;
+  final String expectedConfirmationText;
+  final String summary;
+  final List<String> risks;
+  final List<String> blockers;
+  final Map<String, dynamic>? currentAccess;
+  final Map<String, dynamic>? proposedChange;
+
+  factory AdminAccessActionDryRun.fromMap(Map<String, dynamic> map) {
+    return AdminAccessActionDryRun(
+      allowed: map['allowed'] == true,
+      expectedConfirmationText:
+          _readOptionalString(map, 'expectedConfirmationText') ?? '',
+      summary: _readOptionalString(map, 'summary') ?? 'Sem resumo.',
+      risks: _readStringList(map, 'risks'),
+      blockers: _readStringList(map, 'blockers'),
+      currentAccess: _readSafeMap(map, 'currentAccess'),
+      proposedChange: _readSafeMap(map, 'proposedChange'),
+    );
+  }
+}
+
+class AdminAccessActionResult {
+  const AdminAccessActionResult({
+    required this.success,
+    required this.message,
+    required this.updatedAccess,
+    required this.auditId,
+  });
+
+  final bool success;
+  final String? message;
+  final Map<String, dynamic>? updatedAccess;
+  final String? auditId;
+
+  factory AdminAccessActionResult.fromMap(Map<String, dynamic> map) {
+    return AdminAccessActionResult(
+      success: map['success'] == true,
+      message: _readOptionalString(map, 'message'),
+      updatedAccess: _readSafeMap(map, 'updatedAccess'),
+      auditId: _readOptionalString(map, 'auditId'),
     );
   }
 }
@@ -397,6 +474,14 @@ List<Map<String, dynamic>> _readList(Map<String, dynamic> map, String key) {
     return const <Map<String, dynamic>>[];
   }
   return value.whereType<Map<String, dynamic>>().toList(growable: false);
+}
+
+Map<String, dynamic>? _readSafeMap(Map<String, dynamic> map, String key) {
+  final sanitized = sanitizeAdminBillingValue(map[key]);
+  if (sanitized is Map) {
+    return Map<String, dynamic>.from(sanitized);
+  }
+  return null;
 }
 
 Map<String, dynamic> _readMap(Map<String, dynamic> map, String key) {

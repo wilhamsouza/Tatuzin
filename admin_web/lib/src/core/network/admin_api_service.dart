@@ -208,6 +208,78 @@ class AdminApiService {
     return AdminCompanyAccessSummary.fromMap(response);
   }
 
+  Future<AdminAccessActionDryRun> dryRunAccessBlock({
+    required String companyId,
+    required String targetId,
+    required String targetType,
+    required String reason,
+    String? note,
+  }) {
+    return _postAccessDryRun(
+      companyId: companyId,
+      targetId: targetId,
+      targetType: targetType,
+      action: 'block',
+      reason: reason,
+      note: note,
+    );
+  }
+
+  Future<AdminAccessActionResult> applyAccessBlock({
+    required String companyId,
+    required String targetId,
+    required String targetType,
+    required String reason,
+    required String confirmationText,
+    String? note,
+  }) {
+    return _postAccessAction(
+      companyId: companyId,
+      targetId: targetId,
+      targetType: targetType,
+      action: 'block',
+      reason: reason,
+      confirmationText: confirmationText,
+      note: note,
+    );
+  }
+
+  Future<AdminAccessActionDryRun> dryRunAccessReactivate({
+    required String companyId,
+    required String targetId,
+    required String targetType,
+    required String reason,
+    String? note,
+  }) {
+    return _postAccessDryRun(
+      companyId: companyId,
+      targetId: targetId,
+      targetType: targetType,
+      action: 'reactivate',
+      reason: reason,
+      note: note,
+    );
+  }
+
+  Future<AdminAccessActionResult> applyAccessReactivate({
+    required String companyId,
+    required String targetId,
+    required String targetType,
+    required String reason,
+    required String confirmationText,
+    String? note,
+  }) {
+    return _postAccessAction(
+      companyId: companyId,
+      targetId: targetId,
+      targetType: targetType,
+      action: 'reactivate',
+      reason: reason,
+      confirmationText: confirmationText,
+      note: note,
+    );
+  }
+
   Future<AdminCompanySyncHealth> fetchCompanySyncHealth(
     String companyId,
   ) async {
@@ -1442,6 +1514,86 @@ class AdminApiService {
     return <String, dynamic>{
       'companyId': normalizedCompanyId,
       'reason': normalizedReason,
+    };
+  }
+
+  Future<AdminAccessActionDryRun> _postAccessDryRun({
+    required String companyId,
+    required String targetId,
+    required String targetType,
+    required String action,
+    required String reason,
+    String? note,
+  }) async {
+    final response = await _apiClient.postJson(
+      '/admin/companies/${companyId.trim()}/access/${targetId.trim()}/$action/dry-run',
+      accessToken: await _readRequiredToken(),
+      body: _accessActionBody(
+        targetType: targetType,
+        reason: reason,
+        note: note,
+      ),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou o dry-run de acesso no formato esperado.',
+      );
+    }
+    return AdminAccessActionDryRun.fromMap(response);
+  }
+
+  Future<AdminAccessActionResult> _postAccessAction({
+    required String companyId,
+    required String targetId,
+    required String targetType,
+    required String action,
+    required String reason,
+    required String confirmationText,
+    String? note,
+  }) async {
+    final response = await _apiClient.postJson(
+      '/admin/companies/${companyId.trim()}/access/${targetId.trim()}/$action',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        ..._accessActionBody(
+          targetType: targetType,
+          reason: reason,
+          note: note,
+        ),
+        'confirmationText': confirmationText.trim(),
+      },
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou a acao de acesso no formato esperado.',
+      );
+    }
+    return AdminAccessActionResult.fromMap(response);
+  }
+
+  Map<String, dynamic> _accessActionBody({
+    required String targetType,
+    required String reason,
+    String? note,
+  }) {
+    final normalizedTargetType = targetType.trim().toUpperCase();
+    final normalizedReason = reason.trim();
+    if (normalizedTargetType.isEmpty) {
+      throw const AdminApiException(
+        message: 'Tipo de alvo obrigatorio para a acao de acesso.',
+        code: 'ADMIN_ACCESS_TARGET_TYPE_REQUIRED',
+      );
+    }
+    if (normalizedReason.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o motivo da acao administrativa.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    return <String, dynamic>{
+      'targetType': normalizedTargetType,
+      'reason': normalizedReason,
+      if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
     };
   }
 }

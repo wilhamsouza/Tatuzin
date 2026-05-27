@@ -117,7 +117,72 @@ type SyncObservedFeatureSnapshot = SyncObservedFeatureAggregate & {
   observationKind: "remote_mirror";
 };
 
+type AdminAccessTargetType = "USER" | "MEMBERSHIP" | "EMPLOYEE";
+
+type AdminAccessActionParams = {
+  companyId: string;
+  targetId: string;
+  targetType: AdminAccessTargetType;
+  reason: string;
+  note?: string | null;
+  actorUserId?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+};
+
+type AdminAccessApplyParams = AdminAccessActionParams & {
+  confirmationText: string;
+};
+
+type AdminAccessEmployeeTarget = Prisma.EmployeeProfileGetPayload<{
+  include: {
+    user: {
+      select: {
+        id: true;
+        name: true;
+        email: true;
+        isActive: true;
+        isPlatformAdmin: true;
+        mustChangePassword: true;
+        temporaryPasswordExpiresAt: true;
+      };
+    };
+    membership: {
+      select: {
+        id: true;
+        role: true;
+        isDefault: true;
+        createdAt: true;
+        updatedAt: true;
+      };
+    };
+  };
+}>;
+
 export class AdminService {
+  private readonly accessEmployeeInclude = {
+    user: {
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        isActive: true,
+        isPlatformAdmin: true,
+        mustChangePassword: true,
+        temporaryPasswordExpiresAt: true,
+      },
+    },
+    membership: {
+      select: {
+        id: true,
+        role: true,
+        isDefault: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    },
+  } satisfies Prisma.EmployeeProfileInclude;
+
   constructor(
     private readonly sessionService = new AuthSessionService(),
     private readonly billingService = new BillingService(),
@@ -237,6 +302,119 @@ export class AdminService {
     };
   }
 
+  async listDevices(query: AdminDevicesQueryInput) {
+    const { skip, take } = toPaginationParams(query);
+    const search = query.search?.trim();
+    const status =
+      query.status === "all" ? undefined : query.status.toUpperCase();
+
+    if (query.companyId != null) {
+      await this.requireCompany(query.companyId);
+    }
+
+    const devices = await prisma.companyDevice.findMany({
+      where: {
+        ...(query.companyId == null ? {} : { companyId: query.companyId }),
+        ...(status == null ? {} : { status: status as never }),
+        ...(search == null
+          ? {}
+          : {
+              OR: [
+                { id: { contains: search, mode: "insensitive" } },
+                { clientInstanceId: { contains: search, mode: "insensitive" } },
+                { deviceLabel: { contains: search, mode: "insensitive" } },
+                { platform: { contains: search, mode: "insensitive" } },
+                { appVersion: { contains: search, mode: "insensitive" } },
+                {
+                  company: {
+                    name: { contains: search, mode: "insensitive" },
+                  },
+                },
+                { user: { name: { contains: search, mode: "insensitive" } } },
+                { user: { email: { contains: search, mode: "insensitive" } } },
+              ],
+            }),
+      },
+      orderBy: [{ lastSeenAt: "desc" }, { createdAt: "desc" }],
+      take: 500,
+      include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        syncDiagnostic: true,
+      },
+    });
+
+    const sessions = await this.findSessionsForDevices(devices);
+    const sessionByDeviceKey = new Map<string, AdminDeviceInventorySession>();
+    for (const session of sessions) {
+      const key = `${session.companyId}:${session.clientInstanceId}`;
+      if (!sessionByDeviceKey.has(key)) {
+        sessionByDeviceKey.set(key, session);
+      }
+    }
+
+    const items = devices
+      .map((device) =>
+        this.toDeviceInventoryDto(
+          device,
+          sessionByDeviceKey.get(
+            `${device.companyId}:${device.clientInstanceId}`,
+          ) ?? null,
+        ),
+      )
+      .filter((device) =>
+        query.clientType === "all"
+          ? true
+          : device.clientType === query.clientType,
+      )
+      .filter((device) =>
+        query.attention === true
+          ? device.diagnostic != null &&
+            (device.diagnostic.pendingCount > 0 ||
+              device.diagnostic.failedCount > 0 ||
+              device.diagnostic.openConflictCount > 0)
+          : true,
+      );
+
+    return buildAdminListResponse({
+      items: items.slice(skip, skip + take),
+      page: query.page,
+      pageSize: query.pageSize,
+      total: items.length,
+      filters: {
+        companyId: query.companyId ?? null,
+        search: query.search ?? null,
+        clientType: query.clientType,
+        status: query.status,
+        attention: query.attention ?? null,
+      },
+      sort: { by: "lastSeenAt", direction: "desc" },
+    });
+  }
+
+  async listCompanySessions(companyId: string) {
+    await this.requireCompany(companyId);
+    const sessions = (await this.sessionService.listCompanySessions(companyId))
+      .map((session) => this.toAdminSessionDto(session));
+
+    return {
+      items: sessions,
+      count: sessions.length,
+    };
+  }
+
   async getCompanyAccessSummary(companyId: string) {
     const company = await prisma.company.findUnique({
       where: { id: companyId },
@@ -251,117 +429,101 @@ export class AdminService {
       );
     }
 
-    const [
-      memberships,
-      employeeProfiles,
-      sessions,
-      adminAuditLogs,
-      sessionAuditLogs,
-    ] = await prisma.$transaction([
-      prisma.membership.findMany({
-        where: { companyId },
-        orderBy: [{ role: "asc" }, { createdAt: "asc" }],
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              isActive: true,
-              isPlatformAdmin: true,
-              mustChangePassword: true,
-              temporaryPasswordExpiresAt: true,
-              createdAt: true,
-              updatedAt: true,
+    const [memberships, employeeProfiles, sessions, adminAuditLogs] =
+      await prisma.$transaction([
+        prisma.membership.findMany({
+          where: { companyId },
+          orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                isActive: true,
+                isPlatformAdmin: true,
+                mustChangePassword: true,
+                temporaryPasswordExpiresAt: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+            },
+            employeeProfiles: true,
+          },
+        }),
+        prisma.employeeProfile.findMany({
+          where: { companyId },
+          orderBy: [{ role: "asc" }, { name: "asc" }],
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                isActive: true,
+                isPlatformAdmin: true,
+                mustChangePassword: true,
+                temporaryPasswordExpiresAt: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+            },
+            membership: {
+              select: {
+                id: true,
+                role: true,
+                isDefault: true,
+                createdAt: true,
+                updatedAt: true,
+              },
             },
           },
-          employeeProfiles: true,
-        },
-      }),
-      prisma.employeeProfile.findMany({
-        where: { companyId },
-        orderBy: [{ role: "asc" }, { name: "asc" }],
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              isActive: true,
-              isPlatformAdmin: true,
-              mustChangePassword: true,
-              temporaryPasswordExpiresAt: true,
-              createdAt: true,
-              updatedAt: true,
+        }),
+        prisma.deviceSession.findMany({
+          where: { companyId },
+          orderBy: { lastSeenAt: "desc" },
+          take: 100,
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+            membership: {
+              select: {
+                id: true,
+                role: true,
+              },
             },
           },
-          membership: {
-            select: {
-              id: true,
-              role: true,
-              isDefault: true,
-              createdAt: true,
-              updatedAt: true,
+        }),
+        prisma.adminAuditLog.findMany({
+          where: {
+            targetCompanyId: companyId,
+            action: {
+              in: [
+                "access.block",
+                "access.reactivate",
+                "admin.access.block",
+                "admin.access.reactivate",
+              ],
             },
           },
-        },
-      }),
-      prisma.deviceSession.findMany({
-        where: { companyId },
-        orderBy: { lastSeenAt: "desc" },
-        take: 100,
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
+          orderBy: { createdAt: "desc" },
+          take: 20,
+          include: {
+            actorUser: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
             },
           },
-          membership: {
-            select: {
-              id: true,
-              role: true,
-            },
-          },
-        },
-      }),
-      prisma.adminAuditLog.findMany({
-        where: { targetCompanyId: companyId },
-        orderBy: { createdAt: "desc" },
-        take: 20,
-        include: {
-          actorUser: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-        },
-      }),
-      prisma.sessionAuditLog.findMany({
-        where: { companyId },
-        orderBy: { createdAt: "desc" },
-        take: 20,
-        include: {
-          actorUser: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-          subjectUser: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-        },
-      }),
-    ]);
+        }),
+      ]);
 
     const employeeByMembershipId = new Map(
       employeeProfiles
@@ -526,32 +688,158 @@ export class AdminService {
         operator: defaultPermissionsForRole("CASHIER").includes(permission),
       })),
       devices: deviceDtos,
-      audit: [
-        ...adminAuditLogs.map((event) => ({
-          id: event.id,
-          source: "admin",
-          action: event.action,
-          actorName: event.actorUser.name,
-          actorEmail: event.actorUser.email,
-          target: company.name,
-          reason: null,
-          metadata: this.sanitizeAuditDetails(event.details),
-          createdAt: event.createdAt.toISOString(),
-        })),
-        ...sessionAuditLogs.map((event) => ({
-          id: event.id,
-          source: "session",
-          action: event.action,
-          actorName: event.actorUser?.name ?? null,
-          actorEmail: event.actorUser?.email ?? null,
-          target: event.subjectUser?.name ?? company.name,
-          reason: null,
-          metadata: this.sanitizeAuditDetails(event.details),
-          createdAt: event.createdAt.toISOString(),
-        })),
-      ]
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-        .slice(0, 20),
+      audit: adminAuditLogs.map((event) =>
+        this.serializeAccessAuditLog(event, company.name),
+      ),
+    };
+  }
+
+  async dryRunAccessBlock(input: AdminAccessActionParams) {
+    return this.buildAccessActionDryRun(input, "block");
+  }
+
+  async dryRunAccessReactivate(input: AdminAccessActionParams) {
+    return this.buildAccessActionDryRun(input, "reactivate");
+  }
+
+  async applyAccessBlock(input: AdminAccessApplyParams) {
+    if (input.confirmationText.trim() !== "BLOQUEAR") {
+      throw new AppError(
+        "Digite BLOQUEAR para liberar a confirmacao.",
+        422,
+        "ADMIN_CONFIRMATION_INVALID",
+      );
+    }
+    const validation = await this.buildAccessActionDryRun(input, "block");
+    if (!validation.allowed) {
+      throw new AppError(
+        "Bloqueio de acesso operacional nao permitido para este alvo.",
+        409,
+        "ADMIN_ACCESS_ACTION_BLOCKED",
+        { blockers: validation.blockers },
+      );
+    }
+    const employeeProfileId = validation.currentAccess?.employeeProfileId;
+    if (
+      typeof employeeProfileId !== "string" ||
+      employeeProfileId.length === 0
+    ) {
+      throw new AppError(
+        "Alvo de acesso nao encontrado nesta empresa.",
+        404,
+        "ADMIN_ACCESS_TARGET_NOT_FOUND",
+      );
+    }
+    const actorUserId = this.requireAdminActor(input.actorUserId);
+
+    const now = new Date();
+    const result = await prisma.$transaction(async (transaction) => {
+      const current = await transaction.employeeProfile.findUniqueOrThrow({
+        where: { id: employeeProfileId },
+        include: this.accessEmployeeInclude,
+      });
+      const before = this.serializeAccessEmployee(current);
+      const updated = await transaction.employeeProfile.update({
+        where: { id: current.id },
+        data: {
+          status: "DISABLED",
+          disabledAt: current.disabledAt ?? now,
+          updatedByUserId: actorUserId,
+        },
+        include: this.accessEmployeeInclude,
+      });
+      const after = this.serializeAccessEmployee(updated);
+      const audit = await transaction.adminAuditLog.create({
+        data: {
+          actorUserId,
+          targetCompanyId: input.companyId,
+          action: "access.block",
+          details: this.buildAccessAuditDetails({
+            input,
+            before,
+            after,
+            confirmationTextExpected: "BLOQUEAR",
+          }),
+        },
+      });
+      return { updated, audit };
+    });
+
+    return {
+      success: true,
+      message: "Acesso operacional bloqueado com seguranca.",
+      updatedAccess: this.serializeAccessEmployee(result.updated),
+      auditId: result.audit.id,
+    };
+  }
+
+  async applyAccessReactivate(input: AdminAccessApplyParams) {
+    if (input.confirmationText.trim() !== "REATIVAR") {
+      throw new AppError(
+        "Digite REATIVAR para liberar a confirmacao.",
+        422,
+        "ADMIN_CONFIRMATION_INVALID",
+      );
+    }
+    const validation = await this.buildAccessActionDryRun(input, "reactivate");
+    if (!validation.allowed) {
+      throw new AppError(
+        "Reativacao de acesso operacional nao permitida para este alvo.",
+        409,
+        "ADMIN_ACCESS_ACTION_BLOCKED",
+        { blockers: validation.blockers },
+      );
+    }
+    const employeeProfileId = validation.currentAccess?.employeeProfileId;
+    if (
+      typeof employeeProfileId !== "string" ||
+      employeeProfileId.length === 0
+    ) {
+      throw new AppError(
+        "Alvo de acesso nao encontrado nesta empresa.",
+        404,
+        "ADMIN_ACCESS_TARGET_NOT_FOUND",
+      );
+    }
+    const actorUserId = this.requireAdminActor(input.actorUserId);
+
+    const result = await prisma.$transaction(async (transaction) => {
+      const current = await transaction.employeeProfile.findUniqueOrThrow({
+        where: { id: employeeProfileId },
+        include: this.accessEmployeeInclude,
+      });
+      const before = this.serializeAccessEmployee(current);
+      const updated = await transaction.employeeProfile.update({
+        where: { id: current.id },
+        data: {
+          status: "ACTIVE",
+          disabledAt: null,
+          updatedByUserId: actorUserId,
+        },
+        include: this.accessEmployeeInclude,
+      });
+      const after = this.serializeAccessEmployee(updated);
+      const audit = await transaction.adminAuditLog.create({
+        data: {
+          actorUserId,
+          targetCompanyId: input.companyId,
+          action: "access.reactivate",
+          details: this.buildAccessAuditDetails({
+            input,
+            before,
+            after,
+            confirmationTextExpected: "REATIVAR",
+          }),
+        },
+      });
+      return { updated, audit };
+    });
+
+    return {
+      success: true,
+      message: "Acesso operacional reativado com seguranca.",
+      updatedAccess: this.serializeAccessEmployee(result.updated),
+      auditId: result.audit.id,
     };
   }
 
@@ -657,6 +945,429 @@ export class AdminService {
       return null;
     }
     return sanitizeAdminAccessValue(value);
+  }
+
+  private serializeAccessAuditLog(
+    event: Prisma.AdminAuditLogGetPayload<{
+      include: {
+        actorUser: {
+          select: {
+            id: true;
+            name: true;
+            email: true;
+          };
+        };
+      };
+    }>,
+    fallbackTarget: string,
+  ) {
+    const details = this.sanitizeAuditDetails(event.details);
+    const detailsObject =
+      details != null && typeof details === "object" && !Array.isArray(details)
+        ? (details as Record<string, unknown>)
+        : {};
+    const before = this.readAuditObject(detailsObject.before);
+    const after = this.readAuditObject(detailsObject.after);
+    const metadata = this.readAuditObject(detailsObject.metadata);
+    const target = after ?? before ?? {};
+
+    return {
+      id: event.id,
+      source: "admin",
+      action: event.action,
+      actorUserId: event.actorUser.id,
+      actorName: event.actorUser.name,
+      actorEmail: event.actorUser.email,
+      target: this.readAuditString(target.name) ?? fallbackTarget,
+      targetEmail: this.readAuditString(target.email),
+      targetUserId: this.readAuditString(target.userId),
+      targetEmployeeId: this.readAuditString(target.employeeProfileId),
+      membershipId: this.readAuditString(target.membershipId),
+      reason: this.readAuditString(detailsObject.reason),
+      before,
+      after,
+      metadata,
+      createdAt: event.createdAt.toISOString(),
+    };
+  }
+
+  private readAuditObject(value: unknown) {
+    return value != null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  }
+
+  private readAuditString(value: unknown) {
+    return typeof value === "string" && value.trim().length > 0 ? value : null;
+  }
+
+  private async buildAccessActionDryRun(
+    input: AdminAccessActionParams,
+    action: "block" | "reactivate",
+  ) {
+    const resolved = await this.resolveAccessActionTarget(input);
+    const blockers = [
+      ...resolved.blockers,
+      ...(action === "block"
+        ? await this.validateAccessBlock(resolved.target)
+        : this.validateAccessReactivate(resolved.company, resolved.target)),
+    ];
+    const currentAccess =
+      resolved.target == null
+        ? null
+        : this.serializeAccessEmployee(resolved.target);
+    const expectedConfirmationText =
+      action === "block" ? "BLOQUEAR" : "REATIVAR";
+    const proposedStatus = action === "block" ? "DISABLED" : "ACTIVE";
+
+    return {
+      allowed: blockers.length === 0,
+      expectedConfirmationText,
+      summary:
+        action === "block"
+          ? "Bloquear acesso operacional desativa o perfil de funcionario nesta empresa."
+          : "Reativar acesso operacional habilita novamente o perfil nesta empresa.",
+      risks:
+        action === "block"
+          ? [
+              "O usuario perde acesso operacional nas rotas protegidas pelo contexto da empresa.",
+              "Esta acao nao revoga sessoes ou JWT nesta fase.",
+              "Esta acao nao apaga vendas, pedidos, estoque ou historico.",
+              "Esta acao nao remove o usuario da empresa.",
+              "Esta acao nao altera senha, papel ou permissoes.",
+            ]
+          : [
+              "O usuario voltara a ter acesso operacional conforme papel e permissoes existentes.",
+              "Esta acao nao cria nova sessao e nao altera credenciais.",
+              "Esta acao nao altera papel.",
+              "Esta acao nao altera permissoes.",
+              "Esta acao nao altera senha.",
+            ],
+      blockers,
+      currentAccess,
+      proposedChange:
+        currentAccess == null
+          ? null
+          : {
+              field: "EmployeeProfile.status",
+              statusBefore: currentAccess.status,
+              statusAfter: proposedStatus,
+              disabledAtAfter: action === "block" ? "now" : null,
+            },
+    };
+  }
+
+  private async resolveAccessActionTarget(input: AdminAccessActionParams) {
+    const company = await prisma.company.findUnique({
+      where: { id: input.companyId },
+      include: { license: true },
+    });
+    if (company == null) {
+      throw new AppError(
+        "Empresa nao encontrada.",
+        404,
+        "ADMIN_COMPANY_NOT_FOUND",
+      );
+    }
+
+    let target: AdminAccessEmployeeTarget | null = null;
+    if (input.targetType === "EMPLOYEE") {
+      target = await prisma.employeeProfile.findUnique({
+        where: { id: input.targetId },
+        include: this.accessEmployeeInclude,
+      });
+      if (target != null && target.companyId !== input.companyId) {
+        return {
+          company,
+          target: null,
+          blockers: ["Alvo de acesso nao pertence a esta empresa."],
+        };
+      }
+    } else if (input.targetType === "MEMBERSHIP") {
+      target = await prisma.employeeProfile.findFirst({
+        where: {
+          companyId: input.companyId,
+          membershipId: input.targetId,
+        },
+        include: this.accessEmployeeInclude,
+      });
+    } else {
+      target = await prisma.employeeProfile.findFirst({
+        where: {
+          companyId: input.companyId,
+          userId: input.targetId,
+        },
+        include: this.accessEmployeeInclude,
+      });
+    }
+
+    return {
+      company,
+      target,
+      blockers:
+        target == null
+          ? [
+              "Alvo de acesso nao encontrado nesta empresa ou sem EmployeeProfile vinculado.",
+            ]
+          : [],
+    };
+  }
+
+  private async validateAccessBlock(target: AdminAccessEmployeeTarget | null) {
+    const blockers: string[] = [];
+    if (target == null) {
+      return blockers;
+    }
+    if (this.isProtectedOwner(target)) {
+      blockers.push("OWNER protegido nao pode ser bloqueado por esta acao.");
+      const activeOwners = await prisma.membership.count({
+        where: {
+          companyId: target.companyId,
+          role: "OWNER",
+          user: { isActive: true },
+        },
+      });
+      if (activeOwners <= 1) {
+        blockers.push("Nao e permitido bloquear o ultimo OWNER ativo.");
+      }
+    }
+    if (target.status === "DISABLED") {
+      blockers.push("Acesso ja esta bloqueado/desativado.");
+    }
+    return blockers;
+  }
+
+  private validateAccessReactivate(
+    company: { license: { plan: string } | null },
+    target: AdminAccessEmployeeTarget | null,
+  ) {
+    const blockers: string[] = [];
+    if (target == null) {
+      return blockers;
+    }
+    if (target.status !== "DISABLED") {
+      blockers.push("Acesso ja esta ativo ou nao esta bloqueado.");
+    }
+    if (target.userId == null || target.membershipId == null) {
+      blockers.push(
+        "Perfil sem User/Membership vinculado nao pode ser reativado.",
+      );
+    }
+    if (target.user != null && !target.user.isActive) {
+      blockers.push("Conta de usuario esta inativa globalmente.");
+    }
+    if (!this.isProtectedOwner(target)) {
+      const plan = company.license?.plan ?? "FREE";
+      if (!getPlanEntitlements(plan).features.employees) {
+        blockers.push(
+          "Plano ativo license.plan nao libera modulo Funcionarios para reativacao.",
+        );
+      }
+    }
+    return blockers;
+  }
+
+  private isProtectedOwner(target: AdminAccessEmployeeTarget) {
+    return target.role === "OWNER" || target.membership?.role === "OWNER";
+  }
+
+  private serializeAccessEmployee(target: AdminAccessEmployeeTarget) {
+    return {
+      employeeProfileId: target.id,
+      userId: target.userId,
+      membershipId: target.membershipId,
+      name: target.name,
+      email: target.email,
+      phone: target.phone,
+      employeeRole: target.role,
+      membershipRole: target.membership?.role ?? null,
+      status: target.status,
+      effectivePermissions: effectivePermissionsForEmployee(target),
+      isOwner: this.isProtectedOwner(target),
+      isProtectedOwner: this.isProtectedOwner(target),
+      hasUserAccount: target.userId != null,
+      userIsActive: target.user?.isActive ?? null,
+      disabledAt: target.disabledAt?.toISOString() ?? null,
+      createdAt: target.createdAt.toISOString(),
+      updatedAt: target.updatedAt.toISOString(),
+    };
+  }
+
+  private buildAccessAuditDetails(input: {
+    input: AdminAccessActionParams;
+    before: Record<string, unknown>;
+    after: Record<string, unknown>;
+    confirmationTextExpected: string;
+  }) {
+    return sanitizeAdminAccessValue({
+      reason: input.input.reason,
+      before: input.before,
+      after: input.after,
+      metadata: {
+        source: "admin_web",
+        note: input.input.note ?? null,
+        targetType: input.input.targetType,
+        targetId: input.input.targetId,
+        confirmationTextExpected: input.confirmationTextExpected,
+        ipAddress: input.input.ipAddress ?? null,
+        userAgent: input.input.userAgent ?? null,
+      },
+    }) as Prisma.InputJsonValue;
+  }
+
+  private async requireCompany(companyId: string) {
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { id: true },
+    });
+    if (company == null) {
+      throw new AppError(
+        "Empresa nao encontrada.",
+        404,
+        "ADMIN_COMPANY_NOT_FOUND",
+      );
+    }
+    return company;
+  }
+
+  private async findSessionsForDevices(devices: AdminDeviceInventoryDevice[]) {
+    if (devices.length === 0) {
+      return [];
+    }
+    const companyIds = [...new Set(devices.map((device) => device.companyId))];
+    const clientInstanceIds = [
+      ...new Set(devices.map((device) => device.clientInstanceId)),
+    ];
+    return prisma.deviceSession.findMany({
+      where: {
+        companyId: { in: companyIds },
+        clientInstanceId: { in: clientInstanceIds },
+      },
+      orderBy: [{ lastSeenAt: "desc" }, { createdAt: "desc" }],
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        membership: {
+          select: {
+            id: true,
+            role: true,
+          },
+        },
+      },
+    });
+  }
+
+  private toDeviceInventoryDto(
+    device: AdminDeviceInventoryDevice,
+    latestSession: AdminDeviceInventorySession | null,
+  ) {
+    const diagnostic = device.syncDiagnostic;
+    return {
+      id: device.id,
+      maskedDeviceId: this.maskAuditId(device.id),
+      companyId: device.companyId,
+      companyName: device.company.name,
+      companySlug: device.company.slug,
+      userId: device.userId,
+      userName: device.user.name,
+      userEmail: device.user.email,
+      membershipId: latestSession?.membershipId ?? null,
+      membershipRole: latestSession?.membership.role ?? null,
+      deviceLabel: device.deviceLabel,
+      clientType: latestSession?.clientType ?? "UNKNOWN",
+      clientInstanceId: this.maskAuditId(device.clientInstanceId),
+      platform: device.platform ?? latestSession?.platform ?? null,
+      appVersion: device.appVersion ?? latestSession?.appVersion ?? null,
+      status: device.status.toLowerCase(),
+      lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
+      createdAt: device.createdAt.toISOString(),
+      updatedAt: device.updatedAt.toISOString(),
+      approvedAt: device.approvedAt?.toISOString() ?? null,
+      revokedAt: device.revokedAt?.toISOString() ?? null,
+      revokedReason: device.revokedReason,
+      session:
+        latestSession == null
+          ? null
+          : {
+              id: this.maskAuditId(latestSession.id),
+              status: this.resolveDeviceSessionStatus(latestSession),
+              createdAt: latestSession.createdAt.toISOString(),
+              lastSeenAt: latestSession.lastSeenAt.toISOString(),
+              lastRefreshedAt:
+                latestSession.lastRefreshedAt?.toISOString() ?? null,
+              expiresAt: latestSession.refreshTokenExpiresAt.toISOString(),
+              revokedAt: latestSession.revokedAt?.toISOString() ?? null,
+              revokedReason: latestSession.revokedReason,
+            },
+      diagnostic:
+        diagnostic == null
+          ? null
+          : {
+              pendingCount: diagnostic.pendingCount,
+              failedCount: diagnostic.failedCount,
+              openConflictCount: diagnostic.openConflictCount,
+              resolvedConflictCount: diagnostic.resolvedConflictCount,
+              ignoredConflictCount: diagnostic.ignoredConflictCount,
+              lastLocalError: this.sanitizeNullableText(
+                diagnostic.lastLocalError,
+              ),
+              lastLocalErrorCode: this.sanitizeNullableText(
+                diagnostic.lastLocalErrorCode,
+              ),
+              lastLocalErrorEntity: this.sanitizeNullableText(
+                diagnostic.lastLocalErrorEntity,
+              ),
+              reportedAt: diagnostic.reportedAt.toISOString(),
+            },
+    };
+  }
+
+  private sanitizeNullableText(value: string | null) {
+    if (value == null) {
+      return null;
+    }
+    const sanitized = sanitizeAdminAccessValue(value);
+    return typeof sanitized === "string" ? sanitized : "[redacted]";
+  }
+
+  private resolveDeviceSessionStatus(session: {
+    revokedAt: Date | null;
+    refreshTokenExpiresAt: Date;
+  }) {
+    if (session.revokedAt != null) {
+      return "revoked";
+    }
+    if (session.refreshTokenExpiresAt.getTime() <= Date.now()) {
+      return "expired";
+    }
+    return "active";
+  }
+
+  private toAdminSessionDto<T extends { id: string; clientInstanceId: string }>(
+    session: T,
+  ): T {
+    return {
+      ...session,
+      id: this.maskAuditId(session.id),
+      clientInstanceId: this.maskAuditId(session.clientInstanceId),
+    };
+  }
+
+  private requireAdminActor(actorUserId: string | null | undefined) {
+    const normalized = actorUserId?.trim();
+    if (normalized == null || normalized.length === 0) {
+      throw new AppError(
+        "Sessao administrativa invalida.",
+        401,
+        "AUTH_REQUIRED",
+      );
+    }
+    return normalized;
   }
 
   async listLicenses(query: AdminLicensesQueryInput) {

@@ -22,6 +22,8 @@ import {
 import { BillingAdminService } from "../billing/billing-admin.service";
 import {
   type AdminAuditQueryInput,
+  type AdminAccessActionDryRunInput,
+  type AdminAccessActionInput,
   type AdminCompanySyncConflictsQueryInput,
   type AdminCompanySyncEventsQueryInput,
   type AdminCompanySyncIncidentsQueryInput,
@@ -53,6 +55,8 @@ import {
   adminCompanySyncEventsQuerySchema,
   adminCompanySyncIncidentsQuerySchema,
   adminAuditQuerySchema,
+  adminAccessActionDryRunSchema,
+  adminAccessActionSchema,
   adminCompaniesQuerySchema,
   adminLicensePatchSchema,
   adminLicensesQuerySchema,
@@ -133,6 +137,78 @@ adminRouter.get(
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
     const payload = await adminService.getCompanyAccessSummary(companyId);
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  "/companies/:companyId/access/:targetId/block/dry-run",
+  validateBody(adminAccessActionDryRunSchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const targetId = readParam(request.params.targetId);
+    const payload = await adminService.dryRunAccessBlock({
+      ...(request.body as AdminAccessActionDryRunInput),
+      companyId,
+      targetId,
+      actorUserId: request.auth!.userId,
+      ipAddress: request.ip,
+      userAgent: request.get("user-agent") ?? null,
+    });
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  "/companies/:companyId/access/:targetId/block",
+  validateBody(adminAccessActionSchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const targetId = readParam(request.params.targetId);
+    const payload = await adminService.applyAccessBlock({
+      ...(request.body as AdminAccessActionInput),
+      companyId,
+      targetId,
+      actorUserId: request.auth!.userId,
+      ipAddress: request.ip,
+      userAgent: request.get("user-agent") ?? null,
+    });
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  "/companies/:companyId/access/:targetId/reactivate/dry-run",
+  validateBody(adminAccessActionDryRunSchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const targetId = readParam(request.params.targetId);
+    const payload = await adminService.dryRunAccessReactivate({
+      ...(request.body as AdminAccessActionDryRunInput),
+      companyId,
+      targetId,
+      actorUserId: request.auth!.userId,
+      ipAddress: request.ip,
+      userAgent: request.get("user-agent") ?? null,
+    });
+    response.json(payload);
+  }),
+);
+
+adminRouter.post(
+  "/companies/:companyId/access/:targetId/reactivate",
+  validateBody(adminAccessActionSchema),
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const targetId = readParam(request.params.targetId);
+    const payload = await adminService.applyAccessReactivate({
+      ...(request.body as AdminAccessActionInput),
+      companyId,
+      targetId,
+      actorUserId: request.auth!.userId,
+      ipAddress: request.ip,
+      userAgent: request.get("user-agent") ?? null,
+    });
     response.json(payload);
   }),
 );

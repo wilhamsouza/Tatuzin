@@ -158,14 +158,51 @@ export const adminAuditQuerySchema = paginationQuerySchema.extend({
   companyId: optionalQueryString(80),
 });
 
+export const adminDevicesQuerySchema = paginationQuerySchema.extend({
+  companyId: optionalQueryString(80),
+  search: optionalQueryString(120),
+  clientType: z
+    .enum(["all", "MOBILE_APP", "ADMIN_WEB", "OWNER_WEB", "UNKNOWN"])
+    .default("all"),
+  status: z
+    .enum(["all", "active", "pending", "blocked", "revoked"])
+    .default("all"),
+  attention: optionalBooleanQuery,
+});
+
+const adminAccessTargetTypeSchema = z
+  .enum(["USER", "MEMBERSHIP", "EMPLOYEE", "user", "membership", "employee"])
+  .transform(
+    (value) => value.toUpperCase() as "USER" | "MEMBERSHIP" | "EMPLOYEE",
+  )
+  .default("EMPLOYEE");
+
+export const adminAccessActionDryRunSchema = z.object({
+  targetType: adminAccessTargetTypeSchema,
+  reason: requiredBodyString("Motivo", 1000),
+  note: z.string().trim().max(1000).optional(),
+});
+
+export const adminAccessActionSchema = adminAccessActionDryRunSchema.extend({
+  confirmationText: requiredBodyString("Texto de confirmacao", 40),
+});
+
+export type AdminAccessActionDryRunInput = z.infer<
+  typeof adminAccessActionDryRunSchema
+>;
+
+export type AdminAccessActionInput = z.infer<typeof adminAccessActionSchema>;
+
+export type AdminDevicesQueryInput = z.infer<typeof adminDevicesQuerySchema>;
+
 export const adminSyncQuerySchema = paginationQuerySchema.extend({
   search: optionalQueryString(120),
   licenseStatus: companyLicenseStatusFilterSchema,
   syncEnabled: optionalBooleanQuery,
   sortBy: z
-    .enum(['companyName', 'remoteRecordCount', 'licenseStatus'])
-    .default('companyName'),
-  sortDirection: sortDirectionSchema.default('asc'),
+    .enum(["companyName", "remoteRecordCount", "licenseStatus"])
+    .default("companyName"),
+  sortDirection: sortDirectionSchema.default("asc"),
 });
 
 export const adminSyncOperationalQuerySchema = adminSyncQuerySchema;
