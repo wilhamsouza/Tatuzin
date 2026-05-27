@@ -87,6 +87,38 @@ type AdminAuditEventDto = {
   details: Prisma.JsonValue | null;
 };
 
+type AdminGlobalAuditEntry = {
+  id: string;
+  source: "admin" | "billing_admin" | "session" | "sync_support";
+  category:
+    | "billing"
+    | "license"
+    | "access"
+    | "sync"
+    | "session"
+    | "system"
+    | "provider"
+    | "unknown";
+  action: string;
+  status: string | null;
+  companyId: string | null;
+  companyName: string | null;
+  actorUserId: string | null;
+  actorName: string | null;
+  actorEmail: string | null;
+  targetType: string | null;
+  targetId: string | null;
+  targetLabel: string | null;
+  reason: string | null;
+  summary: string;
+  createdAt: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  metadata: unknown;
+  before: unknown;
+  after: unknown;
+};
+
 type SessionAuditEventWithRelations = Prisma.SessionAuditLogGetPayload<{
   include: {
     actorUser: {
@@ -1650,6 +1682,211 @@ export class AdminService {
     });
   }
 
+  async getAuditLogs(query: AdminAuditQueryInput) {
+    const createdAt = this.auditDateRange(query);
+    const companyId = this.normalizedAuditFilter(query.companyId);
+    const actorUserId = this.normalizedAuditFilter(query.actorUserId);
+    const action = this.normalizedAuditFilter(query.action);
+    const source = this.normalizedAuditFilter(query.source)?.toLowerCase();
+    const category = this.normalizedAuditFilter(query.category)?.toLowerCase();
+    const status = this.normalizedAuditFilter(query.status)?.toUpperCase();
+    const search = this.normalizedAuditFilter(query.search)?.toLowerCase();
+    const maxFetch = Math.max(
+      200,
+      Math.min(query.page * query.pageSize + 400, 2000),
+    );
+
+    const adminWhere: Prisma.AdminAuditLogWhereInput = {
+      ...(action == null ? {} : { action }),
+      ...(actorUserId == null ? {} : { actorUserId }),
+      ...(companyId == null ? {} : { targetCompanyId: companyId }),
+      ...(createdAt == null ? {} : { createdAt }),
+    };
+    const billingWhere: Prisma.BillingAdminAuditLogWhereInput = {
+      ...(action == null ? {} : { action }),
+      ...(actorUserId == null ? {} : { actorUserId }),
+      ...(companyId == null ? {} : { companyId }),
+      ...(createdAt == null ? {} : { createdAt }),
+    };
+    const sessionWhere: Prisma.SessionAuditLogWhereInput = {
+      ...(action == null ? {} : { action }),
+      ...(actorUserId == null ? {} : { actorUserId }),
+      ...(companyId == null ? {} : { companyId }),
+      ...(createdAt == null ? {} : { createdAt }),
+    };
+    const syncCommandAction = this.auditSyncCommandFilter(action);
+    const includeSyncForAction =
+      action == null ||
+      action === "sync.support_command.created" ||
+      syncCommandAction != null;
+    const syncWhere: Prisma.SyncSupportCommandWhereInput = {
+      ...(syncCommandAction == null ? {} : { command: syncCommandAction }),
+      ...(status == null
+        ? {}
+        : {
+            status:
+              status as Prisma.EnumSyncSupportCommandStatusFilter["equals"],
+          }),
+      ...(actorUserId == null ? {} : { actorUserId }),
+      ...(companyId == null ? {} : { companyId }),
+      ...(createdAt == null ? {} : { createdAt }),
+    };
+
+    const [adminEvents, billingEvents, sessionEvents, syncCommands] =
+      await prisma.$transaction([
+        source != null && source !== "admin"
+          ? prisma.adminAuditLog.findMany({
+              where: { id: "__never__" },
+              include: {
+                actorUser: { select: { id: true, name: true, email: true } },
+                targetCompany: { select: { id: true, name: true, slug: true } },
+              },
+            })
+          : prisma.adminAuditLog.findMany({
+              where: adminWhere,
+              orderBy: { createdAt: "desc" },
+              take: maxFetch,
+              include: {
+                actorUser: { select: { id: true, name: true, email: true } },
+                targetCompany: { select: { id: true, name: true, slug: true } },
+              },
+            }),
+        source != null && source !== "billing_admin"
+          ? prisma.billingAdminAuditLog.findMany({
+              where: { id: "__never__" },
+              include: {
+                actorUser: { select: { id: true, name: true, email: true } },
+                company: { select: { id: true, name: true, slug: true } },
+              },
+            })
+          : prisma.billingAdminAuditLog.findMany({
+              where: billingWhere,
+              orderBy: { createdAt: "desc" },
+              take: maxFetch,
+              include: {
+                actorUser: { select: { id: true, name: true, email: true } },
+                company: { select: { id: true, name: true, slug: true } },
+              },
+            }),
+        source != null && source !== "session"
+          ? prisma.sessionAuditLog.findMany({
+              where: { id: "__never__" },
+              include: {
+                actorUser: { select: { id: true, name: true, email: true } },
+                subjectUser: { select: { id: true, name: true, email: true } },
+                company: { select: { id: true, name: true, slug: true } },
+              },
+            })
+          : prisma.sessionAuditLog.findMany({
+              where: sessionWhere,
+              orderBy: { createdAt: "desc" },
+              take: maxFetch,
+              include: {
+                actorUser: { select: { id: true, name: true, email: true } },
+                subjectUser: { select: { id: true, name: true, email: true } },
+                company: { select: { id: true, name: true, slug: true } },
+              },
+            }),
+        (source != null && source !== "sync_support") || !includeSyncForAction
+          ? prisma.syncSupportCommand.findMany({
+              where: { id: "__never__" },
+              include: {
+                actorUser: { select: { id: true, name: true, email: true } },
+                company: { select: { id: true, name: true, slug: true } },
+                device: {
+                  select: {
+                    id: true,
+                    deviceLabel: true,
+                    clientInstanceId: true,
+                  },
+                },
+              },
+            })
+          : prisma.syncSupportCommand.findMany({
+              where: syncWhere,
+              orderBy: { createdAt: "desc" },
+              take: maxFetch,
+              include: {
+                actorUser: { select: { id: true, name: true, email: true } },
+                company: { select: { id: true, name: true, slug: true } },
+                device: {
+                  select: {
+                    id: true,
+                    deviceLabel: true,
+                    clientInstanceId: true,
+                  },
+                },
+              },
+            }),
+      ]);
+
+    const entries: AdminGlobalAuditEntry[] = [
+      ...adminEvents.map((event) => this.toGlobalAdminAuditEntry(event)),
+      ...billingEvents.map((event) => this.toGlobalBillingAuditEntry(event)),
+      ...sessionEvents.map((event) => this.toGlobalSessionAuditEntry(event)),
+      ...syncCommands.map((command) =>
+        this.toGlobalSyncCommandAuditEntry(command),
+      ),
+    ]
+      .filter((entry) => category == null || entry.category === category)
+      .filter(
+        (entry) => status == null || entry.status?.toUpperCase() === status,
+      )
+      .filter(
+        (entry) =>
+          search == null || this.auditEntryMatchesSearch(entry, search),
+      )
+      .sort(
+        (left, right) =>
+          new Date(right.createdAt).getTime() -
+          new Date(left.createdAt).getTime(),
+      );
+
+    const start = (query.page - 1) * query.pageSize;
+    const items = entries.slice(start, start + query.pageSize);
+    const countsByCategory = entries.reduce<Record<string, number>>(
+      (acc, entry) => {
+        acc[entry.category] = (acc[entry.category] ?? 0) + 1;
+        return acc;
+      },
+      {},
+    );
+    const failures = entries.filter(
+      (entry) =>
+        ["FAILED", "ERROR", "EXPIRED"].includes(
+          (entry.status ?? "").toUpperCase(),
+        ) || entry.action.toLowerCase().includes("failed"),
+    ).length;
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+    return buildAdminListResponse({
+      items,
+      page: query.page,
+      pageSize: query.pageSize,
+      total: entries.length,
+      filters: {
+        companyId: companyId ?? null,
+        actorUserId: actorUserId ?? null,
+        category: category ?? null,
+        action: action ?? null,
+        source: source ?? null,
+        status: status ?? null,
+        search: query.search ?? null,
+        dateFrom: query.dateFrom ?? null,
+        dateTo: query.dateTo ?? null,
+      },
+      sort: { by: "createdAt", direction: "desc" },
+      overview: {
+        totalEvents: entries.length,
+        countsByCategory,
+        failures,
+        last7Days: entries.filter(
+          (entry) => new Date(entry.createdAt).getTime() >= sevenDaysAgo,
+        ).length,
+      },
+    });
+  }
+
   async getSyncSummary(query: AdminSyncQueryInput) {
     const where = this.buildCompanyWhere({
       search: query.search,
@@ -2398,6 +2635,303 @@ export class AdminService {
     };
   }
 
+  private toGlobalAdminAuditEntry(
+    event: Prisma.AdminAuditLogGetPayload<{
+      include: {
+        actorUser: { select: { id: true; name: true; email: true } };
+        targetCompany: { select: { id: true; name: true; slug: true } };
+      };
+    }>,
+  ): AdminGlobalAuditEntry {
+    const details = this.auditObject(this.sanitizeAuditDetails(event.details));
+    const before = this.auditObject(details?.before);
+    const after = this.auditObject(details?.after);
+    const metadata = this.auditObject(details?.metadata);
+    const target = after ?? before ?? {};
+    const reason = this.auditString(details?.reason);
+    const category = this.auditCategoryForAction(event.action, "admin");
+    return {
+      id: event.id,
+      source: "admin",
+      category,
+      action: event.action,
+      status: this.auditStatusForAction(event.action),
+      companyId: event.targetCompany?.id ?? null,
+      companyName: event.targetCompany?.name ?? null,
+      actorUserId: event.actorUser.id,
+      actorName: event.actorUser.name,
+      actorEmail: event.actorUser.email,
+      targetType: this.auditString(metadata?.targetType),
+      targetId:
+        this.auditString(metadata?.targetId) ??
+        this.auditString(target.employeeProfileId) ??
+        this.auditString(target.userId) ??
+        this.auditString(target.membershipId),
+      targetLabel:
+        this.auditString(target.name) ??
+        event.targetCompany?.name ??
+        "Plataforma",
+      reason,
+      summary: this.auditSummaryForAction(event.action, reason),
+      createdAt: event.createdAt.toISOString(),
+      ipAddress: this.auditString(metadata?.ipAddress),
+      userAgent: this.auditString(metadata?.userAgent),
+      metadata,
+      before,
+      after,
+    };
+  }
+
+  private toGlobalBillingAuditEntry(
+    event: Prisma.BillingAdminAuditLogGetPayload<{
+      include: {
+        actorUser: { select: { id: true; name: true; email: true } };
+        company: { select: { id: true; name: true; slug: true } };
+      };
+    }>,
+  ): AdminGlobalAuditEntry {
+    const before = sanitizeAdminAccessValue(event.before);
+    const after = sanitizeAdminAccessValue(event.after);
+    const metadata = this.auditObject(sanitizeAdminAccessValue(event.metadata));
+    return {
+      id: event.id,
+      source: "billing_admin",
+      category: this.auditCategoryForAction(event.action, "billing_admin"),
+      action: event.action,
+      status: this.auditStatusForAction(event.action),
+      companyId: event.company?.id ?? null,
+      companyName: event.company?.name ?? null,
+      actorUserId: event.actorUser.id,
+      actorName: event.actorUser.name,
+      actorEmail: event.actorUser.email,
+      targetType: "license",
+      targetId: event.company?.id ?? null,
+      targetLabel: event.company?.name ?? "Licenca",
+      reason: event.reason,
+      summary: this.auditSummaryForAction(event.action, event.reason),
+      createdAt: event.createdAt.toISOString(),
+      ipAddress: event.ipAddress,
+      userAgent: event.userAgent,
+      metadata,
+      before,
+      after,
+    };
+  }
+
+  private toGlobalSessionAuditEntry(
+    event: Prisma.SessionAuditLogGetPayload<{
+      include: {
+        actorUser: { select: { id: true; name: true; email: true } };
+        subjectUser: { select: { id: true; name: true; email: true } };
+        company: { select: { id: true; name: true; slug: true } };
+      };
+    }>,
+  ): AdminGlobalAuditEntry {
+    const details = sanitizeAdminAccessValue(event.details);
+    return {
+      id: event.id,
+      source: "session",
+      category: "session",
+      action: event.action,
+      status: this.auditStatusForAction(event.action),
+      companyId: event.company?.id ?? null,
+      companyName: event.company?.name ?? null,
+      actorUserId: event.actorUser?.id ?? null,
+      actorName: event.actorUser?.name ?? null,
+      actorEmail: event.actorUser?.email ?? null,
+      targetType: "session",
+      targetId: event.subjectUser?.id ?? event.deviceSessionId,
+      targetLabel: event.subjectUser?.name ?? "Sessao",
+      reason: null,
+      summary: this.auditSummaryForAction(event.action, null),
+      createdAt: event.createdAt.toISOString(),
+      ipAddress: this.auditString(this.auditObject(details)?.ipAddress),
+      userAgent: this.auditString(this.auditObject(details)?.userAgent),
+      metadata: details,
+      before: null,
+      after: null,
+    };
+  }
+
+  private toGlobalSyncCommandAuditEntry(
+    command: Prisma.SyncSupportCommandGetPayload<{
+      include: {
+        actorUser: { select: { id: true; name: true; email: true } };
+        company: { select: { id: true; name: true; slug: true } };
+        device: {
+          select: { id: true; deviceLabel: true; clientInstanceId: true };
+        };
+      };
+    }>,
+  ): AdminGlobalAuditEntry {
+    const metadata = sanitizeAdminAccessValue({
+      dryRunResult: command.dryRunResult,
+      payload: command.payload,
+      result: command.result,
+      errorMessage: command.errorMessage,
+      pickedUpAt: command.pickedUpAt?.toISOString() ?? null,
+      completedAt: command.completedAt?.toISOString() ?? null,
+      expiresAt: command.expiresAt.toISOString(),
+    });
+    return {
+      id: command.id,
+      source: "sync_support",
+      category: "sync",
+      action: "sync.support_command.created",
+      status: command.status,
+      companyId: command.company.id,
+      companyName: command.company.name,
+      actorUserId: command.actorUser.id,
+      actorName: command.actorUser.name,
+      actorEmail: command.actorUser.email,
+      targetType: "device",
+      targetId: command.deviceId,
+      targetLabel:
+        command.device.deviceLabel ??
+        this.maskAuditId(command.device.clientInstanceId),
+      reason: command.reason,
+      summary: `Comando de suporte: ${command.command}`,
+      createdAt: command.createdAt.toISOString(),
+      ipAddress: null,
+      userAgent: null,
+      metadata,
+      before: null,
+      after: null,
+    };
+  }
+
+  private normalizedAuditFilter(value: string | null | undefined) {
+    const normalized = value?.trim();
+    return normalized == null || normalized.length === 0 ? null : normalized;
+  }
+
+  private auditDateRange(query: AdminAuditQueryInput) {
+    const gte = this.parseAuditDate(query.dateFrom);
+    const lte = this.parseAuditDate(query.dateTo);
+    if (gte == null && lte == null) {
+      return null;
+    }
+    return {
+      ...(gte == null ? {} : { gte }),
+      ...(lte == null ? {} : { lte }),
+    };
+  }
+
+  private parseAuditDate(value: string | null | undefined) {
+    const normalized = this.normalizedAuditFilter(value);
+    if (normalized == null) {
+      return null;
+    }
+    const date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  private auditSyncCommandFilter(value: string | null) {
+    if (value == null || value === "sync.support_command.created") {
+      return null;
+    }
+    const commands = [
+      "RETRY_FAILED_SYNC_EVENTS",
+      "REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS",
+      "CLEAR_RESOLVED_CONFLICT_CACHE",
+      "FORCE_SYNC_PULL",
+      "REFRESH_SYNC_STATUS",
+    ] as const;
+    return commands.find((command) => command === value) ?? null;
+  }
+
+  private auditObject(value: unknown) {
+    return value != null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  }
+
+  private auditString(value: unknown) {
+    return typeof value === "string" && value.trim().length > 0 ? value : null;
+  }
+
+  private auditCategoryForAction(
+    action: string,
+    source: "admin" | "billing_admin",
+  ): AdminGlobalAuditEntry["category"] {
+    const normalized = action.toLowerCase();
+    if (normalized.includes("access")) {
+      return "access";
+    }
+    if (normalized.startsWith("license.")) {
+      return "license";
+    }
+    if (normalized.includes("billing")) {
+      return "billing";
+    }
+    if (
+      normalized.includes("sync") ||
+      normalized.includes("conflict") ||
+      normalized.includes("reprocess")
+    ) {
+      return "sync";
+    }
+    return source === "billing_admin" ? "billing" : "unknown";
+  }
+
+  private auditStatusForAction(action: string) {
+    const normalized = action.toLowerCase();
+    if (normalized.includes("failed") || normalized.includes("failure")) {
+      return "FAILED";
+    }
+    return "SUCCEEDED";
+  }
+
+  private auditSummaryForAction(action: string, reason: string | null) {
+    const labels: Record<string, string> = {
+      "license.emergency_extension": "Extensao emergencial",
+      "billing.reconcile": "Reconciliacao de billing",
+      "billing.reconcile.failed": "Falha na reconciliacao de billing",
+      "license.suspend": "Suspensao de licenca",
+      "license.reactivate": "Reativacao de licenca",
+      "access.block": "Bloqueio de acesso operacional",
+      "admin.access.block": "Bloqueio de acesso operacional",
+      "access.reactivate": "Reativacao de acesso operacional",
+      "admin.access.reactivate": "Reativacao de acesso operacional",
+      "sync.support_command.created": "Comando de suporte criado",
+    };
+    const label = labels[action] ?? action;
+    return reason == null ? label : `${label}: ${reason}`;
+  }
+
+  private auditEntryMatchesSearch(
+    entry: AdminGlobalAuditEntry,
+    search: string,
+  ) {
+    const haystack = [
+      entry.action,
+      entry.category,
+      entry.source,
+      entry.status,
+      entry.companyName,
+      entry.actorName,
+      entry.actorEmail,
+      entry.targetLabel,
+      entry.reason,
+      entry.summary,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(search);
+  }
+
+  private maskAuditId(value: string | null | undefined) {
+    const normalized = value?.trim();
+    if (normalized == null || normalized.length === 0) {
+      return "Nao informado";
+    }
+    if (normalized.length <= 12) {
+      return normalized;
+    }
+    return `${normalized.slice(0, 4)}...${normalized.slice(-4)}`;
+  }
+
   private toCompanySummary(company: CompanyWithCounts) {
     return {
       id: company.id,
@@ -2523,8 +3057,12 @@ function sanitizeAdminAccessValue(value: unknown): unknown {
       lower.startsWith("bearer ") ||
       lower.includes("token=") ||
       lower.includes("authorization") ||
+      lower.includes("bearer ") ||
       lower.includes("secret") ||
-      lower.includes("password")
+      lower.includes("password") ||
+      lower.includes("apikey") ||
+      lower.includes("api_key") ||
+      lower.includes("cvv")
     ) {
       return "[redacted]";
     }
@@ -2542,6 +3080,12 @@ function sanitizeAdminAccessValue(value: unknown): unknown {
         normalized.includes("secret") ||
         normalized.includes("authorization") ||
         normalized.includes("password") ||
+        normalized.includes("providerreference") ||
+        normalized.includes("providersubscriptionid") ||
+        normalized.includes("providereventid") ||
+        normalized.includes("apikey") ||
+        normalized.includes("card") ||
+        normalized.includes("cvv") ||
         normalized.includes("hash") ||
         normalized.includes("header")
       ) {

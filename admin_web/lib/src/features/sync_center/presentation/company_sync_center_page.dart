@@ -310,6 +310,12 @@ class _Header extends StatelessWidget {
             icon: const Icon(Icons.business_rounded),
             label: const Text('Voltar para empresa 360'),
           ),
+          OutlinedButton.icon(
+            onPressed: () =>
+                context.go('/audit?companyId=$companyId&category=sync'),
+            icon: const Icon(Icons.fact_check_rounded),
+            label: const Text('Ver auditoria global filtrada'),
+          ),
           FilledButton.tonalIcon(
             onPressed: onRefresh,
             icon: const Icon(Icons.refresh_rounded),

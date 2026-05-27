@@ -1,3 +1,5 @@
+import 'admin_billing_models.dart';
+
 class AdminSession {
   const AdminSession({
     required this.accessToken,
@@ -401,6 +403,12 @@ class AdminAuditQuery {
     this.action,
     this.actorUserId,
     this.companyId,
+    this.category,
+    this.source,
+    this.status,
+    this.search,
+    this.dateFrom,
+    this.dateTo,
   });
 
   final int page;
@@ -408,6 +416,12 @@ class AdminAuditQuery {
   final String? action;
   final String? actorUserId;
   final String? companyId;
+  final String? category;
+  final String? source;
+  final String? status;
+  final String? search;
+  final DateTime? dateFrom;
+  final DateTime? dateTo;
 
   Map<String, String> toQueryParameters() {
     return <String, String>{
@@ -1074,6 +1088,158 @@ class AdminAuditSummary {
       pagination: AdminPaginationMeta.fromPayload(map),
       filters: _readFiltersPayload(map),
       sort: AdminSortMeta.fromPayload(map),
+    );
+  }
+}
+
+class AdminAuditLogPage {
+  const AdminAuditLogPage({
+    required this.items,
+    required this.pagination,
+    required this.filters,
+    required this.sort,
+    required this.overview,
+  });
+
+  final List<AdminAuditEntry> items;
+  final AdminPaginationMeta pagination;
+  final Map<String, dynamic> filters;
+  final AdminSortMeta? sort;
+  final AdminAuditOverview overview;
+
+  factory AdminAuditLogPage.fromMap(Map<String, dynamic> map) {
+    return AdminAuditLogPage(
+      items: _readAdminItemMaps(
+        map,
+      ).map(AdminAuditEntry.fromMap).toList(growable: false),
+      pagination: AdminPaginationMeta.fromPayload(map),
+      filters: _readFiltersPayload(map),
+      sort: AdminSortMeta.fromPayload(map),
+      overview: AdminAuditOverview.fromMap(_readOverviewPayload(map)),
+    );
+  }
+}
+
+class AdminAuditOverview {
+  const AdminAuditOverview({
+    required this.totalEvents,
+    required this.countsByCategory,
+    required this.failures,
+    required this.last7Days,
+  });
+
+  final int totalEvents;
+  final Map<String, int> countsByCategory;
+  final int failures;
+  final int last7Days;
+
+  factory AdminAuditOverview.fromMap(Map<String, dynamic> map) {
+    return AdminAuditOverview(
+      totalEvents: _readOptionalInt(map, 'totalEvents') ?? 0,
+      countsByCategory: _readIntMap(map, 'countsByCategory'),
+      failures: _readOptionalInt(map, 'failures') ?? 0,
+      last7Days: _readOptionalInt(map, 'last7Days') ?? 0,
+    );
+  }
+}
+
+class AdminAuditEntry {
+  const AdminAuditEntry({
+    required this.id,
+    required this.source,
+    required this.category,
+    required this.action,
+    required this.status,
+    this.companyId,
+    this.companyName,
+    this.actorUserId,
+    this.actorName,
+    this.actorEmail,
+    this.targetType,
+    this.targetId,
+    this.targetLabel,
+    this.reason,
+    this.summary,
+    this.createdAt,
+    this.ipAddress,
+    this.userAgent,
+    this.metadata,
+    this.before,
+    this.after,
+  });
+
+  final String id;
+  final String source;
+  final String category;
+  final String action;
+  final String status;
+  final String? companyId;
+  final String? companyName;
+  final String? actorUserId;
+  final String? actorName;
+  final String? actorEmail;
+  final String? targetType;
+  final String? targetId;
+  final String? targetLabel;
+  final String? reason;
+  final String? summary;
+  final DateTime? createdAt;
+  final String? ipAddress;
+  final Object? userAgent;
+  final Object? metadata;
+  final Object? before;
+  final Object? after;
+
+  String get actorLabel {
+    final name = actorName?.trim();
+    final email = actorEmail?.trim();
+    if (name != null && name.isNotEmpty && email != null && email.isNotEmpty) {
+      return '$name - $email';
+    }
+    if (name != null && name.isNotEmpty) {
+      return name;
+    }
+    if (email != null && email.isNotEmpty) {
+      return email;
+    }
+    return 'Sistema';
+  }
+
+  String get companyLabel {
+    final name = companyName?.trim();
+    if (name != null && name.isNotEmpty) {
+      return name;
+    }
+    final id = companyId?.trim();
+    if (id != null && id.isNotEmpty) {
+      return id;
+    }
+    return 'Plataforma';
+  }
+
+  factory AdminAuditEntry.fromMap(Map<String, dynamic> map) {
+    return AdminAuditEntry(
+      id: _readString(map, 'id'),
+      source: _readString(map, 'source', fallback: 'unknown'),
+      category: _readString(map, 'category', fallback: 'unknown'),
+      action: _readString(map, 'action', fallback: 'unknown'),
+      status: _readString(map, 'status', fallback: 'info'),
+      companyId: _readOptionalString(map, 'companyId'),
+      companyName: _readOptionalString(map, 'companyName'),
+      actorUserId: _readOptionalString(map, 'actorUserId'),
+      actorName: _readOptionalString(map, 'actorName'),
+      actorEmail: _readOptionalString(map, 'actorEmail'),
+      targetType: _readOptionalString(map, 'targetType'),
+      targetId: _readOptionalString(map, 'targetId'),
+      targetLabel: _readOptionalString(map, 'targetLabel'),
+      reason: _readOptionalString(map, 'reason'),
+      summary: _readOptionalString(map, 'summary'),
+      createdAt: _readOptionalDateTime(map, 'createdAt'),
+      ipAddress: _readOptionalString(map, 'ipAddress'),
+      userAgent: sanitizeAdminBillingValue(map['userAgent']),
+      metadata: sanitizeAdminBillingValue(map['metadata']),
+      before: sanitizeAdminBillingValue(map['before']),
+      after: sanitizeAdminBillingValue(map['after']),
     );
   }
 }

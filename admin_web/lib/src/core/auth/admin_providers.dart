@@ -211,6 +211,15 @@ final adminAuditSummaryProvider =
       return ref.watch(adminApiServiceProvider).fetchAuditSummary(query: query);
     });
 
+final adminAuditLogsProvider =
+    FutureProvider.family<AdminAuditLogPage, AdminAuditQuery>((
+      ref,
+      query,
+    ) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref.watch(adminApiServiceProvider).fetchAuditLogs(query: query);
+    });
+
 final adminSyncSummaryProvider =
     FutureProvider.family<AdminSyncSummary, AdminSyncQuery>((ref, query) async {
       ref.watch(adminRefreshTickProvider);

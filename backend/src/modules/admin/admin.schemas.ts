@@ -1,31 +1,29 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 import {
   paginationQuerySchema,
   sortDirectionSchema,
-} from '../../shared/http/pagination';
+} from "../../shared/http/pagination";
 
 const optionalQueryString = (maxLength: number) =>
-  z
-    .union([z.string(), z.undefined()])
-    .transform((value) => {
-      if (value == null) {
-        return undefined;
-      }
-      const normalized = value.trim();
-      return normalized.length === 0 ? undefined : normalized.slice(0, maxLength);
-    });
+  z.union([z.string(), z.undefined()]).transform((value) => {
+    if (value == null) {
+      return undefined;
+    }
+    const normalized = value.trim();
+    return normalized.length === 0 ? undefined : normalized.slice(0, maxLength);
+  });
 
 const optionalBooleanQuery = z
-  .union([z.boolean(), z.enum(['true', 'false']), z.undefined()])
+  .union([z.boolean(), z.enum(["true", "false"]), z.undefined()])
   .transform((value) => {
     if (value === undefined) {
       return undefined;
     }
-    if (typeof value === 'boolean') {
+    if (typeof value === "boolean") {
       return value;
     }
-    return value === 'true';
+    return value === "true";
   });
 
 const nullableDateField = z

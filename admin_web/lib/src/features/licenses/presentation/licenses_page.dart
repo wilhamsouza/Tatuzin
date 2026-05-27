@@ -448,6 +448,14 @@ class _CompanyLicenseHeader extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () => context.go(
+              '/audit?companyId=${status.companyId}&category=billing',
+            ),
+            icon: const Icon(Icons.fact_check_rounded),
+            label: const Text('Ver auditoria global filtrada'),
+          ),
+          const SizedBox(height: 12),
           Text(
             'Billing avancado executa suporte operacional real. Use apenas para suporte operacional.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(

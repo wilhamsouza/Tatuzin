@@ -73,7 +73,7 @@ class _CompanyDetailContent extends ConsumerWidget {
                 _LicenseTab(company: company, license: license),
                 _DevicesTab(sessions: payload.sessions),
                 _EmployeesTab(memberships: payload.memberships),
-                const _AuditPlaceholder(),
+                _AuditPlaceholder(companyId: company.id),
               ],
             ),
           ),
@@ -679,17 +679,24 @@ class _EmployeesTab extends StatelessWidget {
 }
 
 class _AuditPlaceholder extends StatelessWidget {
-  const _AuditPlaceholder();
+  const _AuditPlaceholder({required this.companyId});
+
+  final String companyId;
 
   @override
   Widget build(BuildContext context) {
-    return const SingleChildScrollView(
+    return SingleChildScrollView(
       child: AdminSurface(
         title: 'Auditoria',
         subtitle: 'Historico administrativo por empresa.',
-        child: _EmptyState(
+        trailing: FilledButton.tonalIcon(
+          onPressed: () => context.go('/audit?companyId=$companyId'),
+          icon: const Icon(Icons.open_in_new_rounded),
+          label: const Text('Abrir auditoria global'),
+        ),
+        child: const _EmptyState(
           message:
-              'Use a tela Auditoria para consultar eventos globais. A trilha por empresa sera consolidada aqui em fase posterior.',
+              'Use a tela Auditoria para consultar eventos globais filtrados por empresa.',
         ),
       ),
     );

@@ -835,6 +835,22 @@ class AdminApiService {
     return AdminAuditSummary.fromMap(response);
   }
 
+  Future<AdminAuditLogPage> fetchAuditLogs({AdminAuditQuery? query}) async {
+    final response = await _apiClient.getJson(
+      '/admin/audit',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query?.toQueryParameters(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou a auditoria global no formato esperado.',
+      );
+    }
+
+    return AdminAuditLogPage.fromMap(response);
+  }
+
   Future<AdminSyncSummary> fetchSyncSummary({AdminSyncQuery? query}) async {
     final response = await _apiClient.getJson(
       '/admin/sync/summary',

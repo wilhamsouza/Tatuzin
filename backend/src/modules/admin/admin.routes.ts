@@ -565,6 +565,17 @@ adminRouter.post(
 );
 
 adminRouter.get(
+  "/audit",
+  validateQuery(adminAuditQuerySchema),
+  asyncHandler(async (request, response) => {
+    const summary = await adminService.getAuditLogs(
+      request.query as unknown as AdminAuditQueryInput,
+    );
+    response.json(summary);
+  }),
+);
+
+adminRouter.get(
   "/audit/summary",
   validateQuery(adminAuditQuerySchema),
   asyncHandler(async (request, response) => {

@@ -197,7 +197,8 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/audit',
-            builder: (context, state) => const AuditPage(),
+            builder: (context, state) =>
+                AuditPage(initialQueryParameters: state.uri.queryParameters),
           ),
 
           // Rotas legadas mantidas para compatibilidade interna, fora do menu.
