@@ -94,6 +94,21 @@ final adminCompanySyncHealthProvider =
           .fetchCompanySyncHealth(companyId);
     });
 
+final adminDevicesProvider =
+    FutureProvider.family<
+      AdminPaginatedResult<AdminDeviceInventoryItem>,
+      AdminDevicesQuery
+    >((ref, query) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref.watch(adminApiServiceProvider).fetchDevices(query: query);
+    });
+
+final adminCompanySessionsProvider =
+    FutureProvider.family<List<AdminDeviceSession>, String>((ref, companyId) {
+      ref.watch(adminRefreshTickProvider);
+      return ref.watch(adminApiServiceProvider).fetchCompanySessions(companyId);
+    });
+
 final adminCompanySyncDevicesProvider =
     FutureProvider.family<List<AdminCompanySyncDevice>, String>((
       ref,

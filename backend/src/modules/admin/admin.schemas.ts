@@ -64,36 +64,36 @@ const optionalDateQuery = z
   })
   .refine(
     (value) => value === undefined || !Number.isNaN(new Date(value).getTime()),
-    { message: 'Data invalida para filtro administrativo de sync.' },
+    { message: "Data invalida para filtro administrativo de sync." },
   )
   .transform((value) => (value === undefined ? undefined : new Date(value)));
 
 const syncEventStatusQuerySchema = z
   .enum([
-    'pending',
-    'accepted',
-    'duplicate',
-    'rejected',
-    'conflict',
-    'failed',
-    'PENDING',
-    'ACCEPTED',
-    'DUPLICATE',
-    'REJECTED',
-    'CONFLICT',
-    'FAILED',
+    "pending",
+    "accepted",
+    "duplicate",
+    "rejected",
+    "conflict",
+    "failed",
+    "PENDING",
+    "ACCEPTED",
+    "DUPLICATE",
+    "REJECTED",
+    "CONFLICT",
+    "FAILED",
   ])
   .transform((value) => value.toUpperCase())
   .optional();
 
 const syncConflictStatusQuerySchema = z
-  .enum(['open', 'resolved', 'ignored', 'OPEN', 'RESOLVED', 'IGNORED'])
+  .enum(["open", "resolved", "ignored", "OPEN", "RESOLVED", "IGNORED"])
   .transform((value) => value.toUpperCase())
   .optional();
 
 const adminSyncCenterStatusSchema = z
-  .enum(['all', 'requires_review', 'failed', 'conflict', 'healthy'])
-  .default('requires_review');
+  .enum(["all", "requires_review", "failed", "conflict", "healthy"])
+  .default("requires_review");
 
 const requiredBodyString = (field: string, maxLength = 1000) =>
   z
@@ -106,7 +106,7 @@ export const adminLicensePatchSchema = z
   .object({
     plan: z.string().trim().min(1).max(60).optional(),
     status: z
-      .enum(['trial', 'active', 'suspended', 'expired'])
+      .enum(["trial", "active", "suspended", "expired"])
       .transform((value) => value.toUpperCase())
       .optional(),
     startsAt: nullableDateField,
@@ -123,12 +123,12 @@ export const adminLicensePatchSchema = z
       value.maxDevices !== undefined ||
       value.syncEnabled !== undefined,
     {
-      message: 'Informe ao menos um campo para atualizar a licenca.',
+      message: "Informe ao menos um campo para atualizar a licenca.",
     },
   );
 
 const companyLicenseStatusFilterSchema = z
-  .enum(['trial', 'active', 'suspended', 'expired', 'without_license'])
+  .enum(["trial", "active", "suspended", "expired", "without_license"])
   .optional();
 
 export const adminCompaniesQuerySchema = paginationQuerySchema.extend({
@@ -136,17 +136,17 @@ export const adminCompaniesQuerySchema = paginationQuerySchema.extend({
   isActive: optionalBooleanQuery,
   licenseStatus: companyLicenseStatusFilterSchema,
   syncEnabled: optionalBooleanQuery,
-  sortBy: z.enum(['createdAt', 'updatedAt', 'name']).default('createdAt'),
+  sortBy: z.enum(["createdAt", "updatedAt", "name"]).default("createdAt"),
   sortDirection: sortDirectionSchema,
 });
 
 export const adminLicensesQuerySchema = paginationQuerySchema.extend({
   search: optionalQueryString(120),
-  status: z.enum(['trial', 'active', 'suspended', 'expired']).optional(),
+  status: z.enum(["trial", "active", "suspended", "expired"]).optional(),
   syncEnabled: optionalBooleanQuery,
   sortBy: z
-    .enum(['updatedAt', 'expiresAt', 'companyName', 'status'])
-    .default('updatedAt'),
+    .enum(["updatedAt", "expiresAt", "companyName", "status"])
+    .default("updatedAt"),
   sortDirection: sortDirectionSchema,
 });
 
@@ -154,6 +154,12 @@ export const adminAuditQuerySchema = paginationQuerySchema.extend({
   action: optionalQueryString(80),
   actorUserId: optionalQueryString(80),
   companyId: optionalQueryString(80),
+  category: optionalQueryString(40),
+  source: optionalQueryString(40),
+  status: optionalQueryString(40),
+  search: optionalQueryString(120),
+  dateFrom: optionalQueryString(40),
+  dateTo: optionalQueryString(40),
 });
 
 export const adminDevicesQuerySchema = paginationQuerySchema.extend({
@@ -227,11 +233,12 @@ export const adminCompanySyncIncidentsQuerySchema =
     to: optionalDateQuery,
   });
 
-export const adminSyncCenterCompaniesQuerySchema =
-  paginationQuerySchema.extend({
+export const adminSyncCenterCompaniesQuerySchema = paginationQuerySchema.extend(
+  {
     search: optionalQueryString(120),
     status: adminSyncCenterStatusSchema,
-  });
+  },
+);
 
 export const adminSyncCenterEventsQuerySchema = paginationQuerySchema.extend({
   status: syncEventStatusQuerySchema,
@@ -242,69 +249,74 @@ export const adminSyncCenterEventsQuerySchema = paginationQuerySchema.extend({
   endDate: optionalDateQuery,
 });
 
-export const adminSyncCenterConflictsQuerySchema =
-  paginationQuerySchema.extend({
+export const adminSyncCenterConflictsQuerySchema = paginationQuerySchema.extend(
+  {
     status: syncConflictStatusQuerySchema,
     code: optionalQueryString(120),
     entity: optionalQueryString(80),
-  });
+  },
+);
 
 export const adminSyncCenterDetailQuerySchema = z.object({
-  companyId: requiredBodyString('companyId', 80),
+  companyId: requiredBodyString("companyId", 80),
 });
 
 export const adminSyncCenterDryRunBodySchema = z.object({
-  companyId: requiredBodyString('companyId', 80),
-  reason: requiredBodyString('reason'),
+  companyId: requiredBodyString("companyId", 80),
+  reason: requiredBodyString("reason"),
 });
 
 export const adminSyncCenterReprocessBodySchema =
   adminSyncCenterDryRunBodySchema.extend({
-    confirmationText: z.literal('REPROCESSAR', {
+    confirmationText: z.literal("REPROCESSAR", {
       errorMap: () => ({
-        message: 'confirmationText precisa ser REPROCESSAR.',
+        message: "confirmationText precisa ser REPROCESSAR.",
       }),
     }),
   });
 
 export const adminSyncCenterArchiveBodySchema =
   adminSyncCenterDryRunBodySchema.extend({
-    confirmationText: requiredBodyString('confirmationText', 80),
+    confirmationText: requiredBodyString("confirmationText", 80),
     note: optionalQueryString(1000),
   });
 
 export const adminSyncCenterManualStockAdjustmentBodySchema =
   adminSyncCenterDryRunBodySchema.extend({
-    confirmationText: z.literal('AJUSTAR_ESTOQUE', {
+    confirmationText: z.literal("AJUSTAR_ESTOQUE", {
       errorMap: () => ({
-        message: 'confirmationText precisa ser AJUSTAR_ESTOQUE.',
+        message: "confirmationText precisa ser AJUSTAR_ESTOQUE.",
       }),
     }),
-    productId: requiredBodyString('productId', 80),
+    productId: requiredBodyString("productId", 80),
     productVariantId: optionalQueryString(80),
     quantityDeltaMil: z.coerce.number().int(),
   });
 
 export const adminSyncSupportCommandSchema = z.enum([
-  'RETRY_FAILED_SYNC_EVENTS',
-  'REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS',
-  'CLEAR_RESOLVED_CONFLICT_CACHE',
-  'FORCE_SYNC_PULL',
-  'REFRESH_SYNC_STATUS',
+  "RETRY_FAILED_SYNC_EVENTS",
+  "REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS",
+  "CLEAR_RESOLVED_CONFLICT_CACHE",
+  "FORCE_SYNC_PULL",
+  "REFRESH_SYNC_STATUS",
 ]);
 
 export const adminSyncSupportDryRunSchema = z.object({
   command: adminSyncSupportCommandSchema,
-  reason: requiredBodyString('reason'),
+  reason: requiredBodyString("reason"),
 });
 
-export const adminSyncSupportActionSchema = adminSyncSupportDryRunSchema.extend({
-  confirmationText: requiredBodyString('confirmationText', 80),
-  payload: z.record(z.unknown()).optional().default({}),
-});
+export const adminSyncSupportActionSchema = adminSyncSupportDryRunSchema.extend(
+  {
+    confirmationText: requiredBodyString("confirmationText", 80),
+    payload: z.record(z.unknown()).optional().default({}),
+  },
+);
 
 export type AdminLicensePatchInput = z.infer<typeof adminLicensePatchSchema>;
-export type AdminCompaniesQueryInput = z.infer<typeof adminCompaniesQuerySchema>;
+export type AdminCompaniesQueryInput = z.infer<
+  typeof adminCompaniesQuerySchema
+>;
 export type AdminLicensesQueryInput = z.infer<typeof adminLicensesQuerySchema>;
 export type AdminAuditQueryInput = z.infer<typeof adminAuditQuerySchema>;
 export type AdminSyncQueryInput = z.infer<typeof adminSyncQuerySchema>;

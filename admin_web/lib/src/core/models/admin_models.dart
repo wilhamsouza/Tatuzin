@@ -430,6 +430,12 @@ class AdminAuditQuery {
       if (_normalized(action) case final value?) 'action': value,
       if (_normalized(actorUserId) case final value?) 'actorUserId': value,
       if (_normalized(companyId) case final value?) 'companyId': value,
+      if (_normalized(category) case final value?) 'category': value,
+      if (_normalized(source) case final value?) 'source': value,
+      if (_normalized(status) case final value?) 'status': value,
+      if (_normalized(search) case final value?) 'search': value,
+      if (dateFrom != null) 'dateFrom': dateFrom!.toIso8601String(),
+      if (dateTo != null) 'dateTo': dateTo!.toIso8601String(),
     };
   }
 
@@ -440,12 +446,84 @@ class AdminAuditQuery {
         other.pageSize == pageSize &&
         other.action == action &&
         other.actorUserId == actorUserId &&
-        other.companyId == companyId;
+        other.companyId == companyId &&
+        other.category == category &&
+        other.source == source &&
+        other.status == status &&
+        other.search == search &&
+        other.dateFrom == dateFrom &&
+        other.dateTo == dateTo;
   }
 
   @override
-  int get hashCode =>
-      Object.hash(page, pageSize, action, actorUserId, companyId);
+  int get hashCode => Object.hash(
+    page,
+    pageSize,
+    action,
+    actorUserId,
+    companyId,
+    category,
+    source,
+    status,
+    search,
+    dateFrom,
+    dateTo,
+  );
+}
+
+class AdminDevicesQuery {
+  const AdminDevicesQuery({
+    this.page = 1,
+    this.pageSize = 20,
+    this.companyId,
+    this.search,
+    this.clientType = 'all',
+    this.status = 'all',
+    this.attention,
+  });
+
+  final int page;
+  final int pageSize;
+  final String? companyId;
+  final String? search;
+  final String clientType;
+  final String status;
+  final bool? attention;
+
+  Map<String, String> toQueryParameters() {
+    return <String, String>{
+      'page': '$page',
+      'pageSize': '$pageSize',
+      if (_normalized(companyId) case final value?) 'companyId': value,
+      if (_normalized(search) case final value?) 'search': value,
+      if (clientType != 'all') 'clientType': clientType,
+      if (status != 'all') 'status': status,
+      if (attention != null) 'attention': '$attention',
+    };
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is AdminDevicesQuery &&
+        other.page == page &&
+        other.pageSize == pageSize &&
+        other.companyId == companyId &&
+        other.search == search &&
+        other.clientType == clientType &&
+        other.status == status &&
+        other.attention == attention;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    page,
+    pageSize,
+    companyId,
+    search,
+    clientType,
+    status,
+    attention,
+  );
 }
 
 class AdminSyncQuery {
@@ -871,6 +949,174 @@ class AdminDeviceSession {
       'revokedAt': revokedAt?.toIso8601String(),
       'revokedReason': revokedReason,
     };
+  }
+}
+
+class AdminDeviceInventoryItem {
+  const AdminDeviceInventoryItem({
+    required this.id,
+    required this.maskedDeviceId,
+    required this.companyId,
+    required this.companyName,
+    required this.companySlug,
+    required this.userId,
+    required this.userName,
+    required this.userEmail,
+    required this.membershipId,
+    required this.membershipRole,
+    required this.deviceLabel,
+    required this.clientType,
+    required this.clientInstanceId,
+    required this.platform,
+    required this.appVersion,
+    required this.status,
+    required this.lastSeenAt,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.revokedAt,
+    required this.revokedReason,
+    required this.session,
+    required this.diagnostic,
+  });
+
+  final String id;
+  final String maskedDeviceId;
+  final String companyId;
+  final String companyName;
+  final String companySlug;
+  final String userId;
+  final String userName;
+  final String userEmail;
+  final String? membershipId;
+  final String? membershipRole;
+  final String? deviceLabel;
+  final String clientType;
+  final String clientInstanceId;
+  final String? platform;
+  final String? appVersion;
+  final String status;
+  final DateTime? lastSeenAt;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final DateTime? revokedAt;
+  final String? revokedReason;
+  final AdminDeviceInventorySession? session;
+  final AdminDeviceDiagnostic? diagnostic;
+
+  String get displayName =>
+      deviceLabel?.trim().isNotEmpty == true ? deviceLabel! : maskedDeviceId;
+
+  bool get hasLocalAttention =>
+      diagnostic != null &&
+      (diagnostic!.pendingCount > 0 ||
+          diagnostic!.failedCount > 0 ||
+          diagnostic!.openConflictCount > 0);
+
+  factory AdminDeviceInventoryItem.fromMap(Map<String, dynamic> map) {
+    final session = map['session'];
+    final diagnostic = map['diagnostic'];
+    return AdminDeviceInventoryItem(
+      id: _readString(map, 'id'),
+      maskedDeviceId: _readString(map, 'maskedDeviceId'),
+      companyId: _readString(map, 'companyId'),
+      companyName: _readString(map, 'companyName', fallback: 'Empresa'),
+      companySlug: _readString(map, 'companySlug'),
+      userId: _readString(map, 'userId'),
+      userName: _readString(map, 'userName', fallback: 'Usuario'),
+      userEmail: _readString(map, 'userEmail', fallback: 'sem e-mail'),
+      membershipId: _readOptionalString(map, 'membershipId'),
+      membershipRole: _readOptionalString(map, 'membershipRole'),
+      deviceLabel: _readOptionalString(map, 'deviceLabel'),
+      clientType: _readString(map, 'clientType', fallback: 'UNKNOWN'),
+      clientInstanceId: _readString(map, 'clientInstanceId'),
+      platform: _readOptionalString(map, 'platform'),
+      appVersion: _readOptionalString(map, 'appVersion'),
+      status: _readString(map, 'status', fallback: 'unknown'),
+      lastSeenAt: _readOptionalDateTime(map, 'lastSeenAt'),
+      createdAt: _readOptionalDateTime(map, 'createdAt'),
+      updatedAt: _readOptionalDateTime(map, 'updatedAt'),
+      revokedAt: _readOptionalDateTime(map, 'revokedAt'),
+      revokedReason: _readOptionalString(map, 'revokedReason'),
+      session: session is Map<String, dynamic>
+          ? AdminDeviceInventorySession.fromMap(session)
+          : null,
+      diagnostic: diagnostic is Map<String, dynamic>
+          ? AdminDeviceDiagnostic.fromMap(diagnostic)
+          : null,
+    );
+  }
+}
+
+class AdminDeviceInventorySession {
+  const AdminDeviceInventorySession({
+    required this.id,
+    required this.status,
+    required this.createdAt,
+    required this.lastSeenAt,
+    required this.lastRefreshedAt,
+    required this.expiresAt,
+    required this.revokedAt,
+    required this.revokedReason,
+  });
+
+  final String id;
+  final String status;
+  final DateTime? createdAt;
+  final DateTime? lastSeenAt;
+  final DateTime? lastRefreshedAt;
+  final DateTime? expiresAt;
+  final DateTime? revokedAt;
+  final String? revokedReason;
+
+  factory AdminDeviceInventorySession.fromMap(Map<String, dynamic> map) {
+    return AdminDeviceInventorySession(
+      id: _readString(map, 'id'),
+      status: _readString(map, 'status', fallback: 'unknown'),
+      createdAt: _readOptionalDateTime(map, 'createdAt'),
+      lastSeenAt: _readOptionalDateTime(map, 'lastSeenAt'),
+      lastRefreshedAt: _readOptionalDateTime(map, 'lastRefreshedAt'),
+      expiresAt: _readOptionalDateTime(map, 'expiresAt'),
+      revokedAt: _readOptionalDateTime(map, 'revokedAt'),
+      revokedReason: _readOptionalString(map, 'revokedReason'),
+    );
+  }
+}
+
+class AdminDeviceDiagnostic {
+  const AdminDeviceDiagnostic({
+    required this.pendingCount,
+    required this.failedCount,
+    required this.openConflictCount,
+    required this.resolvedConflictCount,
+    required this.ignoredConflictCount,
+    required this.lastLocalError,
+    required this.lastLocalErrorCode,
+    required this.lastLocalErrorEntity,
+    required this.reportedAt,
+  });
+
+  final int pendingCount;
+  final int failedCount;
+  final int openConflictCount;
+  final int resolvedConflictCount;
+  final int ignoredConflictCount;
+  final String? lastLocalError;
+  final String? lastLocalErrorCode;
+  final String? lastLocalErrorEntity;
+  final DateTime? reportedAt;
+
+  factory AdminDeviceDiagnostic.fromMap(Map<String, dynamic> map) {
+    return AdminDeviceDiagnostic(
+      pendingCount: _readOptionalInt(map, 'pendingCount') ?? 0,
+      failedCount: _readOptionalInt(map, 'failedCount') ?? 0,
+      openConflictCount: _readOptionalInt(map, 'openConflictCount') ?? 0,
+      resolvedConflictCount: _readOptionalInt(map, 'resolvedConflictCount') ?? 0,
+      ignoredConflictCount: _readOptionalInt(map, 'ignoredConflictCount') ?? 0,
+      lastLocalError: _readOptionalString(map, 'lastLocalError'),
+      lastLocalErrorCode: _readOptionalString(map, 'lastLocalErrorCode'),
+      lastLocalErrorEntity: _readOptionalString(map, 'lastLocalErrorEntity'),
+      reportedAt: _readOptionalDateTime(map, 'reportedAt'),
+    );
   }
 }
 

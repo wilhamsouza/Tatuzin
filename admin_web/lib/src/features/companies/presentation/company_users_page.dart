@@ -108,6 +108,13 @@ class _Header extends ConsumerWidget {
             icon: const Icon(Icons.refresh_rounded),
             label: const Text('Atualizar'),
           ),
+          OutlinedButton.icon(
+            onPressed: () => context.go(
+              '/audit?companyId=${access.company.id}&category=access',
+            ),
+            icon: const Icon(Icons.fact_check_rounded),
+            label: const Text('Ver auditoria global filtrada'),
+          ),
         ],
       ),
       child: Wrap(
@@ -333,9 +340,15 @@ class _UsersTabState extends State<_UsersTab> {
 }
 
 class _EmployeesTab extends StatelessWidget {
-  const _EmployeesTab({required this.employees});
+  const _EmployeesTab({
+    required this.companyId,
+    required this.employees,
+    required this.auditEvents,
+  });
 
+  final String companyId;
   final List<AdminCompanyAccessEmployee> employees;
+  final List<AdminCompanyAccessAuditEvent> auditEvents;
 
   @override
   Widget build(BuildContext context) {

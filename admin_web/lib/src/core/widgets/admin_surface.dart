@@ -54,7 +54,12 @@ class AdminSurface extends StatelessWidget {
                   ),
                   if (trailing != null) ...[
                     const SizedBox(width: 16),
-                    trailing!,
+                    Flexible(
+                      child: Align(
+                        alignment: Alignment.topRight,
+                        child: trailing!,
+                      ),
+                    ),
                   ],
                 ],
               ),

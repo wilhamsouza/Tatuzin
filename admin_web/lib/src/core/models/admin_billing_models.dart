@@ -25,6 +25,17 @@ const Set<String> adminBillingSensitiveKeys = {
   'card_number',
   'security_code',
   'cvv',
+  'password',
+  'passwordhash',
+  'password_hash',
+  'reset_token',
+  'resettoken',
+  'invite_token_hash',
+  'invitetokenhash',
+  'refresh_token_hash',
+  'refreshtokenhash',
+  'headers',
+  'secret',
 };
 
 Object? sanitizeAdminBillingValue(Object? value) {
@@ -50,7 +61,7 @@ Object? sanitizeAdminBillingValue(Object? value) {
       final keyString = key.toString();
       final normalizedKey = _normalizeSensitiveKey(keyString);
       if (_isSensitiveKey(normalizedKey)) {
-        sanitized[keyString] = '[redacted]';
+        sanitized['campo_sensivel_removido'] = '[redacted]';
         return;
       }
       sanitized[keyString] = sanitizeAdminBillingValue(rawValue);
@@ -148,7 +159,11 @@ bool _isSensitiveKey(String normalizedKey) {
       normalizedKey.contains('providerreference') ||
       normalizedKey.contains('provider_reference') ||
       normalizedKey.contains('providereventid') ||
-      normalizedKey.contains('provider_event_id');
+      normalizedKey.contains('provider_event_id') ||
+      normalizedKey.contains('password') ||
+      normalizedKey.contains('hash') ||
+      normalizedKey.contains('secret') ||
+      normalizedKey.contains('header');
 }
 
 String _normalizeSensitiveKey(String value) {

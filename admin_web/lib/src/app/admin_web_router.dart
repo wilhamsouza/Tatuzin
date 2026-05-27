@@ -127,6 +127,20 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
             },
           ),
           GoRoute(
+            path: '/companies/:companyId/devices',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              return DevicesPage(companyId: companyId);
+            },
+          ),
+          GoRoute(
+            path: '/companies/:companyId/sessions',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              return DevicesPage(companyId: companyId);
+            },
+          ),
+          GoRoute(
             path: '/companies/:companyId',
             builder: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
@@ -263,6 +277,10 @@ String _titleForLocation(String location) {
   if (location.startsWith('/companies/') &&
       (location.endsWith('/users') || location.endsWith('/employees'))) {
     return 'Usuarios e funcionarios';
+  }
+  if (location.startsWith('/companies/') &&
+      (location.endsWith('/devices') || location.endsWith('/sessions'))) {
+    return 'Dispositivos e sessoes';
   }
   if (location.startsWith('/licenses/')) {
     return 'Licenca da empresa';

@@ -15,6 +15,7 @@ import 'package:tatuzin_admin_web/src/core/models/admin_sync_center_models.dart'
 import 'package:tatuzin_admin_web/src/core/network/admin_api_client.dart';
 import 'package:tatuzin_admin_web/src/core/network/admin_api_service.dart';
 import 'package:tatuzin_admin_web/src/core/widgets/admin_shell_scaffold.dart';
+import 'package:tatuzin_admin_web/src/features/audit/presentation/audit_page.dart';
 import 'package:tatuzin_admin_web/src/features/companies/presentation/companies_page.dart';
 import 'package:tatuzin_admin_web/src/features/companies/presentation/company_detail_page.dart';
 import 'package:tatuzin_admin_web/src/features/companies/presentation/company_users_page.dart';
@@ -41,6 +42,8 @@ void main() {
       "path: '/companies/:companyId/license'",
       "path: '/companies/:companyId/users'",
       "path: '/companies/:companyId/employees'",
+      "path: '/companies/:companyId/devices'",
+      "path: '/companies/:companyId/sessions'",
       "path: '/sync'",
       "path: '/sync/:companyId'",
       "path: '/devices'",
@@ -227,7 +230,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Usuarios').last);
+    await tester.tap(find.widgetWithText(Tab, 'Usuarios'));
     await tester.pumpAndSettle();
     expect(find.text('Dona Tatuzin'), findsWidgets);
     expect(find.text('Gerente Loja'), findsOneWidget);
@@ -276,8 +279,206 @@ void main() {
 
     await tester.tap(find.text('Auditoria'));
     await tester.pumpAndSettle();
-    expect(find.text('ACCESS_VIEW'), findsOneWidget);
+    expect(find.text('Historico administrativo'), findsOneWidget);
+    expect(find.text('Bloqueio de acesso operacional'), findsOneWidget);
+    expect(find.text('Reativacao de acesso operacional'), findsOneWidget);
+    expect(find.textContaining('Chamado 123'), findsOneWidget);
     expect(find.textContaining('Bearer secret'), findsNothing);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Detalhes').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Antes'), findsOneWidget);
+    expect(find.text('Depois'), findsOneWidget);
+    expect(find.text('Metadata'), findsOneWidget);
+    expect(find.textContaining('passwordHash'), findsNothing);
+    expect(find.textContaining('Authorization'), findsNothing);
+    await tester.tap(find.text('Fechar'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('Bloquear acesso operacional exige dry-run e confirmacao correta', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeReadOnlyApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/companies/company-1/users',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Usuarios').last);
+    await tester.pumpAndSettle();
+    final usersTableScroller = find
+        .ancestor(
+          of: find.byType(DataTable).first,
+          matching: find.byType(SingleChildScrollView),
+        )
+        .first;
+    await tester.drag(usersTableScroller, const Offset(-1600, 0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Detalhes').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Gerente Loja'), findsWidgets);
+    expect(find.text('Bloquear acesso operacional'), findsOneWidget);
+    expect(find.text('Ultimas acoes administrativas'), findsOneWidget);
+    expect(find.text('Bloqueio de acesso operacional'), findsOneWidget);
+    expect(find.text('Motivo: Chamado 123'), findsOneWidget);
+
+    await tester.tap(find.text('Bloquear acesso operacional'));
+    await tester.pumpAndSettle();
+    final blockDialog = find.byType(AlertDialog).last;
+    expect(
+      find.text(
+        'Esta acao bloqueia ou reativa o acesso operacional desta empresa. Nao apaga dados, nao altera senha, nao remove o usuario e nao revoga sessoes nesta fase.',
+      ),
+      findsWidgets,
+    );
+    await tester.enterText(
+      find.descendant(of: blockDialog, matching: find.byType(TextField)).first,
+      'incidente de acesso',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(of: blockDialog, matching: find.text('Executar dry-run')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(service.accessDryRunCalls, 1);
+    expect(service.accessApplyCalls, 0);
+    expect(
+      find.text('Bloqueio operacional pode ser aplicado com seguranca.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('BLOQUEAR'), findsWidgets);
+
+    await tester.enterText(
+      find.descendant(of: blockDialog, matching: find.byType(TextField)).last,
+      'ERRADO',
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Digite BLOQUEAR para liberar a confirmacao.'),
+      findsWidgets,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Confirmar'))
+          .enabled,
+      isFalse,
+    );
+
+    await tester.enterText(
+      find.descendant(of: blockDialog, matching: find.byType(TextField)).last,
+      'BLOQUEAR',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Confirmar'));
+    await tester.pumpAndSettle();
+
+    expect(service.accessApplyCalls, 1);
+    expect(find.text('Acesso operacional bloqueado.'), findsOneWidget);
+    expect(find.textContaining('passwordHash'), findsNothing);
+  });
+
+  testWidgets(
+    'Reativar acesso operacional exige dry-run e confirmacao correta',
+    (tester) async {
+      _setLargeViewport(tester);
+      final service = _FakeReadOnlyApiService();
+      await tester.pumpWidget(
+        _adminRouterTestApp(
+          service: service,
+          initialLocation: '/companies/company-1/users',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(Tab, 'Funcionarios'));
+      await tester.pumpAndSettle();
+      final employeesTableScroller = find
+          .ancestor(
+            of: find.byType(DataTable).first,
+            matching: find.byType(SingleChildScrollView),
+          )
+          .first;
+      await tester.drag(employeesTableScroller, const Offset(-2200, 0));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Detalhes').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Ex Operador'), findsWidgets);
+      expect(find.text('Reativar acesso operacional'), findsOneWidget);
+
+      await tester.tap(find.text('Reativar acesso operacional'));
+      await tester.pumpAndSettle();
+      final reactivateDialog = find.byType(AlertDialog).last;
+      await tester.enterText(
+        find
+            .descendant(of: reactivateDialog, matching: find.byType(TextField))
+            .first,
+        'retorno autorizado',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: reactivateDialog,
+          matching: find.text('Executar dry-run'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(service.accessDryRunCalls, 1);
+      expect(
+        find.text('Reativacao operacional pode ser aplicada com seguranca.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('REATIVAR'), findsWidgets);
+
+      await tester.enterText(
+        find
+            .descendant(of: reactivateDialog, matching: find.byType(TextField))
+            .last,
+        'REATIVAR',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Confirmar'));
+      await tester.pumpAndSettle();
+
+      expect(service.accessApplyCalls, 1);
+      expect(find.text('Acesso operacional reativado.'), findsOneWidget);
+    },
+  );
+
+  testWidgets('OWNER protegido mostra bloqueio de acao moderna', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/companies/company-1/users',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(Tab, 'Usuarios'));
+    await tester.pumpAndSettle();
+    final usersTableScroller = find
+        .ancestor(
+          of: find.byType(DataTable).first,
+          matching: find.byType(SingleChildScrollView),
+        )
+        .first;
+    await tester.drag(usersTableScroller, const Offset(-1600, 0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Detalhes').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dona Tatuzin'), findsWidgets);
+    expect(find.text('Bloquear acesso operacional bloqueado'), findsOneWidget);
+    expect(find.text('Reativar acesso operacional'), findsNothing);
   });
 
   testWidgets('Sync Center renderiza abas read-only', (tester) async {
@@ -346,8 +547,63 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Dispositivos por empresa'), findsOneWidget);
-    expect(service.lastCompaniesQuery?.status, 'all');
+    expect(find.text('Dispositivos e sessoes'), findsOneWidget);
+    expect(find.text('MOBILE_APP'), findsWidgets);
+    expect(find.text('ADMIN_WEB'), findsWidgets);
+    expect(find.text('Loja Moda Sul'), findsWidgets);
+    expect(find.text('Pendentes 1 / Falhas 3 / OPEN 2'), findsOneWidget);
+    expect(service.lastDevicesQuery?.attention, isNull);
+    expect(find.textContaining('client-instance-secret-long-id'), findsNothing);
+    expect(find.textContaining('refresh-token-secret'), findsNothing);
+    expect(find.textContaining('hash-secret'), findsNothing);
+  });
+
+  testWidgets('Dispositivos por empresa mostra sessoes e aviso read-only', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeReadOnlyApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/companies/company-1/devices',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dispositivos e sessoes da empresa'), findsOneWidget);
+    expect(service.lastDevicesQuery?.companyId, 'company-1');
+    expect(service.companySessionsFetchCount, 1);
+    expect(find.text('Sessoes'), findsOneWidget);
+    expect(find.text('Ativa'), findsWidgets);
+    expect(
+      find.textContaining('Acoes de revogar sessao e forcar logout'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('client-instance-secret-long-id'), findsNothing);
+    expect(find.textContaining('refresh-token-secret'), findsNothing);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Atualizar'));
+    await tester.pumpAndSettle();
+    expect(service.devicesFetchCount, greaterThanOrEqualTo(2));
+    expect(service.companySessionsFetchCount, greaterThanOrEqualTo(2));
+  });
+
+  testWidgets('Empresa 360 mostra card de dispositivos e sessoes', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/companies/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dispositivos e sessoes'), findsWidgets);
+    expect(find.text('Ver dispositivos e sessoes'), findsWidgets);
+    expect(find.text('Com falha local'), findsWidgets);
   });
 
   testWidgets('Conflitos RESOLVED nao aparecem como pendentes', (tester) async {
@@ -738,6 +994,72 @@ void main() {
     expect(find.text('Planos e recursos'), findsWidgets);
   });
 
+  testWidgets('/audit renderiza auditoria global read-only', (tester) async {
+    _setLargeViewport(tester);
+    final service = _FakeReadOnlyApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/audit?companyId=company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Auditoria global'), findsOneWidget);
+    expect(find.text('Empresa'), findsWidgets);
+    expect(find.text('Ator'), findsWidgets);
+    expect(find.text('Categoria'), findsWidgets);
+    expect(find.text('Busca textual'), findsOneWidget);
+    expect(find.text('Extensao emergencial'), findsOneWidget);
+    expect(find.text('Bloqueio de acesso operacional'), findsOneWidget);
+    expect(find.text('Comando de suporte criado'), findsOneWidget);
+    expect(service.lastAuditQuery?.companyId, 'company-1');
+  });
+
+  testWidgets('/audit filtra por categoria e mostra detalhes sanitizados', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeReadOnlyApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/audit?companyId=company-1&category=access',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(service.lastAuditQuery?.category, 'access');
+    expect(find.text('Bloqueio de acesso operacional'), findsOneWidget);
+    expect(find.text('Extensao emergencial'), findsNothing);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Detalhes').first);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Before sanitizado'), findsOneWidget);
+    expect(find.textContaining('campo_sensivel_removido'), findsWidgets);
+    expect(find.textContaining('passwordHash'), findsNothing);
+    expect(find.textContaining('inviteTokenHash'), findsNothing);
+    expect(find.textContaining('preapproval-secret-full-id'), findsNothing);
+    expect(find.textContaining('Authorization'), findsNothing);
+  });
+
+  testWidgets('CTA de empresa navega para auditoria filtrada', (tester) async {
+    _setLargeViewport(tester);
+    final service = _FakeReadOnlyApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/companies/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Ver auditoria da empresa'));
+    await tester.pumpAndSettle();
+    expect(find.text('Auditoria global'), findsOneWidget);
+    expect(service.lastAuditQuery?.companyId, 'company-1');
+  });
+
   testWidgets('estados vazio e erro funcionam', (tester) async {
     _setLargeViewport(tester);
     await tester.pumpWidget(
@@ -834,6 +1156,18 @@ Widget _adminRouterTestApp({
         ),
       ),
       GoRoute(
+        path: '/companies/:companyId/devices',
+        builder: (context, state) => Scaffold(
+          body: DevicesPage(companyId: state.pathParameters['companyId'] ?? ''),
+        ),
+      ),
+      GoRoute(
+        path: '/companies/:companyId/sessions',
+        builder: (context, state) => Scaffold(
+          body: DevicesPage(companyId: state.pathParameters['companyId'] ?? ''),
+        ),
+      ),
+      GoRoute(
         path: '/companies/:companyId/employees',
         builder: (context, state) => Scaffold(
           body: CompanyUsersPage(
@@ -868,6 +1202,12 @@ Widget _adminRouterTestApp({
       GoRoute(
         path: '/plans',
         builder: (context, state) => const Scaffold(body: PlansPage()),
+      ),
+      GoRoute(
+        path: '/audit',
+        builder: (context, state) => Scaffold(
+          body: AuditPage(initialQueryParameters: state.uri.queryParameters),
+        ),
       ),
       GoRoute(
         path: '/sync/:companyId/events/:eventId',
@@ -927,7 +1267,14 @@ class _FakeReadOnlyApiService extends AdminApiService {
   int companyHealthFetchCount = 0;
   int supportDryRunCalls = 0;
   int supportCreateCalls = 0;
+  int accessDryRunCalls = 0;
+  int accessApplyCalls = 0;
   int mutableBillingCalls = 0;
+  int auditFetchCount = 0;
+  int devicesFetchCount = 0;
+  int companySessionsFetchCount = 0;
+  AdminAuditQuery? lastAuditQuery;
+  AdminDevicesQuery? lastDevicesQuery;
   final supportCommands = <Map<String, dynamic>>[];
 
   @override
@@ -940,6 +1287,59 @@ class _FakeReadOnlyApiService extends AdminApiService {
       auditSummary: AdminAuditSummary.fromMap(_auditSummaryMap()),
       syncSummary: AdminSyncSummary.fromMap(_syncSummaryMap()),
     );
+  }
+
+  @override
+  Future<AdminAuditLogPage> fetchAuditLogs({AdminAuditQuery? query}) async {
+    auditFetchCount++;
+    lastAuditQuery = query;
+    if (throwDashboard) {
+      throw const AdminApiException(message: 'falha controlada');
+    }
+    final category = query?.category;
+    final companyId = query?.companyId;
+    final items = _auditLogItems()
+        .where((item) {
+          if (category != null && category.trim().isNotEmpty) {
+            return item['category'] == category;
+          }
+          return true;
+        })
+        .where((item) {
+          if (companyId != null && companyId.trim().isNotEmpty) {
+            return item['companyId'] == companyId;
+          }
+          return true;
+        })
+        .toList(growable: false);
+    return AdminAuditLogPage.fromMap({
+      'items': items,
+      'pagination': {
+        'page': query?.page ?? 1,
+        'pageSize': query?.pageSize ?? 20,
+        'total': items.length,
+        'count': items.length,
+        'hasNext': false,
+        'hasPrevious': false,
+      },
+      'overview': {
+        'totalEvents': items.length,
+        'countsByCategory': {
+          'license': items
+              .where((item) => item['category'] == 'license')
+              .length,
+          'billing': items
+              .where((item) => item['category'] == 'billing')
+              .length,
+          'access': items.where((item) => item['category'] == 'access').length,
+          'sync': items.where((item) => item['category'] == 'sync').length,
+        },
+        'failures': items.where((item) => item['status'] == 'failed').length,
+        'last7Days': items.length,
+      },
+      'filters': query?.toQueryParameters() ?? const <String, String>{},
+      'sort': {'by': 'createdAt', 'direction': 'desc'},
+    });
   }
 
   @override
@@ -1009,6 +1409,154 @@ class _FakeReadOnlyApiService extends AdminApiService {
       });
     }
     return AdminCompanyAccessSummary.fromMap(_accessSummaryMap(companyId));
+  }
+
+  @override
+  Future<AdminPaginatedResult<AdminDeviceInventoryItem>> fetchDevices({
+    required AdminDevicesQuery query,
+  }) async {
+    devicesFetchCount++;
+    lastDevicesQuery = query;
+    if (throwCompanySync) {
+      throw const AdminApiException(message: 'falha controlada');
+    }
+    final allItems = [_deviceInventoryMap(), _adminDeviceInventoryMap()];
+    final filtered = allItems.where((item) {
+      if (query.companyId != null && item['companyId'] != query.companyId) {
+        return false;
+      }
+      if (query.clientType != 'all' && item['clientType'] != query.clientType) {
+        return false;
+      }
+      if (query.attention == true) {
+        final diagnostic = item['diagnostic'] as Map<String, dynamic>?;
+        return (diagnostic?['pendingCount'] as int? ?? 0) > 0 ||
+            (diagnostic?['failedCount'] as int? ?? 0) > 0 ||
+            (diagnostic?['openConflictCount'] as int? ?? 0) > 0;
+      }
+      return true;
+    }).toList(growable: false);
+    return AdminPaginatedResult<AdminDeviceInventoryItem>(
+      items: filtered.map(AdminDeviceInventoryItem.fromMap).toList(),
+      pagination: AdminPaginationMeta(
+        page: query.page,
+        pageSize: query.pageSize,
+        total: filtered.length,
+        count: filtered.length,
+        hasNext: false,
+        hasPrevious: false,
+      ),
+      filters: query.toQueryParameters(),
+      sort: const AdminSortMeta(by: 'lastSeenAt', direction: 'desc'),
+    );
+  }
+
+  @override
+  Future<List<AdminDeviceSession>> fetchCompanySessions(String companyId) async {
+    companySessionsFetchCount++;
+    if (throwCompanySync) {
+      throw const AdminApiException(message: 'falha controlada');
+    }
+    return [
+      AdminDeviceSession.fromMap(_mobileSessionMap()),
+      AdminDeviceSession.fromMap(_adminSessionMap()),
+    ];
+  }
+
+  @override
+  Future<AdminAccessActionDryRun> dryRunAccessBlock({
+    required String companyId,
+    required String targetId,
+    required String targetType,
+    required String reason,
+    String? note,
+  }) async {
+    accessDryRunCalls++;
+    final isOwner = targetId.contains('owner');
+    return AdminAccessActionDryRun.fromMap({
+      'allowed': !isOwner,
+      'expectedConfirmationText': 'BLOQUEAR',
+      'summary': isOwner
+          ? 'Acesso operacional protegido nao pode ser bloqueado.'
+          : 'Bloqueio operacional pode ser aplicado com seguranca.',
+      'risks': const [
+        'O usuario perde acesso operacional nas rotas protegidas pelo contexto da empresa.',
+        'Esta acao nao revoga sessoes ou JWT nesta fase.',
+        'Esta acao nao apaga vendas, pedidos, estoque ou historico.',
+      ],
+      'blockers': isOwner
+          ? const ['OWNER protegido nao pode ser bloqueado por esta acao.']
+          : const [],
+      'currentAccess': {
+        'employeeProfileId': targetId,
+        'status': 'ACTIVE',
+        'passwordHash': 'hash-secret',
+      },
+      'proposedChange': {'status': 'DISABLED'},
+    });
+  }
+
+  @override
+  Future<AdminAccessActionResult> applyAccessBlock({
+    required String companyId,
+    required String targetId,
+    required String targetType,
+    required String reason,
+    required String confirmationText,
+    String? note,
+  }) async {
+    accessApplyCalls++;
+    return AdminAccessActionResult.fromMap({
+      'success': true,
+      'message': 'Acesso operacional bloqueado.',
+      'auditId': 'access-audit-block',
+      'updatedAccess': {
+        'employeeProfileId': targetId,
+        'status': 'DISABLED',
+        'passwordHash': 'hash-secret',
+      },
+    });
+  }
+
+  @override
+  Future<AdminAccessActionDryRun> dryRunAccessReactivate({
+    required String companyId,
+    required String targetId,
+    required String targetType,
+    required String reason,
+    String? note,
+  }) async {
+    accessDryRunCalls++;
+    return AdminAccessActionDryRun.fromMap({
+      'allowed': true,
+      'expectedConfirmationText': 'REATIVAR',
+      'summary': 'Reativacao operacional pode ser aplicada com seguranca.',
+      'risks': const [
+        'O usuario volta a acessar operacionalmente conforme papel e permissoes existentes.',
+        'Esta acao nao altera senha.',
+      ],
+      'blockers': const [],
+      'currentAccess': {'employeeProfileId': targetId, 'status': 'DISABLED'},
+      'proposedChange': {'status': 'ACTIVE'},
+    });
+  }
+
+  @override
+  Future<AdminAccessActionResult> applyAccessReactivate({
+    required String companyId,
+    required String targetId,
+    required String targetType,
+    required String reason,
+    required String confirmationText,
+    String? note,
+  }) async {
+    accessApplyCalls++;
+    return AdminAccessActionResult.fromMap({
+      'success': true,
+      'message': 'Acesso operacional reativado.',
+      'auditId': 'access-audit-reactivate',
+      'updatedAccess': {'employeeProfileId': targetId, 'status': 'ACTIVE'},
+    });
   }
 
   @override
@@ -1845,12 +2393,44 @@ Map<String, dynamic> _accessSummaryMap(String companyId) {
       {
         'id': 'audit-access-1',
         'source': 'admin',
-        'action': 'ACCESS_VIEW',
+        'action': 'access.block',
+        'actorUserId': 'platform-admin-1',
         'actorName': 'Admin',
         'actorEmail': 'admin@tatuzin.test',
-        'target': 'Loja Moda Sul',
-        'metadata': {'Authorization': 'Bearer secret', 'public': 'ok'},
+        'target': 'Gerente Loja',
+        'targetEmail': 'gerente@tatuzin.test',
+        'targetUserId': 'user-admin-secret-long-id',
+        'targetEmployeeId': 'employee-admin-secret-long-id',
+        'membershipId': 'membership-admin-secret-long-id',
+        'reason': 'Chamado 123',
+        'before': {
+          'status': 'ACTIVE',
+          'passwordHash': 'hash-secret',
+          'name': 'Gerente Loja',
+        },
+        'after': {'status': 'DISABLED', 'name': 'Gerente Loja'},
+        'metadata': {
+          'Authorization': 'Bearer secret',
+          'public': 'ok',
+          'confirmationTextExpected': 'BLOQUEAR',
+        },
         'createdAt': '2026-05-24T12:00:00.000Z',
+      },
+      {
+        'id': 'audit-access-2',
+        'source': 'admin',
+        'action': 'access.reactivate',
+        'actorUserId': 'platform-admin-1',
+        'actorName': 'Admin',
+        'actorEmail': 'admin@tatuzin.test',
+        'target': 'Ex Operador',
+        'targetEmail': 'disabled@tatuzin.test',
+        'targetEmployeeId': 'employee-disabled-secret-long-id',
+        'reason': 'Retorno autorizado',
+        'before': {'status': 'DISABLED', 'name': 'Ex Operador'},
+        'after': {'status': 'ACTIVE', 'name': 'Ex Operador'},
+        'metadata': {'confirmationTextExpected': 'REATIVAR'},
+        'createdAt': '2026-05-23T12:00:00.000Z',
       },
     ],
   };
@@ -1885,6 +2465,76 @@ Map<String, dynamic> _auditSummaryMap() {
     },
     'filters': const {},
   };
+}
+
+List<Map<String, dynamic>> _auditLogItems() {
+  return [
+    {
+      'id': 'audit-license-1',
+      'source': 'billing_admin',
+      'category': 'license',
+      'action': 'license.emergency_extension',
+      'status': 'success',
+      'companyId': 'company-1',
+      'companyName': 'Loja Moda Sul',
+      'actorUserId': 'admin-1',
+      'actorName': 'Admin Tatuzin',
+      'actorEmail': 'admin@tatuzin.test',
+      'targetType': 'license',
+      'targetId': 'company-1',
+      'targetLabel': 'Licenca Loja Moda Sul',
+      'reason': 'Atendimento emergencial',
+      'summary': 'Extensao emergencial',
+      'before': {
+        'status': 'EXPIRED',
+        'providerSubscriptionId': 'preapproval-secret-full-id',
+      },
+      'after': {'status': 'ACTIVE', 'expiresAt': '2026-06-01T00:00:00.000Z'},
+      'metadata': {'Authorization': 'Bearer secret', 'source': 'admin_web'},
+      'createdAt': '2026-05-26T10:00:00.000Z',
+    },
+    {
+      'id': 'audit-access-1',
+      'source': 'admin',
+      'category': 'access',
+      'action': 'access.block',
+      'status': 'success',
+      'companyId': 'company-1',
+      'companyName': 'Loja Moda Sul',
+      'actorUserId': 'admin-1',
+      'actorName': 'Admin Tatuzin',
+      'targetType': 'employee',
+      'targetId': 'employee-2',
+      'targetLabel': 'Gerente Loja',
+      'reason': 'Chamado 123',
+      'summary': 'Bloqueio de acesso operacional',
+      'before': {'status': 'ACTIVE', 'passwordHash': 'hash-secret'},
+      'after': {'status': 'DISABLED'},
+      'metadata': {'inviteTokenHash': 'hash-secret'},
+      'createdAt': '2026-05-26T09:00:00.000Z',
+    },
+    {
+      'id': 'audit-sync-1',
+      'source': 'sync_support',
+      'category': 'sync',
+      'action': 'sync.support_command.created',
+      'status': 'pending',
+      'companyId': 'company-1',
+      'companyName': 'Loja Moda Sul',
+      'actorUserId': 'admin-1',
+      'actorName': 'Admin Tatuzin',
+      'targetType': 'device',
+      'targetId': 'device-1',
+      'targetLabel': 'PDV Caixa',
+      'reason': 'Recalcular status',
+      'summary': 'Comando de suporte criado',
+      'metadata': {
+        'command': 'REFRESH_SYNC_STATUS',
+        'headers': {'authorization': 'Bearer secret'},
+      },
+      'createdAt': '2026-05-26T08:00:00.000Z',
+    },
+  ];
 }
 
 Map<String, dynamic> _syncSummaryMap() {
@@ -2387,6 +3037,83 @@ Map<String, dynamic> _plansOverviewMap() {
     'rules': const {
       'entitlementSource': 'license.plan',
       'pendingPlanReleasesFeatures': false,
+    },
+  };
+}
+
+Map<String, dynamic> _deviceInventoryMap() {
+  return {
+    'id': 'device-secret-full-id-123456789',
+    'maskedDeviceId': 'devi...6789',
+    'companyId': 'company-1',
+    'companyName': 'Loja Moda Sul',
+    'companySlug': 'loja-moda-sul',
+    'userId': 'user-1',
+    'userName': 'Operador Local',
+    'userEmail': 'operador@tatuzin.test',
+    'membershipId': 'membership-1',
+    'membershipRole': 'OWNER',
+    'deviceLabel': 'PDV Loja Moda Sul',
+    'clientType': 'MOBILE_APP',
+    'clientInstanceId': 'clie...0001',
+    'platform': 'android',
+    'appVersion': '2.1.0',
+    'status': 'active',
+    'lastSeenAt': '2026-05-24T12:00:00.000Z',
+    'createdAt': '2026-05-24T00:00:00.000Z',
+    'updatedAt': '2026-05-24T12:00:00.000Z',
+    'revokedAt': null,
+    'revokedReason': null,
+    'session': {
+      'id': 'sess...0001',
+      'status': 'active',
+      'createdAt': '2026-05-24T00:00:00.000Z',
+      'lastSeenAt': '2026-05-24T12:00:00.000Z',
+      'lastRefreshedAt': '2026-05-24T12:00:00.000Z',
+      'expiresAt': '2026-06-24T12:00:00.000Z',
+      'revokedAt': null,
+      'revokedReason': null,
+    },
+    'diagnostic': {
+      'pendingCount': 1,
+      'failedCount': 3,
+      'openConflictCount': 2,
+      'resolvedConflictCount': 1,
+      'ignoredConflictCount': 0,
+      'lastLocalError': 'totalCents antigo',
+      'lastLocalErrorCode': 'SYNC_PUSH_FAILED',
+      'lastLocalErrorEntity': 'operationalOrderItem',
+      'reportedAt': '2026-05-24T12:00:00.000Z',
+    },
+  };
+}
+
+Map<String, dynamic> _adminDeviceInventoryMap() {
+  return {
+    ..._deviceInventoryMap(),
+    'id': 'device-admin-full-id-123456789',
+    'maskedDeviceId': 'admi...6789',
+    'userId': 'user-admin-secret-long-id',
+    'userName': 'Admin Tatuzin',
+    'userEmail': 'admin@tatuzin.test',
+    'membershipId': 'membership-admin-secret-long-id',
+    'membershipRole': 'ADMIN',
+    'deviceLabel': 'Admin web',
+    'clientType': 'ADMIN_WEB',
+    'clientInstanceId': 'admi...0002',
+    'platform': 'web',
+    'appVersion': 'admin-web',
+    'lastSeenAt': '2026-05-24T11:00:00.000Z',
+    'diagnostic': null,
+    'session': {
+      'id': 'sess...0002',
+      'status': 'active',
+      'createdAt': '2026-05-24T01:00:00.000Z',
+      'lastSeenAt': '2026-05-24T11:00:00.000Z',
+      'lastRefreshedAt': '2026-05-24T11:00:00.000Z',
+      'expiresAt': '2026-06-24T11:00:00.000Z',
+      'revokedAt': null,
+      'revokedReason': null,
     },
   };
 }

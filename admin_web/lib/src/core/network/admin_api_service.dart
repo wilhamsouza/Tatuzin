@@ -298,6 +298,40 @@ class AdminApiService {
     return AdminCompanySyncHealth.fromMap(response);
   }
 
+  Future<AdminPaginatedResult<AdminDeviceInventoryItem>> fetchDevices({
+    required AdminDevicesQuery query,
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/devices',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return AdminPaginatedResult<AdminDeviceInventoryItem>(
+      items: readAdminItems(
+        payload,
+      ).map(AdminDeviceInventoryItem.fromMap).toList(growable: false),
+      pagination: AdminPaginationMeta.fromPayload(payload),
+      filters: readAdminFilters(payload),
+      sort: AdminSortMeta.fromPayload(payload),
+    );
+  }
+
+  Future<List<AdminDeviceSession>> fetchCompanySessions(String companyId) async {
+    final response = await _apiClient.getJson(
+      '/admin/companies/$companyId/sessions',
+      accessToken: await _readRequiredToken(),
+    );
+
+    final payload =
+        response as Map<String, dynamic>? ?? const <String, dynamic>{};
+    return readAdminItems(
+      payload,
+    ).map(AdminDeviceSession.fromMap).toList(growable: false);
+  }
+
   Future<List<AdminCompanySyncDevice>> fetchCompanySyncDevices(
     String companyId,
   ) async {

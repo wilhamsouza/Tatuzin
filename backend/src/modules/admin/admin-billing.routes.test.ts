@@ -217,6 +217,549 @@ describe("admin billing routes", () => {
     assert.equal(serialized.includes(otherCompany.operatorUserId), false);
   });
 
+  it("lists platform devices and company sessions read-only with sanitized identifiers", async () => {
+    const fixture = await createFixture({ plan: "PRO" });
+    const otherCompany = await createFixture({ plan: "PRO" });
+    const device = await prisma.companyDevice.findFirstOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+    await prisma.deviceSyncDiagnostic.create({
+      data: {
+        companyId: fixture.companyId,
+        deviceId: device.id,
+        userId: fixture.ownerUserId,
+        clientInstanceId: device.clientInstanceId,
+        clientType: "MOBILE_APP",
+        platform: "android",
+        appVersion: "2.1.0",
+        pendingCount: 1,
+        failedCount: 3,
+        openConflictCount: 2,
+        lastLocalError: "Bearer diagnostic-secret",
+        reportedAt: new Date("2026-05-24T12:00:00.000Z"),
+      },
+    });
+    const session = await prisma.deviceSession.create({
+      data: {
+        companyId: fixture.companyId,
+        userId: fixture.ownerUserId,
+        membershipId: fixture.ownerMembershipId,
+        clientType: "MOBILE_APP",
+        clientInstanceId: device.clientInstanceId,
+        deviceLabel: "PDV Android",
+        platform: "android",
+        appVersion: "2.1.0",
+        refreshTokenHash: `${runId}-${fixture.companyId}-device-session-refresh-secret`,
+        refreshTokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        lastSeenAt: new Date("2026-05-24T12:00:00.000Z"),
+      },
+    });
+
+    const forbidden = await requestJson(
+      "GET",
+      `/admin/devices?companyId=${fixture.companyId}`,
+      { token: fixture.operatorToken },
+    );
+    assert.equal(forbidden.status, 403);
+
+    const devicesResponse = await requestJson(
+      "GET",
+      `/admin/devices?companyId=${fixture.companyId}&clientType=MOBILE_APP&attention=true`,
+      { token: fixture.adminToken },
+    );
+    assert.equal(devicesResponse.status, 200);
+    const devicesPayload = devicesResponse.data as {
+      items: Array<{
+        companyId: string;
+        clientType: string;
+        clientInstanceId: string;
+        diagnostic: {
+          pendingCount: number;
+          failedCount: number;
+          openConflictCount: number;
+          lastLocalError: string | null;
+        } | null;
+        session: { id: string; status: string } | null;
+      }>;
+      pagination: { total: number };
+    };
+    assert.equal(devicesPayload.pagination.total, 1);
+    assert.equal(devicesPayload.items[0]?.companyId, fixture.companyId);
+    assert.equal(devicesPayload.items[0]?.clientType, "MOBILE_APP");
+    assert.equal(devicesPayload.items[0]?.diagnostic?.failedCount, 3);
+    assert.equal(devicesPayload.items[0]?.diagnostic?.openConflictCount, 2);
+    assert.equal(
+      devicesPayload.items[0]?.diagnostic?.lastLocalError,
+      "[redacted]",
+    );
+    assert.equal(devicesPayload.items[0]?.session?.status, "active");
+    assert.notEqual(
+      devicesPayload.items[0]?.clientInstanceId,
+      device.clientInstanceId,
+    );
+
+    const sessionsResponse = await requestJson(
+      "GET",
+      `/admin/companies/${fixture.companyId}/sessions`,
+      { token: fixture.adminToken },
+    );
+    assert.equal(sessionsResponse.status, 200);
+    const sessionsPayload = sessionsResponse.data as {
+      items: Array<{ id: string; clientInstanceId: string; status: string }>;
+      count: number;
+    };
+    assert.equal(sessionsPayload.count, 1);
+    assert.notEqual(sessionsPayload.items[0]?.id, session.id);
+    assert.notEqual(
+      sessionsPayload.items[0]?.clientInstanceId,
+      device.clientInstanceId,
+    );
+    assert.equal(sessionsPayload.items[0]?.status, "active");
+
+    const serialized = JSON.stringify({
+      devices: devicesPayload,
+      sessions: sessionsPayload,
+    });
+    assert.equal(serialized.includes(device.clientInstanceId), false);
+    assert.equal(serialized.includes(session.id), false);
+    assert.equal(serialized.includes("diagnostic-secret"), false);
+    assert.equal(serialized.includes("device-session-refresh-secret"), false);
+    assert.equal(serialized.includes("refreshTokenHash"), false);
+    assert.equal(serialized.includes("accessToken"), false);
+    assert.equal(serialized.includes("Authorization"), false);
+    assert.equal(serialized.includes("headers"), false);
+    assert.equal(serialized.includes(otherCompany.companyId), false);
+  });
+
+  it("lists global platform audit from admin, billing and sync sources sanitized", async () => {
+    const fixture = await createFixture({ plan: "PRO" });
+    const otherCompany = await createFixture({ plan: "PRO" });
+    const device = await prisma.companyDevice.findFirstOrThrow({
+      where: { companyId: fixture.companyId },
+    });
+
+    await prisma.adminAuditLog.create({
+      data: {
+        actorUserId: fixture.ownerUserId,
+        targetCompanyId: fixture.companyId,
+        action: "access.block",
+        details: {
+          reason: "Bloqueio preventivo",
+          before: {
+            name: "Operador",
+            passwordHash: "hash-secret",
+            status: "ACTIVE",
+          },
+          after: { name: "Operador", status: "DISABLED" },
+          metadata: {
+            source: "admin_web",
+            Authorization: "Bearer secret",
+            headers: { authorization: "Bearer secret" },
+          },
+        },
+      },
+    });
+    await prisma.billingAdminAuditLog.create({
+      data: {
+        actorUserId: fixture.ownerUserId,
+        companyId: fixture.companyId,
+        action: "license.emergency_extension",
+        reason: "Suporte emergencial",
+        before: { providerSubscriptionId: fixture.providerId },
+        after: { expiresAt: "2026-06-01T00:00:00.000Z" },
+        metadata: { note: "ok", apiKey: "secret" },
+      },
+    });
+    await prisma.syncSupportCommand.create({
+      data: {
+        companyId: fixture.companyId,
+        deviceId: device.id,
+        actorUserId: fixture.ownerUserId,
+        command: "REFRESH_SYNC_STATUS",
+        status: "PENDING",
+        reason: "Recalcular status",
+        confirmationText: "RECALCULAR",
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        payload: { headers: { authorization: "Bearer secret" } },
+      },
+    });
+    await prisma.adminAuditLog.create({
+      data: {
+        actorUserId: otherCompany.ownerUserId,
+        targetCompanyId: otherCompany.companyId,
+        action: "access.reactivate",
+        details: { reason: "Outra empresa" },
+      },
+    });
+
+    const forbidden = await requestJson("GET", "/admin/audit", {
+      token: fixture.operatorToken,
+    });
+    assert.equal(forbidden.status, 403);
+
+    const response = await requestJson(
+      "GET",
+      `/admin/audit?companyId=${fixture.companyId}&page=1&pageSize=10`,
+      { token: fixture.adminToken },
+    );
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      items: Array<{ source: string; category: string; action: string }>;
+      pagination: { total: number; hasNext: boolean };
+      overview: {
+        totalEvents: number;
+        countsByCategory: Record<string, number>;
+      };
+    };
+    assert.equal(payload.items.length, 3);
+    assert.equal(payload.pagination.total, 3);
+    assert.equal(payload.overview.totalEvents, 3);
+    assert.equal(
+      payload.items.some((item) => item.source === "admin"),
+      true,
+    );
+    assert.equal(
+      payload.items.some((item) => item.source === "billing_admin"),
+      true,
+    );
+    assert.equal(
+      payload.items.some((item) => item.source === "sync_support"),
+      true,
+    );
+    assert.equal(payload.overview.countsByCategory.access, 1);
+    assert.equal(payload.overview.countsByCategory.license, 1);
+    assert.equal(payload.overview.countsByCategory.sync, 1);
+    const serialized = JSON.stringify(payload);
+    assert.equal(serialized.includes(fixture.providerId), false);
+    assert.equal(serialized.includes("passwordHash"), false);
+    assert.equal(serialized.includes("Bearer secret"), false);
+    assert.equal(serialized.includes("Authorization"), false);
+    assert.equal(serialized.includes("headers"), false);
+    assert.equal(serialized.includes("apiKey"), false);
+    assert.equal(serialized.includes(otherCompany.companyId), false);
+
+    const accessOnly = await requestJson(
+      "GET",
+      `/admin/audit?companyId=${fixture.companyId}&category=access&page=1&pageSize=10`,
+      { token: fixture.adminToken },
+    );
+    assert.equal(accessOnly.status, 200);
+    const accessPayload = accessOnly.data as {
+      items: Array<{ category: string }>;
+    };
+    assert.equal(accessPayload.items.length, 1);
+    assert.equal(accessPayload.items[0]?.category, "access");
+  });
+
+  it("blocks company employee access with dry-run confirmation and audit", async () => {
+    const fixture = await createFixture({ plan: "PRO" });
+    await createAccessArtifacts(fixture);
+    const employee = await prisma.employeeProfile.update({
+      where: {
+        companyId_membershipId: {
+          companyId: fixture.companyId,
+          membershipId: fixture.operatorMembershipId,
+        },
+      },
+      data: { status: "ACTIVE", disabledAt: null },
+    });
+    const beforeUser = await prisma.user.findUniqueOrThrow({
+      where: { id: fixture.operatorUserId },
+    });
+    const beforeMembership = await prisma.membership.findUniqueOrThrow({
+      where: { id: fixture.operatorMembershipId },
+    });
+    const operatorClientInstanceId = `${runId}-${fixture.companyId}-operator-access-client`;
+    await prisma.companyDevice.create({
+      data: {
+        companyId: fixture.companyId,
+        userId: fixture.operatorUserId,
+        clientInstanceId: operatorClientInstanceId,
+        deviceLabel: "Operator Android",
+        platform: "android",
+        appVersion: "access-test",
+        status: "ACTIVE",
+        approvedAt: new Date(),
+        approvedByUserId: fixture.ownerUserId,
+        lastSeenAt: new Date(),
+      },
+    });
+
+    const bootstrapBefore = await requestJson("GET", "/app/bootstrap", {
+      token: fixture.operatorToken,
+      headers: { "X-Client-Instance-Id": operatorClientInstanceId },
+    });
+    assert.equal(bootstrapBefore.status, 200);
+
+    const forbidden = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/access/${employee.id}/block/dry-run`,
+      {
+        token: fixture.operatorToken,
+        body: { targetType: "EMPLOYEE", reason: "Incidente de acesso" },
+      },
+    );
+    assert.equal(forbidden.status, 403);
+
+    const missingReason = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/access/${employee.id}/block/dry-run`,
+      { token: fixture.adminToken, body: { targetType: "EMPLOYEE" } },
+    );
+    assert.equal(missingReason.status, 422);
+
+    const dryRun = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/access/${employee.id}/block/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: { targetType: "EMPLOYEE", reason: "Incidente de acesso" },
+      },
+    );
+    assert.equal(dryRun.status, 200);
+    const dryRunPayload = dryRun.data as {
+      allowed: boolean;
+      expectedConfirmationText: string;
+      proposedChange: { statusAfter: string };
+    };
+    assert.equal(dryRunPayload.allowed, true);
+    assert.equal(dryRunPayload.expectedConfirmationText, "BLOQUEAR");
+    assert.equal(dryRunPayload.proposedChange.statusAfter, "DISABLED");
+
+    const notMutated = await prisma.employeeProfile.findUniqueOrThrow({
+      where: { id: employee.id },
+    });
+    assert.equal(notMutated.status, "ACTIVE");
+
+    const wrongConfirmation = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/access/${employee.id}/block`,
+      {
+        token: fixture.adminToken,
+        body: {
+          targetType: "EMPLOYEE",
+          reason: "Incidente de acesso",
+          confirmationText: "CONFIRMAR",
+        },
+      },
+    );
+    assert.equal(wrongConfirmation.status, 422);
+
+    const response = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/access/${employee.id}/block`,
+      {
+        token: fixture.adminToken,
+        body: {
+          targetType: "EMPLOYEE",
+          reason: "Incidente de acesso",
+          note: "Chamado acesso 123",
+          confirmationText: "BLOQUEAR",
+        },
+      },
+    );
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      success: boolean;
+      updatedAccess: { status: string; employeeProfileId: string };
+    };
+    assert.equal(payload.success, true);
+    assert.equal(payload.updatedAccess.status, "DISABLED");
+    assert.equal(payload.updatedAccess.employeeProfileId, employee.id);
+
+    const after = await prisma.employeeProfile.findUniqueOrThrow({
+      where: { id: employee.id },
+    });
+    assert.equal(after.status, "DISABLED");
+    assert.notEqual(after.disabledAt, null);
+    assert.equal(after.role, employee.role);
+    assert.deepEqual(after.permissions, employee.permissions);
+    const afterUser = await prisma.user.findUniqueOrThrow({
+      where: { id: fixture.operatorUserId },
+    });
+    const afterMembership = await prisma.membership.findUniqueOrThrow({
+      where: { id: fixture.operatorMembershipId },
+    });
+    assert.equal(afterUser.passwordHash, beforeUser.passwordHash);
+    assert.equal(afterUser.isActive, beforeUser.isActive);
+    assert.equal(afterMembership.role, beforeMembership.role);
+
+    const bootstrapAfterBlock = await requestJson("GET", "/app/bootstrap", {
+      token: fixture.operatorToken,
+      headers: { "X-Client-Instance-Id": operatorClientInstanceId },
+    });
+    assert.equal(bootstrapAfterBlock.status, 403);
+    assert.equal(
+      (bootstrapAfterBlock.data as { code?: string }).code,
+      "EMPLOYEE_DISABLED",
+    );
+
+    const authMeAfterBlock = await requestJson("GET", "/auth/me", {
+      token: fixture.operatorToken,
+    });
+    assert.equal(authMeAfterBlock.status, 200);
+
+    const audit = await prisma.adminAuditLog.findFirstOrThrow({
+      where: { targetCompanyId: fixture.companyId, action: "access.block" },
+      orderBy: { createdAt: "desc" },
+    });
+    const serializedAudit = JSON.stringify(audit.details);
+    assert.equal(serializedAudit.includes("passwordHash"), false);
+    assert.equal(serializedAudit.includes("resetToken"), false);
+    assert.equal(serializedAudit.includes("refreshTokenHash"), false);
+    assert.equal(serializedAudit.includes("Chamado acesso 123"), true);
+    assert.equal(serializedAudit.includes("BLOQUEAR"), true);
+  });
+
+  it("reactivates disabled employee access without changing role or password", async () => {
+    const fixture = await createFixture({ plan: "PRO" });
+    await createAccessArtifacts(fixture);
+    const employee = await prisma.employeeProfile.findFirstOrThrow({
+      where: {
+        companyId: fixture.companyId,
+        membershipId: fixture.operatorMembershipId,
+        status: "DISABLED",
+      },
+    });
+    const beforeUser = await prisma.user.findUniqueOrThrow({
+      where: { id: fixture.operatorUserId },
+    });
+
+    const dryRun = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/access/${employee.id}/reactivate/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: { targetType: "EMPLOYEE", reason: "Retorno autorizado" },
+      },
+    );
+    assert.equal(dryRun.status, 200);
+    const dryRunPayload = dryRun.data as {
+      allowed: boolean;
+      expectedConfirmationText: string;
+      proposedChange: { statusAfter: string };
+    };
+    assert.equal(dryRunPayload.allowed, true);
+    assert.equal(dryRunPayload.expectedConfirmationText, "REATIVAR");
+    assert.equal(dryRunPayload.proposedChange.statusAfter, "ACTIVE");
+
+    const wrongConfirmation = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/access/${employee.id}/reactivate`,
+      {
+        token: fixture.adminToken,
+        body: {
+          targetType: "EMPLOYEE",
+          reason: "Retorno autorizado",
+          confirmationText: "CONFIRMAR",
+        },
+      },
+    );
+    assert.equal(wrongConfirmation.status, 422);
+
+    const response = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/access/${employee.id}/reactivate`,
+      {
+        token: fixture.adminToken,
+        body: {
+          targetType: "EMPLOYEE",
+          reason: "Retorno autorizado",
+          confirmationText: "REATIVAR",
+        },
+      },
+    );
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      success: boolean;
+      updatedAccess: { status: string; employeeProfileId: string };
+    };
+    assert.equal(payload.success, true);
+    assert.equal(payload.updatedAccess.status, "ACTIVE");
+
+    const after = await prisma.employeeProfile.findUniqueOrThrow({
+      where: { id: employee.id },
+    });
+    assert.equal(after.status, "ACTIVE");
+    assert.equal(after.disabledAt, null);
+    assert.equal(after.role, employee.role);
+    assert.deepEqual(after.permissions, employee.permissions);
+    const afterUser = await prisma.user.findUniqueOrThrow({
+      where: { id: fixture.operatorUserId },
+    });
+    assert.equal(afterUser.passwordHash, beforeUser.passwordHash);
+
+    const alreadyActive = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/access/${employee.id}/reactivate/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: { targetType: "EMPLOYEE", reason: "Ativar novamente" },
+      },
+    );
+    assert.equal(alreadyActive.status, 200);
+    assert.equal((alreadyActive.data as { allowed?: boolean }).allowed, false);
+
+    const audit = await prisma.adminAuditLog.findFirstOrThrow({
+      where: {
+        targetCompanyId: fixture.companyId,
+        action: "access.reactivate",
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    const serializedAudit = JSON.stringify(audit.details);
+    assert.equal(serializedAudit.includes("passwordHash"), false);
+    assert.equal(serializedAudit.includes("REATIVAR"), true);
+  });
+
+  it("blocks protected owner and cross-company access targets", async () => {
+    const fixture = await createFixture({ plan: "PRO" });
+    const otherFixture = await createFixture({ plan: "PRO" });
+    await createAccessArtifacts(fixture);
+    await createAccessArtifacts(otherFixture);
+    const ownerEmployee = await prisma.employeeProfile.findFirstOrThrow({
+      where: { companyId: fixture.companyId, role: "OWNER" },
+    });
+    const otherEmployee = await prisma.employeeProfile.findFirstOrThrow({
+      where: {
+        companyId: otherFixture.companyId,
+        membershipId: otherFixture.operatorMembershipId,
+      },
+    });
+
+    const ownerDryRun = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/access/${ownerEmployee.id}/block/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: { targetType: "EMPLOYEE", reason: "Bloquear owner" },
+      },
+    );
+    assert.equal(ownerDryRun.status, 200);
+    assert.equal((ownerDryRun.data as { allowed?: boolean }).allowed, false);
+    assert.equal(
+      JSON.stringify(ownerDryRun.data).includes(
+        "OWNER protegido nao pode ser bloqueado",
+      ),
+      true,
+    );
+
+    const crossCompany = await requestJson(
+      "POST",
+      `/admin/companies/${fixture.companyId}/access/${otherEmployee.id}/block/dry-run`,
+      {
+        token: fixture.adminToken,
+        body: { targetType: "EMPLOYEE", reason: "Alvo errado" },
+      },
+    );
+    assert.equal(crossCompany.status, 200);
+    assert.equal((crossCompany.data as { allowed?: boolean }).allowed, false);
+    assert.equal(
+      JSON.stringify(crossCompany.data).includes("nao pertence a esta empresa"),
+      true,
+    );
+  });
+
   it("returns read-only plan catalog with real entitlements", async () => {
     const freeFixture = await createFixture({ plan: "FREE" });
     const basicFixture = await createFixture({ plan: "BASIC" });
@@ -1744,6 +2287,7 @@ async function requestJson(
   options?: {
     token?: string;
     body?: Record<string, unknown>;
+    headers?: Record<string, string>;
   },
 ) {
   const response = await originalFetch(`${apiBaseUrl}${path}`, {

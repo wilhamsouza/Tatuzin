@@ -28,6 +28,7 @@ import {
   type AdminCompanySyncEventsQueryInput,
   type AdminCompanySyncIncidentsQueryInput,
   type AdminCompaniesQueryInput,
+  type AdminDevicesQueryInput,
   type AdminLicensesQueryInput,
   type AdminSyncCenterArchiveBodyInput,
   type AdminSyncCenterCompaniesQueryInput,
@@ -58,6 +59,7 @@ import {
   adminAccessActionDryRunSchema,
   adminAccessActionSchema,
   adminCompaniesQuerySchema,
+  adminDevicesQuerySchema,
   adminLicensePatchSchema,
   adminLicensesQuerySchema,
   adminSyncOperationalQuerySchema,
@@ -271,6 +273,15 @@ adminRouter.get(
 );
 
 adminRouter.get(
+  "/companies/:companyId/sessions",
+  asyncHandler(async (request, response) => {
+    const companyId = readParam(request.params.companyId);
+    const payload = await adminService.listCompanySessions(companyId);
+    response.json(payload);
+  }),
+);
+
+adminRouter.get(
   "/companies/:companyId/billing/status",
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
@@ -459,6 +470,17 @@ adminRouter.patch(
       request.auth!.userId,
     );
     response.json({ license });
+  }),
+);
+
+adminRouter.get(
+  "/devices",
+  validateQuery(adminDevicesQuerySchema),
+  asyncHandler(async (request, response) => {
+    const payload = await adminService.listDevices(
+      request.query as unknown as AdminDevicesQueryInput,
+    );
+    response.json(payload);
   }),
 );
 

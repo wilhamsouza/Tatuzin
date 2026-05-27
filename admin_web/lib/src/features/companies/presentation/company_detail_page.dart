@@ -112,6 +112,16 @@ class _CompanyHeader extends StatelessWidget {
             icon: const Icon(Icons.people_alt_rounded),
             label: const Text('Ver usuarios e funcionarios'),
           ),
+          OutlinedButton.icon(
+            onPressed: () => context.go('/companies/${company.id}/devices'),
+            icon: const Icon(Icons.devices_rounded),
+            label: const Text('Ver dispositivos e sessoes'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => context.go('/audit?companyId=${company.id}'),
+            icon: const Icon(Icons.fact_check_rounded),
+            label: const Text('Ver auditoria da empresa'),
+          ),
         ],
       ),
       child: Wrap(
@@ -199,6 +209,9 @@ class _OverviewTab extends StatelessWidget {
           final accessSummary = _CompanyAccessSummaryCard(
             companyId: company.id,
           );
+          final devicesSummary = _CompanyDevicesSummaryCard(
+            companyId: company.id,
+          );
           if (compact) {
             return Column(
               children: [
@@ -211,6 +224,8 @@ class _OverviewTab extends StatelessWidget {
                 licenseSummary,
                 const SizedBox(height: 16),
                 accessSummary,
+                const SizedBox(height: 16),
+                devicesSummary,
               ],
             );
           }
@@ -230,9 +245,90 @@ class _OverviewTab extends StatelessWidget {
               licenseSummary,
               const SizedBox(height: 16),
               accessSummary,
+              const SizedBox(height: 16),
+              devicesSummary,
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _CompanyDevicesSummaryCard extends ConsumerWidget {
+  const _CompanyDevicesSummaryCard({required this.companyId});
+
+  final String companyId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final devicesAsync = ref.watch(
+      adminDevicesProvider(AdminDevicesQuery(companyId: companyId, pageSize: 100)),
+    );
+    return devicesAsync.when(
+      data: (devices) {
+        final mobile = devices.items
+            .where((device) => device.clientType.toUpperCase() == 'MOBILE_APP')
+            .length;
+        final localFailures = devices.items
+            .where((device) => device.hasLocalAttention)
+            .length;
+        final lastSeen = devices.items
+            .map((device) => device.lastSeenAt)
+            .whereType<DateTime>()
+            .fold<DateTime?>(null, (latest, value) {
+          if (latest == null || value.isAfter(latest)) {
+            return value;
+          }
+          return latest;
+        });
+        return AdminSurface(
+          title: 'Dispositivos e sessoes',
+          subtitle:
+              'Aparelhos, sessoes recentes e diagnostico local reportado pelo app.',
+          trailing: FilledButton.tonalIcon(
+            onPressed: () => context.go('/companies/$companyId/devices'),
+            icon: const Icon(Icons.devices_rounded),
+            label: const Text('Ver dispositivos e sessoes'),
+          ),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _MiniMetric(
+                label: 'Dispositivos',
+                value: '${devices.pagination.total}',
+              ),
+              _MiniMetric(label: 'Mobile', value: '$mobile'),
+              _MiniMetric(
+                label: 'Sessoes recentes',
+                value: '${devices.items.where((device) => device.session != null).length}',
+              ),
+              _MiniMetric(
+                label: 'Com falha local',
+                value: '$localFailures',
+              ),
+              _MiniMetric(
+                label: 'Ultimo acesso',
+                value: AdminFormatters.formatDateTime(lastSeen),
+              ),
+            ],
+          ),
+        );
+      },
+      loading: () => const AdminSurface(
+        title: 'Dispositivos e sessoes',
+        child: LinearProgressIndicator(),
+      ),
+      error: (error, _) => AdminSurface(
+        title: 'Dispositivos e sessoes',
+        subtitle: _safeError(error),
+        trailing: FilledButton.tonalIcon(
+          onPressed: () => context.go('/companies/$companyId/devices'),
+          icon: const Icon(Icons.devices_rounded),
+          label: const Text('Ver dispositivos e sessoes'),
+        ),
+        child: const Text('Nao disponivel nesta versao.'),
       ),
     );
   }

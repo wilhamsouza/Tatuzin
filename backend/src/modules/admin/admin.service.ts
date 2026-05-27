@@ -36,6 +36,7 @@ import {
 import type {
   AdminAuditQueryInput,
   AdminCompaniesQueryInput,
+  AdminDevicesQueryInput,
   AdminLicensePatchInput,
   AdminLicensesQueryInput,
   AdminSyncOperationalQueryInput,
@@ -133,6 +134,44 @@ type SessionAuditEventWithRelations = Prisma.SessionAuditLogGetPayload<{
         id: true;
         name: true;
         slug: true;
+      };
+    };
+  };
+}>;
+
+type AdminDeviceInventoryDevice = Prisma.CompanyDeviceGetPayload<{
+  include: {
+    company: {
+      select: {
+        id: true;
+        name: true;
+        slug: true;
+      };
+    };
+    user: {
+      select: {
+        id: true;
+        name: true;
+        email: true;
+      };
+    };
+    syncDiagnostic: true;
+  };
+}>;
+
+type AdminDeviceInventorySession = Prisma.DeviceSessionGetPayload<{
+  include: {
+    user: {
+      select: {
+        id: true;
+        name: true;
+        email: true;
+      };
+    };
+    membership: {
+      select: {
+        id: true;
+        role: true;
       };
     };
   };
@@ -312,7 +351,8 @@ export class AdminService {
       );
     }
 
-    const sessions = await this.sessionService.listCompanySessions(companyId);
+    const sessions = (await this.sessionService.listCompanySessions(companyId))
+      .map((session) => this.toAdminSessionDto(session));
 
     return {
       company: this.toCompanySummary(company),
