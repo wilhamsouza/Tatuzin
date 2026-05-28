@@ -319,7 +319,9 @@ class AdminApiService {
     );
   }
 
-  Future<List<AdminDeviceSession>> fetchCompanySessions(String companyId) async {
+  Future<List<AdminDeviceSession>> fetchCompanySessions(
+    String companyId,
+  ) async {
     final response = await _apiClient.getJson(
       '/admin/companies/$companyId/sessions',
       accessToken: await _readRequiredToken(),
@@ -1059,9 +1061,11 @@ class AdminApiService {
     required String command,
     required String reason,
     required String confirmationText,
+    String? note,
   }) async {
     final normalizedReason = reason.trim();
     final confirmation = confirmationText.trim();
+    final normalizedNote = note?.trim();
     if (normalizedReason.isEmpty) {
       throw const AdminApiException(
         message: 'Informe o motivo da acao administrativa.',
@@ -1081,6 +1085,8 @@ class AdminApiService {
         'command': command,
         'reason': normalizedReason,
         'confirmationText': confirmation,
+        if (normalizedNote != null && normalizedNote.isNotEmpty)
+          'payload': <String, dynamic>{'note': normalizedNote},
       },
     );
     return AdminSyncSupportActionResult.fromMap(

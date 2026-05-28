@@ -481,7 +481,9 @@ void main() {
     expect(find.text('Reativar acesso operacional'), findsNothing);
   });
 
-  testWidgets('Sync Center renderiza abas read-only', (tester) async {
+  testWidgets('Sync Center renderiza abas com modo seguro de suporte', (
+    tester,
+  ) async {
     _setLargeViewport(tester);
     await tester.pumpWidget(
       _adminRouterTestApp(
@@ -497,7 +499,8 @@ void main() {
     expect(find.text('Incidentes'), findsOneWidget);
     expect(find.text('Dispositivos'), findsOneWidget);
     expect(find.text('Auditoria'), findsOneWidget);
-    expect(find.textContaining('Modo seguro/read-only'), findsWidgets);
+    expect(find.text('Modo seguro com dry-run'), findsOneWidget);
+    expect(find.textContaining('sem comandos remotos'), findsNothing);
     expect(find.textContaining('Reprocessar'), findsNothing);
     expect(find.textContaining('Arquivar legado'), findsNothing);
   });
@@ -516,7 +519,8 @@ void main() {
 
     expect(find.text('Loja Moda Sul'), findsWidgets);
     expect(find.text('Eventos'), findsOneWidget);
-    expect(find.textContaining('Modo seguro/read-only'), findsWidgets);
+    expect(find.text('Modo seguro com dry-run'), findsOneWidget);
+    expect(find.textContaining('sem comandos remotos'), findsNothing);
   });
 
   testWidgets('Sync global aplica filtro all real', (tester) async {
@@ -679,6 +683,7 @@ void main() {
       find.textContaining('Comandos de suporte sao enviados ao app'),
       findsOneWidget,
     );
+    expect(find.textContaining('sem comandos remotos'), findsNothing);
 
     final deviceTableScroller = find
         .ancestor(
@@ -688,6 +693,8 @@ void main() {
         .last;
     await tester.drag(deviceTableScroller, const Offset(-1800, 0));
     await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextButton, 'Detalhes'), findsWidgets);
+    expect(find.widgetWithText(FilledButton, 'Suporte'), findsWidgets);
     await tester.tap(find.widgetWithText(TextButton, 'Detalhes').first);
     await tester.pumpAndSettle();
 
@@ -705,6 +712,63 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('linha de dispositivo abre detalhe clicavel', (tester) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/companies/company-1/sync',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(Tab, 'Dispositivos'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('PDV Loja Moda Sul').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dispositivo PDV Loja Moda Sul'), findsOneWidget);
+    expect(find.text('Comandos de suporte'), findsOneWidget);
+  });
+
+  testWidgets(
+    'dispositivo sem diagnostico mostra mensagem honesta e suporte seguro',
+    (tester) async {
+      _setLargeViewport(tester);
+      await tester.pumpWidget(
+        _adminRouterTestApp(
+          service: _FakeReadOnlyApiService(emptySupportDiagnostic: true),
+          initialLocation: '/companies/company-1/sync',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(Tab, 'Dispositivos'));
+      await tester.pumpAndSettle();
+      expect(find.text('Nao definido'), findsWidgets);
+
+      final deviceTableScroller = find
+          .ancestor(
+            of: find.byType(DataTable).first,
+            matching: find.byType(SingleChildScrollView),
+          )
+          .last;
+      await tester.drag(deviceTableScroller, const Offset(-1800, 0));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Suporte').first);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'Este dispositivo ainda nao reportou diagnostico local recente.',
+        ),
+        findsWidgets,
+      );
+      expect(find.text('Recalcular status'), findsOneWidget);
+      expect(find.text('Forcar pull da nuvem'), findsOneWidget);
+    },
+  );
 
   testWidgets('comandos de suporte exigem dry-run e confirmacao correta', (
     tester,
@@ -736,7 +800,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Reprocessar falhas locais'));
     await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Enviar comando'),
+          )
+          .enabled,
+      isFalse,
+    );
     await tester.enterText(find.byType(TextField).first, 'reprocessar fila');
+    await tester.enterText(find.byType(TextField).at(1), 'nota de suporte');
     await tester.tap(find.text('Executar dry-run'));
     await tester.pumpAndSettle();
 
@@ -771,6 +844,60 @@ void main() {
     expect(service.supportCreateCalls, 1);
     expect(find.text('PENDING'), findsOneWidget);
     expect(find.text('reprocessar fila'), findsOneWidget);
+    expect(find.text('nota de suporte'), findsOneWidget);
+  });
+
+  testWidgets('dry-run bloqueado mostra blockers e nao habilita confirmar', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeReadOnlyApiService(blockSupportDryRun: true);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/companies/company-1/sync',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(Tab, 'Dispositivos'));
+    await tester.pumpAndSettle();
+    final deviceTableScroller = find
+        .ancestor(
+          of: find.byType(DataTable).first,
+          matching: find.byType(SingleChildScrollView),
+        )
+        .last;
+    await tester.drag(deviceTableScroller, const Offset(-1800, 0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Detalhes').first);
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Reprocessar falhas locais'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reprocessar falhas locais'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'sem falhas locais');
+    await tester.tap(find.text('Executar dry-run'));
+    await tester.pumpAndSettle();
+
+    expect(service.supportDryRunCalls, 1);
+    expect(find.text('Bloqueado'), findsOneWidget);
+    expect(
+      find.text('Nao ha eventos locais com falha reportados.'),
+      findsOneWidget,
+    );
+    await tester.enterText(find.byType(TextField).last, 'REPROCESSAR');
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Enviar comando'),
+          )
+          .enabled,
+      isFalse,
+    );
+    expect(service.supportCreateCalls, 0);
   });
 
   testWidgets('refresh chama providers por empresa novamente', (tester) async {
@@ -1245,6 +1372,8 @@ class _FakeReadOnlyApiService extends AdminApiService {
     this.throwPlans = false,
     this.emptyCompanySync = false,
     this.throwCompanySync = false,
+    this.emptySupportDiagnostic = false,
+    this.blockSupportDryRun = false,
   }) : super(
          apiClient: AdminApiClient(
            baseUrl: 'https://api.test/api',
@@ -1263,6 +1392,8 @@ class _FakeReadOnlyApiService extends AdminApiService {
   final bool throwPlans;
   final bool emptyCompanySync;
   final bool throwCompanySync;
+  final bool emptySupportDiagnostic;
+  final bool blockSupportDryRun;
   AdminSyncCenterCompaniesQuery? lastCompaniesQuery;
   int companyHealthFetchCount = 0;
   int supportDryRunCalls = 0;
@@ -1421,21 +1552,24 @@ class _FakeReadOnlyApiService extends AdminApiService {
       throw const AdminApiException(message: 'falha controlada');
     }
     final allItems = [_deviceInventoryMap(), _adminDeviceInventoryMap()];
-    final filtered = allItems.where((item) {
-      if (query.companyId != null && item['companyId'] != query.companyId) {
-        return false;
-      }
-      if (query.clientType != 'all' && item['clientType'] != query.clientType) {
-        return false;
-      }
-      if (query.attention == true) {
-        final diagnostic = item['diagnostic'] as Map<String, dynamic>?;
-        return (diagnostic?['pendingCount'] as int? ?? 0) > 0 ||
-            (diagnostic?['failedCount'] as int? ?? 0) > 0 ||
-            (diagnostic?['openConflictCount'] as int? ?? 0) > 0;
-      }
-      return true;
-    }).toList(growable: false);
+    final filtered = allItems
+        .where((item) {
+          if (query.companyId != null && item['companyId'] != query.companyId) {
+            return false;
+          }
+          if (query.clientType != 'all' &&
+              item['clientType'] != query.clientType) {
+            return false;
+          }
+          if (query.attention == true) {
+            final diagnostic = item['diagnostic'] as Map<String, dynamic>?;
+            return (diagnostic?['pendingCount'] as int? ?? 0) > 0 ||
+                (diagnostic?['failedCount'] as int? ?? 0) > 0 ||
+                (diagnostic?['openConflictCount'] as int? ?? 0) > 0;
+          }
+          return true;
+        })
+        .toList(growable: false);
     return AdminPaginatedResult<AdminDeviceInventoryItem>(
       items: filtered.map(AdminDeviceInventoryItem.fromMap).toList(),
       pagination: AdminPaginationMeta(
@@ -1452,7 +1586,9 @@ class _FakeReadOnlyApiService extends AdminApiService {
   }
 
   @override
-  Future<List<AdminDeviceSession>> fetchCompanySessions(String companyId) async {
+  Future<List<AdminDeviceSession>> fetchCompanySessions(
+    String companyId,
+  ) async {
     companySessionsFetchCount++;
     if (throwCompanySync) {
       throw const AdminApiException(message: 'falha controlada');
@@ -1961,7 +2097,11 @@ class _FakeReadOnlyApiService extends AdminApiService {
   Future<List<AdminSyncSupportDevice>> fetchSyncSupportDevices({
     required String companyId,
   }) async {
-    return [AdminSyncSupportDevice.fromMap(_supportDeviceMap())];
+    return [
+      AdminSyncSupportDevice.fromMap(
+        _supportDeviceMap(withDiagnostic: !emptySupportDiagnostic),
+      ),
+    ];
   }
 
   @override
@@ -1970,8 +2110,8 @@ class _FakeReadOnlyApiService extends AdminApiService {
     required String deviceId,
   }) async {
     return AdminSyncSupportDeviceDetail.fromMap({
-      'device': _supportDeviceMap(),
-      'diagnostic': _supportDiagnosticMap(),
+      'device': _supportDeviceMap(withDiagnostic: !emptySupportDiagnostic),
+      'diagnostic': emptySupportDiagnostic ? null : _supportDiagnosticMap(),
       'failedEvents': const [],
       'openConflicts': const [],
       'resolvedConflicts': const [],
@@ -1987,6 +2127,17 @@ class _FakeReadOnlyApiService extends AdminApiService {
     required String reason,
   }) async {
     supportDryRunCalls++;
+    if (blockSupportDryRun) {
+      return AdminSyncSupportDryRunResult.fromMap({
+        'allowed': false,
+        'command': command,
+        'label': 'Comando bloqueado',
+        'expectedConfirmationText': 'REPROCESSAR',
+        'blockers': ['Nao ha eventos locais com falha reportados.'],
+        'risks': const [],
+        'summary': 'Comando bloqueado pelo dry-run.',
+      });
+    }
     final expected = switch (command) {
       'RETRY_FAILED_SYNC_EVENTS' => 'REPROCESSAR',
       'REPAIR_OPERATIONAL_ORDER_ITEM_TOTAL_CENTS' => 'REPARAR',
@@ -2012,6 +2163,7 @@ class _FakeReadOnlyApiService extends AdminApiService {
     required String command,
     required String reason,
     required String confirmationText,
+    String? note,
   }) async {
     supportCreateCalls++;
     final commandMap = {
@@ -2020,7 +2172,9 @@ class _FakeReadOnlyApiService extends AdminApiService {
       'label': 'Comando seguro',
       'status': 'PENDING',
       'reason': reason,
-      'payload': const {},
+      'payload': note == null || note.trim().isEmpty
+          ? const {}
+          : {'note': note.trim()},
       'result': const {},
       'errorMessage': null,
       'requestedAt': '2026-05-24T12:30:00.000Z',
@@ -2658,7 +2812,7 @@ Map<String, dynamic> _resolvedConflictMap() {
   };
 }
 
-Map<String, dynamic> _supportDeviceMap() {
+Map<String, dynamic> _supportDeviceMap({bool withDiagnostic = true}) {
   return {
     'id': 'device-1',
     'maskedDeviceId': 'device...0001',
@@ -2676,15 +2830,17 @@ Map<String, dynamic> _supportDeviceMap() {
       'name': 'Operador Local',
       'email': 'operador@tatuzin.test',
     },
-    'diagnostic': {
-      'pendingCount': 2,
-      'failedCount': 1,
-      'openConflictCount': 1,
-      'resolvedConflictCount': 1,
-      'ignoredConflictCount': 0,
-      'lastLocalError': 'totalCents antigo',
-      'reportedAt': '2026-05-24T12:00:00.000Z',
-    },
+    'diagnostic': withDiagnostic
+        ? {
+            'pendingCount': 2,
+            'failedCount': 1,
+            'openConflictCount': 1,
+            'resolvedConflictCount': 1,
+            'ignoredConflictCount': 0,
+            'lastLocalError': 'totalCents antigo',
+            'reportedAt': '2026-05-24T12:00:00.000Z',
+          }
+        : null,
     'remoteConflictCounts': {
       'openConflictCount': 1,
       'resolvedConflictCount': 1,

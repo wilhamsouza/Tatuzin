@@ -331,7 +331,7 @@ class _Header extends StatelessWidget {
           Chip(label: Text('Conflitos OPEN: ${health.openConflictsCount}')),
           Chip(label: Text('Eventos: ${health.events.total}')),
           Chip(label: Text('Dispositivos: ${health.devices.total}')),
-          const Chip(label: Text('Modo seguro/read-only')),
+          const Chip(label: Text('Modo seguro com dry-run')),
         ],
       ),
     );
@@ -769,6 +769,7 @@ class _DevicesTab extends StatelessWidget {
             return SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
+                showCheckboxColumn: false,
                 columns: const [
                   DataColumn(label: Text('Nome/label')),
                   DataColumn(label: Text('Tipo')),
@@ -781,20 +782,27 @@ class _DevicesTab extends StatelessWidget {
                   DataColumn(label: Text('App version')),
                   DataColumn(label: Text('Platform')),
                   DataColumn(label: Text('Status')),
-                  DataColumn(label: Text('Detalhe')),
+                  DataColumn(label: Text('Acoes')),
                 ],
                 rows: rows
                     .map((row) {
                       return DataRow(
+                        onSelectChanged: (_) => _showDeviceDetail(
+                          context,
+                          companyId: companyId,
+                          row: row,
+                        ),
                         cells: [
                           DataCell(Text(row.label)),
                           DataCell(Text(row.clientType)),
                           DataCell(Text(row.user)),
                           DataCell(
                             Text(
-                              AdminFormatters.formatDateTime(
-                                row.diagnostic?.reportedAt,
-                              ),
+                              row.diagnostic == null
+                                  ? 'Nao definido'
+                                  : AdminFormatters.formatDateTime(
+                                      row.diagnostic?.reportedAt,
+                                    ),
                             ),
                           ),
                           DataCell(
@@ -816,13 +824,29 @@ class _DevicesTab extends StatelessWidget {
                           DataCell(Text(row.platform ?? 'Sem dados')),
                           DataCell(_StatusChip(label: row.status)),
                           DataCell(
-                            TextButton(
-                              onPressed: () => _showDeviceDetail(
-                                context,
-                                companyId: companyId,
-                                row: row,
-                              ),
-                              child: const Text('Detalhes'),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                TextButton(
+                                  onPressed: () => _showDeviceDetail(
+                                    context,
+                                    companyId: companyId,
+                                    row: row,
+                                  ),
+                                  child: const Text('Detalhes'),
+                                ),
+                                const SizedBox(width: 8),
+                                FilledButton.tonal(
+                                  onPressed: row.isSupportDevice
+                                      ? () => _showDeviceDetail(
+                                          context,
+                                          companyId: companyId,
+                                          row: row,
+                                        )
+                                      : null,
+                                  child: const Text('Suporte'),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -1054,6 +1078,11 @@ class _SupportCommandsPanel extends ConsumerWidget {
               .toList(growable: false),
         ),
         const SizedBox(height: 12),
+        Text(
+          'Historico de comandos',
+          style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 8),
         if (commands.isEmpty)
           const _EmptyState(message: 'Nenhum comando enviado para este device.')
         else
@@ -1068,6 +1097,7 @@ class _SupportCommandsPanel extends ConsumerWidget {
                 DataColumn(label: Text('Concluido em')),
                 DataColumn(label: Text('Expira em')),
                 DataColumn(label: Text('Motivo')),
+                DataColumn(label: Text('Nota')),
                 DataColumn(label: Text('Resultado/erro')),
               ],
               rows: commands
@@ -1098,6 +1128,12 @@ class _SupportCommandsPanel extends ConsumerWidget {
                         ),
                         DataCell(
                           SizedBox(width: 180, child: Text(command.reason)),
+                        ),
+                        DataCell(
+                          SizedBox(
+                            width: 180,
+                            child: Text(_formatCommandNote(command)),
+                          ),
                         ),
                         DataCell(
                           SizedBox(
@@ -1153,6 +1189,7 @@ class _SupportCommandDialog extends ConsumerStatefulWidget {
 
 class _SupportCommandDialogState extends ConsumerState<_SupportCommandDialog> {
   final _reasonController = TextEditingController();
+  final _noteController = TextEditingController();
   final _confirmationController = TextEditingController();
   AdminSyncSupportDryRunResult? _dryRun;
   String? _error;
@@ -1161,6 +1198,7 @@ class _SupportCommandDialogState extends ConsumerState<_SupportCommandDialog> {
   @override
   void dispose() {
     _reasonController.dispose();
+    _noteController.dispose();
     _confirmationController.dispose();
     super.dispose();
   }
@@ -1173,6 +1211,7 @@ class _SupportCommandDialogState extends ConsumerState<_SupportCommandDialog> {
         widget.option.expectedConfirmationText;
     final canConfirm =
         dryRun?.allowed == true &&
+        _reasonController.text.trim().isNotEmpty &&
         _confirmationController.text.trim() == expected &&
         !_loading;
     return AlertDialog(
@@ -1188,10 +1227,21 @@ class _SupportCommandDialogState extends ConsumerState<_SupportCommandDialog> {
               const SizedBox(height: 12),
               TextField(
                 controller: _reasonController,
+                onChanged: (_) => setState(() {}),
                 minLines: 2,
                 maxLines: 3,
                 decoration: const InputDecoration(
                   labelText: 'Motivo obrigatorio',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _noteController,
+                minLines: 1,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Nota opcional',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -1295,6 +1345,7 @@ class _SupportCommandDialogState extends ConsumerState<_SupportCommandDialog> {
             command: widget.option.command,
             reason: _reasonController.text,
             confirmationText: _confirmationController.text,
+            note: _noteController.text,
           );
       ref.invalidate(
         adminSyncSupportDeviceDetailProvider(
@@ -1305,6 +1356,7 @@ class _SupportCommandDialogState extends ConsumerState<_SupportCommandDialog> {
         ),
       );
       ref.invalidate(adminSyncSupportDevicesProvider(widget.companyId));
+      ref.invalidate(adminCompanySyncHealthProvider(widget.companyId));
       if (mounted) {
         final messenger = ScaffoldMessenger.of(context);
         Navigator.of(context).pop();
@@ -1515,7 +1567,7 @@ void _showDeviceDetail(
         'Usuario': row.user,
         'Status': row.status,
         'Diagnostico local do app':
-            'Dispositivo ainda nao reportou diagnostico.',
+            'Este dispositivo ainda nao reportou diagnostico local recente.',
         'Acoes remotas': _remoteActionsNotice,
       },
     );
@@ -1587,7 +1639,10 @@ Map<String, String> _deviceDetailRows(
       'Usuario': row.user,
       'App version': row.appVersion ?? 'Sem dados',
       'Platform': row.platform ?? 'Sem dados',
-      'Diagnostico local do app': 'Dispositivo ainda nao reportou diagnostico.',
+      'Diagnostico local do app':
+          'Este dispositivo ainda nao reportou diagnostico local recente.',
+      'Status do diagnostico':
+          'Este dispositivo ainda nao reportou diagnostico local recente.',
       'Acoes remotas': _remoteActionsNotice,
     };
   }
@@ -1683,6 +1738,15 @@ String _formatSafeDetails(Map<String, dynamic> details) {
       .map((entry) => '${entry.key}: ${entry.value}')
       .join(', ');
   return text.length <= 500 ? text : '${text.substring(0, 500)}...';
+}
+
+String _formatCommandNote(AdminSyncSupportCommand command) {
+  final note = command.payload['note'];
+  if (note is! String || note.trim().isEmpty) {
+    return 'Sem nota';
+  }
+  final trimmed = note.trim();
+  return trimmed.length <= 240 ? trimmed : '${trimmed.substring(0, 240)}...';
 }
 
 String _maskId(String value) {

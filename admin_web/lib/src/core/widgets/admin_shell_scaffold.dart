@@ -67,6 +67,10 @@ class AdminShellScaffold extends ConsumerWidget {
     final sessionName = auth.session?.user.name ?? 'Administrador';
     final sessionEmail = auth.session?.user.email ?? 'sem sessao';
     final isAdvancedBilling = currentLocation.startsWith('/billing');
+    final hasSyncSupportActions =
+        currentLocation.startsWith('/sync') ||
+        (currentLocation.startsWith('/companies/') &&
+            currentLocation.endsWith('/sync'));
 
     if (isCompact) {
       return Scaffold(
@@ -87,6 +91,7 @@ class AdminShellScaffold extends ConsumerWidget {
             sessionName: sessionName,
             sessionEmail: sessionEmail,
             isAdvancedBilling: isAdvancedBilling,
+            hasSyncSupportActions: hasSyncSupportActions,
           ),
         ),
         body: Padding(padding: const EdgeInsets.all(16), child: child),
@@ -102,6 +107,7 @@ class AdminShellScaffold extends ConsumerWidget {
             sessionName: sessionName,
             sessionEmail: sessionEmail,
             isAdvancedBilling: isAdvancedBilling,
+            hasSyncSupportActions: hasSyncSupportActions,
           ),
           Expanded(
             child: Column(
@@ -175,12 +181,14 @@ class _Sidebar extends StatelessWidget {
     required this.sessionName,
     required this.sessionEmail,
     required this.isAdvancedBilling,
+    required this.hasSyncSupportActions,
   });
 
   final String currentLocation;
   final String sessionName;
   final String sessionEmail;
   final bool isAdvancedBilling;
+  final bool hasSyncSupportActions;
 
   @override
   Widget build(BuildContext context) {
@@ -276,7 +284,10 @@ class _Sidebar extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 10),
-              _ReadOnlyBadge(isAdvancedBilling: isAdvancedBilling),
+              _ReadOnlyBadge(
+                isAdvancedBilling: isAdvancedBilling,
+                hasSyncSupportActions: hasSyncSupportActions,
+              ),
             ],
           ),
         ),
@@ -410,9 +421,13 @@ class _SessionPill extends StatelessWidget {
 }
 
 class _ReadOnlyBadge extends StatelessWidget {
-  const _ReadOnlyBadge({required this.isAdvancedBilling});
+  const _ReadOnlyBadge({
+    required this.isAdvancedBilling,
+    required this.hasSyncSupportActions,
+  });
 
   final bool isAdvancedBilling;
+  final bool hasSyncSupportActions;
 
   @override
   Widget build(BuildContext context) {
@@ -429,7 +444,9 @@ class _ReadOnlyBadge extends StatelessWidget {
       child: Text(
         isAdvancedBilling
             ? 'Billing avancado: esta rota preserva acoes administrativas reais.'
-            : 'Modo seguro/read-only: sem comandos remotos e sem alteracoes reais.',
+            : hasSyncSupportActions
+            ? 'Modo seguro: acoes sensiveis exigem dry-run, confirmacao e auditoria.'
+            : 'Modo seguro/read-only: sem alteracoes reais nesta area.',
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
           color: isAdvancedBilling
               ? scheme.onErrorContainer
