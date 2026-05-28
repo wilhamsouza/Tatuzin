@@ -807,29 +807,6 @@ class SqliteSaleRepository implements SaleRepository {
       );
     }
 
-    await queue.enqueue(
-      txn,
-      event: OperationalSyncEvent(
-        eventId: OperationalSyncEvent.buildEventId(
-          entity: 'receipt',
-          operation: 'create',
-          localIdentity: receiptNumber,
-        ),
-        feature: 'pdv',
-        entity: 'receipt',
-        operation: 'create',
-        entityLocalId: receiptNumber,
-        occurredAt: occurredAt,
-        payload: <String, dynamic>{
-          'receiptNumber': receiptNumber,
-          'saleLocalId': saleId,
-          'saleUuid': saleUuid,
-          'amountCents': finalCents,
-          'issuedAt': occurredAt.toIso8601String(),
-        },
-      ),
-    );
-
     for (final change in stockChanges) {
       final localIdentity =
           '$saleUuid:${change.productId}:${change.productVariantId ?? 0}';

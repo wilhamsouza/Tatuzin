@@ -1,6 +1,11 @@
+import 'dart:convert';
+
+import 'package:tatuzin/app/core/app_context/app_operational_context.dart';
+import 'package:tatuzin/app/core/config/app_environment.dart';
 import 'package:tatuzin/app/core/database/app_database.dart';
 import 'package:tatuzin/app/core/database/table_names.dart';
 import 'package:tatuzin/app/core/errors/app_exceptions.dart';
+import 'package:tatuzin/app/core/session/app_session.dart';
 import 'package:tatuzin/modules/dashboard/data/sqlite_operational_dashboard_repository.dart';
 import 'package:tatuzin/modules/historico_vendas/data/sqlite_sale_history_repository.dart';
 import 'package:tatuzin/modules/carrinho/domain/entities/cart_item.dart';
@@ -15,11 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'support/sale_inventory_test_support.dart'
-    show
-        createSaleRepository,
-        ensureOpenCashSession,
-        loadProductStock,
-        loadVariantStock;
+    show ensureOpenCashSession, loadProductStock, loadVariantStock;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -60,6 +61,44 @@ void main() {
       expect(dashboard.recentMovements, isNotEmpty);
       expect(dashboard.recentMovements.first.label, 'Venda recebida');
       expect(dashboard.recentMovements.first.amountCents, 9900);
+    },
+  );
+
+  test(
+    'faturar pedido gera venda item pagamento e baixa sem receipt redundante',
+    () async {
+      final fixture = await _openFixture();
+      addTearDown(fixture.dispose);
+      await fixture.insertSimpleProduct(stockMil: 5000);
+      final orderId = await fixture.createDraftOrder();
+      await fixture.addSimpleItem(orderId, quantityMil: 1000);
+      await fixture.prepareDeliveredOrder(orderId);
+
+      await fixture.saleRepository.completeCashSale(
+        input: fixture.checkoutInput(
+          orderId: orderId,
+          items: [_simpleCartItem(quantityMil: 1000, availableStockMil: 5000)],
+        ),
+      );
+
+      final events = await fixture.database.query(
+        TableNames.operationalSyncEvents,
+        orderBy: 'id ASC',
+      );
+      final entities = events.map((row) => row['entity'] as String).toList();
+
+      expect(entities, contains('sale'));
+      expect(entities, contains('saleItem'));
+      expect(entities, contains('payment'));
+      expect(entities, contains('stockDeduction'));
+      expect(entities, isNot(contains('receipt')));
+
+      final saleEvent = events.singleWhere((row) => row['entity'] == 'sale');
+      final salePayload =
+          jsonDecode(saleEvent['payload_json'] as String)
+              as Map<String, dynamic>;
+      expect(salePayload['receiptNumber'], isNotNull);
+      expect((salePayload['uuid'] as String?)?.isNotEmpty, isTrue);
     },
   );
 
@@ -307,7 +346,13 @@ Future<_BillingReservationFixture> _openFixture() async {
     appDatabase: appDatabase,
     database: database,
     orderRepository: SqliteOperationalOrderRepository(appDatabase),
-    saleRepository: createSaleRepository(database),
+    saleRepository: SqliteSaleRepository(
+      appDatabase,
+      AppOperationalContext(
+        environment: const AppEnvironment.localDefault(),
+        session: AppSession.localDefault(),
+      ),
+    ),
   );
 }
 

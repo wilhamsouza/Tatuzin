@@ -1449,6 +1449,91 @@ describe("operational local-first sync routes", () => {
     assert.equal(sale.receiptNumber, receiptNumber);
   });
 
+  it("keeps legacy duplicate receipt from duplicating sale payment and stock", async () => {
+    const fixture = await createFixture();
+    const product = await createProduct(fixture, { stockMil: 5_000 });
+    const saleLocalId = `${runId}-receipt-legacy-sale`;
+    const receiptNumber = `${runId}-R-LEGACY`;
+    await push(fixture, [
+      buildEvent("receipt-legacy-sale-create", "sale", {
+        entityLocalId: saleLocalId,
+        payload: {
+          uuid: saleLocalId,
+          receiptNumber,
+          status: "finalized",
+          totalCents: 1200,
+          paymentMethod: "pix",
+        },
+      }),
+      buildEvent("receipt-legacy-sale-item", "saleItem", {
+        entityLocalId: `${runId}-receipt-legacy-item`,
+        payload: {
+          saleLocalId,
+          productId: product.id,
+          quantityMil: 1000,
+          subtotalCents: 1200,
+        },
+      }),
+      buildEvent("receipt-legacy-payment", "payment", {
+        entityLocalId: `${runId}-receipt-legacy-payment`,
+        payload: {
+          saleLocalId,
+          amountCents: 1200,
+          paymentMethod: "pix",
+        },
+      }),
+      buildEvent("receipt-legacy-deduction", "stockDeduction", {
+        entityLocalId: `${runId}-receipt-legacy-deduction`,
+        payload: {
+          saleLocalId,
+          productId: product.id,
+          quantityDeltaMil: -1000,
+        },
+      }),
+    ]);
+
+    const duplicate = await push(fixture, [
+      buildEvent("receipt-legacy-duplicate", "receipt", {
+        entityLocalId: `${runId}-receipt-legacy-receipt`,
+        payload: { saleLocalId, saleUuid: saleLocalId, receiptNumber },
+      }),
+    ]);
+
+    assert.equal(
+      (duplicate.data as { summary: { duplicates: number } }).summary
+        .duplicates,
+      1,
+    );
+    const [salesCount, saleItemsCount, paymentsCount, deductionsCount, sale] =
+      await Promise.all([
+        prisma.sale.count({
+          where: { companyId: fixture.companyId, localUuid: saleLocalId },
+        }),
+        prisma.saleItem.count({
+          where: { sale: { companyId: fixture.companyId, localUuid: saleLocalId } },
+        }),
+        prisma.financialEvent.count({
+          where: { companyId: fixture.companyId, eventType: "sale_payment" },
+        }),
+        prisma.stockDeduction.count({
+          where: { companyId: fixture.companyId },
+        }),
+        prisma.sale.findUniqueOrThrow({
+          where: {
+            companyId_localUuid: {
+              companyId: fixture.companyId,
+              localUuid: saleLocalId,
+            },
+          },
+        }),
+      ]);
+    assert.equal(salesCount, 1);
+    assert.equal(saleItemsCount, 1);
+    assert.equal(paymentsCount, 1);
+    assert.equal(deductionsCount, 1);
+    assert.equal(sale.receiptNumber, receiptNumber);
+  });
+
   it("creates DUPLICATE_RECEIPT when receipt number belongs to another sale", async () => {
     const fixture = await createFixture();
     const receiptNumber = `${runId}-R-002`;
