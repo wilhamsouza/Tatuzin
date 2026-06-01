@@ -104,6 +104,19 @@ enum EmployeeCommissionBase {
   GROSS_PROFIT
 }
 
+enum AdminAuditActorType {
+  USER
+  SYSTEM
+  BOOTSTRAP
+  SERVICE
+}
+
+enum SupportActionExecutionStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
 model User {
   id                         String                   @id @default(uuid())
   email                      String                   @unique
@@ -119,6 +132,7 @@ model User {
   billingCheckoutSessions    BillingCheckoutSession[]
   billingAdminAuditLogs      BillingAdminAuditLog[]
   adminAuditLogs             AdminAuditLog[]          @relation("AdminAuditActor")
+  adminUserPermissions       AdminUserPermission[]     @relation("AdminUserPermissionActor")
   deviceSessions             DeviceSession[]
   companyDevices             CompanyDevice[]
   syncEvents                 SyncEvent[]
@@ -140,6 +154,23 @@ model User {
   employeeProfiles           EmployeeProfile[]        @relation("EmployeeProfileUser")
   employeeProfilesCreated    EmployeeProfile[]        @relation("EmployeeProfileCreatedBy")
   employeeProfilesUpdated    EmployeeProfile[]        @relation("EmployeeProfileUpdatedBy")
+}
+
+model AdminUserPermission {
+  id            String   @id @default(uuid())
+  actorUserId   String
+  permissionKey String
+  scope         String   @default("platform")
+  scopeId       String   @default("*")
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  actorUser     User     @relation("AdminUserPermissionActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@unique([actorUserId, permissionKey, scope, scopeId])
+  @@index([actorUserId, isActive])
+  @@index([permissionKey])
+  @@index([scope, scopeId])
 }
 
 model Company {
@@ -599,17 +630,46 @@ model DeviceSyncDiagnostic {
 
 model AdminAuditLog {
   id              String   @id @default(uuid())
-  actorUserId     String
+  actorType        AdminAuditActorType @default(USER)
+  actorUserId     String?
+  actorLabel      String?
   targetCompanyId String?
   action          String
   details         Json?
   createdAt       DateTime @default(now())
-  actorUser       User     @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  actorUser       User?    @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
   targetCompany   Company? @relation("AdminAuditCompany", fields: [targetCompanyId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([action])
+  @@index([actorType])
+  @@index([actorUserId])
   @@index([targetCompanyId])
+}
+
+model SupportActionExecution {
+  id                    String                       @id @default(uuid())
+  idempotencyKey        String                       @unique
+  requestFingerprint    String
+  dryRunAuditEventId    String
+  actionType            String
+  targetCompanyId       String
+  targetType            String
+  targetId              String
+  actorUserId           String
+  reason                String
+  status                SupportActionExecutionStatus @default(PENDING)
+  beforeAuditEventId    String?
+  afterAuditEventId     String?
+  result                Json?
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+  executedAt            DateTime?
+
+  @@index([dryRunAuditEventId])
+  @@index([actionType, targetCompanyId, targetType, targetId])
+  @@index([actorUserId, createdAt])
+  @@index([status, createdAt])
 }
 
 model DeviceSession {
