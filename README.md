@@ -104,6 +104,7 @@ Arquivos de referencia:
 - Rotas Flutter: `lib/app/routes`
 - Modulos Flutter: `lib/modules`
 - Modulos backend: `backend/src/modules`
+- Reality check do ecossistema: `docs/ecosystem-reality-check.md`
 
 Observacao: no estado atual do repositorio nao ha `backend/docker-compose.vm.yml`; o compose equivalente de producao e `backend/docker-compose.prod.yml`.
 

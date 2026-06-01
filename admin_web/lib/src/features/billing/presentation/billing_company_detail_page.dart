@@ -728,7 +728,9 @@ class _EventsSurface extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (events.items.isEmpty)
-            const Text('Nenhum evento de billing encontrado.')
+            const Text(
+              'Nenhum dado de billing encontrado para esta secao. Confira se a assinatura ja gerou eventos no provider.',
+            )
           else
             ...events.items.map(
               (event) => ExpansionTile(
@@ -781,7 +783,9 @@ class _CheckoutSessionsSurface extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (sessions.items.isEmpty)
-            const Text('Nenhuma sessão de checkout encontrada.')
+            const Text(
+              'Nenhuma sessao de checkout encontrada. Novas tentativas de assinatura aparecerao aqui quando existirem.',
+            )
           else
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -838,7 +842,9 @@ class _InvoicesSurface extends StatelessWidget {
       title: 'Faturas resumidas',
       subtitle: 'Resumo interno quando houver BillingInvoice reconciliada.',
       child: invoices.isEmpty
-          ? const Text('Nenhuma fatura registrada para esta empresa.')
+          ? const Text(
+              'Nenhuma fatura registrada para esta empresa. Isso pode ser esperado em contas sem cobranca ativa.',
+            )
           : SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(

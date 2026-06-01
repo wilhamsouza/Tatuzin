@@ -14,10 +14,12 @@ import 'package:tatuzin_admin_web/src/core/models/admin_plan_models.dart';
 import 'package:tatuzin_admin_web/src/core/models/admin_sync_center_models.dart';
 import 'package:tatuzin_admin_web/src/core/network/admin_api_client.dart';
 import 'package:tatuzin_admin_web/src/core/network/admin_api_service.dart';
+import 'package:tatuzin_admin_web/src/core/widgets/admin_route_error_page.dart';
 import 'package:tatuzin_admin_web/src/core/widgets/admin_shell_scaffold.dart';
 import 'package:tatuzin_admin_web/src/features/audit/presentation/audit_page.dart';
 import 'package:tatuzin_admin_web/src/features/companies/presentation/companies_page.dart';
 import 'package:tatuzin_admin_web/src/features/companies/presentation/company_detail_page.dart';
+import 'package:tatuzin_admin_web/src/features/companies/presentation/company_support_page.dart';
 import 'package:tatuzin_admin_web/src/features/companies/presentation/company_users_page.dart';
 import 'package:tatuzin_admin_web/src/features/dashboard/presentation/dashboard_page.dart';
 import 'package:tatuzin_admin_web/src/features/devices/presentation/devices_page.dart';
@@ -33,11 +35,24 @@ void main() {
     final shellSource = File(
       'lib/src/core/widgets/admin_shell_scaffold.dart',
     ).readAsStringSync();
+    final readme = File('README.md').readAsStringSync();
+    final securityDoc = File('docs/security-admin-web.md').readAsStringSync();
+    final observabilityDoc = File(
+      'docs/observability-admin-web.md',
+    ).readAsStringSync();
+    final cicdDoc = File('docs/cicd-admin-web.md').readAsStringSync();
+    final androidVersionDoc = File(
+      'docs/android-version-control.md',
+    ).readAsStringSync();
+    final fcmDoc = File('docs/push-notification-fcm.md').readAsStringSync();
 
-    for (final route in [
+    final documentedRoutes = [
+      "path: '/'",
+      "path: '/login'",
       "path: '/dashboard'",
       "path: '/companies'",
       "path: '/companies/:companyId'",
+      "path: '/companies/:companyId/support'",
       "path: '/companies/:companyId/sync'",
       "path: '/companies/:companyId/license'",
       "path: '/companies/:companyId/users'",
@@ -46,28 +61,80 @@ void main() {
       "path: '/companies/:companyId/sessions'",
       "path: '/sync'",
       "path: '/sync/:companyId'",
+      "path: '/sync/:companyId/events/:eventId'",
+      "path: '/sync/:companyId/conflicts/:conflictId'",
       "path: '/devices'",
       "path: '/licenses'",
       "path: '/licenses/:companyId'",
       "path: '/plans'",
       "path: '/audit'",
-    ]) {
+      "path: '/management/dashboard'",
+      "path: '/management/reports'",
+      "path: '/management/governance'",
+      "path: '/management/crm/customers'",
+      "path: '/management/crm/customers/:customerId'",
+      "path: '/billing'",
+      "path: '/billing/:companyId'",
+      "path: '/sync-health'",
+    ];
+    for (final route in documentedRoutes) {
       expect(routerSource, contains(route));
+      final path = route.substring("path: '".length, route.length - 1);
+      expect(readme, contains('`$path`'));
     }
     for (final label in [
       'Dashboard',
       'Empresas',
-      'Sync global',
+      'Sync Center',
       'Dispositivos',
       'Licencas',
       'Planos',
       'Auditoria',
-      'Billing avancado',
-      'Avancado',
+      'Billing',
+      'Restrito',
     ]) {
       expect(shellSource, contains(label));
     }
     expect(routerSource, isNot(contains("path: '/owner'")));
+    expect(readme, contains('separado do `owner_web`'));
+    expect(readme, contains('`employees` redireciona para `users`'));
+    expect(readme, contains('`sessions` redireciona para `devices`'));
+    expect(readme, contains('docs/security-admin-web.md'));
+    expect(securityDoc, contains('Cookie HttpOnly'));
+    expect(securityDoc, contains('MFA'));
+    expect(securityDoc, contains('dry-run'));
+    expect(securityDoc, contains('Permissoes granulares'));
+    expect(readme, contains('docs/observability-admin-web.md'));
+    expect(observabilityDoc, contains('requests por rota'));
+    expect(observabilityDoc, contains('latencia por endpoint'));
+    expect(observabilityDoc, contains('empresas sem sync recente'));
+    expect(observabilityDoc, contains('backend/infra'));
+    expect(readme, contains('docs/cicd-admin-web.md'));
+    expect(readme, contains('flutter analyze'));
+    expect(readme, contains('flutter test'));
+    expect(readme, contains('flutter build web'));
+    expect(cicdDoc, contains('flutter pub get'));
+    expect(cicdDoc, contains('flutter analyze'));
+    expect(cicdDoc, contains('flutter test'));
+    expect(cicdDoc, contains('flutter build web'));
+    expect(cicdDoc, contains('Nao ha deploy real'));
+    expect(cicdDoc, contains('Nao cria secrets'));
+    expect(readme, contains('docs/android-version-control.md'));
+    expect(androidVersionDoc, contains('Versao minima'));
+    expect(androidVersionDoc, contains('Versao recomendada'));
+    expect(androidVersionDoc, contains('Versao instalada'));
+    expect(androidVersionDoc, contains('Atualizacao obrigatoria'));
+    expect(androidVersionDoc, contains('FCM'));
+    expect(androidVersionDoc, contains('Dry-run'));
+    expect(readme, contains('docs/push-notification-fcm.md'));
+    expect(readme, contains('sem envio real'));
+    expect(readme, contains('sem token real'));
+    expect(readme, contains('sem Firebase'));
+    expect(fcmDoc, contains('Token FCM por dispositivo'));
+    expect(fcmDoc, contains('Preferencias'));
+    expect(fcmDoc, contains('Historico de notificacoes'));
+    expect(fcmDoc, contains('dry-run'));
+    expect(fcmDoc, contains('Nunca exibir token FCM completo'));
   });
 
   testWidgets('renderiza nova navegacao', (tester) async {
@@ -86,13 +153,50 @@ void main() {
 
     expect(find.text('Dashboard'), findsWidgets);
     expect(find.text('Empresas'), findsOneWidget);
-    expect(find.text('Sync global'), findsOneWidget);
+    expect(find.text('Sync Center'), findsOneWidget);
     expect(find.text('Dispositivos'), findsWidgets);
     expect(find.text('Licencas'), findsOneWidget);
     expect(find.text('Planos'), findsOneWidget);
     expect(find.text('Auditoria'), findsOneWidget);
-    expect(find.text('Billing avancado'), findsOneWidget);
-    expect(find.text('Avancado'), findsOneWidget);
+    expect(find.text('Billing'), findsOneWidget);
+    expect(find.text('Restrito'), findsOneWidget);
+  });
+
+  testWidgets('breadcrumbs mostram contexto das rotas principais', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: AdminShellScaffold(
+            currentLocation: '/companies/company-1/support',
+            title: 'Central de suporte da empresa',
+            child: SizedBox.shrink(),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Plataforma'), findsWidgets);
+    expect(find.text('Empresas'), findsWidgets);
+    expect(find.text('Empresa'), findsOneWidget);
+    expect(find.text('Central de suporte'), findsOneWidget);
+  });
+
+  testWidgets('rota invalida exibe erro amigavel', (tester) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AdminRouteErrorPage(location: '/rota-inexistente'),
+        ),
+      ),
+    );
+
+    expect(find.text('Rota invalida'), findsOneWidget);
+    expect(find.textContaining('/rota-inexistente'), findsOneWidget);
+    expect(find.text('Ir para dashboard'), findsOneWidget);
   });
 
   testWidgets('menu lateral destaca apenas a secao ativa', (tester) async {
@@ -102,7 +206,7 @@ void main() {
         child: MaterialApp(
           home: AdminShellScaffold(
             currentLocation: '/companies/company-1/license',
-            title: 'Licenca da empresa',
+            title: 'Licenca e billing da empresa',
             child: SizedBox.shrink(),
           ),
         ),
@@ -149,6 +253,7 @@ void main() {
     expect(find.text('Empresas'), findsOneWidget);
     expect(find.text('Loja Moda Sul'), findsOneWidget);
     expect(find.text('Abrir'), findsOneWidget);
+    expect(find.text('Suporte'), findsOneWidget);
   });
 
   testWidgets('empresa abre visao 360', (tester) async {
@@ -162,18 +267,144 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Loja Moda Sul'), findsWidgets);
+    expect(find.text('Central de suporte'), findsOneWidget);
     expect(find.text('Resumo'), findsOneWidget);
     expect(find.text('Resumo de sync'), findsOneWidget);
     expect(find.text('Licenca e assinatura'), findsOneWidget);
     expect(find.text('Usuarios e funcionarios'), findsOneWidget);
     expect(find.text('Abrir console de sync'), findsWidgets);
     expect(find.text('Ver licenca e assinatura'), findsWidgets);
+    expect(find.text('Abrir billing'), findsOneWidget);
     expect(find.text('Ver usuarios e funcionarios'), findsWidgets);
     expect(find.text('Sync'), findsOneWidget);
     expect(find.text('Licenca'), findsOneWidget);
     expect(find.text('Dispositivos'), findsWidgets);
     expect(find.text('Funcionarios'), findsWidgets);
     expect(find.text('Auditoria'), findsOneWidget);
+  });
+
+  testWidgets('/companies/:companyId/support renderiza central read-only', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/companies/company-1/support',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Central de suporte da empresa'), findsOneWidget);
+    expect(find.text('Dados da empresa'), findsOneWidget);
+    expect(find.text('00.0...1-00'), findsOneWidget);
+    expect(find.text('00.000.000/0001-00'), findsNothing);
+    expect(find.text('Plano/licenca'), findsOneWidget);
+    expect(find.text('Billing'), findsWidgets);
+    expect(find.text('Dispositivos'), findsWidgets);
+    expect(find.text('Controle de versao Android'), findsWidgets);
+    expect(find.text('Push Notification / FCM'), findsOneWidget);
+    expect(find.text('Sessoes'), findsWidgets);
+    expect(find.text('Usuarios'), findsWidgets);
+    expect(find.text('Funcionarios'), findsWidgets);
+    expect(find.text('Sync Center'), findsWidgets);
+    expect(find.text('Conflitos'), findsWidgets);
+    expect(find.text('Auditoria'), findsWidgets);
+    expect(find.text('Seguranca operacional'), findsOneWidget);
+    expect(find.text('Observabilidade operacional'), findsOneWidget);
+    expect(find.text('Status operacional'), findsOneWidget);
+    expect(find.text('Simulacoes operacionais'), findsOneWidget);
+    expect(
+      find.text('Dry-run: nenhum dado real sera alterado.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Execucao real ainda nao esta disponivel no Admin Web.'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Simular dry-run'),
+      findsOneWidget,
+    );
+    expect(find.text('Ultimo evento'), findsOneWidget);
+    expect(find.text('Sugestao'), findsWidgets);
+    expect(
+      find.text(
+        'Ha falhas ou acoes sensiveis recentes. Revisar detalhes antes de agir.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Ultimo erro'), findsOneWidget);
+    expect(find.text('totalCents antigo'), findsWidgets);
+    expect(find.text('Alertas sync'), findsOneWidget);
+    expect(find.text('Status geral'), findsWidgets);
+    expect(find.text('Dados sensiveis'), findsOneWidget);
+    expect(find.text('Minimizados'), findsOneWidget);
+    expect(find.text('Acoes futuras'), findsOneWidget);
+    expect(find.text('Dry-run e auditoria'), findsOneWidget);
+    expect(find.text('Sem tokens ou secrets'), findsOneWidget);
+    expect(find.text('Versao conhecida'), findsWidgets);
+    expect(find.text('Versao nao informada'), findsWidgets);
+    expect(find.text('Versao mais antiga'), findsWidgets);
+    expect(
+      find.text('Versoes do app aparentemente compativeis.'),
+      findsWidgets,
+    );
+    expect(find.text('Tokens registrados'), findsOneWidget);
+    expect(find.text('Historico de envios'), findsOneWidget);
+    expect(find.text('Preferencias'), findsOneWidget);
+    expect(find.text('Bloqueado nesta fase'), findsOneWidget);
+    expect(
+      find.text('FCM ainda nao esta integrado ao backend e Android.'),
+      findsOneWidget,
+    );
+    expect(find.text('Saude geral'), findsOneWidget);
+    expect(find.text('Sinais criticos'), findsOneWidget);
+    expect(find.text('Sinais de atencao'), findsOneWidget);
+    expect(
+      find.text(
+        'Existem indicadores criticos. Priorize conflitos, erros ou pendencias.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('OK'), findsWidgets);
+    expect(find.text('Atencao'), findsWidgets);
+    expect(find.text('Critico'), findsWidgets);
+    expect(find.widgetWithText(FilledButton, 'Ver usuarios'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Ver dispositivos'), findsWidgets);
+    expect(find.widgetWithText(FilledButton, 'Ver sessoes'), findsOneWidget);
+    expect(
+      find.widgetWithText(FilledButton, 'Abrir Sync Center'),
+      findsWidgets,
+    );
+    expect(find.textContaining('Somente leitura nesta fase'), findsOneWidget);
+    expect(find.textContaining('preapproval-secret-full-id'), findsNothing);
+    expect(find.text('Revogar sessao'), findsNothing);
+    expect(find.text('Forcar sync'), findsNothing);
+    expect(find.text('Atualizacao obrigatoria'), findsNothing);
+    expect(find.text('Enviar push'), findsNothing);
+    expect(find.text('Enviar notificacao'), findsNothing);
+    expect(find.text('Registrar token'), findsNothing);
+    expect(find.textContaining('fcm-token-secret-full-id'), findsNothing);
+  });
+
+  testWidgets('atalho da empresa navega para central de suporte', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/companies/company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Central de suporte'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Central de suporte da empresa'), findsOneWidget);
+    expect(find.text('Status operacional'), findsOneWidget);
   });
 
   testWidgets('Usuarios e funcionarios renderiza abas read-only', (
@@ -232,9 +463,15 @@ void main() {
 
     await tester.tap(find.widgetWithText(Tab, 'Usuarios'));
     await tester.pumpAndSettle();
+    expect(find.text('Ultima atividade'), findsOneWidget);
+    expect(find.text('Dispositivos vinculados'), findsOneWidget);
+    expect(find.text('Vinculo empresa'), findsOneWidget);
     expect(find.text('Dona Tatuzin'), findsWidgets);
     expect(find.text('Gerente Loja'), findsOneWidget);
     expect(find.text('Protegido'), findsWidgets);
+    expect(find.text('Usuario + funcionario'), findsWidgets);
+    expect(find.text('1 dispositivo'), findsWidgets);
+    expect(find.text('Ativo'), findsWidgets);
     await tester.scrollUntilVisible(
       find.text('Detalhes').first,
       500,
@@ -263,6 +500,9 @@ void main() {
     expect(find.text('Operadora Convidada'), findsOneWidget);
     expect(find.text('Ex Operador'), findsOneWidget);
     expect(find.text('Bloqueadas'), findsOneWidget);
+    expect(find.text('Sem usuario vinculado'), findsOneWidget);
+    expect(find.text('Convidado'), findsWidgets);
+    expect(find.text('Desativado'), findsWidgets);
     expect(find.textContaining('inviteToken'), findsNothing);
     expect(find.textContaining('secret'), findsNothing);
 
@@ -495,7 +735,7 @@ void main() {
 
     expect(find.text('Resumo'), findsOneWidget);
     expect(find.text('Eventos'), findsOneWidget);
-    expect(find.text('Conflitos'), findsOneWidget);
+    expect(find.text('Conflitos'), findsWidgets);
     expect(find.text('Incidentes'), findsOneWidget);
     expect(find.text('Dispositivos'), findsOneWidget);
     expect(find.text('Auditoria'), findsOneWidget);
@@ -523,7 +763,7 @@ void main() {
     expect(find.textContaining('sem comandos remotos'), findsNothing);
   });
 
-  testWidgets('Sync global aplica filtro all real', (tester) async {
+  testWidgets('Sync Center aplica filtro all real', (tester) async {
     _setLargeViewport(tester);
     final service = _FakeReadOnlyApiService();
     await tester.pumpWidget(
@@ -541,6 +781,106 @@ void main() {
     expect(service.lastCompaniesQuery?.status, 'all');
   });
 
+  testWidgets('Sync Center mostra resumo operacional e filtros frontend', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminTestApp(
+        service: _FakeReadOnlyApiService(multiSyncCompanies: true),
+        child: const SyncCenterPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Empresas monitoradas'), findsOneWidget);
+    expect(find.text('Legenda de observabilidade'), findsOneWidget);
+    expect(
+      find.textContaining('metricas reais de latencia e disponibilidade'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Observabilidade read-only'), findsOneWidget);
+    expect(find.text('Total de conflitos'), findsOneWidget);
+    expect(find.text('Total de pendencias'), findsOneWidget);
+    expect(find.text('Total de erros'), findsOneWidget);
+    expect(find.text('Empresas OK'), findsOneWidget);
+    expect(find.text('Empresas em atencao'), findsOneWidget);
+    expect(find.text('Empresas criticas'), findsOneWidget);
+    expect(find.text('Empresas sem dados recentes'), findsOneWidget);
+    expect(find.text('Saude'), findsOneWidget);
+    expect(find.text('Ultimo sync'), findsOneWidget);
+    expect(find.text('OK'), findsWidgets);
+    expect(find.text('Atencao'), findsWidgets);
+    expect(find.text('Critico'), findsWidgets);
+    expect(find.text('Sem dados'), findsWidgets);
+    expect(find.text('Loja Moda Sul'), findsWidgets);
+    expect(find.text('Mercado OK'), findsOneWidget);
+    expect(find.text('Padaria Sem Dados'), findsOneWidget);
+
+    await tester.tap(find.text('Operacional: todos'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Operacional: OK').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Aplicar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mercado OK'), findsOneWidget);
+    expect(find.text('Loja Moda Sul'), findsNothing);
+    expect(find.text('Padaria Sem Dados'), findsNothing);
+
+    await tester.tap(find.text('Todas as condicoes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Com conflito').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Aplicar'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Sem metricas disponiveis'), findsOneWidget);
+    expect(
+      find.textContaining('observabilidade completa depende'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Sync Center por empresa mostra diagnostico e atalhos seguros', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/companies/company-1/sync',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Diagnostico simplificado'), findsOneWidget);
+    expect(find.text('Status geral'), findsWidgets);
+    expect(find.text('Ultimo sync'), findsWidgets);
+    expect(find.text('Ultimo erro'), findsOneWidget);
+    expect(find.text('Pendencias'), findsWidgets);
+    expect(find.text('Conflitos'), findsWidgets);
+    expect(find.text('Sugestao operacional'), findsOneWidget);
+    expect(
+      find.text('Conflitos encontrados. Avaliar dados antes de qualquer acao.'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(OutlinedButton, 'Central de suporte'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(OutlinedButton, 'Ver dispositivos'),
+      findsOneWidget,
+    );
+    expect(find.text('Forcar sync'), findsNothing);
+    expect(find.text('Resolver conflito'), findsNothing);
+    expect(find.text('Reprocessar fila'), findsNothing);
+    expect(find.text('Limpar erro'), findsNothing);
+    expect(find.text('Reenviar evento'), findsNothing);
+    expect(find.text('Corrigir pendencia'), findsNothing);
+  });
+
   testWidgets('Dispositivos usa inventario global sem filtrar atencao', (
     tester,
   ) async {
@@ -555,7 +895,33 @@ void main() {
     expect(find.text('MOBILE_APP'), findsWidgets);
     expect(find.text('ADMIN_WEB'), findsWidgets);
     expect(find.text('Loja Moda Sul'), findsWidgets);
+    expect(find.text('Ultimo sync'), findsOneWidget);
+    expect(find.text('Ultimo erro'), findsOneWidget);
+    expect(find.text('Pendencias'), findsOneWidget);
+    expect(find.text('Status operacional'), findsOneWidget);
+    expect(find.text('Controle de versao Android'), findsOneWidget);
+    expect(find.text('Versao instalada'), findsOneWidget);
+    expect(find.text('Status versao'), findsOneWidget);
+    expect(find.text('Versao conhecida'), findsOneWidget);
+    expect(find.text('Versao nao informada'), findsOneWidget);
+    expect(find.text('Politica real'), findsOneWidget);
+    expect(find.text('Push Notification / FCM'), findsOneWidget);
+    expect(find.text('Token FCM'), findsOneWidget);
+    expect(find.text('Push'), findsOneWidget);
+    expect(find.text('Historico'), findsOneWidget);
+    expect(find.text('Envio real'), findsOneWidget);
+    expect(
+      find.text('Nenhuma notificacao operacional pode ser enviada nesta fase.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Versoes do app aparentemente compativeis.'),
+      findsOneWidget,
+    );
     expect(find.text('Pendentes 1 / Falhas 3 / OPEN 2'), findsOneWidget);
+    expect(find.text('totalCents antigo'), findsOneWidget);
+    expect(find.text('Critico'), findsOneWidget);
+    expect(find.text('Sem dados'), findsWidgets);
     expect(service.lastDevicesQuery?.attention, isNull);
     expect(find.textContaining('client-instance-secret-long-id'), findsNothing);
     expect(find.textContaining('refresh-token-secret'), findsNothing);
@@ -579,6 +945,11 @@ void main() {
     expect(service.lastDevicesQuery?.companyId, 'company-1');
     expect(service.companySessionsFetchCount, 1);
     expect(find.text('Sessoes'), findsOneWidget);
+    expect(find.text('Versao app'), findsOneWidget);
+    expect(find.text('2.1.0'), findsWidgets);
+    expect(find.text('Controle de versao Android'), findsOneWidget);
+    expect(find.text('Push Notification / FCM'), findsOneWidget);
+    expect(find.text('Expira em'), findsOneWidget);
     expect(find.text('Ativa'), findsWidgets);
     expect(
       find.textContaining('Acoes de revogar sessao e forcar logout'),
@@ -591,6 +962,99 @@ void main() {
     await tester.pumpAndSettle();
     expect(service.devicesFetchCount, greaterThanOrEqualTo(2));
     expect(service.companySessionsFetchCount, greaterThanOrEqualTo(2));
+  });
+
+  testWidgets('Dispositivos mostra fallback para versao Android ausente', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(missingAndroidVersion: true),
+        initialLocation: '/companies/company-1/devices',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Controle de versao Android'), findsOneWidget);
+    expect(find.text('Versao nao informada'), findsWidgets);
+    expect(find.text('Ha dispositivos sem versao informada.'), findsOneWidget);
+    expect(find.text('Atencao'), findsWidgets);
+    expect(find.text('Atualizacao obrigatoria'), findsNothing);
+    expect(find.text('Bloquear app antigo'), findsNothing);
+    expect(find.text('Forcar atualizacao'), findsNothing);
+    expect(find.text('Enviar push'), findsNothing);
+    expect(find.text('Enviar notificacao'), findsNothing);
+    expect(find.textContaining('fcm-token-secret-full-id'), findsNothing);
+  });
+
+  testWidgets('Console operacional exibe estados vazios com clareza', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(
+          emptyCompanySync: true,
+          emptyDevices: true,
+          emptyCompanySessions: true,
+        ),
+        initialLocation: '/companies/company-1/users',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(Tab, 'Usuarios'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Nenhum usuario encontrado'), findsOneWidget);
+    await tester.tap(find.widgetWithText(Tab, 'Funcionarios'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Nenhum funcionario encontrado'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.widgetWithText(Tab, 'Dispositivos'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Nao ha dispositivos vinculados a usuarios nesta versao.'),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(
+          emptyDevices: true,
+          emptyCompanySessions: true,
+        ),
+        initialLocation: '/companies/company-1/devices',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Nenhum dispositivo encontrado'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Nenhuma sessao registrada'), findsOneWidget);
+  });
+
+  testWidgets('/companies/:companyId/sessions e alias de dispositivos', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    final service = _FakeReadOnlyApiService();
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: service,
+        initialLocation: '/companies/company-1/sessions',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dispositivos e sessoes da empresa'), findsOneWidget);
+    expect(service.lastDevicesQuery?.companyId, 'company-1');
+    expect(service.companySessionsFetchCount, 1);
   });
 
   testWidgets('Empresa 360 mostra card de dispositivos e sessoes', (
@@ -932,7 +1396,10 @@ void main() {
 
     await tester.tap(find.widgetWithText(Tab, 'Eventos'));
     await tester.pumpAndSettle();
-    expect(find.text('Nenhum evento encontrado.'), findsOneWidget);
+    expect(
+      find.textContaining('Nenhum evento de sync encontrado'),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(
       _adminRouterTestApp(
@@ -1137,10 +1604,84 @@ void main() {
     expect(find.text('Ator'), findsWidgets);
     expect(find.text('Categoria'), findsWidgets);
     expect(find.text('Busca textual'), findsOneWidget);
+    expect(find.text('Indicador visual'), findsOneWidget);
+    expect(find.text('Ordenacao local'), findsOneWidget);
+    expect(find.text('Categoria operacional'), findsOneWidget);
+    expect(find.text('Tipo de acao'), findsOneWidget);
+    expect(find.text('Recurso afetado'), findsOneWidget);
+    expect(find.text('ID recurso'), findsOneWidget);
+    expect(find.text('Resultado'), findsOneWidget);
+    expect(find.text('Severidade'), findsOneWidget);
+    expect(find.text('Origem/contexto'), findsOneWidget);
+    expect(find.text('Sessoes'), findsOneWidget);
+    expect(find.text('Usuarios'), findsWidgets);
+    expect(find.text('Dispositivos'), findsWidgets);
+    expect(find.text('Licencas'), findsWidgets);
+    expect(find.text('Sync Center'), findsWidgets);
+    expect(find.text('Seguranca'), findsOneWidget);
+    expect(find.text('Sistema'), findsOneWidget);
+    expect(find.text('Outros'), findsOneWidget);
+    expect(find.text('OK'), findsWidgets);
+    expect(find.text('Atencao'), findsWidgets);
+    expect(find.text('Critico'), findsWidgets);
     expect(find.text('Extensao emergencial'), findsOneWidget);
     expect(find.text('Bloqueio de acesso operacional'), findsOneWidget);
     expect(find.text('Comando de suporte criado'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Suporte'), findsWidgets);
     expect(service.lastAuditQuery?.companyId, 'company-1');
+  });
+
+  testWidgets('Auditoria filtra por indicador e exibe fallbacks', (
+    tester,
+  ) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(auditWithMissingData: true),
+        initialLocation: '/audit',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nao informado'), findsWidgets);
+    expect(find.text('Sem recurso relacionado'), findsWidgets);
+    expect(find.text('Sem contexto registrado'), findsWidgets);
+    expect(find.text('Sistema'), findsWidgets);
+
+    await tester.tap(find.text('Todas').at(3));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Critico').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Aplicar filtros'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bloqueio de acesso operacional'), findsOneWidget);
+    expect(find.text('Extensao emergencial'), findsNothing);
+    expect(find.text('system.heartbeat'), findsNothing);
+  });
+
+  testWidgets('Auditoria ordena localmente por tipo de acao', (tester) async {
+    _setLargeViewport(tester);
+    await tester.pumpWidget(
+      _adminRouterTestApp(
+        service: _FakeReadOnlyApiService(),
+        initialLocation: '/audit?companyId=company-1',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Data mais recente'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Tipo de acao').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Aplicar filtros'));
+    await tester.pumpAndSettle();
+
+    final blockTop = tester.getTopLeft(
+      find.text('Bloqueio de acesso operacional'),
+    );
+    final extensionTop = tester.getTopLeft(find.text('Extensao emergencial'));
+    expect(blockTop.dy, lessThan(extensionTop.dy));
   });
 
   testWidgets('/audit filtra por categoria e mostra detalhes sanitizados', (
@@ -1267,6 +1808,14 @@ Widget _adminRouterTestApp({
         ),
       ),
       GoRoute(
+        path: '/companies/:companyId/support',
+        builder: (context, state) => Scaffold(
+          body: CompanySupportPage(
+            companyId: state.pathParameters['companyId'] ?? '',
+          ),
+        ),
+      ),
+      GoRoute(
         path: '/companies/:companyId',
         builder: (context, state) => Scaffold(
           body: CompanyDetailPage(
@@ -1290,17 +1839,17 @@ Widget _adminRouterTestApp({
       ),
       GoRoute(
         path: '/companies/:companyId/sessions',
-        builder: (context, state) => Scaffold(
-          body: DevicesPage(companyId: state.pathParameters['companyId'] ?? ''),
-        ),
+        redirect: (context, state) {
+          final companyId = state.pathParameters['companyId'] ?? '';
+          return '/companies/$companyId/devices';
+        },
       ),
       GoRoute(
         path: '/companies/:companyId/employees',
-        builder: (context, state) => Scaffold(
-          body: CompanyUsersPage(
-            companyId: state.pathParameters['companyId'] ?? '',
-          ),
-        ),
+        redirect: (context, state) {
+          final companyId = state.pathParameters['companyId'] ?? '';
+          return '/companies/$companyId/users';
+        },
       ),
       GoRoute(
         path: '/sync/:companyId',
@@ -1373,6 +1922,11 @@ class _FakeReadOnlyApiService extends AdminApiService {
     this.emptyCompanySync = false,
     this.throwCompanySync = false,
     this.emptySupportDiagnostic = false,
+    this.emptyDevices = false,
+    this.emptyCompanySessions = false,
+    this.multiSyncCompanies = false,
+    this.auditWithMissingData = false,
+    this.missingAndroidVersion = false,
     this.blockSupportDryRun = false,
   }) : super(
          apiClient: AdminApiClient(
@@ -1393,6 +1947,11 @@ class _FakeReadOnlyApiService extends AdminApiService {
   final bool emptyCompanySync;
   final bool throwCompanySync;
   final bool emptySupportDiagnostic;
+  final bool emptyDevices;
+  final bool emptyCompanySessions;
+  final bool multiSyncCompanies;
+  final bool auditWithMissingData;
+  final bool missingAndroidVersion;
   final bool blockSupportDryRun;
   AdminSyncCenterCompaniesQuery? lastCompaniesQuery;
   int companyHealthFetchCount = 0;
@@ -1429,7 +1988,11 @@ class _FakeReadOnlyApiService extends AdminApiService {
     }
     final category = query?.category;
     final companyId = query?.companyId;
-    final items = _auditLogItems()
+    final rawItems = [
+      ..._auditLogItems(),
+      if (auditWithMissingData) _auditMissingDataMap(),
+    ];
+    final items = rawItems
         .where((item) {
           if (category != null && category.trim().isNotEmpty) {
             return item['category'] == category;
@@ -1551,7 +2114,25 @@ class _FakeReadOnlyApiService extends AdminApiService {
     if (throwCompanySync) {
       throw const AdminApiException(message: 'falha controlada');
     }
-    final allItems = [_deviceInventoryMap(), _adminDeviceInventoryMap()];
+    if (emptyDevices) {
+      return AdminPaginatedResult<AdminDeviceInventoryItem>(
+        items: const [],
+        pagination: AdminPaginationMeta(
+          page: query.page,
+          pageSize: query.pageSize,
+          total: 0,
+          count: 0,
+          hasNext: false,
+          hasPrevious: false,
+        ),
+        filters: query.toQueryParameters(),
+        sort: const AdminSortMeta(by: 'lastSeenAt', direction: 'desc'),
+      );
+    }
+    final allItems = [
+      _deviceInventoryMap(missingAppVersion: missingAndroidVersion),
+      _adminDeviceInventoryMap(),
+    ];
     final filtered = allItems
         .where((item) {
           if (query.companyId != null && item['companyId'] != query.companyId) {
@@ -1592,6 +2173,9 @@ class _FakeReadOnlyApiService extends AdminApiService {
     companySessionsFetchCount++;
     if (throwCompanySync) {
       throw const AdminApiException(message: 'falha controlada');
+    }
+    if (emptyCompanySessions) {
+      return const [];
     }
     return [
       AdminDeviceSession.fromMap(_mobileSessionMap()),
@@ -1984,13 +2568,14 @@ class _FakeReadOnlyApiService extends AdminApiService {
   Future<AdminPaginatedResult<AdminSyncCenterCompany>>
   fetchSyncCenterCompanies({AdminSyncCenterCompaniesQuery? query}) async {
     lastCompaniesQuery = query;
+    final items = multiSyncCompanies ? _syncCompanyMaps() : [_syncCompanyMap()];
     return AdminPaginatedResult<AdminSyncCenterCompany>(
-      items: [AdminSyncCenterCompany.fromMap(_syncCompanyMap())],
-      pagination: const AdminPaginationMeta(
+      items: items.map(AdminSyncCenterCompany.fromMap).toList(),
+      pagination: AdminPaginationMeta(
         page: 1,
         pageSize: 20,
-        total: 1,
-        count: 1,
+        total: items.length,
+        count: items.length,
         hasNext: false,
         hasPrevious: false,
       ),
@@ -2691,6 +3276,18 @@ List<Map<String, dynamic>> _auditLogItems() {
   ];
 }
 
+Map<String, dynamic> _auditMissingDataMap() {
+  return {
+    'id': 'audit-system-missing',
+    'source': 'system',
+    'category': 'system',
+    'action': 'system.heartbeat',
+    'status': 'info',
+    'summary': '',
+    'createdAt': '2026-05-26T07:00:00.000Z',
+  };
+}
+
 Map<String, dynamic> _syncSummaryMap() {
   return {
     'overview': {
@@ -2751,6 +3348,56 @@ Map<String, dynamic> _syncCompanyMap() {
     'lastIncidentAt': '2026-05-24T12:00:00.000Z',
     'requiresReview': true,
   };
+}
+
+List<Map<String, dynamic>> _syncCompanyMaps() {
+  return [
+    _syncCompanyMap(),
+    {
+      ..._syncCompanyMap(),
+      'companyId': 'company-ok',
+      'companyName': 'Mercado OK',
+      'syncStatus': 'healthy',
+      'pendingCount': 0,
+      'conflictCount': 0,
+      'failedCount': 0,
+      'openConflictCount': 0,
+      'incidentCount': 0,
+      'lastEventAt': '2026-05-24T13:00:00.000Z',
+      'lastIncidentAt': null,
+      'requiresReview': false,
+    },
+    {
+      ..._syncCompanyMap(),
+      'companyId': 'company-attention',
+      'companyName': 'Farmacia Atencao',
+      'syncStatus': 'attention',
+      'pendingCount': 4,
+      'conflictCount': 0,
+      'failedCount': 0,
+      'openConflictCount': 0,
+      'incidentCount': 0,
+      'lastEventAt': '2026-05-24T10:00:00.000Z',
+      'lastIncidentAt': null,
+      'requiresReview': true,
+    },
+    {
+      ..._syncCompanyMap(),
+      'companyId': 'company-no-data',
+      'companyName': 'Padaria Sem Dados',
+      'syncStatus': 'healthy',
+      'acceptedCount': 0,
+      'duplicateCount': 0,
+      'pendingCount': 0,
+      'conflictCount': 0,
+      'failedCount': 0,
+      'openConflictCount': 0,
+      'incidentCount': 0,
+      'lastEventAt': null,
+      'lastIncidentAt': null,
+      'requiresReview': false,
+    },
+  ];
 }
 
 Map<String, dynamic> _eventMap() {
@@ -3197,7 +3844,7 @@ Map<String, dynamic> _plansOverviewMap() {
   };
 }
 
-Map<String, dynamic> _deviceInventoryMap() {
+Map<String, dynamic> _deviceInventoryMap({bool missingAppVersion = false}) {
   return {
     'id': 'device-secret-full-id-123456789',
     'maskedDeviceId': 'devi...6789',
@@ -3213,7 +3860,8 @@ Map<String, dynamic> _deviceInventoryMap() {
     'clientType': 'MOBILE_APP',
     'clientInstanceId': 'clie...0001',
     'platform': 'android',
-    'appVersion': '2.1.0',
+    'appVersion': missingAppVersion ? null : '2.1.0',
+    'fcmToken': 'fcm-token-secret-full-id-123456789',
     'status': 'active',
     'lastSeenAt': '2026-05-24T12:00:00.000Z',
     'createdAt': '2026-05-24T00:00:00.000Z',

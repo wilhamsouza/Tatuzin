@@ -6,6 +6,7 @@ import '../../../core/auth/admin_providers.dart';
 import '../../../core/models/admin_access_models.dart';
 import '../../../core/models/admin_billing_models.dart';
 import '../../../core/utils/admin_formatters.dart';
+import '../../../core/widgets/admin_operational_status.dart';
 import '../../../core/widgets/admin_surface.dart';
 
 const _futureActionMessage =
@@ -263,7 +264,10 @@ class _UsersTabState extends State<_UsersTab> {
             ),
             const SizedBox(height: 16),
             if (users.isEmpty)
-              const _EmptyState(message: 'Nenhum usuario encontrado.')
+              const _EmptyState(
+                message:
+                    'Nenhum usuario encontrado. Ajuste os filtros ou confirme se a empresa ainda nao possui contas vinculadas.',
+              )
             else
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -273,8 +277,9 @@ class _UsersTabState extends State<_UsersTab> {
                     DataColumn(label: Text('Email')),
                     DataColumn(label: Text('Papel')),
                     DataColumn(label: Text('Status')),
-                    DataColumn(label: Text('Ultimo acesso')),
-                    DataColumn(label: Text('Dispositivos')),
+                    DataColumn(label: Text('Ultima atividade')),
+                    DataColumn(label: Text('Vinculo empresa')),
+                    DataColumn(label: Text('Dispositivos vinculados')),
                     DataColumn(label: Text('Criado em')),
                     DataColumn(label: Text('Acao')),
                   ],
@@ -283,15 +288,18 @@ class _UsersTabState extends State<_UsersTab> {
                         (user) => DataRow(
                           cells: [
                             DataCell(_NameWithOwnerBadge(user)),
-                            DataCell(Text(user.email)),
+                            DataCell(Text(_fallback(user.email))),
                             DataCell(Text(_roleLabel(user.membershipRole))),
-                            DataCell(Text(_statusLabel(user.accountStatus))),
                             DataCell(
-                              Text(
-                                AdminFormatters.formatDateTime(user.lastSeenAt),
+                              AdminOperationalStatus(
+                                label: _statusLabel(user.accountStatus),
+                                tone: _accessTone(user.accountStatus),
+                                compact: true,
                               ),
                             ),
-                            DataCell(Text('${user.devices.length}')),
+                            DataCell(Text(_activityLabel(user.lastSeenAt))),
+                            DataCell(Text(_companyLinkLabel(user))),
+                            DataCell(Text(_devicesLabel(user.devices.length))),
                             DataCell(
                               Text(AdminFormatters.formatDate(user.createdAt)),
                             ),
@@ -357,7 +365,10 @@ class _EmployeesTab extends StatelessWidget {
         title: 'Funcionarios',
         subtitle: 'Perfis, convites e permissoes efetivas em leitura.',
         child: employees.isEmpty
-            ? const _EmptyState(message: 'Nenhum funcionario encontrado.')
+            ? const _EmptyState(
+                message:
+                    'Nenhum funcionario encontrado. Esta empresa pode operar apenas com usuarios ou ainda nao ter perfis criados.',
+              )
             : SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: DataTable(
@@ -367,6 +378,7 @@ class _EmployeesTab extends StatelessWidget {
                     DataColumn(label: Text('Telefone')),
                     DataColumn(label: Text('Role')),
                     DataColumn(label: Text('Status')),
+                    DataColumn(label: Text('Vinculo empresa')),
                     DataColumn(label: Text('Permissoes efetivas')),
                     DataColumn(label: Text('Conta')),
                     DataColumn(label: Text('Convite')),
@@ -384,7 +396,14 @@ class _EmployeesTab extends StatelessWidget {
                             DataCell(
                               Text(_employeeRoleLabel(employee.employeeRole)),
                             ),
-                            DataCell(Text(_statusLabel(employee.status))),
+                            DataCell(
+                              AdminOperationalStatus(
+                                label: _statusLabel(employee.status),
+                                tone: _accessTone(employee.status),
+                                compact: true,
+                              ),
+                            ),
+                            DataCell(Text(_employeeLinkLabel(employee))),
                             DataCell(
                               Text(
                                 employee.status == 'DISABLED'
@@ -448,7 +467,10 @@ class _PermissionsTab extends StatelessWidget {
         subtitle:
             'OWNER tem todas as permissoes por regra. DISABLED nao possui permissoes efetivas.',
         child: access.permissionsCatalog.isEmpty
-            ? const _EmptyState(message: 'Nenhuma permissao retornada.')
+            ? const _EmptyState(
+                message:
+                    'Nenhuma permissao retornada. A matriz de permissoes pode estar indisponivel para esta empresa.',
+              )
             : SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: DataTable(
@@ -558,7 +580,7 @@ class _AuditTab extends ConsumerWidget {
       child: AdminSurface(
         title: 'Historico administrativo',
         subtitle: events.isEmpty
-            ? 'Nenhuma acao administrativa de acesso registrada.'
+            ? 'Nenhuma acao administrativa de acesso registrada para esta empresa.'
             : 'Acoes feitas por platform admin sobre usuarios, funcionarios e acessos.',
         trailing: OutlinedButton.icon(
           onPressed: () =>
@@ -568,7 +590,8 @@ class _AuditTab extends ConsumerWidget {
         ),
         child: events.isEmpty
             ? const _EmptyState(
-                message: 'Nenhuma acao administrativa de acesso registrada.',
+                message:
+                    'Nenhuma acao administrativa de acesso registrada para esta empresa.',
               )
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1500,6 +1523,65 @@ String _statusLabel(String status) {
     default:
       return status;
   }
+}
+
+AdminOperationalTone _accessTone(String status) {
+  switch (status.toUpperCase()) {
+    case 'ACTIVE':
+      return AdminOperationalTone.ok;
+    case 'INVITED':
+      return AdminOperationalTone.attention;
+    case 'DISABLED':
+    case 'REVOKED':
+      return AdminOperationalTone.critical;
+    default:
+      return AdminOperationalTone.noData;
+  }
+}
+
+String _activityLabel(DateTime? value) {
+  if (value == null) {
+    return 'Sem atividade registrada';
+  }
+  return AdminFormatters.formatDateTime(value);
+}
+
+String _fallback(String? value) {
+  final trimmed = value?.trim();
+  if (trimmed == null || trimmed.isEmpty || trimmed == 'sem e-mail') {
+    return 'Nao informado';
+  }
+  return trimmed;
+}
+
+String _devicesLabel(int count) {
+  if (count == 0) {
+    return 'Nenhum dispositivo';
+  }
+  if (count == 1) {
+    return '1 dispositivo';
+  }
+  return '$count dispositivos';
+}
+
+String _companyLinkLabel(AdminCompanyAccessUser user) {
+  if (user.hasEmployeeProfile) {
+    return 'Usuario + funcionario';
+  }
+  if (user.hasUserAccount) {
+    return 'Usuario vinculado';
+  }
+  return 'Vinculo indisponivel';
+}
+
+String _employeeLinkLabel(AdminCompanyAccessEmployee employee) {
+  if (employee.hasUserAccount) {
+    return 'Funcionario + usuario';
+  }
+  if (employee.invitationStatus != null) {
+    return 'Convite ${employee.invitationStatus}';
+  }
+  return 'Sem usuario vinculado';
 }
 
 String _clientTypeLabel(String type) {

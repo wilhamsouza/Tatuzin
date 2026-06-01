@@ -126,7 +126,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         .login(
           email: _emailController.text.trim(),
           password: _passwordController.text,
-    );
+        );
 
     if (ok && mounted) {
       final target =
@@ -216,7 +216,7 @@ class _HeroPanel extends StatelessWidget {
           children: [
             _FeatureChip(label: 'Empresas e tenants'),
             _FeatureChip(label: 'Licencas e planos'),
-            _FeatureChip(label: 'Saude da sync'),
+            _FeatureChip(label: 'Saude do sync'),
             _FeatureChip(label: 'Auditoria admin'),
           ],
         ),
