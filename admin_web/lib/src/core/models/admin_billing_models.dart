@@ -93,7 +93,7 @@ String maskAdminBillingUrl(String? value) {
 String maskAdminBillingIdentifier(String? value) {
   final normalized = _normalized(value);
   if (normalized == null) {
-    return 'NÃ£o informado';
+    return 'Nao informado';
   }
   if (normalized.length <= 8) {
     return normalized;
