@@ -31,17 +31,21 @@ class ErpPdvApp extends ConsumerStatefulWidget {
 
 class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
     with WidgetsBindingObserver {
+  late final AutoSyncCoordinator _autoSyncCoordinator;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     ref.read(sessionContextResetProvider);
     ref.read(authControllerProvider);
-    ref.read(autoSyncCoordinatorProvider);
+    _autoSyncCoordinator = ref.read(autoSyncCoordinatorProvider);
+    _autoSyncCoordinator.startSupportCommandPolling();
   }
 
   @override
   void dispose() {
+    unawaited(_autoSyncCoordinator.dispose());
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

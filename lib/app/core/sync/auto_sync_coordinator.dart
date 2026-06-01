@@ -163,6 +163,7 @@ class AutoSyncCoordinator {
     Duration lifecycleDebounce = const Duration(seconds: 1),
     Duration mutationDebounce = const Duration(seconds: 2),
     Duration followUpDebounce = const Duration(seconds: 2),
+    Duration? supportCommandPollInterval = const Duration(minutes: 5),
   }) : _isEligible = isEligible,
        _isRunning = isRunning,
        _runSync = runSync,
@@ -171,7 +172,8 @@ class AutoSyncCoordinator {
        _now = now ?? DateTime.now,
        _lifecycleDebounce = lifecycleDebounce,
        _mutationDebounce = mutationDebounce,
-       _followUpDebounce = followUpDebounce {
+       _followUpDebounce = followUpDebounce,
+       _supportCommandPollInterval = supportCommandPollInterval {
     _mutationSubscription = SyncMutationSignalBus.instance.stream.listen((
       signal,
     ) {
@@ -191,8 +193,10 @@ class AutoSyncCoordinator {
   final Duration _lifecycleDebounce;
   final Duration _mutationDebounce;
   final Duration _followUpDebounce;
+  final Duration? _supportCommandPollInterval;
 
   Timer? _timer;
+  Timer? _supportCommandPollTimer;
   StreamSubscription<SyncMutationSignal>? _mutationSubscription;
   Future<void>? _activeRun;
   bool _disposed = false;
@@ -375,6 +379,24 @@ class AutoSyncCoordinator {
     scheduleSync(delay: _lifecycleDebounce, reason: 'app-resumed');
   }
 
+  void startSupportCommandPolling() {
+    if (_disposed || _supportCommandPollTimer != null) {
+      return;
+    }
+
+    final interval = _supportCommandPollInterval;
+    if (interval == null || interval <= Duration.zero) {
+      return;
+    }
+
+    _supportCommandPollTimer = Timer.periodic(interval, (_) {
+      if (_disposed || !_isEligible()) {
+        return;
+      }
+      unawaited(runNowIfEligible(reason: 'support-command-poll'));
+    });
+  }
+
   void cancelPending({
     String? skippedReason,
     bool clearLastRequestedAt = true,
@@ -405,6 +427,8 @@ class AutoSyncCoordinator {
     _disposed = true;
     _timer?.cancel();
     _timer = null;
+    _supportCommandPollTimer?.cancel();
+    _supportCommandPollTimer = null;
     await _mutationSubscription?.cancel();
   }
 
@@ -414,6 +438,8 @@ class AutoSyncCoordinator {
     _disposed = true;
     _timer?.cancel();
     _timer = null;
+    _supportCommandPollTimer?.cancel();
+    _supportCommandPollTimer = null;
     _runAgainAfterCurrentBatch = false;
     final activeRun = _activeRun;
     if (activeRun != null) {

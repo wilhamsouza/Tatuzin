@@ -89,6 +89,53 @@ void main() {
         expect(coordinator.snapshot.lastResult?.isClean, isTrue);
       },
     );
+
+    test(
+      'poll periodico dispara sync para retirar comandos de suporte pendentes',
+      () async {
+        var runCount = 0;
+
+        final coordinator = AutoSyncCoordinator(
+          isEligible: () => true,
+          isRunning: () => false,
+          runSync: () async {
+            runCount++;
+            return _result();
+          },
+          loadQueueSummaries: () async => const <SyncQueueFeatureSummary>[],
+          supportCommandPollInterval: const Duration(milliseconds: 15),
+        );
+        addTearDown(coordinator.dispose);
+        coordinator.startSupportCommandPolling();
+
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+
+        expect(runCount, greaterThanOrEqualTo(1));
+        expect(coordinator.snapshot.lastResult, isNotNull);
+      },
+    );
+
+    test('poll periodico nao roda quando sessao nao esta elegivel', () async {
+      var runCount = 0;
+
+      final coordinator = AutoSyncCoordinator(
+        isEligible: () => false,
+        isRunning: () => false,
+        runSync: () async {
+          runCount++;
+          return _result();
+        },
+        loadQueueSummaries: () async => const <SyncQueueFeatureSummary>[],
+        supportCommandPollInterval: const Duration(milliseconds: 15),
+      );
+      addTearDown(coordinator.dispose);
+      coordinator.startSupportCommandPolling();
+
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+
+      expect(runCount, 0);
+      expect(coordinator.snapshot.phase, AutoSyncCoordinatorPhase.idle);
+    });
   });
 }
 
