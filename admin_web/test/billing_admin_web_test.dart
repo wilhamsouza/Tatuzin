@@ -143,8 +143,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Billing avancado'), findsOneWidget);
-    expect(find.textContaining('Console avancado de billing'), findsOneWidget);
+    expect(find.text('Billing'), findsOneWidget);
+    expect(find.textContaining('Billing restrito'), findsOneWidget);
     expect(find.text('Ir para Licencas read-only'), findsOneWidget);
     expect(find.text('Loja Moda Sul'), findsOneWidget);
     expect(find.text('pre_..._7890'), findsOneWidget);

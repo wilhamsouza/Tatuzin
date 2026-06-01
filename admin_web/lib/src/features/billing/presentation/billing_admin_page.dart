@@ -55,9 +55,9 @@ class _BillingAdminPageState extends ConsumerState<BillingAdminPage> {
 
     return companiesAsync.when(
       data: (result) => AdminSurface(
-        title: 'Billing avancado',
+        title: 'Billing',
         subtitle:
-            'Console operacional legado para suporte administrativo de billing.',
+            'Console interno restrito para suporte administrativo de billing.',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -122,7 +122,7 @@ class _BillingAdminPageState extends ConsumerState<BillingAdminPage> {
       ),
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => AdminSurface(
-        title: 'Não foi possível carregar o Billing Admin',
+        title: 'Nao foi possivel carregar o Billing',
         subtitle: error.toString(),
         child: Align(
           alignment: Alignment.centerLeft,
@@ -159,7 +159,7 @@ class _PlatformOnlyNotice extends StatelessWidget {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 760),
             child: Text(
-              'Console avancado de billing. Esta area preserva acoes administrativas reais. Para consulta segura/read-only, use Licencas.',
+              'Billing restrito. Esta area preserva acoes administrativas reais. Para consulta segura/read-only, use Licencas.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onErrorContainer,
                 fontWeight: FontWeight.w800,

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/admin_providers.dart';
 import '../../../core/models/admin_billing_models.dart';
 import '../../../core/models/admin_models.dart';
 import '../../../core/utils/admin_formatters.dart';
+import '../../../core/widgets/admin_operational_status.dart';
 import '../../../core/widgets/admin_surface.dart';
 
 class AuditPage extends ConsumerStatefulWidget {
@@ -28,6 +30,8 @@ class _AuditPageState extends ConsumerState<AuditPage> {
   String? _category;
   String? _source;
   String? _status;
+  String _toneFilter = 'all';
+  String _sortBy = 'newest';
 
   @override
   void initState() {
@@ -65,81 +69,96 @@ class _AuditPageState extends ConsumerState<AuditPage> {
     final auditAsync = ref.watch(adminAuditLogsProvider(query));
 
     return auditAsync.when(
-      data: (page) => SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AdminSurface(
-              title: 'Auditoria global',
-              subtitle:
-                  'Historico centralizado de acoes administrativas da plataforma.',
-              trailing: FilledButton.tonalIcon(
-                onPressed: () => ref.invalidate(adminAuditLogsProvider(query)),
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Atualizar'),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _AuditNotice(),
-                  const SizedBox(height: 18),
-                  _AuditFilters(
-                    actionController: _actionController,
-                    actorUserIdController: _actorUserIdController,
-                    companyIdController: _companyIdController,
-                    searchController: _searchController,
-                    dateFromController: _dateFromController,
-                    dateToController: _dateToController,
-                    pageSize: _pageSize,
-                    category: _category,
-                    source: _source,
-                    status: _status,
-                    onCategoryChanged: (value) {
-                      setState(() => _category = value);
-                    },
-                    onSourceChanged: (value) {
-                      setState(() => _source = value);
-                    },
-                    onStatusChanged: (value) {
-                      setState(() => _status = value);
-                    },
-                    onApply: _applyFilters,
-                    onClear: _clearFilters,
-                  ),
-                  const SizedBox(height: 20),
-                  _AuditMetrics(page: page),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            AdminSurface(
-              title: 'Eventos normalizados',
-              subtitle:
-                  'Acoes humanas e comandos administrativos; eventos de provider ficam separados quando disponiveis.',
-              child: page.items.isEmpty
-                  ? const _EmptyState(
-                      message: 'Nenhum evento encontrado para os filtros.',
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _AuditEntriesTable(entries: page.items),
-                        const SizedBox(height: 20),
-                        _PaginationBar(
-                          pagination: page.pagination,
-                          onPrevious: page.pagination.hasPrevious
-                              ? () => setState(() => _page--)
-                              : null,
-                          onNext: page.pagination.hasNext
-                              ? () => setState(() => _page++)
-                              : null,
-                        ),
-                      ],
+      data: (page) {
+        final visibleEntries = _sortEntries(
+          _filterEntries(page.items, toneFilter: _toneFilter),
+          _sortBy,
+        );
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AdminSurface(
+                title: 'Auditoria global',
+                subtitle:
+                    'Historico centralizado de acoes administrativas da plataforma.',
+                trailing: FilledButton.tonalIcon(
+                  onPressed: () =>
+                      ref.invalidate(adminAuditLogsProvider(query)),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Atualizar'),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _AuditNotice(),
+                    const SizedBox(height: 18),
+                    _AuditFilters(
+                      actionController: _actionController,
+                      actorUserIdController: _actorUserIdController,
+                      companyIdController: _companyIdController,
+                      searchController: _searchController,
+                      dateFromController: _dateFromController,
+                      dateToController: _dateToController,
+                      pageSize: _pageSize,
+                      category: _category,
+                      source: _source,
+                      status: _status,
+                      toneFilter: _toneFilter,
+                      sortBy: _sortBy,
+                      onCategoryChanged: (value) {
+                        setState(() => _category = value);
+                      },
+                      onSourceChanged: (value) {
+                        setState(() => _source = value);
+                      },
+                      onStatusChanged: (value) {
+                        setState(() => _status = value);
+                      },
+                      onToneFilterChanged: (value) {
+                        setState(() => _toneFilter = value);
+                      },
+                      onSortByChanged: (value) {
+                        setState(() => _sortBy = value);
+                      },
+                      onApply: _applyFilters,
+                      onClear: _clearFilters,
                     ),
-            ),
-          ],
-        ),
-      ),
+                    const SizedBox(height: 20),
+                    const _AuditCategoryLegend(),
+                    const SizedBox(height: 20),
+                    _AuditMetrics(page: page),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              AdminSurface(
+                title: 'Eventos normalizados',
+                subtitle:
+                    'Acoes humanas e comandos administrativos; eventos de provider ficam separados quando disponiveis.',
+                child: visibleEntries.isEmpty
+                    ? _EmptyState(message: _emptyAuditMessage(query))
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _AuditEntriesTable(entries: visibleEntries),
+                          const SizedBox(height: 20),
+                          _PaginationBar(
+                            pagination: page.pagination,
+                            onPrevious: page.pagination.hasPrevious
+                                ? () => setState(() => _page--)
+                                : null,
+                            onNext: page.pagination.hasNext
+                                ? () => setState(() => _page++)
+                                : null,
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => AdminSurface(
         title: 'Nao foi possivel carregar a auditoria global',
@@ -192,6 +211,8 @@ class _AuditPageState extends ConsumerState<AuditPage> {
       _category = null;
       _source = null;
       _status = null;
+      _toneFilter = 'all';
+      _sortBy = 'newest';
     });
   }
 }
@@ -217,6 +238,35 @@ class _AuditNotice extends StatelessWidget {
           avatar: Icon(Icons.account_tree_rounded, size: 18),
           label: Text('Provider/sistema separados quando disponiveis'),
         ),
+        Chip(
+          avatar: Icon(Icons.rule_rounded, size: 18),
+          label: Text(
+            'Acoes reais futuras exigem dry-run, motivo, confirmacao e auditoria',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AuditCategoryLegend extends StatelessWidget {
+  const _AuditCategoryLegend();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        Chip(label: Text('Sessoes')),
+        Chip(label: Text('Usuarios')),
+        Chip(label: Text('Dispositivos')),
+        Chip(label: Text('Billing')),
+        Chip(label: Text('Licencas')),
+        Chip(label: Text('Sync Center')),
+        Chip(label: Text('Seguranca')),
+        Chip(label: Text('Sistema')),
+        Chip(label: Text('Outros')),
       ],
     );
   }
@@ -234,9 +284,13 @@ class _AuditFilters extends StatefulWidget {
     required this.category,
     required this.source,
     required this.status,
+    required this.toneFilter,
+    required this.sortBy,
     required this.onCategoryChanged,
     required this.onSourceChanged,
     required this.onStatusChanged,
+    required this.onToneFilterChanged,
+    required this.onSortByChanged,
     required this.onApply,
     required this.onClear,
   });
@@ -251,9 +305,13 @@ class _AuditFilters extends StatefulWidget {
   final String? category;
   final String? source;
   final String? status;
+  final String toneFilter;
+  final String sortBy;
   final ValueChanged<String?> onCategoryChanged;
   final ValueChanged<String?> onSourceChanged;
   final ValueChanged<String?> onStatusChanged;
+  final ValueChanged<String> onToneFilterChanged;
+  final ValueChanged<String> onSortByChanged;
   final void Function({required int pageSize}) onApply;
   final VoidCallback onClear;
 
@@ -309,8 +367,11 @@ class _AuditFiltersState extends State<_AuditFilters> {
                 'billing',
                 'license',
                 'access',
+                'user',
+                'device',
                 'sync',
                 'session',
+                'security',
                 'system',
                 'provider',
                 'unknown',
@@ -333,6 +394,25 @@ class _AuditFiltersState extends State<_AuditFilters> {
               value: widget.status,
               values: const ['success', 'failed', 'pending', 'running', 'info'],
               onChanged: widget.onStatusChanged,
+            ),
+            _FilterDropdown(
+              label: 'Indicador visual',
+              value: widget.toneFilter,
+              values: const ['ok', 'attention', 'critical', 'no_data'],
+              onChanged: (value) => widget.onToneFilterChanged(value ?? 'all'),
+            ),
+            _FilterDropdown(
+              label: 'Ordenacao local',
+              value: widget.sortBy,
+              values: const [
+                'newest',
+                'oldest',
+                'criticality',
+                'category',
+                'company',
+                'action',
+              ],
+              onChanged: (value) => widget.onSortByChanged(value ?? 'newest'),
             ),
             _FilterTextField(
               controller: widget.dateFromController,
@@ -442,9 +522,10 @@ class _FilterDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 240,
+      width: 300,
       child: DropdownButtonFormField<String>(
         initialValue: value ?? 'all',
+        isExpanded: true,
         decoration: InputDecoration(labelText: label),
         items: [
           const DropdownMenuItem(value: 'all', child: Text('Todas')),
@@ -506,14 +587,17 @@ class _AuditEntriesTable extends StatelessWidget {
         columns: const [
           DataColumn(label: Text('Detalhes')),
           DataColumn(label: Text('Data/hora')),
-          DataColumn(label: Text('Categoria')),
-          DataColumn(label: Text('Acao')),
+          DataColumn(label: Text('Categoria operacional')),
+          DataColumn(label: Text('Tipo de acao')),
           DataColumn(label: Text('Empresa')),
           DataColumn(label: Text('Ator')),
-          DataColumn(label: Text('Alvo')),
+          DataColumn(label: Text('Recurso afetado')),
+          DataColumn(label: Text('ID recurso')),
           DataColumn(label: Text('Motivo')),
-          DataColumn(label: Text('Status')),
-          DataColumn(label: Text('Origem')),
+          DataColumn(label: Text('Resultado')),
+          DataColumn(label: Text('Severidade')),
+          DataColumn(label: Text('Origem/contexto')),
+          DataColumn(label: Text('Navegacao')),
         ],
         rows: entries
             .map((entry) {
@@ -529,16 +613,44 @@ class _AuditEntriesTable extends StatelessWidget {
                   DataCell(
                     Text(AdminFormatters.formatDateTime(entry.createdAt)),
                   ),
-                  DataCell(Text(_label(entry.category))),
+                  DataCell(Text(_operationalCategory(entry))),
                   DataCell(Text(_friendlyAction(entry.action))),
-                  DataCell(Text(entry.companyLabel)),
-                  DataCell(Text(entry.actorLabel)),
+                  DataCell(Text(_companyLabel(entry))),
+                  DataCell(Text(_actorLabel(entry))),
                   DataCell(
-                    Text(entry.targetLabel ?? entry.targetType ?? 'Sem alvo'),
+                    Text(
+                      _fallback(
+                        entry.targetLabel ?? entry.targetType,
+                        'Sem recurso relacionado',
+                      ),
+                    ),
                   ),
-                  DataCell(Text(entry.reason ?? 'Sem motivo')),
-                  DataCell(_StatusChip(status: entry.status)),
-                  DataCell(Text(_label(entry.source))),
+                  DataCell(
+                    Text(_fallback(entry.targetId, 'Sem recurso relacionado')),
+                  ),
+                  DataCell(
+                    Text(_fallback(entry.reason, 'Sem contexto registrado')),
+                  ),
+                  DataCell(Text(_resultLabel(entry.status))),
+                  DataCell(
+                    AdminOperationalStatus(
+                      label: _operationalLabel(_auditTone(entry)),
+                      tone: _auditTone(entry),
+                      compact: true,
+                    ),
+                  ),
+                  DataCell(Text(_originContext(entry))),
+                  DataCell(
+                    entry.companyId == null
+                        ? const Text('Sem recurso relacionado')
+                        : OutlinedButton.icon(
+                            onPressed: () => context.go(
+                              '/companies/${entry.companyId}/support',
+                            ),
+                            icon: const Icon(Icons.support_agent_rounded),
+                            label: const Text('Suporte'),
+                          ),
+                  ),
                 ],
               );
             })
@@ -562,21 +674,34 @@ class _AuditEntriesTable extends StatelessWidget {
                 const Text('Dados sensiveis sao omitidos por seguranca.'),
                 const SizedBox(height: 16),
                 _DetailLine(label: 'Origem', value: _label(entry.source)),
-                _DetailLine(label: 'Categoria', value: _label(entry.category)),
-                _DetailLine(label: 'Status', value: _label(entry.status)),
-                _DetailLine(label: 'Empresa', value: entry.companyLabel),
-                _DetailLine(label: 'Ator', value: entry.actorLabel),
                 _DetailLine(
-                  label: 'Alvo',
-                  value: entry.targetLabel ?? entry.targetId ?? 'Sem alvo',
+                  label: 'Categoria operacional',
+                  value: _operationalCategory(entry),
+                ),
+                _DetailLine(
+                  label: 'Resultado',
+                  value: _resultLabel(entry.status),
+                ),
+                _DetailLine(label: 'Empresa', value: _companyLabel(entry)),
+                _DetailLine(label: 'Ator', value: _actorLabel(entry)),
+                _DetailLine(
+                  label: 'Recurso afetado',
+                  value: _fallback(
+                    entry.targetLabel ?? entry.targetType,
+                    'Sem recurso relacionado',
+                  ),
+                ),
+                _DetailLine(
+                  label: 'ID recurso',
+                  value: _fallback(entry.targetId, 'Sem recurso relacionado'),
                 ),
                 _DetailLine(
                   label: 'Motivo',
-                  value: entry.reason ?? 'Sem motivo',
+                  value: _fallback(entry.reason, 'Sem contexto registrado'),
                 ),
                 _DetailLine(
                   label: 'IP',
-                  value: entry.ipAddress ?? 'Nao disponivel',
+                  value: _fallback(entry.ipAddress, 'Indisponivel'),
                 ),
                 _JsonBlock(label: 'Before sanitizado', value: entry.before),
                 _JsonBlock(label: 'After sanitizado', value: entry.after),
@@ -587,34 +712,21 @@ class _AuditEntriesTable extends StatelessWidget {
           ),
         ),
         actions: [
+          if (entry.companyId != null)
+            TextButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                context.go('/companies/${entry.companyId}/support');
+              },
+              icon: const Icon(Icons.support_agent_rounded),
+              label: const Text('Abrir central de suporte'),
+            ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Fechar'),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status});
-
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    final normalized = status.toLowerCase();
-    final colorScheme = Theme.of(context).colorScheme;
-    final background = normalized == 'failed'
-        ? colorScheme.errorContainer
-        : normalized == 'success'
-        ? colorScheme.primaryContainer
-        : colorScheme.surfaceContainerHighest;
-    return Chip(
-      label: Text(_label(status)),
-      backgroundColor: background,
-      visualDensity: VisualDensity.compact,
     );
   }
 }
@@ -771,6 +883,199 @@ String? _filterValue(String? value) {
   return trimmed;
 }
 
+List<AdminAuditEntry> _filterEntries(
+  List<AdminAuditEntry> entries, {
+  required String toneFilter,
+}) {
+  return entries
+      .where((entry) {
+        final tone = _auditTone(entry);
+        return switch (toneFilter) {
+          'ok' => tone == AdminOperationalTone.ok,
+          'attention' => tone == AdminOperationalTone.attention,
+          'critical' => tone == AdminOperationalTone.critical,
+          'no_data' => tone == AdminOperationalTone.noData,
+          _ => true,
+        };
+      })
+      .toList(growable: false);
+}
+
+List<AdminAuditEntry> _sortEntries(
+  List<AdminAuditEntry> entries,
+  String sortBy,
+) {
+  final sorted = [...entries];
+  sorted.sort((a, b) {
+    final result = switch (sortBy) {
+      'oldest' => _compareNullableDateAsc(a.createdAt, b.createdAt),
+      'criticality' => _auditRank(a).compareTo(_auditRank(b)),
+      'category' => _operationalCategory(a).compareTo(_operationalCategory(b)),
+      'company' => _companyLabel(a).compareTo(_companyLabel(b)),
+      'action' => _friendlyAction(
+        a.action,
+      ).compareTo(_friendlyAction(b.action)),
+      _ => _compareNullableDateDesc(a.createdAt, b.createdAt),
+    };
+    if (result != 0) {
+      return result;
+    }
+    return _friendlyAction(a.action).compareTo(_friendlyAction(b.action));
+  });
+  return sorted;
+}
+
+int _compareNullableDateAsc(DateTime? a, DateTime? b) {
+  if (a == null && b == null) {
+    return 0;
+  }
+  if (a == null) {
+    return 1;
+  }
+  if (b == null) {
+    return -1;
+  }
+  return a.compareTo(b);
+}
+
+int _compareNullableDateDesc(DateTime? a, DateTime? b) {
+  if (a == null && b == null) {
+    return 0;
+  }
+  if (a == null) {
+    return 1;
+  }
+  if (b == null) {
+    return -1;
+  }
+  return b.compareTo(a);
+}
+
+int _auditRank(AdminAuditEntry entry) {
+  return switch (_auditTone(entry)) {
+    AdminOperationalTone.critical => 0,
+    AdminOperationalTone.attention => 1,
+    AdminOperationalTone.ok => 2,
+    AdminOperationalTone.noData => 3,
+  };
+}
+
+AdminOperationalTone _auditTone(AdminAuditEntry entry) {
+  final status = entry.status.toLowerCase();
+  final action = entry.action.toLowerCase();
+  if (status.contains('failed') ||
+      status.contains('error') ||
+      status.contains('denied') ||
+      action.contains('failed') ||
+      action.contains('block') ||
+      action.contains('suspend')) {
+    return AdminOperationalTone.critical;
+  }
+  if (status.contains('pending') ||
+      status.contains('running') ||
+      entry.category.toLowerCase() == 'sync') {
+    return AdminOperationalTone.attention;
+  }
+  if (status.contains('success') || status.contains('info')) {
+    return AdminOperationalTone.ok;
+  }
+  return AdminOperationalTone.noData;
+}
+
+String _operationalLabel(AdminOperationalTone tone) {
+  return switch (tone) {
+    AdminOperationalTone.ok => 'OK',
+    AdminOperationalTone.attention => 'Atencao',
+    AdminOperationalTone.critical => 'Critico',
+    AdminOperationalTone.noData => 'Sem dados',
+  };
+}
+
+String _operationalCategory(AdminAuditEntry entry) {
+  final category = entry.category.toLowerCase();
+  final action = entry.action.toLowerCase();
+  final source = entry.source.toLowerCase();
+  if (category == 'session' || action.contains('session')) {
+    return 'Sessoes';
+  }
+  if (category == 'access' || category == 'user' || action.contains('access')) {
+    return 'Usuarios';
+  }
+  if (category == 'device' || action.contains('device')) {
+    return 'Dispositivos';
+  }
+  if (category == 'billing' || source.contains('billing')) {
+    return 'Billing';
+  }
+  if (category == 'license' || action.contains('license')) {
+    return 'Licencas';
+  }
+  if (category == 'sync' || action.contains('sync')) {
+    return 'Sync Center';
+  }
+  if (category == 'security' || action.contains('auth')) {
+    return 'Seguranca';
+  }
+  if (category == 'system' || source == 'system') {
+    return 'Sistema';
+  }
+  return 'Outros';
+}
+
+String _companyLabel(AdminAuditEntry entry) {
+  final name = entry.companyName?.trim();
+  if (name != null && name.isNotEmpty) {
+    return name;
+  }
+  final id = entry.companyId?.trim();
+  if (id != null && id.isNotEmpty) {
+    return id;
+  }
+  return 'Nao informado';
+}
+
+String _actorLabel(AdminAuditEntry entry) {
+  final label = entry.actorLabel.trim();
+  if (label.isEmpty || label == 'Sistema') {
+    return label == 'Sistema' ? label : 'Nao informado';
+  }
+  return label;
+}
+
+String _resultLabel(String status) {
+  final label = _label(status);
+  return label == status && status.trim().isEmpty ? 'Indisponivel' : label;
+}
+
+String _originContext(AdminAuditEntry entry) {
+  final source = _label(entry.source);
+  final summary = entry.summary?.trim();
+  if (summary != null && summary.isNotEmpty) {
+    return '$source - $summary';
+  }
+  return source.trim().isEmpty ? 'Sem contexto registrado' : source;
+}
+
+String _fallback(String? value, String fallback) {
+  final trimmed = value?.trim();
+  if (trimmed == null || trimmed.isEmpty) {
+    return fallback;
+  }
+  return trimmed;
+}
+
+String _emptyAuditMessage(AdminAuditQuery query) {
+  if ((query.companyId ?? '').trim().isNotEmpty) {
+    return 'Nenhum evento de auditoria encontrado para a empresa com os filtros atuais.';
+  }
+  if ((query.category ?? '').trim().isNotEmpty ||
+      (query.status ?? '').trim().isNotEmpty ||
+      (query.search ?? '').trim().isNotEmpty) {
+    return 'Nenhum resultado com o filtro atual. Revise categoria, status, ator ou periodo.';
+  }
+  return 'Nenhum evento de auditoria encontrado.';
+}
+
 String _friendlyAction(String action) {
   switch (action) {
     case 'license.emergency_extension':
@@ -814,10 +1119,16 @@ String _label(String value) {
       return 'Licenca';
     case 'access':
       return 'Acesso';
+    case 'user':
+      return 'Usuario';
+    case 'device':
+      return 'Dispositivo';
     case 'sync':
-      return 'Sync';
+      return 'Sync Center';
     case 'session':
       return 'Sessao';
+    case 'security':
+      return 'Seguranca';
     case 'system':
       return 'Sistema';
     case 'provider':
@@ -840,6 +1151,26 @@ String _label(String value) {
       return 'Em execucao';
     case 'info':
       return 'Info';
+    case 'ok':
+      return 'OK';
+    case 'attention':
+      return 'Atencao';
+    case 'critical':
+      return 'Critico';
+    case 'no_data':
+      return 'Sem dados';
+    case 'newest':
+      return 'Data mais recente';
+    case 'oldest':
+      return 'Data mais antiga';
+    case 'criticality':
+      return 'Criticidade';
+    case 'category':
+      return 'Categoria';
+    case 'company':
+      return 'Empresa';
+    case 'action':
+      return 'Tipo de acao';
     default:
       return value;
   }

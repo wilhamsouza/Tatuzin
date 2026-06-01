@@ -98,6 +98,11 @@ class _CompanyHeader extends StatelessWidget {
         runSpacing: 8,
         children: [
           FilledButton.icon(
+            onPressed: () => context.go('/companies/${company.id}/support'),
+            icon: const Icon(Icons.support_agent_rounded),
+            label: const Text('Central de suporte'),
+          ),
+          OutlinedButton.icon(
             onPressed: () => context.go('/companies/${company.id}/sync'),
             icon: const Icon(Icons.sync_problem_rounded),
             label: const Text('Abrir console de sync'),
@@ -106,6 +111,11 @@ class _CompanyHeader extends StatelessWidget {
             onPressed: () => context.go('/companies/${company.id}/license'),
             icon: const Icon(Icons.workspace_premium_rounded),
             label: const Text('Ver licenca e assinatura'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => context.go('/billing/${company.id}'),
+            icon: const Icon(Icons.payments_rounded),
+            label: const Text('Abrir billing'),
           ),
           OutlinedButton.icon(
             onPressed: () => context.go('/companies/${company.id}/users'),
@@ -263,7 +273,9 @@ class _CompanyDevicesSummaryCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final devicesAsync = ref.watch(
-      adminDevicesProvider(AdminDevicesQuery(companyId: companyId, pageSize: 100)),
+      adminDevicesProvider(
+        AdminDevicesQuery(companyId: companyId, pageSize: 100),
+      ),
     );
     return devicesAsync.when(
       data: (devices) {
@@ -277,11 +289,11 @@ class _CompanyDevicesSummaryCard extends ConsumerWidget {
             .map((device) => device.lastSeenAt)
             .whereType<DateTime>()
             .fold<DateTime?>(null, (latest, value) {
-          if (latest == null || value.isAfter(latest)) {
-            return value;
-          }
-          return latest;
-        });
+              if (latest == null || value.isAfter(latest)) {
+                return value;
+              }
+              return latest;
+            });
         return AdminSurface(
           title: 'Dispositivos e sessoes',
           subtitle:
@@ -302,12 +314,10 @@ class _CompanyDevicesSummaryCard extends ConsumerWidget {
               _MiniMetric(label: 'Mobile', value: '$mobile'),
               _MiniMetric(
                 label: 'Sessoes recentes',
-                value: '${devices.items.where((device) => device.session != null).length}',
+                value:
+                    '${devices.items.where((device) => device.session != null).length}',
               ),
-              _MiniMetric(
-                label: 'Com falha local',
-                value: '$localFailures',
-              ),
+              _MiniMetric(label: 'Com falha local', value: '$localFailures'),
               _MiniMetric(
                 label: 'Ultimo acesso',
                 value: AdminFormatters.formatDateTime(lastSeen),

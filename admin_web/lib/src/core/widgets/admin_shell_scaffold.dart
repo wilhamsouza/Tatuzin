@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../auth/admin_providers.dart';
+import 'admin_breadcrumbs.dart';
 
 class AdminShellScaffold extends ConsumerWidget {
   const AdminShellScaffold({
@@ -30,7 +31,7 @@ class AdminShellScaffold extends ConsumerWidget {
     _AdminNavItem(
       route: '/sync',
       icon: Icons.sync_problem_rounded,
-      label: 'Sync global',
+      label: 'Sync Center',
     ),
     _AdminNavItem(
       route: '/devices',
@@ -48,6 +49,11 @@ class AdminShellScaffold extends ConsumerWidget {
       label: 'Planos',
     ),
     _AdminNavItem(
+      route: '/permissions',
+      icon: Icons.admin_panel_settings_rounded,
+      label: 'Permissoes',
+    ),
+    _AdminNavItem(
       route: '/audit',
       icon: Icons.fact_check_rounded,
       label: 'Auditoria',
@@ -55,8 +61,8 @@ class AdminShellScaffold extends ConsumerWidget {
     _AdminNavItem(
       route: '/billing',
       icon: Icons.admin_panel_settings_rounded,
-      label: 'Billing avancado',
-      badge: 'Avancado',
+      label: 'Billing',
+      badge: 'Restrito',
     ),
   ];
 
@@ -94,7 +100,17 @@ class AdminShellScaffold extends ConsumerWidget {
             hasSyncSupportActions: hasSyncSupportActions,
           ),
         ),
-        body: Padding(padding: const EdgeInsets.all(16), child: child),
+        body: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AdminBreadcrumbs(location: currentLocation),
+              const SizedBox(height: 12),
+              Expanded(child: child),
+            ],
+          ),
+        ),
       );
     }
 
@@ -128,6 +144,8 @@ class AdminShellScaffold extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            AdminBreadcrumbs(location: currentLocation),
+                            const SizedBox(height: 8),
                             Text(
                               title,
                               style: Theme.of(context).textTheme.headlineSmall
@@ -136,8 +154,8 @@ class AdminShellScaffold extends ConsumerWidget {
                             const SizedBox(height: 4),
                             Text(
                               isAdvancedBilling
-                                  ? 'Console interno avancado com acoes reais de billing administrativo.'
-                                  : 'Console interno read-only para operacao, suporte e auditoria da plataforma.',
+                                  ? 'Console interno restrito para operacao auditada de billing da plataforma.'
+                                  : _supportDescription(currentLocation),
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     color: Theme.of(
@@ -443,7 +461,7 @@ class _ReadOnlyBadge extends StatelessWidget {
       ),
       child: Text(
         isAdvancedBilling
-            ? 'Billing avancado: esta rota preserva acoes administrativas reais.'
+            ? 'Billing restrito: esta rota preserva acoes administrativas reais.'
             : hasSyncSupportActions
             ? 'Modo seguro: acoes sensiveis exigem dry-run, confirmacao e auditoria.'
             : 'Modo seguro/read-only: sem alteracoes reais nesta area.',
@@ -456,6 +474,32 @@ class _ReadOnlyBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+String _supportDescription(String location) {
+  if (location.startsWith('/companies')) {
+    return 'Suporte interno para empresas, usuarios, funcionarios, dispositivos, sessoes e licencas.';
+  }
+  if (location.startsWith('/sync-health')) {
+    return 'Monitoramento interno da saude do sync da plataforma.';
+  }
+  if (location.startsWith('/sync')) {
+    return 'Triagem interna de sync, conflitos e eventos por empresa.';
+  }
+  if (location.startsWith('/devices')) {
+    return 'Inventario interno de dispositivos e sessoes da plataforma.';
+  }
+  if (location.startsWith('/licenses')) {
+    return 'Consulta interna read-only de licencas e assinaturas.';
+  }
+  if (location.startsWith('/permissions') ||
+      location.startsWith('/admin/permissions')) {
+    return 'Consulta read-only de permissoes administrativas persistidas.';
+  }
+  if (location.startsWith('/audit')) {
+    return 'Auditoria interna de acoes administrativas da plataforma.';
+  }
+  return 'Console interno para operacao, suporte e auditoria da plataforma.';
 }
 
 class _AdminNavItem {

@@ -457,7 +457,7 @@ class _CompanyLicenseHeader extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'Billing avancado executa suporte operacional real. Use apenas para suporte operacional.',
+            'Billing executa suporte operacional real. Use apenas para suporte operacional.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontWeight: FontWeight.w700,

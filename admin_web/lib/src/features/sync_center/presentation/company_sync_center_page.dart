@@ -6,6 +6,7 @@ import '../../../core/auth/admin_providers.dart';
 import '../../../core/models/admin_models.dart';
 import '../../../core/models/admin_sync_center_models.dart';
 import '../../../core/utils/admin_formatters.dart';
+import '../../../core/widgets/admin_operational_status.dart';
 import '../../../core/widgets/admin_surface.dart';
 
 const _remoteActionsNotice =
@@ -311,6 +312,16 @@ class _Header extends StatelessWidget {
             label: const Text('Voltar para empresa 360'),
           ),
           OutlinedButton.icon(
+            onPressed: () => context.go('/companies/$companyId/support'),
+            icon: const Icon(Icons.support_agent_rounded),
+            label: const Text('Central de suporte'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => context.go('/companies/$companyId/devices'),
+            icon: const Icon(Icons.devices_rounded),
+            label: const Text('Ver dispositivos'),
+          ),
+          OutlinedButton.icon(
             onPressed: () =>
                 context.go('/audit?companyId=$companyId&category=sync'),
             icon: const Icon(Icons.fact_check_rounded),
@@ -327,7 +338,11 @@ class _Header extends StatelessWidget {
         spacing: 8,
         runSpacing: 8,
         children: [
-          Chip(label: Text(_syncStatusLabel(health.status))),
+          AdminOperationalStatus(
+            label: _operationalLabel(_healthTone(health)),
+            tone: _healthTone(health),
+            compact: true,
+          ),
           Chip(label: Text('Conflitos OPEN: ${health.openConflictsCount}')),
           Chip(label: Text('Eventos: ${health.events.total}')),
           Chip(label: Text('Dispositivos: ${health.devices.total}')),
@@ -361,6 +376,8 @@ class _SummaryTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.only(top: 16),
       children: [
+        _SyncDiagnosisPanel(health: health),
+        const SizedBox(height: 16),
         Wrap(
           spacing: 12,
           runSpacing: 12,
@@ -418,6 +435,50 @@ class _SummaryTab extends StatelessWidget {
   }
 }
 
+class _SyncDiagnosisPanel extends StatelessWidget {
+  const _SyncDiagnosisPanel({required this.health});
+
+  final AdminCompanySyncHealth health;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminSurface(
+      title: 'Diagnostico simplificado',
+      subtitle:
+          'Leitura operacional para orientar suporte sem executar comandos de sync.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              AdminOperationalStatus(
+                label: _operationalLabel(_healthTone(health)),
+                tone: _healthTone(health),
+              ),
+              Chip(label: Text('Pendencias: ${health.events.pending}')),
+              Chip(label: Text('Conflitos: ${health.openConflictsCount}')),
+              Chip(label: Text('Erros: ${health.events.failed}')),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _DetailGrid(
+            rows: {
+              'Status geral': _syncStatusLabel(health.status),
+              'Ultimo sync': _lastSyncLabel(health.lastSyncAt),
+              'Ultimo erro': health.lastIncident?.message ?? 'Nenhum erro',
+              'Pendencias': '${health.events.pending}',
+              'Conflitos': '${health.openConflictsCount}',
+              'Sugestao operacional': _syncSuggestion(health),
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _EventsTab extends StatelessWidget {
   const _EventsTab({
     required this.eventsAsync,
@@ -434,7 +495,10 @@ class _EventsTab extends StatelessWidget {
     return eventsAsync.when(
       data: (result) {
         if (result.items.isEmpty) {
-          return const _EmptyState(message: 'Nenhum evento encontrado.');
+          return const _EmptyState(
+            message:
+                'Nenhum evento de sync encontrado. Quando o app enviar novos eventos, eles aparecerao nesta aba.',
+          );
         }
         return ListView(
           padding: const EdgeInsets.only(top: 16),
@@ -540,7 +604,10 @@ class _ConflictsTab extends StatelessWidget {
           data: (result) {
             final active = result.items.where(_isOpenConflict).toList();
             if (active.isEmpty) {
-              return const _EmptyState(message: 'Nenhum conflito OPEN.');
+              return const _EmptyState(
+                message:
+                    'Nenhum conflito OPEN. Use o historico abaixo para revisar conflitos resolvidos ou ignorados.',
+              );
             }
             return Column(
               children: [
@@ -571,7 +638,10 @@ class _ConflictsTab extends StatelessWidget {
                 .where((conflict) => !_isOpenConflict(conflict))
                 .toList();
             if (history.isEmpty) {
-              return const _EmptyState(message: 'Nenhum historico retornado.');
+              return const _EmptyState(
+                message:
+                    'Nenhum conflito historico retornado para esta empresa.',
+              );
             }
             return Column(
               children: [
@@ -1728,6 +1798,60 @@ bool _isDiagnosticStale(DateTime? reportedAt) {
     return true;
   }
   return DateTime.now().difference(reportedAt) > const Duration(hours: 24);
+}
+
+AdminOperationalTone _healthTone(AdminCompanySyncHealth health) {
+  final status = health.status.toLowerCase();
+  if (health.lastSyncAt == null && health.events.total == 0) {
+    return AdminOperationalTone.noData;
+  }
+  if (status.contains('critical') ||
+      status.contains('fail') ||
+      health.events.failed > 0 ||
+      health.openConflictsCount > 0) {
+    return AdminOperationalTone.critical;
+  }
+  if (status.contains('attention') ||
+      status.contains('warning') ||
+      status.contains('pending') ||
+      health.events.pending > 0 ||
+      health.events.conflict > 0) {
+    return AdminOperationalTone.attention;
+  }
+  return AdminOperationalTone.ok;
+}
+
+String _operationalLabel(AdminOperationalTone tone) {
+  return switch (tone) {
+    AdminOperationalTone.ok => 'OK',
+    AdminOperationalTone.attention => 'Atencao',
+    AdminOperationalTone.critical => 'Critico',
+    AdminOperationalTone.noData => 'Sem dados',
+  };
+}
+
+String _lastSyncLabel(DateTime? value) {
+  if (value == null) {
+    return 'Sem dados recentes de sync';
+  }
+  return AdminFormatters.formatDateTime(value);
+}
+
+String _syncSuggestion(AdminCompanySyncHealth health) {
+  final tone = _healthTone(health);
+  if (tone == AdminOperationalTone.noData) {
+    return 'Sem dados recentes de sync.';
+  }
+  if (health.openConflictsCount > 0 || health.events.conflict > 0) {
+    return 'Conflitos encontrados. Avaliar dados antes de qualquer acao.';
+  }
+  if (health.events.failed > 0) {
+    return 'Empresa com erros de sync. Verifique dispositivos relacionados.';
+  }
+  if (health.events.pending > 0) {
+    return 'Empresa com pendencias de sync. Verifique dispositivos relacionados.';
+  }
+  return 'Sincronizacao aparentemente saudavel.';
 }
 
 String _formatSafeDetails(Map<String, dynamic> details) {

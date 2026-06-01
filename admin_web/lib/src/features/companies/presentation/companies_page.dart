@@ -131,10 +131,22 @@ class _CompaniesPageState extends ConsumerState<CompaniesPage> {
                         ),
                         DataCell(Text('${company.counts.memberships}')),
                         DataCell(
-                          FilledButton.tonal(
-                            onPressed: () =>
-                                context.go('/companies/${company.id}'),
-                            child: const Text('Abrir'),
+                          Wrap(
+                            spacing: 8,
+                            children: [
+                              FilledButton.tonal(
+                                onPressed: () =>
+                                    context.go('/companies/${company.id}'),
+                                child: const Text('Abrir'),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: () => context.go(
+                                  '/companies/${company.id}/support',
+                                ),
+                                icon: const Icon(Icons.support_agent_rounded),
+                                label: const Text('Suporte'),
+                              ),
+                            ],
                           ),
                         ),
                       ],

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../core/auth/admin_debug_log.dart';
 import '../core/auth/admin_providers.dart';
+import '../core/widgets/admin_route_error_page.dart';
 import '../core/widgets/admin_shell_scaffold.dart';
 import '../features/audit/presentation/audit_page.dart';
 import '../features/auth/presentation/login_page.dart';
@@ -10,6 +11,7 @@ import '../features/billing/presentation/billing_admin_page.dart';
 import '../features/billing/presentation/billing_company_detail_page.dart';
 import '../features/companies/presentation/companies_page.dart';
 import '../features/companies/presentation/company_detail_page.dart';
+import '../features/companies/presentation/company_support_page.dart';
 import '../features/companies/presentation/company_users_page.dart';
 import '../features/dashboard/presentation/dashboard_page.dart';
 import '../features/devices/presentation/devices_page.dart';
@@ -19,6 +21,7 @@ import '../features/management/crm/presentation/crm_customers_page.dart';
 import '../features/management/dashboard/presentation/management_dashboard_page.dart';
 import '../features/management/governance/presentation/hybrid_governance_page.dart';
 import '../features/management/reports/presentation/management_reports_page.dart';
+import '../features/permissions/presentation/admin_permissions_page.dart';
 import '../features/plans/presentation/plans_page.dart';
 import '../features/sync_center/presentation/sync_center_pages.dart';
 import '../features/sync_health/presentation/sync_health_page.dart';
@@ -29,6 +32,14 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/login',
     refreshListenable: authController,
+    errorBuilder: (context, state) => AdminShellScaffold(
+      currentLocation: state.uri.path,
+      title: 'Rota invalida',
+      child: AdminRouteErrorPage(
+        location: state.uri.toString(),
+        message: state.error?.toString(),
+      ),
+    ),
     redirect: (context, state) {
       final path = state.uri.path;
       final isLoginRoute = path == '/login';
@@ -120,6 +131,13 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
             },
           ),
           GoRoute(
+            path: '/companies/:companyId/support',
+            builder: (context, state) {
+              final companyId = state.pathParameters['companyId'] ?? '';
+              return CompanySupportPage(companyId: companyId);
+            },
+          ),
+          GoRoute(
             path: '/companies/:companyId/users',
             builder: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
@@ -135,9 +153,9 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/companies/:companyId/sessions',
-            builder: (context, state) {
+            redirect: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
-              return DevicesPage(companyId: companyId);
+              return '/companies/$companyId/devices';
             },
           ),
           GoRoute(
@@ -149,10 +167,9 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/companies/:companyId/employees',
-            builder: (context, state) {
+            redirect: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
-              // Alias read-only de /companies/:companyId/users.
-              return CompanyUsersPage(companyId: companyId);
+              return '/companies/$companyId/users';
             },
           ),
           GoRoute(
@@ -208,6 +225,19 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/plans',
             builder: (context, state) => const PlansPage(),
+          ),
+          GoRoute(
+            path: '/permissions',
+            builder: (context, state) => AdminPermissionsPage(
+              initialAdminUserId: state.uri.queryParameters['adminUserId'],
+            ),
+          ),
+          GoRoute(
+            path: '/admin/permissions',
+            redirect: (context, state) {
+              final query = state.uri.hasQuery ? '?${state.uri.query}' : '';
+              return '/permissions$query';
+            },
           ),
           GoRoute(
             path: '/audit',
@@ -272,7 +302,10 @@ String _titleForLocation(String location) {
     return 'Sync Center';
   }
   if (location.startsWith('/companies/') && location.endsWith('/license')) {
-    return 'Licenca da empresa';
+    return 'Licenca e billing da empresa';
+  }
+  if (location.startsWith('/companies/') && location.endsWith('/support')) {
+    return 'Central de suporte da empresa';
   }
   if (location.startsWith('/companies/') &&
       (location.endsWith('/users') || location.endsWith('/employees'))) {
@@ -283,19 +316,22 @@ String _titleForLocation(String location) {
     return 'Dispositivos e sessoes';
   }
   if (location.startsWith('/licenses/')) {
-    return 'Licenca da empresa';
+    return 'Licenca e billing da empresa';
   }
   if (location.startsWith('/companies/')) {
-    return 'Visao 360 da empresa';
+    return 'Empresa';
   }
   if (location.startsWith('/companies')) {
     return 'Empresas';
   }
+  if (location.startsWith('/sync-health')) {
+    return 'Saude do sync';
+  }
   if (location.startsWith('/sync')) {
-    return 'Sync global';
+    return 'Sync Center';
   }
   if (location.startsWith('/devices')) {
-    return 'Dispositivos';
+    return 'Dispositivos e sessoes';
   }
   if (location.startsWith('/licenses')) {
     return 'Licencas';
@@ -303,31 +339,32 @@ String _titleForLocation(String location) {
   if (location.startsWith('/plans')) {
     return 'Planos';
   }
+  if (location.startsWith('/permissions') ||
+      location.startsWith('/admin/permissions')) {
+    return 'Permissoes administrativas';
+  }
   if (location.startsWith('/audit')) {
     return 'Auditoria';
   }
   if (location.startsWith('/management/dashboard')) {
-    return 'Dashboard Gerencial';
+    return 'Dashboard gerencial';
   }
   if (location.startsWith('/management/reports')) {
-    return 'Relatorios Gerenciais';
+    return 'Relatorios gerenciais';
   }
   if (location.startsWith('/management/governance')) {
-    return 'Governanca Hibrida';
+    return 'Governanca hibrida';
   }
   if (location.startsWith('/management/crm/customers/')) {
     return 'Cliente CRM';
   }
   if (location.startsWith('/management/crm/customers')) {
-    return 'CRM Gerencial';
+    return 'CRM gerencial';
   }
   if (location.startsWith('/billing')) {
-    return 'Billing avancado';
+    return 'Billing';
   }
-  if (location.startsWith('/sync-health')) {
-    return 'Saude da sync';
-  }
-  return 'Dashboard da Plataforma';
+  return 'Dashboard da plataforma';
 }
 
 String? _safeLoginRedirect(String? value) {
