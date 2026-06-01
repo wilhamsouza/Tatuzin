@@ -1,0 +1,470 @@
+openapi: 3.0.3
+info:
+  title: Tatuzin Admin Web API - Draft
+  version: 0.1.0
+  description: >
+    Rascunho inicial e preliminar dos endpoints identificados no admin_web.
+    Este arquivo documenta consumo observado pelo front-end e nao cria
+    contrato novo, endpoint novo ou obrigacao de geracao automatica.
+servers:
+  - url: https://api.tatuzin.com.br/api
+    description: Producao esperada pelo admin_web
+  - url: http://localhost:4000/api
+    description: Desenvolvimento local
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Companies
+  - name: Access
+  - name: Devices
+  - name: Licenses
+  - name: Billing
+  - name: SyncCenter
+  - name: Audit
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login administrativo
+      security: []
+      responses:
+        "200":
+          description: Sessao administrativa.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSession"
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Identidade da sessao atual
+      responses:
+        "200":
+          description: Sessao administrativa restaurada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSession"
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout administrativo
+      responses:
+        "204":
+          description: Sessao encerrada.
+  /admin/companies:
+    get:
+      tags: [Companies]
+      summary: Lista empresas
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Lista paginada de empresas.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedCompanies"
+  /admin/companies/{companyId}:
+    get:
+      tags: [Companies]
+      summary: Detalhe administrativo da empresa
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      responses:
+        "200":
+          description: Empresa, memberships e sessoes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCompanyDetail"
+  /admin/companies/{companyId}/access-summary:
+    get:
+      tags: [Access]
+      summary: Usuarios, funcionarios e permissoes
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      responses:
+        "200":
+          description: Resumo de acesso da empresa.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCompanyAccessSummary"
+  /admin/devices:
+    get:
+      tags: [Devices]
+      summary: Inventario global de dispositivos
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: companyId
+          in: query
+          schema: { type: string }
+        - name: clientType
+          in: query
+          schema: { type: string }
+        - name: attention
+          in: query
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Dispositivos paginados.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedDevices"
+  /admin/companies/{companyId}/sessions:
+    get:
+      tags: [Devices]
+      summary: Sessoes recentes por empresa
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      responses:
+        "200":
+          description: Lista de sessoes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminDeviceSession"
+  /admin/licenses:
+    get:
+      tags: [Licenses]
+      summary: Lista licencas
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Licencas paginadas.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedLicenses"
+  /admin/plans:
+    get:
+      tags: [Licenses]
+      summary: Matriz de planos
+      responses:
+        "200":
+          description: Planos, features, uso e regras.
+  /admin/billing/companies:
+    get:
+      tags: [Billing]
+      summary: Empresas com billing
+      responses:
+        "200":
+          description: Empresas de billing paginadas.
+  /admin/companies/{companyId}/billing/status:
+    get:
+      tags: [Billing]
+      summary: Status de billing da empresa
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      responses:
+        "200":
+          description: Snapshot de billing/licenca.
+  /admin/companies/{companyId}/billing/events:
+    get:
+      tags: [Billing]
+      summary: Eventos de billing
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      responses:
+        "200":
+          description: Eventos paginados.
+  /admin/companies/{companyId}/billing/checkout-sessions:
+    get:
+      tags: [Billing]
+      summary: Sessoes de checkout
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      responses:
+        "200":
+          description: Checkout sessions paginadas.
+  /admin/companies/{companyId}/billing/audit-logs:
+    get:
+      tags: [Billing]
+      summary: Auditoria de billing
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      responses:
+        "200":
+          description: Audit logs paginados.
+  /admin/companies/{companyId}/sync/health:
+    get:
+      tags: [SyncCenter]
+      summary: Saude de sync por empresa
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      responses:
+        "200":
+          description: Saude de sync.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCompanySyncHealth"
+  /admin/companies/{companyId}/sync/events:
+    get:
+      tags: [SyncCenter]
+      summary: Eventos de sync por empresa
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      responses:
+        "200":
+          description: Eventos de sync paginados.
+  /admin/companies/{companyId}/sync/conflicts:
+    get:
+      tags: [SyncCenter]
+      summary: Conflitos de sync por empresa
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      responses:
+        "200":
+          description: Conflitos paginados.
+  /admin/companies/{companyId}/sync/incidents:
+    get:
+      tags: [SyncCenter]
+      summary: Incidentes de sync por empresa
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      responses:
+        "200":
+          description: Incidentes paginados.
+  /admin/sync/companies:
+    get:
+      tags: [SyncCenter]
+      summary: Empresas do Sync Center
+      responses:
+        "200":
+          description: Empresas paginadas para triagem.
+  /admin/sync/companies/{companyId}/summary:
+    get:
+      tags: [SyncCenter]
+      summary: Resumo Sync Center por empresa
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      responses:
+        "200":
+          description: Resumo da empresa.
+  /admin/sync/companies/{companyId}/devices:
+    get:
+      tags: [SyncCenter]
+      summary: Dispositivos de suporte sync
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      responses:
+        "200":
+          description: Lista de dispositivos.
+  /admin/audit:
+    get:
+      tags: [Audit]
+      summary: Auditoria global
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+        - name: companyId
+          in: query
+          schema: { type: string }
+        - name: category
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Eventos de auditoria paginados.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuditLogPage"
+  /admin/audit/summary:
+    get:
+      tags: [Audit]
+      summary: Resumo de auditoria
+      responses:
+        "200":
+          description: Agregados de auditoria.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    CompanyId:
+      name: companyId
+      in: path
+      required: true
+      schema: { type: string }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, default: 20 }
+  schemas:
+    AdminSession:
+      type: object
+      additionalProperties: true
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        tokenType: { type: string, default: Bearer }
+        user:
+          $ref: "#/components/schemas/AdminUser"
+    AdminUser:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        isPlatformAdmin: { type: boolean }
+    AdminCompanySummary:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        name: { type: string }
+        legalName: { type: string }
+        documentNumber: { type: string, nullable: true }
+        slug: { type: string }
+        isActive: { type: boolean }
+        license:
+          $ref: "#/components/schemas/AdminLicenseSnapshot"
+    AdminCompanyDetail:
+      type: object
+      additionalProperties: true
+      properties:
+        company:
+          $ref: "#/components/schemas/AdminCompanySummary"
+        memberships:
+          type: array
+          items: { type: object, additionalProperties: true }
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminDeviceSession"
+    AdminCompanyAccessSummary:
+      type: object
+      additionalProperties: true
+      properties:
+        company: { type: object, additionalProperties: true }
+        summary: { type: object, additionalProperties: true }
+        users:
+          type: array
+          items: { type: object, additionalProperties: true }
+        employees:
+          type: array
+          items: { type: object, additionalProperties: true }
+    AdminDeviceSession:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        userName: { type: string }
+        companyId: { type: string }
+        clientType: { type: string }
+        deviceLabel: { type: string, nullable: true }
+        platform: { type: string, nullable: true }
+        appVersion: { type: string, nullable: true }
+        status: { type: string }
+        lastSeenAt: { type: string, format: date-time, nullable: true }
+    AdminDeviceInventoryItem:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        maskedDeviceId: { type: string }
+        companyId: { type: string }
+        userName: { type: string }
+        clientType: { type: string }
+        platform: { type: string, nullable: true }
+        appVersion: { type: string, nullable: true }
+        diagnostic: { type: object, additionalProperties: true, nullable: true }
+    AdminLicenseSnapshot:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        companyId: { type: string }
+        companyName: { type: string }
+        plan: { type: string }
+        status: { type: string }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        syncEnabled: { type: boolean }
+    AdminCompanySyncHealth:
+      type: object
+      additionalProperties: true
+      properties:
+        companyId: { type: string }
+        companyName: { type: string }
+        status: { type: string }
+        syncEnabled: { type: boolean }
+        events: { type: object, additionalProperties: true }
+        openConflictsCount: { type: integer }
+        lastSyncAt: { type: string, format: date-time, nullable: true }
+    AdminAuditLogPage:
+      type: object
+      additionalProperties: true
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAuditEntry"
+        pagination: { type: object, additionalProperties: true }
+        overview: { type: object, additionalProperties: true }
+    AdminAuditEntry:
+      type: object
+      additionalProperties: true
+      properties:
+        id: { type: string }
+        source: { type: string }
+        category: { type: string }
+        action: { type: string }
+        status: { type: string }
+        companyId: { type: string, nullable: true }
+        actorUserId: { type: string, nullable: true }
+        targetType: { type: string, nullable: true }
+        targetId: { type: string, nullable: true }
+        reason: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time, nullable: true }
+    PaginatedCompanies:
+      type: object
+      additionalProperties: true
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCompanySummary"
+    PaginatedDevices:
+      type: object
+      additionalProperties: true
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminDeviceInventoryItem"
+    PaginatedLicenses:
+      type: object
+      additionalProperties: true
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminLicenseSnapshot"
