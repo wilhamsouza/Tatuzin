@@ -3,6 +3,7 @@ import { Router } from "express";
 import { requirePlatformAdmin } from "../../shared/http/auth-middleware";
 import { asyncHandler } from "../../shared/http/async-handler";
 import { createRateLimit } from "../../shared/http/rate-limit";
+import { logger } from "../../shared/observability/logger";
 import { validateBody, validateQuery } from "../../shared/http/validate";
 import {
   type AdminBillingCompaniesQueryInput,
@@ -69,6 +70,12 @@ import { AdminSyncCenterService } from "./admin-sync-center.service";
 import { AdminSyncHealthService } from "./admin-sync-health.service";
 import { AdminService } from "./admin.service";
 import { SyncSupportService } from "../sync/sync-support.service";
+import { supportActionsRouter } from "../support-actions/support-actions.routes";
+import { adminPermissionsRouter } from "../admin-permissions/admin-permissions.routes";
+import {
+  legacySessionRevokeLogContext,
+  revokeLegacyAdminSession,
+} from "./legacy-session-revoke-audit";
 
 const adminService = new AdminService();
 const adminSyncHealthService = new AdminSyncHealthService();
@@ -92,6 +99,9 @@ adminRouter.use(
     },
   }),
 );
+
+adminRouter.use("/support-actions", supportActionsRouter);
+adminRouter.use("/permissions", adminPermissionsRouter);
 
 adminRouter.get(
   "/billing/companies",
@@ -448,10 +458,23 @@ adminRouter.post(
       ? request.params.sessionId[0]
       : request.params.sessionId;
 
-    await adminService.revokeSession({
-      sessionId,
-      actorUserId: request.auth!.userId,
-    });
+    logger.warn(
+      "admin.sessions.legacy_revoke.used",
+      legacySessionRevokeLogContext({
+        actorUserId: request.auth!.userId,
+        sessionId,
+      }),
+    );
+
+    await revokeLegacyAdminSession(
+      {
+        sessionId,
+        actorUserId: request.auth!.userId,
+      },
+      {
+        revokeSession: (input) => adminService.revokeSession(input),
+      },
+    );
 
     response.status(204).send();
   }),
