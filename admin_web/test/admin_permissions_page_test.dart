@@ -37,14 +37,20 @@ void main() {
     expect(find.text('Catalogo de permissionKeys'), findsOneWidget);
     expect(find.text('support.session.revoke'), findsWidgets);
     expect(find.text('support-action'), findsNothing);
-    expect(find.text('Support action'), findsOneWidget);
-    expect(find.text('Alto'), findsOneWidget);
+    expect(find.text('Support action'), findsWidgets);
+    expect(find.text('Alto'), findsWidgets);
     expect(find.text('revoke_session'), findsOneWidget);
     expect(find.text('Dry-run'), findsOneWidget);
     expect(find.text('Motivo'), findsOneWidget);
     expect(find.text('Confirmacao'), findsOneWidget);
     expect(find.text('Auditoria'), findsOneWidget);
     expect(find.text('Permissoes ativas'), findsOneWidget);
+    expect(
+      find.text('Catalogo agrupado por categoria e risco'),
+      findsOneWidget,
+    );
+    expect(find.text('Risco alto ou critico'), findsOneWidget);
+    expect(find.text('Ver auditoria de permissoes'), findsOneWidget);
     expect(find.text('admin-permissions.manage'), findsWidgets);
     expect(find.text('Ativa'), findsOneWidget);
     expect(

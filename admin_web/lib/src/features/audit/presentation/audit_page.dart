@@ -6,6 +6,7 @@ import '../../../core/auth/admin_providers.dart';
 import '../../../core/models/admin_billing_models.dart';
 import '../../../core/models/admin_models.dart';
 import '../../../core/utils/admin_formatters.dart';
+import '../../../core/utils/admin_safe_display.dart';
 import '../../../core/widgets/admin_operational_status.dart';
 import '../../../core/widgets/admin_surface.dart';
 
@@ -244,6 +245,10 @@ class _AuditNotice extends StatelessWidget {
             'Acoes reais futuras exigem dry-run, motivo, confirmacao e auditoria',
           ),
         ),
+        Chip(
+          avatar: Icon(Icons.lock_clock_rounded, size: 18),
+          label: Text('revoke_session real depende do gate operacional'),
+        ),
       ],
     );
   }
@@ -264,6 +269,9 @@ class _AuditCategoryLegend extends StatelessWidget {
         Chip(label: Text('Billing')),
         Chip(label: Text('Licencas')),
         Chip(label: Text('Sync Center')),
+        Chip(label: Text('Permissoes')),
+        Chip(label: Text('Support-actions')),
+        Chip(label: Text('Revoke session')),
         Chip(label: Text('Seguranca')),
         Chip(label: Text('Sistema')),
         Chip(label: Text('Outros')),
@@ -549,6 +557,15 @@ class _AuditMetrics extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final categories = page.overview.countsByCategory;
+    final permissions = page.items
+        .where((entry) => _isAdminPermissionEvent(entry.action))
+        .length;
+    final supportActions = page.items
+        .where((entry) => _isSupportActionEvent(entry.action))
+        .length;
+    final revokeSession = page.items
+        .where((entry) => _isRevokeSessionEvent(entry.action))
+        .length;
     return Wrap(
       spacing: 16,
       runSpacing: 16,
@@ -564,6 +581,9 @@ class _AuditMetrics extends StatelessWidget {
         ),
         _AuditMetric(title: 'Acesso', value: '${categories['access'] ?? 0}'),
         _AuditMetric(title: 'Sync', value: '${categories['sync'] ?? 0}'),
+        _AuditMetric(title: 'Permissoes', value: '$permissions'),
+        _AuditMetric(title: 'Support-actions', value: '$supportActions'),
+        _AuditMetric(title: 'Revoke session', value: '$revokeSession'),
         _AuditMetric(title: 'Falhas/erros', value: '${page.overview.failures}'),
         _AuditMetric(
           title: 'Ultimos 7 dias',
@@ -626,10 +646,20 @@ class _AuditEntriesTable extends StatelessWidget {
                     ),
                   ),
                   DataCell(
-                    Text(_fallback(entry.targetId, 'Sem recurso relacionado')),
+                    Text(
+                      safeAdminSensitiveText(
+                        _fallback(entry.targetId, 'Sem recurso relacionado'),
+                        fallback: 'Sem recurso relacionado',
+                      ),
+                    ),
                   ),
                   DataCell(
-                    Text(_fallback(entry.reason, 'Sem contexto registrado')),
+                    Text(
+                      safeAdminSensitiveText(
+                        _fallback(entry.reason, 'Sem contexto registrado'),
+                        fallback: 'Sem contexto registrado',
+                      ),
+                    ),
                   ),
                   DataCell(Text(_resultLabel(entry.status))),
                   DataCell(
@@ -640,17 +670,7 @@ class _AuditEntriesTable extends StatelessWidget {
                     ),
                   ),
                   DataCell(Text(_originContext(entry))),
-                  DataCell(
-                    entry.companyId == null
-                        ? const Text('Sem recurso relacionado')
-                        : OutlinedButton.icon(
-                            onPressed: () => context.go(
-                              '/companies/${entry.companyId}/support',
-                            ),
-                            icon: const Icon(Icons.support_agent_rounded),
-                            label: const Text('Suporte'),
-                          ),
-                  ),
+                  DataCell(_NavigationCell(entry: entry)),
                 ],
               );
             })
@@ -693,15 +713,24 @@ class _AuditEntriesTable extends StatelessWidget {
                 ),
                 _DetailLine(
                   label: 'ID recurso',
-                  value: _fallback(entry.targetId, 'Sem recurso relacionado'),
+                  value: safeAdminSensitiveText(
+                    _fallback(entry.targetId, 'Sem recurso relacionado'),
+                    fallback: 'Sem recurso relacionado',
+                  ),
                 ),
                 _DetailLine(
                   label: 'Motivo',
-                  value: _fallback(entry.reason, 'Sem contexto registrado'),
+                  value: safeAdminSensitiveText(
+                    _fallback(entry.reason, 'Sem contexto registrado'),
+                    fallback: 'Sem contexto registrado',
+                  ),
                 ),
                 _DetailLine(
                   label: 'IP',
-                  value: _fallback(entry.ipAddress, 'Indisponivel'),
+                  value: safeAdminSensitiveText(
+                    _fallback(entry.ipAddress, 'Indisponivel'),
+                    fallback: 'Indisponivel',
+                  ),
                 ),
                 _JsonBlock(label: 'Before sanitizado', value: entry.before),
                 _JsonBlock(label: 'After sanitizado', value: entry.after),
@@ -721,6 +750,16 @@ class _AuditEntriesTable extends StatelessWidget {
               icon: const Icon(Icons.support_agent_rounded),
               label: const Text('Abrir central de suporte'),
             ),
+          if (_isAdminPermissionEvent(entry.action) &&
+              entry.actorUserId?.trim().isNotEmpty == true)
+            TextButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                context.go('/permissions?adminUserId=${entry.actorUserId}');
+              },
+              icon: const Icon(Icons.admin_panel_settings_rounded),
+              label: const Text('Abrir permissoes'),
+            ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Fechar'),
@@ -728,6 +767,50 @@ class _AuditEntriesTable extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _NavigationCell extends StatelessWidget {
+  const _NavigationCell({required this.entry});
+
+  final AdminAuditEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final actions = <Widget>[];
+    if (entry.companyId != null) {
+      actions.add(
+        OutlinedButton.icon(
+          onPressed: () => context.go('/companies/${entry.companyId}/support'),
+          icon: const Icon(Icons.support_agent_rounded),
+          label: const Text('Suporte'),
+        ),
+      );
+    }
+    if (_isAdminPermissionEvent(entry.action) &&
+        entry.actorUserId?.trim().isNotEmpty == true) {
+      actions.add(
+        OutlinedButton.icon(
+          onPressed: () =>
+              context.go('/permissions?adminUserId=${entry.actorUserId}'),
+          icon: const Icon(Icons.admin_panel_settings_rounded),
+          label: const Text('Permissoes'),
+        ),
+      );
+    }
+    if (_isRevokeSessionEvent(entry.action) && entry.companyId != null) {
+      actions.add(
+        OutlinedButton.icon(
+          onPressed: () => context.go('/companies/${entry.companyId}/sessions'),
+          icon: const Icon(Icons.login_rounded),
+          label: const Text('Sessoes'),
+        ),
+      );
+    }
+    if (actions.isEmpty) {
+      return const Text('Sem recurso relacionado');
+    }
+    return Wrap(spacing: 8, runSpacing: 8, children: actions);
   }
 }
 
@@ -995,6 +1078,12 @@ String _operationalCategory(AdminAuditEntry entry) {
   final category = entry.category.toLowerCase();
   final action = entry.action.toLowerCase();
   final source = entry.source.toLowerCase();
+  if (_isAdminPermissionEvent(action) || action.contains('permission')) {
+    return 'Permissoes';
+  }
+  if (_isSupportActionEvent(action)) {
+    return 'Support-actions';
+  }
   if (category == 'session' || action.contains('session')) {
     return 'Sessoes';
   }
@@ -1078,6 +1167,31 @@ String _emptyAuditMessage(AdminAuditQuery query) {
 
 String _friendlyAction(String action) {
   switch (action) {
+    case 'admin.permissions.grant':
+    case 'admin-permissions.grant':
+      return 'Permissao administrativa concedida';
+    case 'admin.permissions.revoke':
+    case 'admin-permissions.revoke':
+      return 'Permissao administrativa revogada';
+    case 'admin.permissions.list':
+    case 'admin-permissions.list':
+      return 'Consulta de permissoes administrativas';
+    case 'admin.permissions.bootstrap':
+    case 'admin-permissions.bootstrap':
+      return 'Bootstrap de permissoes administrativas';
+    case 'admin.sessions.legacy_revoke.used':
+      return 'Uso da rota legada de sessao';
+    case 'support.revoke_session.dry_run':
+    case 'support.revoke_session.dry_run.succeeded':
+      return 'Dry-run de revoke_session';
+    case 'support.revoke_session.execute_requested':
+      return 'Solicitacao de execute revoke_session';
+    case 'support.revoke_session.execute_succeeded':
+      return 'revoke_session executado';
+    case 'support.revoke_session.execute_failed':
+      return 'Falha no execute revoke_session';
+    case 'support.revoke_session.execute_denied':
+      return 'execute revoke_session negado';
     case 'license.emergency_extension':
       return 'Extensao emergencial';
     case 'billing.reconcile':
@@ -1109,6 +1223,26 @@ String _friendlyAction(String action) {
     default:
       return action;
   }
+}
+
+bool _isAdminPermissionEvent(String action) {
+  final normalized = action.toLowerCase();
+  return normalized.contains('admin.permissions') ||
+      normalized.contains('admin-permissions') ||
+      normalized.contains('admin_permission');
+}
+
+bool _isSupportActionEvent(String action) {
+  final normalized = action.toLowerCase();
+  return normalized.startsWith('support.') ||
+      normalized.contains('support_action') ||
+      normalized.contains('support-action');
+}
+
+bool _isRevokeSessionEvent(String action) {
+  final normalized = action.toLowerCase();
+  return normalized.contains('revoke_session') ||
+      normalized == 'admin.sessions.legacy_revoke.used';
 }
 
 String _label(String value) {

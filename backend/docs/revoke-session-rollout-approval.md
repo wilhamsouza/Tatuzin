@@ -8,7 +8,7 @@ Ele nao habilita feature flag, nao altera rotas e nao substitui o runbook.
 
 ## Estado atual
 
-Status do gate: `EM OBSERVACAO`.
+Status do gate: `PENDENTE (EM OBSERVACAO)`.
 
 Migrations necessarias aplicadas em `2026-06-01T03:19:35Z` no banco
 local/controlado de observacao (`localhost:5432/simples_erp_dev`, schema
@@ -19,11 +19,11 @@ Janela valida em andamento: de `2026-06-01T00:19:35-03:00` a
 `2026-06-08T00:19:35-03:00`. A UX real continua bloqueada ate a janela
 completa terminar e os demais criterios operacionais serem aprovados.
 
-Ultima observacao executada: `2026-06-01`, em leitura somente, contra
-`DATABASE_URL` local/controlado de observacao (`localhost`, banco
-`simples_erp_dev`, schema `public`). A linha de base pos-migration encontrou
-zero eventos legados e zero eventos modernos, mas ainda nao conclui a janela de
-7 dias.
+Ultima observacao executada: `2026-06-01T15:03:32-03:00`, em leitura somente,
+contra `DATABASE_URL` local/controlado de observacao (`localhost`, banco
+`simples_erp_dev`, schema `public`). A consulta parcial da janela encontrou
+zero eventos legados, zero eventos modernos e zero recibos em
+`SupportActionExecution`, mas ainda nao conclui a janela de 7 dias.
 
 Proxima etapa obrigatoria: executar observacao em ambiente real/controlado
 durante a janela completa, confirmar retencao consultavel, responsaveis e
@@ -240,12 +240,113 @@ Outros achados:
 
 ### Decisao atual
 
-Decisao do gate: `EM OBSERVACAO`.
+Decisao do gate: `PENDENTE (EM OBSERVACAO)`.
 
 Motivo: schema corrigido e baseline limpo no ambiente local/controlado, mas a
 janela valida de 7 dias ainda nao terminou. A UX real no Admin Web continua
 bloqueada ate a conclusao da janela, aprovacao do runbook, politica da feature
 flag e operadores autorizados.
+
+## Observacao parcial em 2026-06-01
+
+Consulta read-only executada em `2026-06-01T15:03:32-03:00`
+(`2026-06-01T18:03:32.896Z`) durante a janela valida:
+
+| Campo | Valor |
+| --- | --- |
+| Janela observada | `2026-06-01T00:19:35-03:00` ate `2026-06-08T00:19:35-03:00` |
+| Banco/schema | `localhost:5432/simples_erp_dev?schema=public` |
+| Tipo de acesso | Consulta read-only |
+| Feature flag habilitada | Nao |
+| UX real criada | Nao |
+| Rota legada removida ou bloqueada | Nao |
+
+### Schema consultado
+
+| Item | Resultado |
+| --- | --- |
+| `AdminAuditLog.actorType` | Existe, `NOT NULL` |
+| `AdminAuditLog.actorLabel` | Existe, nullable |
+| `AdminAuditLog.actorUserId` | Existe, nullable |
+| `AdminAuditLog.details` | Existe, `jsonb` |
+| `AdminUserPermission` | Existe |
+| `SupportActionExecution` | Existe |
+
+### Eventos legados
+
+Consulta executada em `AdminAuditLog` para:
+
+```text
+action = admin.sessions.legacy_revoke.used
+```
+
+Resultado parcial da janela:
+
+| `details.result` | Total |
+| --- | ---: |
+| `requested` | 0 |
+| `succeeded` | 0 |
+| `failed` | 0 |
+| `denied` | 0 |
+| outro ou ausente | 0 |
+
+Consumidores observados:
+
+- atores/admins: nenhum;
+- empresas: nenhuma;
+- sessoes afetadas: nenhuma;
+- origem provavel: sem eventos;
+- consumidor inesperado: nenhum observado.
+
+### Eventos da rota moderna
+
+Consulta executada em `AdminAuditLog` para:
+
+```text
+support.revoke_session.execute_requested
+support.revoke_session.execute_succeeded
+support.revoke_session.execute_failed
+support.revoke_session.execute_denied
+```
+
+Resultado parcial da janela:
+
+| Evento | Total |
+| --- | ---: |
+| `support.revoke_session.execute_requested` | 0 |
+| `support.revoke_session.execute_succeeded` | 0 |
+| `support.revoke_session.execute_failed` | 0 |
+| `support.revoke_session.execute_denied` | 0 |
+
+Nao houve tentativa observada com feature flag desligada.
+
+### Recibos em SupportActionExecution
+
+Consulta executada em `SupportActionExecution` para o mesmo periodo:
+
+| Campo | Resultado |
+| --- | --- |
+| Total de registros | 0 |
+| `actionType` observado | Nenhum |
+| `status` observado | Nenhum |
+| `idempotencyKey` | Nao aplicavel |
+| Execucao real confirmada | Nao |
+
+### Conclusao parcial
+
+Decisao do gate: `PENDENTE (EM OBSERVACAO)`.
+
+Justificativa:
+
+- a auditoria consultavel esta disponivel e o schema esta alinhado;
+- nao houve uso legado observado ate a consulta parcial;
+- nao houve tentativa moderna de `revoke_session`;
+- nao existe recibo idempotente em `SupportActionExecution`;
+- a janela valida de 7 dias ainda nao terminou em `2026-06-01`.
+
+A UX real no Admin Web nao deve avancar nesta etapa. Reavaliar ao final da
+janela em `2026-06-08T00:19:35-03:00` com nova consulta read-only e aprovacao
+humana do runbook, operadores autorizados e politica da feature flag.
 
 ## Observacao local anterior em 2026-06-01
 

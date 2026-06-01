@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/admin_providers.dart';
 import '../../../core/models/admin_permissions_models.dart';
@@ -163,6 +164,8 @@ class _CatalogSection extends StatelessWidget {
               children: [
                 _CatalogSummary(items: catalog.items),
                 const SizedBox(height: 18),
+                _CatalogGroupingOverview(items: catalog.items),
+                const SizedBox(height: 18),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: DataTable(
@@ -205,6 +208,75 @@ class _CatalogSection extends StatelessWidget {
                 : permission.scopes.join(', '),
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _CatalogGroupingOverview extends StatelessWidget {
+  const _CatalogGroupingOverview({required this.items});
+
+  final List<AdminPermissionDefinition> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final byCategory = <String, List<AdminPermissionDefinition>>{};
+    final elevatedRisk = items
+        .where(
+          (item) =>
+              item.riskLevel.toLowerCase() == 'critical' ||
+              item.riskLevel.toLowerCase() == 'high',
+        )
+        .toList(growable: false);
+    for (final item in items) {
+      byCategory.putIfAbsent(item.category, () => []).add(item);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Catalogo agrupado por categoria e risco',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: byCategory.entries
+              .map(
+                (entry) => _MetricTile(
+                  title: _label(entry.key),
+                  value: '${entry.value.length} permissionKeys',
+                ),
+              )
+              .toList(growable: false),
+        ),
+        if (elevatedRisk.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(
+            'Risco alto ou critico',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: elevatedRisk
+                .map(
+                  (permission) => Chip(
+                    avatar: Icon(
+                      permission.riskLevel.toLowerCase() == 'critical'
+                          ? Icons.priority_high_rounded
+                          : Icons.warning_amber_rounded,
+                      size: 18,
+                    ),
+                    label: Text(permission.permissionKey),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        ],
       ],
     );
   }
@@ -447,6 +519,14 @@ class _UserPermissionsTables extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => context.go(
+            '/audit?actorUserId=${snapshot.adminUserId}&search=permission',
+          ),
+          icon: const Icon(Icons.fact_check_rounded),
+          label: const Text('Ver auditoria de permissoes'),
+        ),
         const SizedBox(height: 20),
         _GrantPermissionPanel(
           catalog: catalog,
@@ -653,6 +733,8 @@ class _PermissionTable extends StatelessWidget {
             child: DataTable(
               columns: [
                 const DataColumn(label: Text('permissionKey')),
+                const DataColumn(label: Text('Categoria')),
+                const DataColumn(label: Text('Risco')),
                 const DataColumn(label: Text('Status')),
                 const DataColumn(label: Text('Escopo')),
                 const DataColumn(label: Text('scopeId')),
@@ -669,9 +751,12 @@ class _PermissionTable extends StatelessWidget {
   }
 
   DataRow _permissionRow(AdminUserPermission permission) {
+    final definition = _definitionForKey(catalog, permission.permissionKey);
     return DataRow(
       cells: [
         DataCell(SelectableText(permission.permissionKey)),
+        DataCell(Text(_label(definition.category))),
+        DataCell(_RiskIndicator(riskLevel: definition.riskLevel)),
         DataCell(
           AdminOperationalStatus(
             label: permission.isActive ? 'Ativa' : 'Inativa',

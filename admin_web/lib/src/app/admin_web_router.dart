@@ -11,6 +11,7 @@ import '../features/billing/presentation/billing_admin_page.dart';
 import '../features/billing/presentation/billing_company_detail_page.dart';
 import '../features/companies/presentation/companies_page.dart';
 import '../features/companies/presentation/company_detail_page.dart';
+import '../features/companies/presentation/company_sessions_page.dart';
 import '../features/companies/presentation/company_support_page.dart';
 import '../features/companies/presentation/company_users_page.dart';
 import '../features/dashboard/presentation/dashboard_page.dart';
@@ -153,9 +154,9 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/companies/:companyId/sessions',
-            redirect: (context, state) {
+            builder: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
-              return '/companies/$companyId/devices';
+              return CompanySessionsPage(companyId: companyId);
             },
           ),
           GoRoute(
@@ -311,9 +312,11 @@ String _titleForLocation(String location) {
       (location.endsWith('/users') || location.endsWith('/employees'))) {
     return 'Usuarios e funcionarios';
   }
-  if (location.startsWith('/companies/') &&
-      (location.endsWith('/devices') || location.endsWith('/sessions'))) {
+  if (location.startsWith('/companies/') && location.endsWith('/devices')) {
     return 'Dispositivos e sessoes';
+  }
+  if (location.startsWith('/companies/') && location.endsWith('/sessions')) {
+    return 'Sessoes da empresa';
   }
   if (location.startsWith('/licenses/')) {
     return 'Licenca e billing da empresa';

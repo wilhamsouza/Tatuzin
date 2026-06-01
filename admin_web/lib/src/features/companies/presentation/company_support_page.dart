@@ -89,6 +89,9 @@ class _CompanySupportContent extends ConsumerWidget {
               _androidVersionCard(context, company.id, devicesAsync),
               _pushNotificationCard(),
               _sessionsCard(context, company.id, sessionsAsync),
+              _permissionsCard(context),
+              _simulationCard(),
+              _revokeSessionRolloutCard(context, company.id),
               _usersCard(context, company.id, accessAsync),
               _employeesCard(context, company.id, accessAsync),
               _syncCard(context, company.id, syncAsync),
@@ -384,7 +387,74 @@ class _CompanySupportContent extends ConsumerWidget {
         ];
       },
       actionLabel: 'Ver sessoes',
-      onAction: () => context.go('/companies/$companyId/devices'),
+      onAction: () => context.go('/companies/$companyId/sessions'),
+    );
+  }
+
+  _SupportCard _permissionsCard(BuildContext context) {
+    return _SupportCard(
+      icon: Icons.admin_panel_settings_rounded,
+      title: 'Permissoes administrativas',
+      subtitle:
+          'Consulta de permissionKeys persistidas e catalogo de risco do backend.',
+      metrics: const [
+        _SupportMetric(
+          label: 'Status',
+          value: 'Read-only',
+          tone: AdminOperationalTone.ok,
+        ),
+        _SupportMetric(label: 'Resolucao', value: 'Backend persistente'),
+        _SupportMetric(label: 'isPlatformAdmin', value: 'Sem bypass sozinho'),
+        _SupportMetric(label: 'Alteracoes', value: 'Fluxo controlado'),
+      ],
+      actionLabel: 'Ver permissoes',
+      onAction: () => context.go('/permissions'),
+    );
+  }
+
+  _SupportCard _simulationCard() {
+    return const _SupportCard(
+      icon: Icons.science_rounded,
+      title: 'Simulacoes operacionais',
+      subtitle:
+          'Dry-run para prever impacto sem alterar dados reais da empresa.',
+      metrics: [
+        _SupportMetric(
+          label: 'Dry-run',
+          value: 'Disponivel',
+          tone: AdminOperationalTone.ok,
+        ),
+        _SupportMetric(label: 'Motivo', value: 'Obrigatorio'),
+        _SupportMetric(label: 'Auditoria', value: 'Preparada'),
+        _SupportMetric(label: 'Execucao real', value: 'Indisponivel na UI'),
+      ],
+    );
+  }
+
+  _SupportCard _revokeSessionRolloutCard(
+    BuildContext context,
+    String companyId,
+  ) {
+    return _SupportCard(
+      icon: Icons.lock_clock_rounded,
+      title: 'Rollout revoke_session',
+      subtitle:
+          'Gate operacional antes de qualquer experiencia real no Admin Web.',
+      metrics: const [
+        _SupportMetric(
+          label: 'Gate',
+          value: 'Em observacao',
+          tone: AdminOperationalTone.attention,
+        ),
+        _SupportMetric(label: 'Feature flag', value: 'Controlada no backend'),
+        _SupportMetric(label: 'Rota legada', value: 'Observacao auditavel'),
+        _SupportMetric(label: 'Confirmacao', value: 'REVOGAR_SESSAO mantida'),
+        _SupportMetric(label: 'Botao real', value: 'Nao liberado'),
+      ],
+      actionLabel: 'Ver auditoria',
+      onAction: () => context.go(
+        '/audit?companyId=$companyId&action=admin.sessions.legacy_revoke.used',
+      ),
     );
   }
 

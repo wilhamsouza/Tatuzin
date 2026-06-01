@@ -19,6 +19,7 @@ import 'package:tatuzin_admin_web/src/core/widgets/admin_shell_scaffold.dart';
 import 'package:tatuzin_admin_web/src/features/audit/presentation/audit_page.dart';
 import 'package:tatuzin_admin_web/src/features/companies/presentation/companies_page.dart';
 import 'package:tatuzin_admin_web/src/features/companies/presentation/company_detail_page.dart';
+import 'package:tatuzin_admin_web/src/features/companies/presentation/company_sessions_page.dart';
 import 'package:tatuzin_admin_web/src/features/companies/presentation/company_support_page.dart';
 import 'package:tatuzin_admin_web/src/features/companies/presentation/company_users_page.dart';
 import 'package:tatuzin_admin_web/src/features/dashboard/presentation/dashboard_page.dart';
@@ -98,7 +99,7 @@ void main() {
     expect(routerSource, isNot(contains("path: '/owner'")));
     expect(readme, contains('separado do `owner_web`'));
     expect(readme, contains('`employees` redireciona para `users`'));
-    expect(readme, contains('`sessions` redireciona para `devices`'));
+    expect(readme, contains('`sessions` agora possui rota dedicada'));
     expect(readme, contains('docs/security-admin-web.md'));
     expect(securityDoc, contains('Cookie HttpOnly'));
     expect(securityDoc, contains('MFA'));
@@ -313,7 +314,11 @@ void main() {
     expect(find.text('Seguranca operacional'), findsOneWidget);
     expect(find.text('Observabilidade operacional'), findsOneWidget);
     expect(find.text('Status operacional'), findsOneWidget);
-    expect(find.text('Simulacoes operacionais'), findsOneWidget);
+    expect(find.text('Permissoes administrativas'), findsWidgets);
+    expect(find.text('Simulacoes operacionais'), findsWidgets);
+    expect(find.text('Rollout revoke_session'), findsOneWidget);
+    expect(find.text('Gate'), findsOneWidget);
+    expect(find.text('Em observacao'), findsOneWidget);
     expect(
       find.text('Dry-run: nenhum dado real sera alterado.'),
       findsOneWidget,
@@ -1039,7 +1044,7 @@ void main() {
     expect(find.textContaining('Nenhuma sessao registrada'), findsOneWidget);
   });
 
-  testWidgets('/companies/:companyId/sessions e alias de dispositivos', (
+  testWidgets('/companies/:companyId/sessions abre console de sessoes', (
     tester,
   ) async {
     _setLargeViewport(tester);
@@ -1052,8 +1057,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Dispositivos e sessoes da empresa'), findsOneWidget);
-    expect(service.lastDevicesQuery?.companyId, 'company-1');
+    expect(find.text('Sessoes da empresa'), findsWidgets);
+    expect(find.text('Resumo operacional de sessoes'), findsOneWidget);
+    expect(service.lastDevicesQuery, isNull);
     expect(service.companySessionsFetchCount, 1);
   });
 
@@ -1839,10 +1845,11 @@ Widget _adminRouterTestApp({
       ),
       GoRoute(
         path: '/companies/:companyId/sessions',
-        redirect: (context, state) {
-          final companyId = state.pathParameters['companyId'] ?? '';
-          return '/companies/$companyId/devices';
-        },
+        builder: (context, state) => Scaffold(
+          body: CompanySessionsPage(
+            companyId: state.pathParameters['companyId'] ?? '',
+          ),
+        ),
       ),
       GoRoute(
         path: '/companies/:companyId/employees',

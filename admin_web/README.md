@@ -35,7 +35,7 @@ Rotas reais registradas em
 | `/companies/:companyId/users` | Usuarios e funcionarios da empresa. |
 | `/companies/:companyId/employees` | Alias compat: redirect para `/companies/:companyId/users`. |
 | `/companies/:companyId/devices` | Dispositivos e sessoes da empresa. |
-| `/companies/:companyId/sessions` | Alias compat: redirect para `/companies/:companyId/devices`. |
+| `/companies/:companyId/sessions` | Console read-only de sessoes da empresa. |
 | `/sync` | Sync Center global. |
 | `/sync/:companyId` | Alias operacional para Sync Center da empresa. |
 | `/sync/:companyId/events/:eventId` | Detalhe read-only de evento de sync. |
@@ -73,7 +73,9 @@ Nomes visiveis devem seguir estes rotulos para evitar aliases confusos:
   `AdminUserPermission`.
 
 Aliases mantidos por compatibilidade devem apontar para a nomenclatura canonica:
-`employees` redireciona para `users`; `sessions` redireciona para `devices`.
+`employees` redireciona para `users`. `sessions` agora possui rota dedicada
+read-only, enquanto a tela de dispositivos segue exibindo sessoes recentes como
+secao complementar.
 
 As principais telas usam breadcrumbs no shell para manter o contexto entre
 Empresas, Central de suporte, Usuarios, Dispositivos, Licencas, Billing, Sync
@@ -95,6 +97,7 @@ recomendados.
 - Central de suporte read-only por empresa.
 - Usuarios e funcionarios por empresa.
 - Dispositivos e sessoes globais ou por empresa.
+- Console de sessoes por empresa em `/companies/:companyId/sessions`.
 - Licencas read-only para suporte seguro.
 - Permissoes administrativas com consulta e grant/revoke controlados.
 - Billing restrito para investigacao e correcao administrativa auditada.
@@ -230,6 +233,10 @@ O painel tambem deixa explicito que permissoes sao resolvidas no backend,
 `permissionKeys` enviados pelo cliente nao concedem acesso e `isPlatformAdmin`
 sozinho nao libera acoes sensiveis.
 
+A UI agrupa o catalogo por categoria e risco, destaca permissionKeys de risco
+alto/critico e oferece atalho para auditoria por admin. Bootstrap permanece sem
+interface no Admin Web.
+
 ## Simulacoes operacionais
 
 A Central de suporte da empresa em `/companies/:companyId/support` permite
@@ -245,6 +252,11 @@ As simulacoes nao alteram dados reais. Nao existe botao de execucao, rota de
 execute ou suporte a `dryRun: false` no Admin Web. Uma futura execucao real
 exigira novo epico, motivo, confirmacao explicita, permissao persistida e
 auditoria backend.
+
+O piloto backend de `revoke_session` real permanece fora da UI. A Central de
+suporte mostra o gate operacional, a feature flag controlada e a observacao da
+rota legada apenas como informacao read-only. O Admin Web nao chama
+`POST /api/admin/support-actions/revoke-session/execute`.
 
 ## Configuracao da API
 
