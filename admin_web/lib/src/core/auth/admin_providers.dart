@@ -7,6 +7,7 @@ import '../models/admin_crm_models.dart';
 import '../models/admin_hybrid_governance_models.dart';
 import '../../config/admin_env.dart';
 import '../models/admin_models.dart';
+import '../models/admin_permissions_models.dart';
 import '../models/admin_plan_models.dart';
 import '../models/admin_sync_center_models.dart';
 import '../network/admin_api_client.dart';
@@ -71,6 +72,24 @@ final adminPlansOverviewProvider = FutureProvider<AdminPlansOverview>((
   ref.watch(adminRefreshTickProvider);
   return ref.watch(adminApiServiceProvider).fetchPlansOverview();
 });
+
+final adminPermissionsCatalogProvider = FutureProvider<AdminPermissionsCatalog>(
+  (ref) async {
+    ref.watch(adminRefreshTickProvider);
+    return ref.watch(adminApiServiceProvider).fetchAdminPermissionsCatalog();
+  },
+);
+
+final adminUserPermissionsProvider =
+    FutureProvider.family<AdminUserPermissionsSnapshot, String>((
+      ref,
+      adminUserId,
+    ) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchAdminUserPermissions(adminUserId);
+    });
 
 final adminCompanyAccessSummaryProvider =
     FutureProvider.family<AdminCompanyAccessSummary, String>((

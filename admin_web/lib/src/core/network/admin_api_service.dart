@@ -6,8 +6,10 @@ import '../models/admin_billing_models.dart';
 import '../models/admin_crm_models.dart';
 import '../models/admin_hybrid_governance_models.dart';
 import '../models/admin_models.dart';
+import '../models/admin_permissions_models.dart';
 import '../models/admin_plan_models.dart';
 import '../models/admin_sync_center_models.dart';
+import '../models/admin_support_action_models.dart';
 import 'admin_api_client.dart';
 
 class AdminApiService {
@@ -188,6 +190,132 @@ class AdminApiService {
     }
 
     return AdminPlansOverview.fromMap(response);
+  }
+
+  Future<AdminPermissionsCatalog> fetchAdminPermissionsCatalog() async {
+    final response = await _apiClient.getJson(
+      '/admin/permissions/catalog',
+      accessToken: await _readRequiredToken(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message:
+            'A API nao retornou o catalogo de permissoes no formato esperado.',
+      );
+    }
+
+    return AdminPermissionsCatalog.fromMap(response);
+  }
+
+  Future<AdminUserPermissionsSnapshot> fetchAdminUserPermissions(
+    String adminUserId,
+  ) async {
+    final normalizedAdminUserId = adminUserId.trim();
+    if (normalizedAdminUserId.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o adminUserId para consultar permissoes.',
+        code: 'ADMIN_USER_ID_REQUIRED',
+      );
+    }
+
+    final response = await _apiClient.getJson(
+      '/admin/permissions/users/$normalizedAdminUserId',
+      accessToken: await _readRequiredToken(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message:
+            'A API nao retornou as permissoes do admin no formato esperado.',
+      );
+    }
+
+    return AdminUserPermissionsSnapshot.fromMap(
+      response,
+      adminUserId: normalizedAdminUserId,
+    );
+  }
+
+  Future<AdminPermissionMutationResult> grantAdminPermission({
+    required String adminUserId,
+    required String permissionKey,
+    required String reason,
+    String scope = 'platform',
+    String scopeId = '*',
+  }) {
+    return _mutateAdminPermission(
+      operation: 'grant',
+      adminUserId: adminUserId,
+      permissionKey: permissionKey,
+      reason: reason,
+      scope: scope,
+      scopeId: scopeId,
+    );
+  }
+
+  Future<AdminPermissionMutationResult> revokeAdminPermission({
+    required String adminUserId,
+    required String permissionKey,
+    required String reason,
+    String scope = 'platform',
+    String scopeId = '*',
+  }) {
+    return _mutateAdminPermission(
+      operation: 'revoke',
+      adminUserId: adminUserId,
+      permissionKey: permissionKey,
+      reason: reason,
+      scope: scope,
+      scopeId: scopeId,
+    );
+  }
+
+  Future<AdminSupportActionDryRunResponse> simulateSupportActionDryRun({
+    required AdminSupportActionDryRunRequest request,
+  }) async {
+    final payload = request.toApiPayload();
+    final actionType = payload['actionType'] as String;
+    final companyId = payload['companyId'] as String;
+    final targetType = payload['targetType'] as String;
+    final targetId = payload['targetId'] as String;
+    final reason = payload['reason'] as String;
+    if (actionType.isEmpty) {
+      throw const AdminApiException(
+        message: 'Selecione uma acao operacional para simular.',
+        code: 'OPERATIONAL_ACTION_TYPE_REQUIRED',
+      );
+    }
+    if (companyId.isEmpty || targetType.isEmpty || targetId.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe um alvo operacional valido.',
+        code: 'OPERATIONAL_ACTION_TARGET_REQUIRED',
+      );
+    }
+    if (reason.length < 12) {
+      throw const AdminApiException(
+        message: 'Informe um motivo operacional com pelo menos 12 caracteres.',
+        code: 'OPERATIONAL_ACTION_REASON_REQUIRED',
+      );
+    }
+    if (reason.length > 1000) {
+      throw const AdminApiException(
+        message: 'O motivo operacional deve ter no maximo 1000 caracteres.',
+        code: 'OPERATIONAL_ACTION_REASON_TOO_LONG',
+      );
+    }
+
+    final response = await _apiClient.postJson(
+      '/admin/support-actions/dry-run',
+      accessToken: await _readRequiredToken(),
+      body: payload,
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou a simulacao no formato esperado.',
+      );
+    }
+    return AdminSupportActionDryRunResponse.fromMap(response);
   }
 
   Future<AdminCompanyAccessSummary> fetchCompanyAccessSummary(
@@ -1547,6 +1675,69 @@ class AdminApiService {
       );
     }
     return token.trim();
+  }
+
+  Future<AdminPermissionMutationResult> _mutateAdminPermission({
+    required String operation,
+    required String adminUserId,
+    required String permissionKey,
+    required String reason,
+    required String scope,
+    required String scopeId,
+  }) async {
+    final normalizedAdminUserId = adminUserId.trim();
+    final normalizedPermissionKey = permissionKey.trim();
+    final normalizedReason = reason.trim();
+    final normalizedScope = scope.trim();
+    final normalizedScopeId = scopeId.trim();
+    if (normalizedAdminUserId.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o adminUserId alvo.',
+        code: 'ADMIN_USER_ID_REQUIRED',
+      );
+    }
+    if (normalizedPermissionKey.isEmpty) {
+      throw const AdminApiException(
+        message: 'Selecione uma permissionKey.',
+        code: 'ADMIN_PERMISSION_KEY_REQUIRED',
+      );
+    }
+    if (normalizedReason.length < 12) {
+      throw const AdminApiException(
+        message: 'Informe um motivo com pelo menos 12 caracteres.',
+        code: 'ADMIN_REASON_REQUIRED',
+      );
+    }
+    if (normalizedReason.length > 1000) {
+      throw const AdminApiException(
+        message: 'O motivo deve ter no maximo 1000 caracteres.',
+        code: 'ADMIN_REASON_TOO_LONG',
+      );
+    }
+    if (normalizedScope.isEmpty || normalizedScopeId.isEmpty) {
+      throw const AdminApiException(
+        message: 'Escopo da permissao invalido.',
+        code: 'ADMIN_PERMISSION_SCOPE_REQUIRED',
+      );
+    }
+
+    final response = await _apiClient.postJson(
+      '/admin/permissions/users/$normalizedAdminUserId/$operation',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        'permissionKey': normalizedPermissionKey,
+        'reason': normalizedReason,
+        'scope': normalizedScope,
+        'scopeId': normalizedScopeId,
+      },
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message:
+            'A API nao retornou a alteracao de permissao no formato esperado.',
+      );
+    }
+    return AdminPermissionMutationResult.fromMap(response);
   }
 
   Map<String, dynamic> _syncCenterReasonBody({
