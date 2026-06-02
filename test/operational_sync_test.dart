@@ -1286,9 +1286,10 @@ void main() {
     });
 
     test(
-      'projection null com warning nao avanca checkpoint inseguro',
+      'projection null com warning nao aplicavel avanca checkpoint sem aplicar',
       () async {
         final queue = _MemoryOperationalSyncQueueRepository();
+        final applier = _MemoryOperationalSyncProjectionApplier();
         final runner = OperationalSyncRunner(
           queueRepository: queue,
           remoteDataSource: _FakeOperationalSyncRemoteDataSource(
@@ -1299,10 +1300,52 @@ void main() {
               usesProjectionContract: true,
               events: <OperationalSyncPulledEvent>[
                 _pulledChange(
-                  entity: 'sale',
-                  eventId: 'sale-warning',
+                  entity: 'operationalOrderItem',
+                  eventId: 'old-conflict-item',
+                  operation: 'CONFLICT',
                   serverVersion: '5',
-                  projectionWarning: 'PROJECTION_NOT_FOUND',
+                  projectionWarning: 'SYNC_EVENT_NOT_ACCEPTED',
+                ),
+              ],
+            ),
+          ),
+          projectionApplier: applier,
+          snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+            version: '0',
+          ),
+          shouldContinue: () => true,
+          onCacheSnapshotChanged: () {},
+        );
+
+        final result = await runner.run(retryOnly: false);
+
+        expect(result.pullFailed, isFalse);
+        expect(queue.checkpoint, '5');
+        expect(queue.lastPullError, isNull);
+        expect(queue.lastPullSucceededAt, isNotNull);
+        expect(applier.applied, isEmpty);
+      },
+    );
+
+    test(
+      'pull sem alteracao aplicavel atualiza metadata de ultima sync',
+      () async {
+        final queue = _MemoryOperationalSyncQueueRepository();
+        final runner = OperationalSyncRunner(
+          queueRepository: queue,
+          remoteDataSource: _FakeOperationalSyncRemoteDataSource(
+            pullResponse: OperationalSyncPullResponse(
+              currentServerVersion: '4',
+              nextSinceVersion: '4',
+              hasMore: false,
+              usesProjectionContract: true,
+              events: <OperationalSyncPulledEvent>[
+                _pulledChange(
+                  entity: 'operationalOrderItem',
+                  eventId: 'legacy-conflict-without-projection',
+                  operation: 'CONFLICT',
+                  serverVersion: '4',
+                  projectionWarning: 'SYNC_EVENT_NOT_ACCEPTED',
                 ),
               ],
             ),
@@ -1316,9 +1359,9 @@ void main() {
 
         final result = await runner.run(retryOnly: false);
 
-        expect(result.pullFailed, isTrue);
-        expect(queue.checkpoint, '0');
-        expect(queue.lastPullError, contains('Dados parcialmente atualizados'));
+        expect(result.pullFailed, isFalse);
+        expect(queue.checkpoint, '4');
+        expect(queue.lastPullSucceededAt, isNotNull);
       },
     );
 
@@ -1739,6 +1782,7 @@ OperationalSyncPulledEvent _pulledChange({
   required String entity,
   required String eventId,
   required String serverVersion,
+  String operation = 'create',
   Map<String, dynamic>? projection,
   String? projectionWarning,
 }) {
@@ -1746,7 +1790,7 @@ OperationalSyncPulledEvent _pulledChange({
     eventId: eventId,
     feature: 'pdv',
     entity: entity,
-    operation: 'create',
+    operation: operation,
     entityLocalId: '$eventId-local',
     entityServerId: projection?['entityServerId'] as String?,
     occurredAt: DateTime(2026, 5, 5, 10),

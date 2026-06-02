@@ -8,7 +8,6 @@ import '../../../../app/core/session/app_session.dart';
 import '../../../../app/core/session/auth_provider.dart';
 import '../../../../app/core/session/session_feedback.dart';
 import '../../../../app/core/session/session_provider.dart';
-import '../../../../app/core/sync/sync_batch_result.dart';
 import '../../../../app/core/sync/sync_providers.dart';
 import '../../../../app/core/widgets/app_button.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
@@ -20,6 +19,7 @@ import '../../../billing/domain/billing_models.dart';
 import '../../../billing/presentation/providers/billing_providers.dart';
 import '../../../system/presentation/providers/system_providers.dart';
 import '../providers/account_cloud_providers.dart';
+import '../support/cloud_sync_feedback.dart';
 
 class AccountCloudPage extends ConsumerStatefulWidget {
   const AccountCloudPage({super.key});
@@ -186,7 +186,9 @@ class _AccountCloudPageState extends ConsumerState<AccountCloudPage> {
       }
       final currentCloudStatus = ref.read(accountCloudStatusProvider);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_syncResultMessage(result, currentCloudStatus))),
+        SnackBar(
+          content: Text(cloudSyncResultMessage(result, currentCloudStatus)),
+        ),
       );
     } catch (error) {
       if (!context.mounted) {
@@ -527,21 +529,6 @@ class _InfoRow extends StatelessWidget {
 }
 
 enum _SignOutDecision { cancel, syncFirst, signOut }
-
-String _syncResultMessage(
-  SyncBatchResult result,
-  AccountCloudStatusSnapshot cloudStatus,
-) {
-  final hasAttention =
-      result.failedCount > 0 ||
-      result.blockedCount > 0 ||
-      result.conflictCount > 0 ||
-      cloudStatus.hasAttention;
-  if (!hasAttention) {
-    return 'Nuvem atualizada. Enviados: ${result.syncedCount}.';
-  }
-  return 'A nuvem precisa de atenção. Seus dados continuam salvos neste aparelho.';
-}
 
 BillingStatus _fallbackBillingStatus(AppSession session) {
   final company = session.company;

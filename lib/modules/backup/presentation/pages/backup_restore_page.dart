@@ -4,13 +4,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/session/auth_provider.dart';
-import '../../../../app/core/sync/sync_batch_result.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
 import '../../../../app/routes/route_names.dart';
 import '../../../account/presentation/providers/account_cloud_providers.dart';
+import '../../../account/presentation/support/cloud_sync_feedback.dart';
 import '../../../system/presentation/providers/system_providers.dart';
 import '../../domain/entities/backup_file_info.dart';
 import '../../domain/entities/backup_validation_result.dart';
@@ -201,10 +201,10 @@ class BackupRestorePage extends ConsumerWidget {
         return;
       }
       final currentCloudStatus = ref.read(accountCloudStatusProvider);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
-        SnackBar(content: Text(_syncResultMessage(result, currentCloudStatus))),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(cloudSyncResultMessage(result, currentCloudStatus)),
+        ),
       );
     } catch (error) {
       if (!context.mounted) {
@@ -447,19 +447,4 @@ String _formatFileSize(int bytes) {
     return '${(bytes / 1024).toStringAsFixed(1)} KB';
   }
   return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-}
-
-String _syncResultMessage(
-  SyncBatchResult result,
-  AccountCloudStatusSnapshot cloudStatus,
-) {
-  final hasAttention =
-      result.failedCount > 0 ||
-      result.blockedCount > 0 ||
-      result.conflictCount > 0 ||
-      cloudStatus.hasAttention;
-  if (!hasAttention) {
-    return 'Nuvem atualizada. Enviados: ${result.syncedCount}.';
-  }
-  return 'A nuvem precisa de atenção. Seus dados continuam salvos neste aparelho.';
 }

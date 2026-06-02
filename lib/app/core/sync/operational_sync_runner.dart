@@ -617,13 +617,12 @@ class OperationalSyncRunner {
 
       if (change.projection == null) {
         if (pull.usesProjectionContract && change.projectionWarning != null) {
-          const message =
-              '$operationalSyncPartialDataMessage. Tente sincronizar novamente.';
           AppLogger.warn(
-            '[OperationalSync] pull_projection_warning eventId=${change.eventId} '
-            'entity=${change.entity} warning=${change.projectionWarning}',
+            '[OperationalSync] pull_projection_warning_skipped '
+            'eventId=${change.eventId} entity=${change.entity} '
+            'operation=${change.operation} serverVersion=$changeVersion '
+            'warning=${change.projectionWarning}',
           );
-          throw const _OperationalSyncPullProjectionWarning(message);
         }
 
         safeCheckpoint = changeVersion;
@@ -777,15 +776,6 @@ class _ApplyPulledChangesOutcome {
   final String safeCheckpoint;
   final int processedChanges;
   final bool reachedChangeLimit;
-}
-
-class _OperationalSyncPullProjectionWarning implements Exception {
-  const _OperationalSyncPullProjectionWarning(this.message);
-
-  final String message;
-
-  @override
-  String toString() => message;
 }
 
 class _SupportCommandFailure implements Exception {
