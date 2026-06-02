@@ -2931,6 +2931,105 @@ describe("operational local-first sync routes", () => {
     );
   });
 
+  it("pull omits resolved conflict events without deleting sync history", async () => {
+    const fixture = await createFixture();
+    const record = await createPullConflictRecord(fixture, {
+      eventId: "pull-resolved-conflict",
+      conflictStatus: "RESOLVED",
+      serverVersion: 11,
+    });
+
+    const response = await pull(fixture, { sinceVersion: 0 });
+
+    assert.equal(response.status, 200);
+    const events = (response.data as PullResponse).events;
+    assert.ok(
+      events.every((event) => event.eventId !== "pull-resolved-conflict"),
+    );
+
+    const [syncEvent, conflict, incident] = await Promise.all([
+      prisma.syncEvent.findUniqueOrThrow({ where: { id: record.syncEventId } }),
+      prisma.syncConflict.findUniqueOrThrow({ where: { id: record.conflictId } }),
+      prisma.syncIncident.findUniqueOrThrow({ where: { id: record.incidentId } }),
+    ]);
+    assert.equal(syncEvent.status, "CONFLICT");
+    assert.equal(conflict.status, "RESOLVED");
+    assert.equal(incident.syncEventId, syncEvent.id);
+  });
+
+  it("pull omits ignored conflict events without deleting sync history", async () => {
+    const fixture = await createFixture();
+    const record = await createPullConflictRecord(fixture, {
+      eventId: "pull-ignored-conflict",
+      conflictStatus: "IGNORED",
+      serverVersion: 12,
+    });
+
+    const response = await pull(fixture, { sinceVersion: 0 });
+
+    assert.equal(response.status, 200);
+    const events = (response.data as PullResponse).events;
+    assert.ok(
+      events.every((event) => event.eventId !== "pull-ignored-conflict"),
+    );
+
+    const [syncEvent, conflict, incident] = await Promise.all([
+      prisma.syncEvent.findUniqueOrThrow({ where: { id: record.syncEventId } }),
+      prisma.syncConflict.findUniqueOrThrow({ where: { id: record.conflictId } }),
+      prisma.syncIncident.findUniqueOrThrow({ where: { id: record.incidentId } }),
+    ]);
+    assert.equal(syncEvent.status, "CONFLICT");
+    assert.equal(conflict.status, "IGNORED");
+    assert.equal(incident.syncEventId, syncEvent.id);
+  });
+
+  it("pull still returns accepted applicable events", async () => {
+    const fixture = await createFixture();
+    await push(fixture, [
+      buildEvent("pull-accepted-applicable-sale", "sale", {
+        entityLocalId: `${runId}-pull-accepted-applicable-sale`,
+        payload: { status: "finalized", totalCents: 2400 },
+      }),
+    ]);
+
+    const response = await pull(fixture, { sinceVersion: 0 });
+
+    assert.equal(response.status, 200);
+    const events = (response.data as PullResponse).events;
+    assert.deepEqual(
+      events.map((event) => event.eventId),
+      ["pull-accepted-applicable-sale"],
+    );
+    assert.equal(events[0]?.projectionWarning, null);
+    assert.equal(events[0]?.projection?.total.totalAmountCents, 2400);
+  });
+
+  it("keeps open conflicts visible through the conflicts endpoint", async () => {
+    const fixture = await createFixture();
+    const record = await createPullConflictRecord(fixture, {
+      eventId: "pull-open-conflict-channel",
+      conflictStatus: "OPEN",
+      serverVersion: 13,
+    });
+
+    const response = await requestJson("GET", "/sync/conflicts?status=OPEN", {
+      token: fixture.token,
+    });
+
+    assert.equal(response.status, 200);
+    const payload = response.data as {
+      items: Array<{
+        id: string;
+        status: string;
+        event: { eventId: string; serverVersion: string | null };
+      }>;
+    };
+    assert.equal(payload.items[0]?.id, record.conflictId);
+    assert.equal(payload.items[0]?.status, "OPEN");
+    assert.equal(payload.items[0]?.event.eventId, "pull-open-conflict-channel");
+    assert.equal(payload.items[0]?.event.serverVersion, "13");
+  });
+
   it("returns sync status counters and review/error flags", async () => {
     const fixture = await createFixture();
     await push(fixture, [
@@ -3498,6 +3597,76 @@ async function push(
     token: fixture.token,
     body: { events },
   });
+}
+
+async function createPullConflictRecord(
+  fixture: { companyId: string; deviceId: string; userId: string },
+  input: {
+    eventId: string;
+    conflictStatus: "OPEN" | "RESOLVED" | "IGNORED";
+    serverVersion: number;
+  },
+) {
+  const entityLocalId = `${runId}-${input.eventId}-item`;
+  const syncEvent = await prisma.syncEvent.create({
+    data: {
+      companyId: fixture.companyId,
+      deviceId: fixture.deviceId,
+      userId: fixture.userId,
+      eventId: input.eventId,
+      feature: "pdv",
+      entity: "operationalOrderItem",
+      operation: "create",
+      entityLocalId,
+      occurredAt: new Date(),
+      payload: {
+        description: "Item legado sem projection aplicavel",
+        quantityMil: 1000,
+        totalCents: 1000,
+      },
+      status: "CONFLICT",
+      serverVersion: BigInt(input.serverVersion),
+    },
+  });
+  const handledAt = input.conflictStatus === "OPEN" ? null : new Date();
+  const syncConflict = await prisma.syncConflict.create({
+    data: {
+      companyId: fixture.companyId,
+      deviceId: fixture.deviceId,
+      userId: fixture.userId,
+      syncEventId: syncEvent.id,
+      entity: syncEvent.entity,
+      entityLocalId,
+      code: "OPERATIONAL_ORDER_NOT_FOUND",
+      message: "Pedido operacional nao encontrado para materializar item.",
+      status: input.conflictStatus,
+      payload: { operationalOrderId: null },
+      resolution:
+        input.conflictStatus === "OPEN"
+          ? undefined
+          : { action: input.conflictStatus.toLowerCase(), source: "test" },
+      resolvedAt: handledAt,
+      resolvedByUserId: handledAt == null ? undefined : fixture.userId,
+    },
+  });
+  const incident = await prisma.syncIncident.create({
+    data: {
+      companyId: fixture.companyId,
+      deviceId: fixture.deviceId,
+      userId: fixture.userId,
+      syncEventId: syncEvent.id,
+      code: "OPERATIONAL_ORDER_NOT_FOUND",
+      message: "Pedido operacional nao encontrado para materializar item.",
+      severity: "warn",
+      details: { entityLocalId },
+    },
+  });
+
+  return {
+    syncEventId: syncEvent.id,
+    conflictId: syncConflict.id,
+    incidentId: incident.id,
+  };
 }
 
 async function pull(

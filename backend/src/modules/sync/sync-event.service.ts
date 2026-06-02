@@ -182,9 +182,25 @@ export class SyncEventService {
         entity: {
           in: [...ALLOWED_LOCAL_FIRST_SYNC_ENTITIES],
         },
-        status: {
-          in: [SyncEventStatus.ACCEPTED, SyncEventStatus.CONFLICT],
-        },
+        OR: [
+          { status: SyncEventStatus.ACCEPTED },
+          {
+            status: SyncEventStatus.CONFLICT,
+            OR: [
+              { conflict: null },
+              {
+                conflict: {
+                  status: {
+                    notIn: [
+                      SyncConflictStatus.RESOLVED,
+                      SyncConflictStatus.IGNORED,
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        ],
         serverVersion: {
           gt: sinceVersion,
         },
