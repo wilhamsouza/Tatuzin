@@ -37,6 +37,10 @@ migrate_working_dir/
 .env.*
 !backend/.env.production.example
 backend/.local-postgres/
+_device_recovery/
+*.sqlite
+*.sqlite3
+*.db
 
 # Symbolication related
 app.*.symbols
