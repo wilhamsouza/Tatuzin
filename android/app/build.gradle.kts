@@ -13,6 +13,22 @@ if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.inputStream().use(keystoreProperties::load)
 }
 
+gradle.taskGraph.whenReady {
+    val releasePackageTaskRequested = allTasks.any { task ->
+        val taskName = task.name.lowercase()
+        taskName.contains("release") &&
+            (taskName.startsWith("assemble") ||
+                taskName.startsWith("bundle") ||
+                taskName.startsWith("package"))
+    }
+    if (releasePackageTaskRequested && !keystorePropertiesFile.exists()) {
+        throw GradleException(
+            "Release Android sem keystore.properties foi bloqueado. " +
+                "Configure a assinatura release ou use Google Play App Signing antes de gerar o artefato."
+        )
+    }
+}
+
 android {
     namespace = "br.com.tatuzin.gestao"
     compileSdk = flutter.compileSdkVersion
@@ -48,12 +64,9 @@ android {
 
     buildTypes {
         release {
-            signingConfig =
-                if (keystorePropertiesFile.exists()) {
-                    signingConfigs.getByName("release")
-                } else {
-                    signingConfigs.getByName("debug")
-                }
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = false
             isShrinkResources = false
         }

@@ -42,6 +42,19 @@ _device_recovery/
 *.sqlite3
 *.db
 
+# Local sensitive artifacts
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.jks
+*.keystore
+*.p12
+android/key.properties
+android/keystore.properties
+
 # Symbolication related
 app.*.symbols
 
