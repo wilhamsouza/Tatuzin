@@ -3,6 +3,7 @@ import { ZodError } from 'zod';
 
 import { logger } from '../observability/logger';
 import { AppError } from './app-error';
+import { safeRequestPath } from './request-url-sanitizer';
 
 export function errorHandler(
   error: unknown,
@@ -17,7 +18,7 @@ export function errorHandler(
     logger.warn('http.request.validation_failed', {
       requestId,
       method: request.method,
-      path: request.originalUrl,
+      path: safeRequestPath(request),
       details,
     });
 
@@ -48,7 +49,7 @@ export function errorHandler(
     log('http.request.failed', {
       requestId,
       method: request.method,
-      path: request.originalUrl,
+      path: safeRequestPath(request),
       statusCode: error.statusCode,
       code: error.code,
       details: error.details,
@@ -75,7 +76,7 @@ export function errorHandler(
   logger.error('http.request.unhandled_error', {
     requestId,
     method: request.method,
-    path: request.originalUrl,
+    path: safeRequestPath(request),
     userId: request.auth?.userId,
     companyId: request.auth?.companyId,
     error,

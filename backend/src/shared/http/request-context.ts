@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import type { NextFunction, Request, Response } from 'express';
 
 import { logger } from '../observability/logger';
+import { safeRequestPath } from './request-url-sanitizer';
 
 function normalizeRequestId(rawValue: string | undefined) {
   if (rawValue == null) {
@@ -43,7 +44,7 @@ export function requestContextMiddleware(
     logger.info('http.request.completed', {
       requestId,
       method: request.method,
-      path: request.originalUrl,
+      path: safeRequestPath(request),
       statusCode: response.statusCode,
       durationMs: Date.now() - startedAt,
       ip: readClientIp(request),

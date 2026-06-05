@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 
 import { logger } from '../observability/logger';
 import { AppError } from './app-error';
+import { safeRequestPath } from './request-url-sanitizer';
 
 const MOBILE_APP_CLIENT_TYPE = 'MOBILE_APP';
 const PDV_SYNC_MESSAGE =
@@ -12,10 +13,11 @@ export function blockMobilePdvLegacyWrite(
   _response: Response,
   next: NextFunction,
 ): void {
+  const safePath = safeRequestPath(request);
   const context = {
     requestId: request.requestId,
     method: request.method,
-    path: request.originalUrl,
+    path: safePath,
     userId: request.auth?.userId,
     companyId: request.auth?.companyId,
     clientInstanceId: request.auth?.clientInstanceId,
@@ -26,7 +28,7 @@ export function blockMobilePdvLegacyWrite(
     logger.warn('pdv.legacy_write.blocked', context);
     next(
       new AppError(PDV_SYNC_MESSAGE, 403, 'PDV_WRITES_MUST_USE_SYNC', {
-        entity: legacyEntityFromPath(request.originalUrl),
+        entity: legacyEntityFromPath(safePath),
         operation: request.method,
       }),
     );
