@@ -55,6 +55,10 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16),
   ACCESS_TOKEN_TTL: z.string().min(2).default('12h'),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).default(30),
+  REQUIRE_JWT_SESSION_ID: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value == 'true'),
   PASSWORD_RESET_TOKEN_TTL_MINUTES: z.coerce
     .number()
     .int()

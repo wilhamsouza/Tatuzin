@@ -5,7 +5,9 @@ import { prisma } from '../../database/prisma';
 import { AppContextService } from '../../modules/app/app-context.service';
 import { AuthSessionService } from '../../modules/auth/auth-session.service';
 import { env } from '../../config/env';
+import { logger } from '../observability/logger';
 import { AppError } from './app-error';
+import { safeRequestPath } from './request-url-sanitizer';
 
 interface JwtPayload {
   sub: string;
@@ -57,6 +59,27 @@ export async function requireAuth(
         companyId: payload.companyId,
         membershipId: payload.membershipId,
       });
+    } else {
+      logger.warn('auth.legacy_token_without_session_id', {
+        userId: payload.sub,
+        companyId: payload.companyId,
+        membershipId: payload.membershipId,
+        clientInstanceId:
+          typeof payload.clientInstanceId === 'string'
+            ? payload.clientInstanceId
+            : undefined,
+        method: request.method,
+        path: safeRequestPath(request),
+        routeType: resolveRouteType(request),
+      });
+
+      if (env.REQUIRE_JWT_SESSION_ID) {
+        throw new AppError(
+          'Sessao invalida. Faca login novamente.',
+          401,
+          'JWT_SESSION_ID_REQUIRED',
+        );
+      }
     }
 
     request.auth = {
@@ -93,6 +116,30 @@ export async function requireAuth(
           ),
     );
   }
+}
+
+function resolveRouteType(request: Request) {
+  const path = safeRequestPath(request);
+  if (path.startsWith('/api/admin')) {
+    return 'platform_admin';
+  }
+  if (path.startsWith('/api/owner')) {
+    return 'owner';
+  }
+  if (path.startsWith('/api/sync')) {
+    return 'sync';
+  }
+  if (path.startsWith('/api/billing')) {
+    return 'billing';
+  }
+  if (path.startsWith('/api/auth')) {
+    return 'auth';
+  }
+  if (path.startsWith('/api/app')) {
+    return 'app';
+  }
+
+  return 'api';
 }
 
 export async function requireAppContext(
