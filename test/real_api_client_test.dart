@@ -9,9 +9,14 @@ import 'package:tatuzin/app/core/session/auth_token_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('RealApiClient', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues(const <String, Object>{});
+    });
+
     test(
       'renova a sessao em /auth/refresh e repete a chamada original',
       () async {
@@ -106,6 +111,68 @@ void main() {
             'Nao foi possivel alcancar o backend configurado.',
           ),
         ),
+      );
+    });
+
+    test('refresh automatico atualiza tokens no storage seguro', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'session.remote_client_type': 'mobile_app',
+        'session.remote_client_instance_id': 'device-123',
+      });
+      final secureStore = _MemorySecureTokenStore(
+        values: <String, String>{
+          'session.remote_access_token': 'expired-access',
+          'session.remote_refresh_token': 'refresh-token-1',
+        },
+      );
+      final tokenStorage = SecureAuthTokenStorage(
+        secureTokenStore: secureStore,
+      );
+      final client = MockClient((request) async {
+        if (request.url.path == '/api/categories') {
+          if (request.headers['Authorization'] == 'Bearer expired-access') {
+            return http.Response('{"message":"expired"}', 401);
+          }
+          expect(request.headers['Authorization'], 'Bearer renewed-access');
+          return http.Response('{"items":[]}', 200);
+        }
+
+        if (request.url.path == '/api/auth/refresh') {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          expect(body['refreshToken'], 'refresh-token-1');
+          expect(body['clientInstanceId'], 'device-123');
+          return http.Response(
+            '{"accessToken":"renewed-access","refreshToken":"renewed-refresh"}',
+            200,
+          );
+        }
+
+        throw StateError('Rota inesperada: ${request.url}');
+      });
+
+      final apiClient = RealApiClient(
+        const EndpointConfig(
+          baseUrl: EndpointConfig.productionBaseUrl,
+          apiVersion: EndpointConfig.defaultApiVersion,
+        ),
+        httpClient: client,
+        tokenStorage: tokenStorage,
+      );
+
+      await apiClient.getJson(
+        '/categories',
+        options: const ApiRequestOptions(
+          headers: <String, String>{'Authorization': 'Bearer expired-access'},
+        ),
+      );
+
+      expect(
+        await secureStore.read(key: 'session.remote_access_token'),
+        'renewed-access',
+      );
+      expect(
+        await secureStore.read(key: 'session.remote_refresh_token'),
+        'renewed-refresh',
       );
     });
 
@@ -222,5 +289,28 @@ class _MemoryAuthTokenStorage implements AuthTokenStorage {
   }) async {
     this.accessToken = accessToken;
     this.refreshToken = refreshToken;
+  }
+}
+
+class _MemorySecureTokenStore implements SecureTokenStore {
+  _MemorySecureTokenStore({
+    Map<String, String> values = const <String, String>{},
+  }) : _values = Map<String, String>.from(values);
+
+  final Map<String, String> _values;
+
+  @override
+  Future<void> delete({required String key}) async {
+    _values.remove(key);
+  }
+
+  @override
+  Future<String?> read({required String key}) async {
+    return _values[key];
+  }
+
+  @override
+  Future<void> write({required String key, required String value}) async {
+    _values[key] = value;
   }
 }

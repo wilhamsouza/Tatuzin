@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -52,11 +53,44 @@ abstract interface class AuthTokenStorage {
 }
 
 final authTokenStorageProvider = Provider<AuthTokenStorage>((ref) {
-  return SharedPreferencesAuthTokenStorage();
+  return SecureAuthTokenStorage();
 });
 
-class SharedPreferencesAuthTokenStorage implements AuthTokenStorage {
-  SharedPreferencesAuthTokenStorage();
+abstract interface class SecureTokenStore {
+  Future<String?> read({required String key});
+
+  Future<void> write({required String key, required String value});
+
+  Future<void> delete({required String key});
+}
+
+class FlutterSecureTokenStore implements SecureTokenStore {
+  FlutterSecureTokenStore({FlutterSecureStorage? storage})
+    : _storage = storage ?? const FlutterSecureStorage();
+
+  final FlutterSecureStorage _storage;
+
+  @override
+  Future<void> delete({required String key}) {
+    return _storage.delete(key: key);
+  }
+
+  @override
+  Future<String?> read({required String key}) {
+    return _storage.read(key: key);
+  }
+
+  @override
+  Future<void> write({required String key, required String value}) {
+    return _storage.write(key: key, value: value);
+  }
+}
+
+class SecureAuthTokenStorage implements AuthTokenStorage {
+  SecureAuthTokenStorage({SecureTokenStore? secureTokenStore})
+    : _secureTokenStore = secureTokenStore ?? FlutterSecureTokenStore();
+
+  final SecureTokenStore _secureTokenStore;
 
   static const String _accessTokenKey = 'session.remote_access_token';
   static const String _refreshTokenKey = 'session.remote_refresh_token';
@@ -71,9 +105,22 @@ class SharedPreferencesAuthTokenStorage implements AuthTokenStorage {
 
   @override
   Future<void> clear() async {
+    Object? firstSecureError;
+    for (final key in const <String>[_accessTokenKey, _refreshTokenKey]) {
+      try {
+        await _secureTokenStore.delete(key: key);
+      } catch (error) {
+        firstSecureError ??= error;
+      }
+    }
+
     final preferences = await SharedPreferences.getInstance();
     await preferences.remove(_accessTokenKey);
     await preferences.remove(_refreshTokenKey);
+
+    if (firstSecureError != null) {
+      throw firstSecureError;
+    }
   }
 
   @override
@@ -126,8 +173,7 @@ class SharedPreferencesAuthTokenStorage implements AuthTokenStorage {
 
   @override
   Future<String?> readAccessToken() async {
-    final preferences = await SharedPreferences.getInstance();
-    return _normalizeOptional(preferences.getString(_accessTokenKey));
+    return _readTokenMigratingLegacy(_accessTokenKey);
   }
 
   @override
@@ -155,8 +201,7 @@ class SharedPreferencesAuthTokenStorage implements AuthTokenStorage {
 
   @override
   Future<String?> readRefreshToken() async {
-    final preferences = await SharedPreferences.getInstance();
-    return _normalizeOptional(preferences.getString(_refreshTokenKey));
+    return _readTokenMigratingLegacy(_refreshTokenKey);
   }
 
   @override
@@ -164,9 +209,52 @@ class SharedPreferencesAuthTokenStorage implements AuthTokenStorage {
     required String accessToken,
     required String refreshToken,
   }) async {
+    await _writeAndConfirmSecureToken(
+      key: _accessTokenKey,
+      value: accessToken.trim(),
+    );
+    await _writeAndConfirmSecureToken(
+      key: _refreshTokenKey,
+      value: refreshToken.trim(),
+    );
+
     final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(_accessTokenKey, accessToken.trim());
-    await preferences.setString(_refreshTokenKey, refreshToken.trim());
+    await preferences.remove(_accessTokenKey);
+    await preferences.remove(_refreshTokenKey);
+  }
+
+  Future<String?> _readTokenMigratingLegacy(String key) async {
+    final secureToken = _normalizeOptional(
+      await _secureTokenStore.read(key: key),
+    );
+    if (secureToken != null) {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.remove(key);
+      return secureToken;
+    }
+
+    final preferences = await SharedPreferences.getInstance();
+    final legacyToken = _normalizeOptional(preferences.getString(key));
+    if (legacyToken == null) {
+      return null;
+    }
+
+    await _writeAndConfirmSecureToken(key: key, value: legacyToken);
+    await preferences.remove(key);
+    return legacyToken;
+  }
+
+  Future<void> _writeAndConfirmSecureToken({
+    required String key,
+    required String value,
+  }) async {
+    await _secureTokenStore.write(key: key, value: value);
+    final confirmed = _normalizeOptional(
+      await _secureTokenStore.read(key: key),
+    );
+    if (confirmed != value) {
+      throw StateError('secure_token_write_confirmation_failed:$key');
+    }
   }
 
   static String? _normalizeOptional(String? value) {

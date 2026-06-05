@@ -6,9 +6,14 @@ import 'package:tatuzin/app/core/network/contracts/api_client_contract.dart';
 import 'package:tatuzin/app/core/network/real/remote_auth_gateway.dart';
 import 'package:tatuzin/app/core/session/auth_token_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('RemoteAuthGateway', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues(const <String, Object>{});
+    });
+
     test(
       'login usa /auth/login, salva tokens e carrega bootstrap com entitlements',
       () async {
@@ -98,6 +103,115 @@ void main() {
       expect(apiClient.calls, isEmpty);
       expect(await tokenStorage.readAccessToken(), isNull);
       expect(await tokenStorage.readRefreshToken(), isNull);
+    });
+
+    test('restoreSession funciona com token seguro', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'session.remote_client_type': 'mobile_app',
+        'session.remote_client_instance_id': 'device-123',
+      });
+      final apiClient = _RecordingApiClient();
+      final secureStore = _MemorySecureTokenStore(
+        values: <String, String>{
+          'session.remote_access_token': 'secure-access',
+          'session.remote_refresh_token': 'secure-refresh',
+        },
+      );
+      final tokenStorage = SecureAuthTokenStorage(
+        secureTokenStore: secureStore,
+      );
+
+      apiClient.onGet('/auth/me', (options) {
+        expect(options.headers['Authorization'], 'Bearer secure-access');
+        return ApiResponse<Map<String, dynamic>>(
+          statusCode: 200,
+          data: _authPayload(),
+          headers: const <String, String>{},
+        );
+      });
+      apiClient.onGet('/app/bootstrap', (options) {
+        expect(options.headers['Authorization'], 'Bearer secure-access');
+        expect(options.headers['X-Client-Instance-Id'], 'device-123');
+        return ApiResponse<Map<String, dynamic>>(
+          statusCode: 200,
+          data: _bootstrapPayload(),
+          headers: const <String, String>{},
+        );
+      });
+
+      final gateway = RemoteAuthGateway(
+        apiClient: apiClient,
+        tokenStorage: tokenStorage,
+      );
+
+      final session = await gateway.restoreSession();
+
+      expect(session?.company.remoteId, 'company-1');
+      expect(apiClient.calls, [('GET', '/auth/me'), ('GET', '/app/bootstrap')]);
+      expect(await tokenStorage.readAccessToken(), 'secure-access');
+      expect(await tokenStorage.readRefreshToken(), 'secure-refresh');
+    });
+
+    test('restoreSession funciona apos migrar access token legado', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'session.remote_access_token': 'legacy-access',
+        'session.remote_refresh_token': 'legacy-refresh',
+        'session.remote_client_type': 'mobile_app',
+        'session.remote_client_instance_id': 'device-123',
+      });
+      final apiClient = _RecordingApiClient();
+      final secureStore = _MemorySecureTokenStore();
+      final tokenStorage = SecureAuthTokenStorage(
+        secureTokenStore: secureStore,
+      );
+
+      apiClient.onGet('/auth/me', (options) {
+        expect(options.headers['Authorization'], 'Bearer legacy-access');
+        return ApiResponse<Map<String, dynamic>>(
+          statusCode: 200,
+          data: _authPayload(),
+          headers: const <String, String>{},
+        );
+      });
+      apiClient.onGet('/app/bootstrap', (options) {
+        expect(options.headers['Authorization'], 'Bearer legacy-access');
+        return ApiResponse<Map<String, dynamic>>(
+          statusCode: 200,
+          data: _bootstrapPayload(),
+          headers: const <String, String>{},
+        );
+      });
+
+      final gateway = RemoteAuthGateway(
+        apiClient: apiClient,
+        tokenStorage: tokenStorage,
+      );
+
+      final session = await gateway.restoreSession();
+
+      expect(session?.user.remoteId, 'user-1');
+      expect(
+        await secureStore.read(key: 'session.remote_access_token'),
+        'legacy-access',
+      );
+      expect(
+        await secureStore.read(key: 'session.remote_refresh_token'),
+        isNull,
+      );
+
+      final preferences = await SharedPreferences.getInstance();
+      expect(preferences.getString('session.remote_access_token'), isNull);
+      expect(
+        preferences.getString('session.remote_refresh_token'),
+        'legacy-refresh',
+      );
+
+      expect(await tokenStorage.readRefreshToken(), 'legacy-refresh');
+      expect(
+        await secureStore.read(key: 'session.remote_refresh_token'),
+        'legacy-refresh',
+      );
+      expect(preferences.getString('session.remote_refresh_token'), isNull);
     });
 
     test(
@@ -368,6 +482,52 @@ void main() {
         expect(await tokenStorage.readRefreshToken(), isNull);
       },
     );
+
+    test('logout limpa tokens seguros e legados', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'session.remote_access_token': 'legacy-access',
+        'session.remote_refresh_token': 'legacy-refresh',
+      });
+      final apiClient = _RecordingApiClient();
+      final secureStore = _MemorySecureTokenStore(
+        values: <String, String>{
+          'session.remote_access_token': 'secure-access',
+          'session.remote_refresh_token': 'secure-refresh',
+        },
+      );
+      final tokenStorage = SecureAuthTokenStorage(
+        secureTokenStore: secureStore,
+      );
+
+      apiClient.onPost('/auth/logout', (body, options) {
+        expect(options.headers['Authorization'], 'Bearer secure-access');
+        return const ApiResponse<Map<String, dynamic>>(
+          statusCode: 200,
+          data: <String, dynamic>{},
+          headers: <String, String>{},
+        );
+      });
+
+      final gateway = RemoteAuthGateway(
+        apiClient: apiClient,
+        tokenStorage: tokenStorage,
+      );
+
+      await gateway.signOut();
+
+      expect(
+        await secureStore.read(key: 'session.remote_access_token'),
+        isNull,
+      );
+      expect(
+        await secureStore.read(key: 'session.remote_refresh_token'),
+        isNull,
+      );
+
+      final preferences = await SharedPreferences.getInstance();
+      expect(preferences.getString('session.remote_access_token'), isNull);
+      expect(preferences.getString('session.remote_refresh_token'), isNull);
+    });
   });
 }
 
@@ -501,6 +661,29 @@ class _MemoryAuthTokenStorage implements AuthTokenStorage {
   }) async {
     this.accessToken = accessToken;
     this.refreshToken = refreshToken;
+  }
+}
+
+class _MemorySecureTokenStore implements SecureTokenStore {
+  _MemorySecureTokenStore({
+    Map<String, String> values = const <String, String>{},
+  }) : _values = Map<String, String>.from(values);
+
+  final Map<String, String> _values;
+
+  @override
+  Future<void> delete({required String key}) async {
+    _values.remove(key);
+  }
+
+  @override
+  Future<String?> read({required String key}) async {
+    return _values[key];
+  }
+
+  @override
+  Future<void> write({required String key, required String value}) async {
+    _values[key] = value;
   }
 }
 
