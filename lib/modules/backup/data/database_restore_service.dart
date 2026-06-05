@@ -9,6 +9,7 @@ import '../../../app/core/errors/app_exceptions.dart';
 import '../../../app/core/utils/app_logger.dart';
 import '../../../app/core/utils/id_generator.dart';
 import '../domain/entities/backup_restore_result.dart';
+import 'backup_security_policy.dart';
 import 'backup_validation_service.dart';
 import 'database_backup_service.dart';
 
@@ -18,17 +19,26 @@ class DatabaseRestoreService {
     required DatabaseFileLocator fileLocator,
     required BackupValidationService validationService,
     required DatabaseBackupService backupService,
+    required BackupSecurityPolicy securityPolicy,
   }) : _appDatabase = appDatabase,
        _fileLocator = fileLocator,
        _validationService = validationService,
-       _backupService = backupService;
+       _backupService = backupService,
+       _securityPolicy = securityPolicy;
 
   final AppDatabase _appDatabase;
   final DatabaseFileLocator _fileLocator;
   final BackupValidationService _validationService;
   final DatabaseBackupService _backupService;
+  final BackupSecurityPolicy _securityPolicy;
 
   Future<BackupRestoreResult> restoreFromBackup(String backupFilePath) async {
+    if (!_securityPolicy.canImportRawDatabase) {
+      throw const ValidationException(
+        BackupSecurityPolicy.rawDatabaseBlockedReason,
+      );
+    }
+
     final currentDatabasePath = await _fileLocator.resolveDatabasePath();
     if (backupFilePath == currentDatabasePath) {
       throw const ValidationException(

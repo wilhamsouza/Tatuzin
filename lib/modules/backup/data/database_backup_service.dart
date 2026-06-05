@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 
@@ -10,6 +11,7 @@ import '../../../app/core/errors/app_exceptions.dart';
 import '../../../app/core/utils/app_logger.dart';
 import '../../../app/core/utils/id_generator.dart';
 import '../domain/entities/backup_file_info.dart';
+import 'backup_security_policy.dart';
 import 'backup_validation_service.dart';
 
 class DatabaseBackupService {
@@ -17,15 +19,24 @@ class DatabaseBackupService {
     required AppDatabase appDatabase,
     required DatabaseFileLocator fileLocator,
     required BackupValidationService validationService,
+    required BackupSecurityPolicy securityPolicy,
   }) : _appDatabase = appDatabase,
        _fileLocator = fileLocator,
-       _validationService = validationService;
+       _validationService = validationService,
+       _securityPolicy = securityPolicy;
 
   final AppDatabase _appDatabase;
   final DatabaseFileLocator _fileLocator;
   final BackupValidationService _validationService;
+  final BackupSecurityPolicy _securityPolicy;
 
   Future<BackupFileInfo> createBackup({bool safetyCopy = false}) async {
+    if (!_securityPolicy.canExportRawDatabase) {
+      throw const ValidationException(
+        BackupSecurityPolicy.rawDatabaseBlockedReason,
+      );
+    }
+
     final database = await _appDatabase.database;
     final timestamp = DateTime.now();
     final backupDirectory = await _fileLocator.ensureBackupDirectory();
@@ -43,7 +54,9 @@ class DatabaseBackupService {
 
     try {
       final escapedTargetPath = targetPath.replaceAll("'", "''");
-      AppLogger.info('Creating backup at $targetPath');
+      if (!kReleaseMode) {
+        AppLogger.info('Creating backup at $targetPath');
+      }
       await database.execute("VACUUM INTO '$escapedTargetPath'");
 
       await _validationService.validate(targetPath);

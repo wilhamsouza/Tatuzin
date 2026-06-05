@@ -9,6 +9,7 @@ import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../carrinho/presentation/providers/cart_provider.dart';
 import '../../data/backup_file_picker_service.dart';
+import '../../data/backup_security_policy.dart';
 import '../../data/backup_share_service.dart';
 import '../../data/backup_validation_service.dart';
 import '../../data/database_backup_service.dart';
@@ -21,6 +22,10 @@ final databaseFileLocatorProvider = Provider<DatabaseFileLocator>((ref) {
   return DatabaseFileLocator();
 });
 
+final backupSecurityPolicyProvider = Provider<BackupSecurityPolicy>((ref) {
+  return const BackupSecurityPolicy();
+});
+
 final backupValidationServiceProvider = Provider<BackupValidationService>((
   ref,
 ) {
@@ -30,11 +35,15 @@ final backupValidationServiceProvider = Provider<BackupValidationService>((
 final backupFilePickerServiceProvider = Provider<BackupFilePickerService>((
   ref,
 ) {
-  return BackupFilePickerService();
+  return BackupFilePickerService(
+    securityPolicy: ref.read(backupSecurityPolicyProvider),
+  );
 });
 
 final backupShareServiceProvider = Provider<BackupShareService>((ref) {
-  return BackupShareService();
+  return BackupShareService(
+    securityPolicy: ref.read(backupSecurityPolicyProvider),
+  );
 });
 
 final databaseBackupServiceProvider = Provider<DatabaseBackupService>((ref) {
@@ -42,6 +51,7 @@ final databaseBackupServiceProvider = Provider<DatabaseBackupService>((ref) {
     appDatabase: ref.watch(appDatabaseProvider),
     fileLocator: ref.read(databaseFileLocatorProvider),
     validationService: ref.read(backupValidationServiceProvider),
+    securityPolicy: ref.read(backupSecurityPolicyProvider),
   );
 });
 
@@ -51,6 +61,7 @@ final databaseRestoreServiceProvider = Provider<DatabaseRestoreService>((ref) {
     fileLocator: ref.read(databaseFileLocatorProvider),
     validationService: ref.read(backupValidationServiceProvider),
     backupService: ref.read(databaseBackupServiceProvider),
+    securityPolicy: ref.read(backupSecurityPolicyProvider),
   );
 });
 
@@ -73,6 +84,7 @@ class BackupActionController extends AsyncNotifier<void> {
   Future<BackupFileInfo> createManualBackup() async {
     state = const AsyncLoading();
     try {
+      _ensureCanExportRawDatabase();
       await requireTenantBootstrapReady(
         ref,
         'BackupActionController.createManualBackup',
@@ -92,6 +104,7 @@ class BackupActionController extends AsyncNotifier<void> {
   Future<void> shareBackup(BackupFileInfo backupFile) async {
     state = const AsyncLoading();
     try {
+      _ensureCanShareRawDatabase();
       await ref.read(backupShareServiceProvider).share(backupFile);
       state = const AsyncData(null);
     } catch (error, stackTrace) {
@@ -103,6 +116,7 @@ class BackupActionController extends AsyncNotifier<void> {
   Future<BackupValidationResult?> pickRestoreCandidate() async {
     state = const AsyncLoading();
     try {
+      _ensureCanImportRawDatabase();
       final selectedPath = await ref
           .read(backupFilePickerServiceProvider)
           .pickBackupFilePath();
@@ -129,6 +143,7 @@ class BackupActionController extends AsyncNotifier<void> {
   }
 
   Future<BackupRestoreResult> restoreSelectedBackup() async {
+    _ensureCanImportRawDatabase();
     final candidate = ref.read(selectedRestoreCandidateProvider);
     if (candidate == null) {
       throw const ValidationException(
@@ -153,6 +168,30 @@ class BackupActionController extends AsyncNotifier<void> {
     } catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);
       rethrow;
+    }
+  }
+
+  void _ensureCanExportRawDatabase() {
+    if (!ref.read(backupSecurityPolicyProvider).canExportRawDatabase) {
+      throw const ValidationException(
+        BackupSecurityPolicy.rawDatabaseBlockedReason,
+      );
+    }
+  }
+
+  void _ensureCanShareRawDatabase() {
+    if (!ref.read(backupSecurityPolicyProvider).canShareRawDatabase) {
+      throw const ValidationException(
+        BackupSecurityPolicy.rawDatabaseBlockedReason,
+      );
+    }
+  }
+
+  void _ensureCanImportRawDatabase() {
+    if (!ref.read(backupSecurityPolicyProvider).canImportRawDatabase) {
+      throw const ValidationException(
+        BackupSecurityPolicy.rawDatabaseBlockedReason,
+      );
     }
   }
 }

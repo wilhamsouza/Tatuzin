@@ -12,6 +12,7 @@ import '../../../../app/routes/route_names.dart';
 import '../../../account/presentation/providers/account_cloud_providers.dart';
 import '../../../account/presentation/support/cloud_sync_feedback.dart';
 import '../../../system/presentation/providers/system_providers.dart';
+import '../../data/backup_security_policy.dart';
 import '../../domain/entities/backup_file_info.dart';
 import '../../domain/entities/backup_validation_result.dart';
 import '../providers/backup_providers.dart';
@@ -27,6 +28,7 @@ class BackupRestorePage extends ConsumerWidget {
     final authStatus = ref.watch(authStatusProvider);
     final accountCloud = ref.watch(accountCloudStatusProvider);
     final syncActionState = ref.watch(catalogSyncControllerProvider);
+    final backupSecurityPolicy = ref.watch(backupSecurityPolicyProvider);
     final isBusy = actionState.isLoading;
 
     return Scaffold(
@@ -52,6 +54,8 @@ class BackupRestorePage extends ConsumerWidget {
                 : () => _syncNow(context, ref),
           ),
           const SizedBox(height: 16),
+          _RawBackupSecurityNotice(securityPolicy: backupSecurityPolicy),
+          const SizedBox(height: 16),
           AppSectionCard(
             title: 'Fazer backup',
             subtitle:
@@ -60,7 +64,11 @@ class BackupRestorePage extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 FilledButton.icon(
-                  onPressed: isBusy ? null : () => _createBackup(context, ref),
+                  onPressed: isBusy
+                      ? null
+                      : backupSecurityPolicy.canExportRawDatabase
+                      ? () => _createBackup(context, ref)
+                      : () => _showRawBackupBlockedMessage(context),
                   icon: const Icon(Icons.save_alt_rounded),
                   label: Text(isBusy ? 'Processando...' : 'Fazer backup'),
                 ),
@@ -76,7 +84,9 @@ class BackupRestorePage extends ConsumerWidget {
                   OutlinedButton.icon(
                     onPressed: isBusy
                         ? null
-                        : () => _shareBackup(context, ref, lastBackup),
+                        : backupSecurityPolicy.canShareRawDatabase
+                        ? () => _shareBackup(context, ref, lastBackup)
+                        : () => _showRawBackupBlockedMessage(context),
                     icon: const Icon(Icons.share_outlined),
                     label: const Text('Compartilhar arquivo'),
                   ),
@@ -95,7 +105,9 @@ class BackupRestorePage extends ConsumerWidget {
                 OutlinedButton.icon(
                   onPressed: isBusy
                       ? null
-                      : () => _selectRestoreCandidate(context, ref),
+                      : backupSecurityPolicy.canImportRawDatabase
+                      ? () => _selectRestoreCandidate(context, ref)
+                      : () => _showRawBackupBlockedMessage(context),
                   icon: const Icon(Icons.upload_file_outlined),
                   label: const Text('Selecionar backup'),
                 ),
@@ -317,6 +329,77 @@ class BackupRestorePage extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+
+  void _showRawBackupBlockedMessage(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(BackupSecurityPolicy.rawDatabaseBlockedReason),
+      ),
+    );
+  }
+}
+
+class _RawBackupSecurityNotice extends StatelessWidget {
+  const _RawBackupSecurityNotice({required this.securityPolicy});
+
+  final BackupSecurityPolicy securityPolicy;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (!securityPolicy.canExportRawDatabase) {
+      return Card(
+        color: theme.colorScheme.errorContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.lock_rounded,
+                color: theme.colorScheme.onErrorContainer,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  BackupSecurityPolicy.rawDatabaseBlockedReason,
+                  style: TextStyle(color: theme.colorScheme.onErrorContainer),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (!securityPolicy.shouldWarnAboutRawDatabase) {
+      return const SizedBox.shrink();
+    }
+
+    return Card(
+      color: theme.colorScheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: theme.colorScheme.onTertiaryContainer,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Backup local bruto contem dados pessoais e financeiros. '
+                'Use apenas para testes internos e compartilhe com cuidado.',
+                style: TextStyle(color: theme.colorScheme.onTertiaryContainer),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
