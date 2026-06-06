@@ -56,7 +56,7 @@ class PublicLegalPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Última atualização: [DATA DE ATUALIZAÇÃO]',
+                    'Última atualização: 06/06/2026',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),

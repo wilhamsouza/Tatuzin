@@ -94,7 +94,7 @@ void main() {
     expect(find.text('1. Responsável pelo tratamento'), findsOneWidget);
     expect(find.text('5. Armazenamento local no dispositivo'), findsOneWidget);
     expect(find.text('12. Direitos do titular pela LGPD'), findsOneWidget);
-    expect(find.textContaining('[E-MAIL DE PRIVACIDADE]'), findsWidgets);
+    expect(find.textContaining('privacidade@tatuzin.com.br'), findsWidgets);
     expect(find.text('Exclusão de Dados'), findsOneWidget);
   });
 

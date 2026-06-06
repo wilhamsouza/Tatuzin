@@ -19,9 +19,9 @@ class PrivacyPolicyPage extends StatelessWidget {
           content: [
             LegalParagraph(
               'O tratamento dos dados relacionados ao Tatuzin é realizado por '
-              '[NOME/RAZÃO SOCIAL], [CNPJ, se houver]. Para assuntos de '
+              'Tatuzin, Não informado. Para assuntos de '
               'privacidade e proteção de dados, entre em contato pelo e-mail '
-              '[E-MAIL DE PRIVACIDADE].',
+              'privacidade@tatuzin.com.br.',
             ),
           ],
         ),
@@ -209,7 +209,7 @@ class PrivacyPolicyPage extends StatelessWidget {
           content: [
             LegalParagraph(
               'Dúvidas, solicitações e comunicações sobre privacidade podem ser '
-              'enviadas para [E-MAIL DE PRIVACIDADE]. Informe dados suficientes '
+              'enviadas para privacidade@tatuzin.com.br. Informe dados suficientes '
               'para localizar a conta, evitando enviar senhas, tokens ou dados '
               'de pagamento completos.',
             ),

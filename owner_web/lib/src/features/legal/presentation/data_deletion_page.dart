@@ -17,7 +17,7 @@ class DataDeletionPage extends StatelessWidget {
           title: 'Como solicitar',
           content: [
             LegalParagraph(
-              'Envie um e-mail para [E-MAIL DE PRIVACIDADE] com o assunto '
+              'Envie um e-mail para privacidade@tatuzin.com.br com o assunto '
               '"Exclusão de conta e dados - Tatuzin". A página e o canal de '
               'solicitação são públicos e não exigem login.',
             ),
@@ -90,8 +90,8 @@ class DataDeletionPage extends StatelessWidget {
           title: 'Responsável e contato',
           content: [
             LegalParagraph(
-              'Responsável: [NOME/RAZÃO SOCIAL], [CNPJ, se houver]. E-mail para '
-              'solicitações: [E-MAIL DE PRIVACIDADE].',
+              'Responsável: Tatuzin, Não informado. E-mail para '
+              'solicitações: privacidade@tatuzin.com.br.',
             ),
             LegalRouteLink(
               label: 'Consultar a Política de Privacidade',
