@@ -19,6 +19,8 @@ escrita, não usa arquitetura local-first e não depende do `admin_web`.
 ## Rotas Frontend
 
 - `/login`
+- `/privacidade` (pública)
+- `/exclusao-de-dados` (pública)
 - `/dashboard`
 - `/sales`
 - `/clients`

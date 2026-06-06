@@ -133,6 +133,23 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
+                      const SizedBox(height: 20),
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          TextButton(
+                            onPressed: () => context.go('/privacidade'),
+                            child: const Text('Política de Privacidade'),
+                          ),
+                          TextButton(
+                            onPressed: () =>
+                                context.go('/exclusao-de-dados'),
+                            child: const Text('Exclusão de Dados'),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),

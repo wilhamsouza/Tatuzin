@@ -13,6 +13,8 @@ import '../features/dashboard/presentation/owner_dashboard_page.dart';
 import '../features/devices/presentation/owner_devices_page.dart';
 import '../features/employees/presentation/owner_employees_page.dart';
 import '../features/finance/presentation/owner_finance_page.dart';
+import '../features/legal/presentation/data_deletion_page.dart';
+import '../features/legal/presentation/privacy_policy_page.dart';
 import '../features/products/presentation/owner_products_page.dart';
 import '../features/reports/presentation/owner_cash_report_page.dart';
 import '../features/reports/presentation/owner_reports_page.dart';
@@ -22,6 +24,8 @@ import '../features/settings/presentation/owner_settings_page.dart';
 const ownerRoutePaths = <String>[
   '/',
   '/login',
+  '/privacidade',
+  '/exclusao-de-dados',
   '/dashboard',
   '/sales',
   '/clients',
@@ -36,6 +40,31 @@ const ownerRoutePaths = <String>[
   '/settings',
 ];
 
+const publicOwnerRoutePaths = <String>{
+  '/login',
+  '/privacidade',
+  '/exclusao-de-dados',
+};
+
+bool isPublicOwnerRoute(String path) => publicOwnerRoutePaths.contains(path);
+
+String? ownerRouteRedirect({
+  required String path,
+  required bool isRestoring,
+  required bool isAuthenticated,
+}) {
+  final isLoginRoute = path == '/login';
+  final isPublicRoute = isPublicOwnerRoute(path);
+
+  if (isRestoring || !isAuthenticated) {
+    return isPublicRoute ? null : '/login';
+  }
+  if (isLoginRoute) {
+    return '/dashboard';
+  }
+  return null;
+}
+
 final ownerRouterProvider = Provider<GoRouter>((ref) {
   final authController = ref.read(ownerAuthControllerProvider);
 
@@ -43,23 +72,23 @@ final ownerRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: '/login',
     refreshListenable: authController,
     redirect: (context, state) {
-      final path = state.uri.path;
-      final isLoginRoute = path == '/login';
-
-      if (authController.isRestoring) {
-        return isLoginRoute ? null : '/login';
-      }
-      if (!authController.isAuthenticated) {
-        return isLoginRoute ? null : '/login';
-      }
-      if (isLoginRoute) {
-        return '/dashboard';
-      }
-      return null;
+      return ownerRouteRedirect(
+        path: state.uri.path,
+        isRestoring: authController.isRestoring,
+        isAuthenticated: authController.isAuthenticated,
+      );
     },
     routes: <RouteBase>[
       GoRoute(path: '/', redirect: (_, __) => '/dashboard'),
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
+      GoRoute(
+        path: '/privacidade',
+        builder: (context, state) => const PrivacyPolicyPage(),
+      ),
+      GoRoute(
+        path: '/exclusao-de-dados',
+        builder: (context, state) => const DataDeletionPage(),
+      ),
       ShellRoute(
         builder: (context, state, child) {
           final session = authController.session;

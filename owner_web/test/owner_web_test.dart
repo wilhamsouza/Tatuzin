@@ -23,6 +23,8 @@ import 'package:tatuzin_owner_web/src/features/dashboard/presentation/owner_dash
 import 'package:tatuzin_owner_web/src/features/devices/presentation/owner_devices_page.dart';
 import 'package:tatuzin_owner_web/src/features/employees/presentation/owner_employees_page.dart';
 import 'package:tatuzin_owner_web/src/features/finance/presentation/owner_finance_page.dart';
+import 'package:tatuzin_owner_web/src/features/legal/presentation/data_deletion_page.dart';
+import 'package:tatuzin_owner_web/src/features/legal/presentation/privacy_policy_page.dart';
 import 'package:tatuzin_owner_web/src/features/products/presentation/owner_products_page.dart';
 import 'package:tatuzin_owner_web/src/features/reports/presentation/owner_cash_report_page.dart';
 import 'package:tatuzin_owner_web/src/features/reports/presentation/owner_reports_page.dart';
@@ -48,7 +50,65 @@ void main() {
     expect(ownerRoutePaths, contains('/billing'));
     expect(ownerRoutePaths, contains('/employees'));
     expect(ownerRoutePaths, contains('/settings'));
+    expect(ownerRoutePaths, contains('/privacidade'));
+    expect(ownerRoutePaths, contains('/exclusao-de-dados'));
     expect(ownerRoutePaths, isNot(contains('/admin')));
+  });
+
+  test('legal routes are public and do not require authentication', () {
+    expect(isPublicOwnerRoute('/privacidade'), isTrue);
+    expect(isPublicOwnerRoute('/exclusao-de-dados'), isTrue);
+    expect(isPublicOwnerRoute('/dashboard'), isFalse);
+    expect(
+      ownerRouteRedirect(
+        path: '/privacidade',
+        isRestoring: false,
+        isAuthenticated: false,
+      ),
+      isNull,
+    );
+    expect(
+      ownerRouteRedirect(
+        path: '/exclusao-de-dados',
+        isRestoring: false,
+        isAuthenticated: false,
+      ),
+      isNull,
+    );
+    expect(
+      ownerRouteRedirect(
+        path: '/dashboard',
+        isRestoring: false,
+        isAuthenticated: false,
+      ),
+      '/login',
+    );
+  });
+
+  testWidgets('privacy policy contains required public information', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: PrivacyPolicyPage()));
+
+    expect(find.text('Política de Privacidade'), findsWidgets);
+    expect(find.text('1. Responsável pelo tratamento'), findsOneWidget);
+    expect(find.text('5. Armazenamento local no dispositivo'), findsOneWidget);
+    expect(find.text('12. Direitos do titular pela LGPD'), findsOneWidget);
+    expect(find.textContaining('[E-MAIL DE PRIVACIDADE]'), findsWidgets);
+    expect(find.text('Exclusão de Dados'), findsOneWidget);
+  });
+
+  testWidgets('data deletion page explains request without login', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: DataDeletionPage()));
+
+    expect(find.text('Exclusão de Conta e Dados'), findsOneWidget);
+    expect(find.text('Como solicitar'), findsOneWidget);
+    expect(find.text('Confirmação e prazo de resposta'), findsOneWidget);
+    expect(find.textContaining('não exigem login'), findsOneWidget);
+    expect(find.textContaining('15 dias corridos'), findsOneWidget);
+    expect(find.text('Política de Privacidade'), findsOneWidget);
   });
 
   testWidgets('unauthenticated app shows login page', (tester) async {
