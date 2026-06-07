@@ -11,7 +11,8 @@ class DataDeletionPage extends StatelessWidget {
       title: 'Exclusão de Conta e Dados',
       description:
           'Você pode solicitar a exclusão da sua conta Tatuzin e dos dados '
-          'associados sem precisar entrar no aplicativo ou no painel.',
+          'associados por este canal público, sem precisar entrar no aplicativo '
+          'ou no painel.',
       sections: [
         LegalSection(
           title: 'Como solicitar',
@@ -36,28 +37,39 @@ class DataDeletionPage extends StatelessWidget {
           ],
         ),
         LegalSection(
-          title: 'Confirmação e prazo de resposta',
+          title: 'Validação de identidade e prazo de resposta',
           content: [
             LegalParagraph(
-              'Para proteger os dados, poderemos solicitar informações '
-              'adicionais para confirmar a identidade e a relação com a conta '
-              'ou empresa. A solicitação receberá uma resposta inicial em até '
-              '15 dias corridos. O prazo para concluir a exclusão poderá variar '
-              'conforme a complexidade, os sistemas envolvidos e os prazos '
-              'legais aplicáveis; eventuais extensões serão informadas.',
+              'Para proteger os dados, a equipe responsável poderá solicitar '
+              'informações adicionais para confirmar a identidade e a relação '
+              'com a conta ou empresa. A solicitação receberá uma resposta '
+              'inicial em até 15 dias corridos. Essa resposta inicial não '
+              'significa a conclusão do pedido, cujo prazo dependerá da '
+              'complexidade, dos sistemas envolvidos e das obrigações legais '
+              'aplicáveis.',
             ),
           ],
         ),
         LegalSection(
-          title: 'O que será excluído',
+          title: 'Como a solicitação será tratada',
           content: [
             LegalParagraph(
-              'Após a validação do pedido, serão avaliadas a exclusão da conta '
-              'e dos dados pessoais e comerciais associados nos sistemas sob '
-              'responsabilidade do Tatuzin, incluindo dados sincronizados, '
-              'quando aplicável. Dados mantidos somente no dispositivo podem '
-              'exigir a remoção local do aplicativo ou dos dados do app pelo '
-              'próprio usuário.',
+              'Após a validação de identidade, a solicitação será analisada e '
+              'tratada por processo operacional e manual. A exclusão não é '
+              'automática nem imediata. Conforme a natureza dos dados e as '
+              'obrigações aplicáveis, a tratativa poderá resultar em exclusão, '
+              'anonimização, desativação da conta ou retenção justificada.',
+            ),
+          ],
+        ),
+        LegalSection(
+          title: 'Dados armazenados no dispositivo',
+          content: [
+            LegalParagraph(
+              'Dados mantidos localmente no aparelho podem não ser alcançados '
+              'pela tratativa operacional. Nesses casos, o usuário poderá '
+              'precisar desinstalar o aplicativo ou remover os dados do app nas '
+              'configurações do dispositivo.',
             ),
           ],
         ),
@@ -81,8 +93,8 @@ class DataDeletionPage extends StatelessWidget {
               'Quando pagamentos pelo Mercado Pago forem aplicáveis, o provedor '
               'poderá manter dados sob sua própria responsabilidade e conforme '
               'obrigações legais. Solicitações relativas ao tratamento feito '
-              'diretamente pelo provedor também podem precisar ser encaminhadas '
-              'a ele.',
+              'diretamente pelo provedor podem depender dos procedimentos e '
+              'prazos dele, ou precisar ser encaminhadas diretamente a ele.',
             ),
           ],
         ),

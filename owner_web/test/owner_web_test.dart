@@ -105,9 +105,29 @@ void main() {
 
     expect(find.text('Exclusão de Conta e Dados'), findsOneWidget);
     expect(find.text('Como solicitar'), findsOneWidget);
-    expect(find.text('Confirmação e prazo de resposta'), findsOneWidget);
+    expect(
+      find.text('Validação de identidade e prazo de resposta'),
+      findsOneWidget,
+    );
+    expect(find.text('Como a solicitação será tratada'), findsOneWidget);
     expect(find.textContaining('não exigem login'), findsOneWidget);
     expect(find.textContaining('15 dias corridos'), findsOneWidget);
+    expect(
+      find.textContaining('processo operacional e manual'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('não é automática nem imediata'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining(
+        'exclusão, anonimização, desativação da conta ou retenção justificada',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Dados armazenados no dispositivo'), findsOneWidget);
+    expect(find.textContaining('procedimentos e prazos dele'), findsOneWidget);
     expect(find.text('Política de Privacidade'), findsOneWidget);
   });
 
