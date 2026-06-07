@@ -10,9 +10,9 @@ class DataDeletionPage extends StatelessWidget {
     return const PublicLegalPage(
       title: 'Exclusão de Conta e Dados',
       description:
-          'Você pode solicitar a exclusão da sua conta Tatuzin e dos dados '
-          'associados por este canal público, sem precisar entrar no aplicativo '
-          'ou no painel.',
+          'Você pode enviar uma solicitação de exclusão da sua conta Tatuzin e '
+          'dos dados associados por este canal público, sem precisar entrar no '
+          'aplicativo ou no painel.',
       sections: [
         LegalSection(
           title: 'Como solicitar',
@@ -41,24 +41,31 @@ class DataDeletionPage extends StatelessWidget {
           content: [
             LegalParagraph(
               'Para proteger os dados, a equipe responsável poderá solicitar '
-              'informações adicionais para confirmar a identidade e a relação '
-              'com a conta ou empresa. A solicitação receberá uma resposta '
-              'inicial em até 15 dias corridos. Essa resposta inicial não '
-              'significa a conclusão do pedido, cujo prazo dependerá da '
-              'complexidade, dos sistemas envolvidos e das obrigações legais '
-              'aplicáveis.',
+              'informações adicionais para confirmar a identidade do '
+              'solicitante e sua autoridade ou relação legítima com a conta e '
+              'a empresa. A solicitação receberá uma resposta inicial em até '
+              '15 dias corridos. Essa resposta inicial não significa a '
+              'conclusão do pedido, cujo prazo poderá variar conforme a '
+              'complexidade, os sistemas envolvidos, as retenções necessárias '
+              'e as obrigações legais aplicáveis.',
             ),
           ],
         ),
         LegalSection(
-          title: 'Como a solicitação será tratada',
+          title: 'Avaliação por categoria de dados',
           content: [
             LegalParagraph(
               'Após a validação de identidade, a solicitação será analisada e '
-              'tratada por processo operacional e manual. A exclusão não é '
-              'automática nem imediata. Conforme a natureza dos dados e as '
-              'obrigações aplicáveis, a tratativa poderá resultar em exclusão, '
-              'anonimização, desativação da conta ou retenção justificada.',
+              'tratada por processo operacional e manual. Os dados serão '
+              'avaliados por categoria, considerando sua natureza, finalidade '
+              'e obrigações aplicáveis. A exclusão não é automática nem '
+              'imediata e não significa necessariamente a remoção física total '
+              'de todos os registros.',
+            ),
+            LegalParagraph(
+              'Conforme essa avaliação, a tratativa poderá resultar em '
+              'exclusão de dados elegíveis, anonimização de dados pessoais, '
+              'desativação da conta ou da empresa, ou retenção justificada.',
             ),
           ],
         ),
@@ -74,15 +81,21 @@ class DataDeletionPage extends StatelessWidget {
           ],
         ),
         LegalSection(
-          title: 'Retenções permitidas',
+          title: 'Retenções justificadas',
           content: [
             LegalParagraph(
-              'Alguns dados podem ser retidos pelo período necessário para '
-              'cumprimento de obrigação legal ou regulatória, segurança e '
-              'prevenção a fraudes, auditoria, comprovação de transações ou '
-              'exercício regular de direitos. Quando possível, o acesso ficará '
-              'restrito e os dados serão eliminados ou anonimizados após o fim '
-              'do prazo aplicável.',
+              'Dados financeiros e de transações, billing, registros de '
+              'auditoria, logs e cópias de backup podem ser retidos pelo '
+              'período necessário para cumprimento de obrigação legal ou '
+              'regulatória, segurança e prevenção a fraudes, auditoria, '
+              'comprovação de transações ou exercício regular de direitos.',
+            ),
+            LegalParagraph(
+              'Quando aplicável, o acesso aos dados retidos será restrito e '
+              'eles serão eliminados ou anonimizados após o encerramento do '
+              'prazo ou da finalidade que justificou a retenção. Cópias de '
+              'backup podem permanecer até sua substituição ou expiração '
+              'conforme os ciclos de retenção adotados.',
             ),
           ],
         ),

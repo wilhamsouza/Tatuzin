@@ -109,8 +109,13 @@ void main() {
       find.text('Validação de identidade e prazo de resposta'),
       findsOneWidget,
     );
-    expect(find.text('Como a solicitação será tratada'), findsOneWidget);
+    expect(find.text('Avaliação por categoria de dados'), findsOneWidget);
     expect(find.textContaining('não exigem login'), findsOneWidget);
+    expect(find.textContaining('solicitação de exclusão'), findsOneWidget);
+    expect(
+      find.textContaining('autoridade ou relação legítima'),
+      findsOneWidget,
+    );
     expect(find.textContaining('15 dias corridos'), findsOneWidget);
     expect(
       find.textContaining('processo operacional e manual'),
@@ -120,13 +125,27 @@ void main() {
       find.textContaining('não é automática nem imediata'),
       findsOneWidget,
     );
+    expect(find.textContaining('remoção física total'), findsOneWidget);
     expect(
       find.textContaining(
-        'exclusão, anonimização, desativação da conta ou retenção justificada',
+        'exclusão de dados elegíveis, anonimização de dados pessoais',
       ),
       findsOneWidget,
     );
+    expect(
+      find.textContaining('desativação da conta ou da empresa'),
+      findsOneWidget,
+    );
     expect(find.text('Dados armazenados no dispositivo'), findsOneWidget);
+    expect(find.text('Retenções justificadas'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Dados financeiros e de transações, billing, registros de auditoria, '
+        'logs e cópias de backup',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('ciclos de retenção adotados'), findsOneWidget);
     expect(find.textContaining('procedimentos e prazos dele'), findsOneWidget);
     expect(find.text('Política de Privacidade'), findsOneWidget);
   });
