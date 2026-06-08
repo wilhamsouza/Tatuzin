@@ -5,6 +5,7 @@ import {
   adminPermissionManagementKey,
   type AdminPermissionDefinition,
   type AdminPermissionKey,
+  tenantDeletionPermissionKeys,
 } from "./admin-permissions.types";
 
 const supportActionPermissionDefinitions: AdminPermissionDefinition[] =
@@ -21,6 +22,57 @@ const supportActionPermissionDefinitions: AdminPermissionDefinition[] =
     requiresExplicitConfirmation: permission.requiresExplicitConfirmation,
   }));
 
+const tenantDeletionPermissionDefinitions: AdminPermissionDefinition[] = [
+  {
+    permissionKey: tenantDeletionPermissionKeys[0],
+    description:
+      "Permite consultar solicitacoes e inventarios read-only de exclusao de tenant.",
+    riskLevel: "high",
+    scopes: ["platform", "company"],
+    category: "tenant-deletion",
+    requiresDryRun: false,
+    requiresReason: false,
+    requiresPersistentAudit: true,
+    requiresExplicitConfirmation: false,
+  },
+  {
+    permissionKey: tenantDeletionPermissionKeys[1],
+    description:
+      "Permite registrar e rejeitar solicitacoes de exclusao de tenant sem executar exclusao real.",
+    riskLevel: "critical",
+    scopes: ["platform", "company"],
+    category: "tenant-deletion",
+    requiresDryRun: false,
+    requiresReason: true,
+    requiresPersistentAudit: true,
+    requiresExplicitConfirmation: false,
+  },
+  {
+    permissionKey: tenantDeletionPermissionKeys[2],
+    description:
+      "Permite registrar validacao de identidade e autoridade sobre a empresa.",
+    riskLevel: "critical",
+    scopes: ["platform", "company"],
+    category: "tenant-deletion",
+    requiresDryRun: false,
+    requiresReason: true,
+    requiresPersistentAudit: true,
+    requiresExplicitConfirmation: false,
+  },
+  {
+    permissionKey: tenantDeletionPermissionKeys[3],
+    description:
+      "Permite cancelar solicitacao de exclusao de tenant sem alterar dados da empresa.",
+    riskLevel: "critical",
+    scopes: ["platform", "company"],
+    category: "tenant-deletion",
+    requiresDryRun: false,
+    requiresReason: true,
+    requiresPersistentAudit: true,
+    requiresExplicitConfirmation: false,
+  },
+];
+
 export const adminPermissionDefinitions: AdminPermissionDefinition[] = [
   {
     permissionKey: adminPermissionManagementKey,
@@ -34,6 +86,7 @@ export const adminPermissionDefinitions: AdminPermissionDefinition[] = [
     requiresPersistentAudit: true,
     requiresExplicitConfirmation: true,
   },
+  ...tenantDeletionPermissionDefinitions,
   ...supportActionPermissionDefinitions,
 ];
 

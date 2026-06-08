@@ -10,6 +10,7 @@ import '../models/admin_models.dart';
 import '../models/admin_permissions_models.dart';
 import '../models/admin_plan_models.dart';
 import '../models/admin_sync_center_models.dart';
+import '../models/admin_tenant_deletion_models.dart';
 import '../network/admin_api_client.dart';
 import '../network/admin_api_service.dart';
 import 'admin_auth_controller.dart';
@@ -89,6 +90,17 @@ final adminUserPermissionsProvider =
       return ref
           .watch(adminApiServiceProvider)
           .fetchAdminUserPermissions(adminUserId);
+    });
+
+final adminTenantDeletionRequestsProvider =
+    FutureProvider.family<
+      AdminTenantDeletionRequestsSnapshot,
+      AdminTenantDeletionQuery
+    >((ref, query) async {
+      ref.watch(adminRefreshTickProvider);
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchTenantDeletionRequests(query: query);
     });
 
 final adminCompanyAccessSummaryProvider =

@@ -72,6 +72,7 @@ import { AdminService } from "./admin.service";
 import { SyncSupportService } from "../sync/sync-support.service";
 import { supportActionsRouter } from "../support-actions/support-actions.routes";
 import { adminPermissionsRouter } from "../admin-permissions/admin-permissions.routes";
+import { tenantDeletionRouter } from "../tenant-deletion/tenant-deletion.routes";
 import {
   legacySessionRevokeLogContext,
   revokeLegacyAdminSession,
@@ -102,6 +103,7 @@ adminRouter.use(
 
 adminRouter.use("/support-actions", supportActionsRouter);
 adminRouter.use("/permissions", adminPermissionsRouter);
+adminRouter.use("/tenant-deletion", tenantDeletionRouter);
 
 adminRouter.get(
   "/billing/companies",

@@ -54,6 +54,12 @@ class AdminShellScaffold extends ConsumerWidget {
       label: 'Permissoes',
     ),
     _AdminNavItem(
+      route: '/tenant-deletion',
+      icon: Icons.privacy_tip_rounded,
+      label: 'Exclusao tenant',
+      badge: 'Dry-run',
+    ),
+    _AdminNavItem(
       route: '/audit',
       icon: Icons.fact_check_rounded,
       label: 'Auditoria',
@@ -495,6 +501,9 @@ String _supportDescription(String location) {
   if (location.startsWith('/permissions') ||
       location.startsWith('/admin/permissions')) {
     return 'Consulta read-only de permissoes administrativas persistidas.';
+  }
+  if (location.startsWith('/tenant-deletion')) {
+    return 'Fundacao auditada para solicitacoes de exclusao de tenant, somente dry-run.';
   }
   if (location.startsWith('/audit')) {
     return 'Auditoria interna de acoes administrativas da plataforma.';

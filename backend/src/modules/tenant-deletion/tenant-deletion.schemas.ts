@@ -1,0 +1,44 @@
+import { z } from "zod";
+
+export const tenantDeletionListQuerySchema = z.object({
+  companyId: z.string().trim().min(1).optional(),
+  status: z.string().trim().min(1).optional(),
+});
+
+const reasonSchema = z
+  .string()
+  .trim()
+  .min(12, "Informe um motivo com pelo menos 12 caracteres.")
+  .max(1000, "O motivo deve ter no maximo 1000 caracteres.");
+
+export const tenantDeletionCreateRequestSchema = z.object({
+  companyId: z.string().trim().min(1, "Empresa obrigatoria."),
+  reason: reasonSchema,
+  requesterName: z.string().trim().max(160).optional(),
+  requesterEmail: z.string().trim().email().max(254).optional(),
+  requesterChannel: z.string().trim().max(80).optional(),
+});
+
+export const tenantDeletionReasonSchema = z.object({
+  companyId: z.string().trim().min(1, "Empresa obrigatoria."),
+  reason: reasonSchema,
+  note: z.string().trim().max(1000).optional(),
+});
+
+export const tenantDeletionDryRunSchema = z.object({
+  reason: reasonSchema,
+  requestId: z.string().trim().min(1).max(120).optional(),
+});
+
+export type TenantDeletionListQueryInput = z.infer<
+  typeof tenantDeletionListQuerySchema
+>;
+export type TenantDeletionCreateRequestInput = z.infer<
+  typeof tenantDeletionCreateRequestSchema
+>;
+export type TenantDeletionReasonInput = z.infer<
+  typeof tenantDeletionReasonSchema
+>;
+export type TenantDeletionDryRunInput = z.infer<
+  typeof tenantDeletionDryRunSchema
+>;

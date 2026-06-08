@@ -10,6 +10,7 @@ import '../models/admin_permissions_models.dart';
 import '../models/admin_plan_models.dart';
 import '../models/admin_sync_center_models.dart';
 import '../models/admin_support_action_models.dart';
+import '../models/admin_tenant_deletion_models.dart';
 import 'admin_api_client.dart';
 
 class AdminApiService {
@@ -235,6 +236,105 @@ class AdminApiService {
       response,
       adminUserId: normalizedAdminUserId,
     );
+  }
+
+  Future<AdminTenantDeletionRequestsSnapshot> fetchTenantDeletionRequests({
+    AdminTenantDeletionQuery query = const AdminTenantDeletionQuery(),
+  }) async {
+    final response = await _apiClient.getJson(
+      '/admin/tenant-deletion/requests',
+      accessToken: await _readRequiredToken(),
+      queryParameters: query.toQueryParameters(),
+    );
+
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message:
+            'A API nao retornou as solicitacoes de exclusao no formato esperado.',
+      );
+    }
+    return AdminTenantDeletionRequestsSnapshot.fromMap(response);
+  }
+
+  Future<AdminTenantDeletionMutationResult> createTenantDeletionRequest({
+    required String companyId,
+    required String reason,
+    String? requesterName,
+    String? requesterEmail,
+    String? requesterChannel,
+  }) async {
+    final normalizedCompanyId = companyId.trim();
+    final normalizedReason = reason.trim();
+    if (normalizedCompanyId.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe a empresa da solicitacao.',
+        code: 'TENANT_DELETION_COMPANY_REQUIRED',
+      );
+    }
+    if (normalizedReason.length < 12) {
+      throw const AdminApiException(
+        message: 'Informe um motivo com pelo menos 12 caracteres.',
+        code: 'TENANT_DELETION_REASON_REQUIRED',
+      );
+    }
+
+    final response = await _apiClient.postJson(
+      '/admin/tenant-deletion/requests',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        'companyId': normalizedCompanyId,
+        'reason': normalizedReason,
+        if (requesterName != null && requesterName.trim().isNotEmpty)
+          'requesterName': requesterName.trim(),
+        if (requesterEmail != null && requesterEmail.trim().isNotEmpty)
+          'requesterEmail': requesterEmail.trim(),
+        if (requesterChannel != null && requesterChannel.trim().isNotEmpty)
+          'requesterChannel': requesterChannel.trim(),
+      },
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou a solicitacao no formato esperado.',
+      );
+    }
+    return AdminTenantDeletionMutationResult.fromMap(response);
+  }
+
+  Future<AdminTenantDeletionDryRunResponse> dryRunTenantDeletion({
+    required String companyId,
+    required String reason,
+    String? requestId,
+  }) async {
+    final normalizedCompanyId = companyId.trim();
+    final normalizedReason = reason.trim();
+    if (normalizedCompanyId.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe a empresa para gerar o dry-run.',
+        code: 'TENANT_DELETION_COMPANY_REQUIRED',
+      );
+    }
+    if (normalizedReason.length < 12) {
+      throw const AdminApiException(
+        message: 'Informe um motivo com pelo menos 12 caracteres.',
+        code: 'TENANT_DELETION_REASON_REQUIRED',
+      );
+    }
+
+    final response = await _apiClient.postJson(
+      '/admin/tenant-deletion/companies/$normalizedCompanyId/dry-run',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        'reason': normalizedReason,
+        if (requestId != null && requestId.trim().isNotEmpty)
+          'requestId': requestId.trim(),
+      },
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou o dry-run no formato esperado.',
+      );
+    }
+    return AdminTenantDeletionDryRunResponse.fromMap(response);
   }
 
   Future<AdminPermissionMutationResult> grantAdminPermission({

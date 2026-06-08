@@ -26,6 +26,7 @@ import '../features/permissions/presentation/admin_permissions_page.dart';
 import '../features/plans/presentation/plans_page.dart';
 import '../features/sync_center/presentation/sync_center_pages.dart';
 import '../features/sync_health/presentation/sync_health_page.dart';
+import '../features/tenant_deletion/presentation/tenant_deletion_page.dart';
 
 final adminRouterProvider = Provider<GoRouter>((ref) {
   final authController = ref.read(adminAuthControllerProvider);
@@ -234,6 +235,10 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
           GoRoute(
+            path: '/tenant-deletion',
+            builder: (context, state) => const TenantDeletionPage(),
+          ),
+          GoRoute(
             path: '/admin/permissions',
             redirect: (context, state) {
               final query = state.uri.hasQuery ? '?${state.uri.query}' : '';
@@ -345,6 +350,9 @@ String _titleForLocation(String location) {
   if (location.startsWith('/permissions') ||
       location.startsWith('/admin/permissions')) {
     return 'Permissoes administrativas';
+  }
+  if (location.startsWith('/tenant-deletion')) {
+    return 'Exclusao de tenant';
   }
   if (location.startsWith('/audit')) {
     return 'Auditoria';
