@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/admin_providers.dart';
+import '../../../core/models/admin_permissions_models.dart';
 import '../../../core/models/admin_tenant_deletion_models.dart';
 import '../../../core/network/admin_api_client.dart';
 import '../../../core/widgets/admin_surface.dart';
@@ -30,6 +31,7 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
   String? _error;
   bool _creating = false;
   bool _dryRunning = false;
+  final Set<String> _mutatingRequestIds = <String>{};
   AdminTenantDeletionDryRunResponse? _dryRunResponse;
 
   @override
@@ -55,6 +57,7 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
       status: _statusFilter,
     );
     final requests = ref.watch(adminTenantDeletionRequestsProvider(query));
+    final permissions = ref.watch(adminCurrentUserPermissionsProvider);
 
     return SingleChildScrollView(
       child: Column(
@@ -89,7 +92,7 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
             },
           ),
           const SizedBox(height: 16),
-          _buildRequestsCard(context, requests),
+          _buildRequestsCard(context, requests, permissions),
           if (_dryRunResponse != null) ...[
             const SizedBox(height: 16),
             _DryRunResult(response: _dryRunResponse!),
@@ -223,11 +226,12 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
   Widget _buildRequestsCard(
     BuildContext context,
     AsyncValue<AdminTenantDeletionRequestsSnapshot> requests,
+    AsyncValue<AdminUserPermissionsSnapshot> permissions,
   ) {
     return AdminSurface(
       title: 'Solicitacoes de exclusao de tenant',
       subtitle:
-          'Acompanhamento seguro por status usando persistencia dedicada. Execucao real continua indisponivel.',
+          'Workflow com quarentena operacional reversivel. Exclusao, anonimizacao e execucao final continuam indisponiveis.',
       trailing: FilledButton.tonalIcon(
         onPressed: () {
           ref.invalidate(adminTenantDeletionRequestsProvider);
@@ -285,6 +289,10 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
                       value: 'REJECTED',
                       child: Text('REJECTED'),
                     ),
+                    DropdownMenuItem(
+                      value: 'FUTURE_PENDING_DELETION',
+                      child: Text('PENDING_DELETION / quarentena'),
+                    ),
                   ],
                   onChanged: (value) => setState(() => _statusFilter = value),
                 ),
@@ -304,12 +312,34 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
               if (snapshot.items.isEmpty) {
                 return const _EmptyState();
               }
+              final permissionSnapshot = permissions.asData?.value;
               return Column(
                 children: snapshot.items
                     .map(
                       (request) => Padding(
                         padding: const EdgeInsets.only(bottom: 10),
-                        child: _RequestTile(request: request),
+                        child: _RequestTile(
+                          request: request,
+                          mutating: _mutatingRequestIds.contains(
+                            request.requestId,
+                          ),
+                          canQuarantine:
+                              request.status == 'DRY_RUN_READY' &&
+                              _hasPermission(
+                                permissionSnapshot,
+                                'tenant.deletion.quarantine',
+                                request.company?.id,
+                              ),
+                          canCancelQuarantine:
+                              request.status == 'FUTURE_PENDING_DELETION' &&
+                              _hasPermission(
+                                permissionSnapshot,
+                                'tenant.deletion.cancel',
+                                request.company?.id,
+                              ),
+                          onQuarantine: () => _quarantine(request),
+                          onCancelQuarantine: () => _cancelQuarantine(request),
+                        ),
                       ),
                     )
                     .toList(growable: false),
@@ -412,6 +442,131 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
     }
   }
 
+  Future<void> _quarantine(AdminTenantDeletionRequest request) async {
+    final company = request.company;
+    if (company == null) {
+      return;
+    }
+    final input = await _confirmSensitiveAction(
+      title: 'Colocar tenant em quarentena',
+      warning:
+          'Esta acao bloqueia login, operacoes e sync e revoga sessoes/dispositivos do tenant. Os dados permanecem preservados e o Mercado Pago nao sera alterado.',
+      confirmationPhrase: 'QUARENTENA',
+      actionLabel: 'Colocar em quarentena',
+    );
+    if (input == null || !mounted) {
+      return;
+    }
+    await _runRequestMutation(
+      request.requestId,
+      () => ref
+          .read(adminApiServiceProvider)
+          .quarantineTenantDeletion(
+            companyId: company.id,
+            requestId: request.requestId,
+            reason: input.reason,
+            confirmation: input.confirmation,
+          ),
+      successPrefix: 'Quarentena operacional registrada',
+    );
+  }
+
+  Future<void> _cancelQuarantine(AdminTenantDeletionRequest request) async {
+    final company = request.company;
+    if (company == null) {
+      return;
+    }
+    final input = await _confirmSensitiveAction(
+      title: 'Cancelar quarentena',
+      warning:
+          'O acesso operacional volta a ser permitido, mas sessoes revogadas nao serao reativadas. Os usuarios precisarao entrar novamente.',
+      confirmationPhrase: 'CANCELAR QUARENTENA',
+      actionLabel: 'Cancelar quarentena',
+    );
+    if (input == null || !mounted) {
+      return;
+    }
+    await _runRequestMutation(
+      request.requestId,
+      () => ref
+          .read(adminApiServiceProvider)
+          .cancelTenantDeletion(
+            companyId: company.id,
+            requestId: request.requestId,
+            reason: input.reason,
+          ),
+      successPrefix: 'Quarentena cancelada',
+    );
+  }
+
+  Future<void> _runRequestMutation(
+    String requestId,
+    Future<AdminTenantDeletionMutationResult> Function() operation, {
+    required String successPrefix,
+  }) async {
+    setState(() {
+      _mutatingRequestIds.add(requestId);
+      _error = null;
+      _message = null;
+    });
+    try {
+      final result = await operation();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _message =
+            '$successPrefix: ${result.auditEventId ?? result.request?.requestId ?? result.code}';
+      });
+      ref.invalidate(adminTenantDeletionRequestsProvider);
+      ref.invalidate(adminCurrentUserPermissionsProvider);
+    } on AdminApiException catch (error) {
+      if (mounted) {
+        setState(() => _error = _safeError(error));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _mutatingRequestIds.remove(requestId));
+      }
+    }
+  }
+
+  Future<_SensitiveActionInput?> _confirmSensitiveAction({
+    required String title,
+    required String warning,
+    required String confirmationPhrase,
+    required String actionLabel,
+  }) {
+    return showDialog<_SensitiveActionInput>(
+      context: context,
+      builder: (_) => _SensitiveActionDialog(
+        title: title,
+        warning: warning,
+        confirmationPhrase: confirmationPhrase,
+        actionLabel: actionLabel,
+      ),
+    );
+  }
+
+  bool _hasPermission(
+    AdminUserPermissionsSnapshot? snapshot,
+    String permissionKey,
+    String? companyId,
+  ) {
+    if (snapshot == null || companyId == null) {
+      return false;
+    }
+    return snapshot.activePermissions.any(
+      (permission) =>
+          permission.isActive &&
+          permission.permissionKey == permissionKey &&
+          (permission.scope == 'platform' ||
+              permission.scopeId == '*' ||
+              (permission.scope == 'company' &&
+                  permission.scopeId == companyId)),
+    );
+  }
+
   String _safeError(AdminApiException error) {
     switch (error.code) {
       case 'TENANT_DELETION_PERMISSION_REQUIRED':
@@ -424,6 +579,8 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
         return 'Solicitacao nao encontrada.';
       case 'TENANT_DELETION_STATE_CONFLICT':
         return 'A solicitacao mudou de estado. Atualize a pagina e tente novamente.';
+      case 'TENANT_DELETION_VALIDATION_ERROR':
+        return 'Revise o motivo e a confirmacao explicita da operacao.';
       default:
         return 'Nao foi possivel concluir a operacao administrativa.';
     }
@@ -449,7 +606,7 @@ class _SafetyBanner extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Workflow persistido e seguro: registra solicitacoes, valida RBAC granular e gera inventario dry-run. Nao ha purge fisico, anonimizacao real, quarentena, worker ou cancelamento de Mercado Pago nesta etapa.',
+              'Workflow seguro: a quarentena operacional e reversivel, bloqueia acesso e sync sem excluir ou anonimizar dados. Nao ha worker, purge fisico nem cancelamento automatico de Mercado Pago.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: scheme.onSecondaryContainer,
                 fontWeight: FontWeight.w700,
@@ -489,9 +646,21 @@ class _StatusBanner extends StatelessWidget {
 }
 
 class _RequestTile extends StatelessWidget {
-  const _RequestTile({required this.request});
+  const _RequestTile({
+    required this.request,
+    required this.mutating,
+    required this.canQuarantine,
+    required this.canCancelQuarantine,
+    required this.onQuarantine,
+    required this.onCancelQuarantine,
+  });
 
   final AdminTenantDeletionRequest request;
+  final bool mutating;
+  final bool canQuarantine;
+  final bool canCancelQuarantine;
+  final VoidCallback onQuarantine;
+  final VoidCallback onCancelQuarantine;
 
   @override
   Widget build(BuildContext context) {
@@ -555,6 +724,27 @@ class _RequestTile extends StatelessWidget {
             const SizedBox(height: 6),
             Text('Motivo: ${request.reason}'),
           ],
+          if (canQuarantine || canCancelQuarantine) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                if (canQuarantine)
+                  FilledButton.tonalIcon(
+                    onPressed: mutating ? null : onQuarantine,
+                    icon: const Icon(Icons.lock_clock_rounded),
+                    label: const Text('Colocar em quarentena'),
+                  ),
+                if (canCancelQuarantine)
+                  OutlinedButton.icon(
+                    onPressed: mutating ? null : onCancelQuarantine,
+                    icon: const Icon(Icons.lock_open_rounded),
+                    label: const Text('Cancelar quarentena'),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -572,6 +762,7 @@ class _StatusChip extends StatelessWidget {
     final color = switch (status) {
       'CANCELLED' || 'REJECTED' => scheme.errorContainer,
       'DRY_RUN_READY' || 'VERIFIED' => scheme.primaryContainer,
+      'FUTURE_PENDING_DELETION' => scheme.tertiaryContainer,
       _ => scheme.surfaceContainerHighest,
     };
     return Container(
@@ -586,6 +777,101 @@ class _StatusChip extends StatelessWidget {
           context,
         ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w900),
       ),
+    );
+  }
+}
+
+class _SensitiveActionInput {
+  const _SensitiveActionInput({
+    required this.reason,
+    required this.confirmation,
+  });
+
+  final String reason;
+  final String confirmation;
+}
+
+class _SensitiveActionDialog extends StatefulWidget {
+  const _SensitiveActionDialog({
+    required this.title,
+    required this.warning,
+    required this.confirmationPhrase,
+    required this.actionLabel,
+  });
+
+  final String title;
+  final String warning;
+  final String confirmationPhrase;
+  final String actionLabel;
+
+  @override
+  State<_SensitiveActionDialog> createState() => _SensitiveActionDialogState();
+}
+
+class _SensitiveActionDialogState extends State<_SensitiveActionDialog> {
+  final _reasonController = TextEditingController();
+  final _confirmationController = TextEditingController();
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    _confirmationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      scrollable: true,
+      title: Text(widget.title),
+      content: SizedBox(
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(widget.warning),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _reasonController,
+              minLines: 3,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                labelText: 'Motivo obrigatorio',
+                helperText: 'Minimo de 12 caracteres. Sera auditado.',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _confirmationController,
+              decoration: InputDecoration(
+                labelText: 'Confirmacao explicita',
+                helperText: 'Digite exatamente: ${widget.confirmationPhrase}',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Voltar'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final reason = _reasonController.text.trim();
+            final confirmation = _confirmationController.text.trim();
+            if (reason.length < 12 ||
+                confirmation != widget.confirmationPhrase) {
+              return;
+            }
+            Navigator.of(context).pop(
+              _SensitiveActionInput(reason: reason, confirmation: confirmation),
+            );
+          },
+          child: Text(widget.actionLabel),
+        ),
+      ],
     );
   }
 }

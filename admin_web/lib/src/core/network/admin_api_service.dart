@@ -238,6 +238,32 @@ class AdminApiService {
     );
   }
 
+  Future<AdminUserPermissionsSnapshot> fetchOwnAdminPermissions({
+    required String adminUserId,
+  }) async {
+    final normalizedAdminUserId = adminUserId.trim();
+    if (normalizedAdminUserId.isEmpty) {
+      throw const AdminApiException(
+        message: 'Sessao administrativa sem usuario valido.',
+        code: 'ADMIN_USER_ID_REQUIRED',
+      );
+    }
+
+    final response = await _apiClient.getJson(
+      '/admin/permissions/me',
+      accessToken: await _readRequiredToken(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou as permissoes atuais no formato esperado.',
+      );
+    }
+    return AdminUserPermissionsSnapshot.fromMap(
+      response,
+      adminUserId: normalizedAdminUserId,
+    );
+  }
+
   Future<AdminTenantDeletionRequestsSnapshot> fetchTenantDeletionRequests({
     AdminTenantDeletionQuery query = const AdminTenantDeletionQuery(),
   }) async {
@@ -341,6 +367,80 @@ class AdminApiService {
       );
     }
     return AdminTenantDeletionDryRunResponse.fromMap(response);
+  }
+
+  Future<AdminTenantDeletionMutationResult> quarantineTenantDeletion({
+    required String companyId,
+    required String requestId,
+    required String reason,
+    required String confirmation,
+  }) {
+    return _mutateTenantDeletionRequest(
+      operation: 'quarantine',
+      companyId: companyId,
+      requestId: requestId,
+      reason: reason,
+      confirmation: confirmation,
+    );
+  }
+
+  Future<AdminTenantDeletionMutationResult> cancelTenantDeletion({
+    required String companyId,
+    required String requestId,
+    required String reason,
+  }) {
+    return _mutateTenantDeletionRequest(
+      operation: 'cancel',
+      companyId: companyId,
+      requestId: requestId,
+      reason: reason,
+    );
+  }
+
+  Future<AdminTenantDeletionMutationResult> _mutateTenantDeletionRequest({
+    required String operation,
+    required String companyId,
+    required String requestId,
+    required String reason,
+    String? confirmation,
+  }) async {
+    final normalizedCompanyId = companyId.trim();
+    final normalizedRequestId = requestId.trim();
+    final normalizedReason = reason.trim();
+    if (normalizedCompanyId.isEmpty || normalizedRequestId.isEmpty) {
+      throw const AdminApiException(
+        message: 'Empresa e solicitacao sao obrigatorias.',
+        code: 'TENANT_DELETION_REQUEST_REQUIRED',
+      );
+    }
+    if (normalizedReason.length < 12) {
+      throw const AdminApiException(
+        message: 'Informe um motivo com pelo menos 12 caracteres.',
+        code: 'TENANT_DELETION_REASON_REQUIRED',
+      );
+    }
+    if (operation == 'quarantine' && confirmation?.trim() != 'QUARENTENA') {
+      throw const AdminApiException(
+        message: 'Confirme a operacao informando QUARENTENA.',
+        code: 'TENANT_DELETION_VALIDATION_ERROR',
+      );
+    }
+
+    final response = await _apiClient.postJson(
+      '/admin/tenant-deletion/requests/$normalizedRequestId/$operation',
+      accessToken: await _readRequiredToken(),
+      body: <String, dynamic>{
+        'companyId': normalizedCompanyId,
+        'reason': normalizedReason,
+        if (confirmation != null) 'confirmation': confirmation.trim(),
+      },
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const AdminApiException(
+        message: 'A API nao retornou o workflow no formato esperado.',
+      );
+    }
+    return AdminTenantDeletionMutationResult.fromMap(response);
   }
 
   Future<AdminPermissionMutationResult> grantAdminPermission({

@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../../database/prisma';
 import { AppContextService } from '../../modules/app/app-context.service';
 import { AuthSessionService } from '../../modules/auth/auth-session.service';
+import { TenantLifecycleService } from '../../modules/tenant-deletion/tenant-lifecycle.service';
 import { env } from '../../config/env';
 import { logger } from '../observability/logger';
 import { AppError } from './app-error';
@@ -22,6 +23,7 @@ interface JwtPayload {
 
 const authSessionService = new AuthSessionService();
 const appContextService = new AppContextService();
+const tenantLifecycleService = new TenantLifecycleService();
 
 export async function requireAuth(
   request: Request,
@@ -169,6 +171,37 @@ export async function requireAppContext(
   }
 }
 
+export async function requireTenantOperational(
+  request: Request,
+  response: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    await new Promise<void>((resolve, reject) => {
+      void requireAuth(request, response, (error?: unknown) => {
+        if (error != null) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+
+    const companyId = request.auth?.companyId;
+    if (companyId == null || companyId.trim().length === 0) {
+      throw new AppError(
+        'Empresa autenticada obrigatoria.',
+        403,
+        'APP_CONTEXT_REQUIRED',
+      );
+    }
+    await tenantLifecycleService.assertTenantOperational(companyId);
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function requirePlatformAdmin(
   request: Request,
   response: Response,
@@ -187,7 +220,11 @@ export async function requirePlatformAdmin(
 
     const auth = request.auth;
     if (auth == null) {
-      throw new AppError('Sessao administrativa invalida.', 401, 'AUTH_REQUIRED');
+      throw new AppError(
+        'Sessao administrativa invalida.',
+        401,
+        'AUTH_REQUIRED',
+      );
     }
 
     const user = await prisma.user.findUnique({

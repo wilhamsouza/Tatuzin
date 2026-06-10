@@ -32,11 +32,21 @@ type TenantDeletionClient = {
     create(input: Record<string, unknown>): Promise<{ id: string }>;
   };
   tenantDeletionRequest: {
-    findMany(input: Record<string, unknown>): Promise<TenantDeletionPersistedRequest[]>;
-    findUnique(input: Record<string, unknown>): Promise<TenantDeletionPersistedRequest | null>;
-    findFirst(input: Record<string, unknown>): Promise<TenantDeletionPersistedRequest | null>;
-    create(input: Record<string, unknown>): Promise<TenantDeletionPersistedRequest>;
-    update(input: Record<string, unknown>): Promise<TenantDeletionPersistedRequest>;
+    findMany(
+      input: Record<string, unknown>,
+    ): Promise<TenantDeletionPersistedRequest[]>;
+    findUnique(
+      input: Record<string, unknown>,
+    ): Promise<TenantDeletionPersistedRequest | null>;
+    findFirst(
+      input: Record<string, unknown>,
+    ): Promise<TenantDeletionPersistedRequest | null>;
+    create(
+      input: Record<string, unknown>,
+    ): Promise<TenantDeletionPersistedRequest>;
+    update(
+      input: Record<string, unknown>,
+    ): Promise<TenantDeletionPersistedRequest>;
     updateMany(input: Record<string, unknown>): Promise<{ count: number }>;
   };
   tenantDeletionAuditEvent: {
@@ -46,6 +56,12 @@ type TenantDeletionClient = {
       reason: string | null;
       createdAt: Date;
     }>;
+  };
+  deviceSession: {
+    updateMany(input: Record<string, unknown>): Promise<{ count: number }>;
+  };
+  companyDevice: {
+    updateMany(input: Record<string, unknown>): Promise<{ count: number }>;
   };
   $transaction?<T>(
     operation: (client: TenantDeletionClient) => Promise<T>,
@@ -75,10 +91,8 @@ export class TenantDeletionService {
   };
 
   constructor(
-    private readonly client: TenantDeletionClient =
-      prisma as unknown as TenantDeletionClient,
-    private readonly rbacService: TenantDeletionRbac =
-      new TenantDeletionRbacService(),
+    private readonly client: TenantDeletionClient = prisma as unknown as TenantDeletionClient,
+    private readonly rbacService: TenantDeletionRbac = new TenantDeletionRbacService(),
     private readonly now: () => Date = () => new Date(),
   ) {}
 
@@ -149,9 +163,11 @@ export class TenantDeletionService {
     };
   }
 
-  async getRequest(input: ActorInput & {
-    requestId: string;
-  }): Promise<TenantDeletionOperationResult> {
+  async getRequest(
+    input: ActorInput & {
+      requestId: string;
+    },
+  ): Promise<TenantDeletionOperationResult> {
     const actor = this.normalizeRequiredActor(input.actorAdminId);
     if (actor == null) {
       return this.actorRequired();
@@ -190,13 +206,15 @@ export class TenantDeletionService {
     };
   }
 
-  async createRequest(input: ActorInput & {
-    companyId: string;
-    reason: string;
-    requesterName?: string | null;
-    requesterEmail?: string | null;
-    requesterChannel?: string | null;
-  }): Promise<TenantDeletionOperationResult> {
+  async createRequest(
+    input: ActorInput & {
+      companyId: string;
+      reason: string;
+      requesterName?: string | null;
+      requesterEmail?: string | null;
+      requesterChannel?: string | null;
+    },
+  ): Promise<TenantDeletionOperationResult> {
     const actor = this.normalizeRequiredActor(input.actorAdminId);
     if (actor == null) {
       return this.actorRequired();
@@ -340,12 +358,14 @@ export class TenantDeletionService {
     };
   }
 
-  async markIdentityPending(input: ActorInput & {
-    requestId: string;
-    companyId: string;
-    reason: string;
-    note?: string | null;
-  }) {
+  async markIdentityPending(
+    input: ActorInput & {
+      requestId: string;
+      companyId: string;
+      reason: string;
+      note?: string | null;
+    },
+  ) {
     return this.recordStatusTransition({
       ...input,
       permissionKey: "tenant.deletion.request.manage",
@@ -359,12 +379,14 @@ export class TenantDeletionService {
     });
   }
 
-  async verifyIdentity(input: ActorInput & {
-    requestId: string;
-    companyId: string;
-    reason: string;
-    note?: string | null;
-  }) {
+  async verifyIdentity(
+    input: ActorInput & {
+      requestId: string;
+      companyId: string;
+      reason: string;
+      note?: string | null;
+    },
+  ) {
     return this.recordStatusTransition({
       ...input,
       permissionKey: "tenant.deletion.identity.verify",
@@ -378,12 +400,19 @@ export class TenantDeletionService {
     });
   }
 
-  async cancelRequest(input: ActorInput & {
-    requestId: string;
-    companyId: string;
-    reason: string;
-    note?: string | null;
-  }) {
+  async cancelRequest(
+    input: ActorInput & {
+      requestId: string;
+      companyId: string;
+      reason: string;
+      note?: string | null;
+    },
+  ) {
+    const request = await this.findRequest(input.requestId);
+    if (request?.status === "FUTURE_PENDING_DELETION") {
+      return this.cancelQuarantine(input, request);
+    }
+
     return this.recordStatusTransition({
       ...input,
       permissionKey: "tenant.deletion.cancel",
@@ -396,12 +425,14 @@ export class TenantDeletionService {
     });
   }
 
-  async rejectRequest(input: ActorInput & {
-    requestId: string;
-    companyId: string;
-    reason: string;
-    note?: string | null;
-  }) {
+  async rejectRequest(
+    input: ActorInput & {
+      requestId: string;
+      companyId: string;
+      reason: string;
+      note?: string | null;
+    },
+  ) {
     return this.recordStatusTransition({
       ...input,
       permissionKey: "tenant.deletion.cancel",
@@ -414,11 +445,13 @@ export class TenantDeletionService {
     });
   }
 
-  async dryRun(input: ActorInput & {
-    companyId: string;
-    reason: string;
-    requestId: string;
-  }): Promise<TenantDeletionOperationResult> {
+  async dryRun(
+    input: ActorInput & {
+      companyId: string;
+      reason: string;
+      requestId: string;
+    },
+  ): Promise<TenantDeletionOperationResult> {
     const actor = this.normalizeRequiredActor(input.actorAdminId);
     if (actor == null) {
       return this.actorRequired();
@@ -526,23 +559,354 @@ export class TenantDeletionService {
     };
   }
 
-  private async recordStatusTransition(input: ActorInput & {
-    requestId: string;
-    companyId: string;
-    reason: string;
-    note?: string | null;
-    permissionKey: TenantDeletionPermissionKey;
-    action: TenantDeletionAction;
-    eventType:
-      | "IDENTITY_PENDING_SET"
-      | "IDENTITY_VERIFIED"
-      | "REQUEST_CANCELLED"
-      | "REQUEST_REJECTED";
-    status: TenantDeletionStatus;
-    identityStatus?: "PENDING" | "VERIFIED";
-    code: TenantDeletionOperationResult["code"];
-    message: string;
-  }): Promise<TenantDeletionOperationResult> {
+  async quarantineRequest(
+    input: ActorInput & {
+      requestId: string;
+      companyId: string;
+      reason: string;
+      confirmation: string;
+      note?: string | null;
+    },
+  ): Promise<TenantDeletionOperationResult> {
+    const actor = this.normalizeRequiredActor(input.actorAdminId);
+    if (actor == null) {
+      return this.actorRequired();
+    }
+    const reason = this.normalizeReason(input.reason);
+    if (reason == null) {
+      return this.reasonRequired();
+    }
+    if (input.confirmation.trim() !== "QUARENTENA") {
+      return this.validationError(
+        'Confirmacao explicita obrigatoria: informe "QUARENTENA".',
+      );
+    }
+
+    const request = await this.findRequest(input.requestId);
+    if (request == null) {
+      return this.requestNotFound(input.requestId);
+    }
+    if (request.companyId !== input.companyId.trim()) {
+      return this.stateConflict(
+        "A solicitacao nao pertence a empresa informada.",
+      );
+    }
+
+    const permission = await this.ensurePermission({
+      actorAdminId: actor,
+      permissionKey: "tenant.deletion.quarantine",
+      companyId: request.companyId,
+      deniedAction: "tenant.deletion.quarantined.denied",
+      reason,
+    });
+    if (!permission.ok) {
+      return permission;
+    }
+
+    if (request.status === "FUTURE_PENDING_DELETION") {
+      const audit = await this.recordWorkflowEvent(this.client, {
+        request,
+        actorAdminId: actor,
+        eventType: "QUARANTINE_STARTED",
+        action: "tenant.deletion.quarantined.idempotent",
+        reason,
+        before: this.workflowState(request),
+        after: this.workflowState(request),
+        metadata: {
+          ...this.actorMetadata(input),
+          idempotent: true,
+          dataDeleted: false,
+          billingChanged: false,
+        },
+      });
+      return {
+        ok: true,
+        code: "TENANT_DELETION_QUARANTINED",
+        message:
+          "Tenant ja esta em quarentena. Nenhum dado foi excluido e o billing nao foi alterado.",
+        auditEventId: audit.adminAuditEventId,
+        request: this.toRequestSummary(request, audit.workflowEvent),
+      };
+    }
+
+    if (
+      request.status !== "DRY_RUN_READY" ||
+      request.identityStatus !== "VERIFIED" ||
+      request.dryRunSnapshotJson == null ||
+      request.dryRunGeneratedAt == null
+    ) {
+      return this.stateConflict(
+        "Quarentena exige identidade verificada e dry-run persistido em DRY_RUN_READY.",
+      );
+    }
+
+    const changedAt = this.now();
+    const result = await this.inTransaction(async (client) => {
+      const update = await client.tenantDeletionRequest.updateMany({
+        where: {
+          id: request.id,
+          status: "DRY_RUN_READY",
+          identityStatus: "VERIFIED",
+          activeCompanyGuard: request.companyId,
+          dryRunGeneratedAt: { not: null },
+        },
+        data: {
+          status: "FUTURE_PENDING_DELETION",
+          updatedAt: changedAt,
+        },
+      });
+      if (update.count !== 1) {
+        return null;
+      }
+
+      const revokedSessions = await client.deviceSession.updateMany({
+        where: {
+          companyId: request.companyId,
+          revokedAt: null,
+          NOT: {
+            clientType: "ADMIN_WEB",
+            user: { isPlatformAdmin: true },
+          },
+        },
+        data: {
+          revokedAt: changedAt,
+          revokedReason: "tenant_pending_deletion",
+        },
+      });
+
+      const revokedDevices = {
+        active: await this.revokeDevicesForQuarantine(
+          client,
+          request.companyId,
+          "ACTIVE",
+          changedAt,
+        ),
+        pending: await this.revokeDevicesForQuarantine(
+          client,
+          request.companyId,
+          "PENDING",
+          changedAt,
+        ),
+        blocked: await this.revokeDevicesForQuarantine(
+          client,
+          request.companyId,
+          "BLOCKED",
+          changedAt,
+        ),
+      };
+
+      const updated = await client.tenantDeletionRequest.findUnique({
+        where: { id: request.id },
+        include: this.requestInclude,
+      });
+      if (updated == null) {
+        return null;
+      }
+
+      const audit = await this.recordWorkflowEvent(client, {
+        request: updated,
+        actorAdminId: actor,
+        eventType: "QUARANTINE_STARTED",
+        action: "tenant.deletion.quarantined",
+        reason,
+        before: {
+          ...this.workflowState(request),
+          companyIsActive: request.company.isActive,
+          accessBlocked: false,
+        },
+        after: {
+          ...this.workflowState(updated),
+          companyIsActive: updated.company.isActive,
+          accessBlocked: true,
+        },
+        metadata: {
+          ...this.actorMetadata(input),
+          note: this.normalizeOptional(input.note),
+          revokedSessions: revokedSessions.count,
+          revokedDevices:
+            revokedDevices.active.count +
+            revokedDevices.pending.count +
+            revokedDevices.blocked.count,
+          preservedPlatformAdminSessions: true,
+          dataDeleted: false,
+          anonymizationExecuted: false,
+          billingChanged: false,
+          mercadoPagoCalled: false,
+        },
+      });
+      return { request: updated, audit };
+    });
+
+    if (result == null) {
+      return this.stateConflict(
+        "A solicitacao foi alterada por outra acao. Recarregue antes de iniciar a quarentena.",
+      );
+    }
+
+    return {
+      ok: true,
+      code: "TENANT_DELETION_QUARANTINED",
+      message:
+        "Tenant colocado em quarentena operacional reversivel. Acesso e sync foram bloqueados; nenhum dado ou billing foi alterado.",
+      auditEventId: result.audit.adminAuditEventId,
+      request: this.toRequestSummary(
+        result.request,
+        result.audit.workflowEvent,
+      ),
+    };
+  }
+
+  private async cancelQuarantine(
+    input: ActorInput & {
+      requestId: string;
+      companyId: string;
+      reason: string;
+      note?: string | null;
+    },
+    request: TenantDeletionPersistedRequest,
+  ): Promise<TenantDeletionOperationResult> {
+    const actor = this.normalizeRequiredActor(input.actorAdminId);
+    if (actor == null) {
+      return this.actorRequired();
+    }
+    const reason = this.normalizeReason(input.reason);
+    if (reason == null) {
+      return this.reasonRequired();
+    }
+    if (request.companyId !== input.companyId.trim()) {
+      return this.stateConflict(
+        "A solicitacao nao pertence a empresa informada.",
+      );
+    }
+
+    const permission = await this.ensurePermission({
+      actorAdminId: actor,
+      permissionKey: "tenant.deletion.cancel",
+      companyId: request.companyId,
+      deniedAction: "tenant.deletion.quarantine_cancelled.denied",
+      reason,
+    });
+    if (!permission.ok) {
+      return permission;
+    }
+
+    const changedAt = this.now();
+    const result = await this.inTransaction(async (client) => {
+      const update = await client.tenantDeletionRequest.updateMany({
+        where: {
+          id: request.id,
+          status: "FUTURE_PENDING_DELETION",
+          activeCompanyGuard: request.companyId,
+        },
+        data: {
+          status: "CANCELLED",
+          activeCompanyGuard: null,
+          cancelledByAdminUserId: actor,
+          cancelledAt: changedAt,
+          cancellationReason: reason,
+          updatedAt: changedAt,
+        },
+      });
+      if (update.count !== 1) {
+        return null;
+      }
+
+      const restoredDevices = {
+        active: await this.restoreQuarantinedDevices(
+          client,
+          request.companyId,
+          "ACTIVE",
+        ),
+        pending: await this.restoreQuarantinedDevices(
+          client,
+          request.companyId,
+          "PENDING",
+        ),
+        blocked: await this.restoreQuarantinedDevices(
+          client,
+          request.companyId,
+          "BLOCKED",
+        ),
+      };
+      const updated = await client.tenantDeletionRequest.findUnique({
+        where: { id: request.id },
+        include: this.requestInclude,
+      });
+      if (updated == null) {
+        return null;
+      }
+
+      const audit = await this.recordWorkflowEvent(client, {
+        request: updated,
+        actorAdminId: actor,
+        eventType: "QUARANTINE_CANCELLED",
+        action: "tenant.deletion.quarantine_cancelled",
+        reason,
+        before: {
+          ...this.workflowState(request),
+          companyIsActive: request.company.isActive,
+          accessBlocked: true,
+        },
+        after: {
+          ...this.workflowState(updated),
+          companyIsActive: updated.company.isActive,
+          accessBlocked: false,
+        },
+        metadata: {
+          ...this.actorMetadata(input),
+          note: this.normalizeOptional(input.note),
+          restoredDevices:
+            restoredDevices.active.count +
+            restoredDevices.pending.count +
+            restoredDevices.blocked.count,
+          sessionsRemainRevoked: true,
+          freshLoginRequired: true,
+          dataDeleted: false,
+          billingChanged: false,
+          mercadoPagoCalled: false,
+        },
+      });
+      return { request: updated, audit };
+    });
+
+    if (result == null) {
+      return this.stateConflict(
+        "A solicitacao foi alterada por outra acao. Recarregue antes de cancelar a quarentena.",
+      );
+    }
+
+    return {
+      ok: true,
+      code: "TENANT_DELETION_CANCELLED",
+      message:
+        "Quarentena cancelada. Dispositivos foram restaurados ao estado anterior; sessoes continuam revogadas e exigem novo login.",
+      auditEventId: result.audit.adminAuditEventId,
+      request: this.toRequestSummary(
+        result.request,
+        result.audit.workflowEvent,
+      ),
+    };
+  }
+
+  private async recordStatusTransition(
+    input: ActorInput & {
+      requestId: string;
+      companyId: string;
+      reason: string;
+      note?: string | null;
+      permissionKey: TenantDeletionPermissionKey;
+      action: TenantDeletionAction;
+      eventType:
+        | "IDENTITY_PENDING_SET"
+        | "IDENTITY_VERIFIED"
+        | "REQUEST_CANCELLED"
+        | "REQUEST_REJECTED";
+      status: TenantDeletionStatus;
+      identityStatus?: "PENDING" | "VERIFIED";
+      code: TenantDeletionOperationResult["code"];
+      message: string;
+    },
+  ): Promise<TenantDeletionOperationResult> {
     const actor = this.normalizeRequiredActor(input.actorAdminId);
     if (actor == null) {
       return this.actorRequired();
@@ -751,26 +1115,102 @@ export class TenantDeletionService {
     ] = counts;
 
     const categoriesResult: TenantDeletionInventoryCategory[] = [
-      this.category("tenant_identity", "Empresa e licenca", 1, "deactivate",
-        "Company deve permanecer como tombstone minimo para billing, auditoria e comprovacao."),
-      this.category("users", "Usuarios, vinculos e funcionarios", memberships + employeeProfiles, "anonymize",
-        "Usuarios podem ser compartilhados entre empresas; remover vinculos exige avaliacao por escopo."),
-      this.category("devices_sessions", "Dispositivos e sessoes", companyDevices + deviceSessions, "deactivate",
-        "A fase futura deve revogar sessoes/dispositivos antes de bloquear sync."),
-      this.category("sync", "Sync, comandos, conflitos e diagnosticos", syncEvents + syncConflicts + syncIncidents + syncSupportCommands + deviceSyncDiagnostics, "review_required",
-        "Eventos e conflitos podem compor auditoria tecnica e comprovacao operacional."),
-      this.category("billing", "Billing, invoices, provider events e auditoria financeira", billingCheckoutSessions + billingInvoices + billingProviderEvents + billingAdminAuditLogs, "retain_justified",
-        "Retencao pode ser exigida por obrigacao legal, auditoria, seguranca e exercicio regular de direitos."),
-      this.category("admin_audit", "Auditoria administrativa", adminAuditLogs, "retain_justified",
-        "Logs administrativos devem preservar trilha before/after e comprovacao."),
-      this.category("customers_crm", "Clientes e CRM", customers + customerTags + customerNotes + customerTasks + customerTimelineEvents, "anonymize",
-        "Dados pessoais de clientes exigem avaliacao por categoria antes de anonimizar ou excluir elegiveis."),
-      this.category("catalog_inventory", "Catalogo, estoque, fornecedores e compras", categories + products + suppliers + supplies + purchases + stockReservations + stockDeductions + supplyCostHistory, "review_required",
-        "Parte dos dados pode ter valor fiscal, financeiro, estoque ou auditoria."),
-      this.category("sales_financial_cash", "Vendas, fiado, contas, caixa e comandas", sales + financialEvents + costs + fiadoPayments + cashEvents + cashSessions + operationalOrders, "retain_justified",
-        "Dados financeiros e caixa podem demandar retencao legal e defesa de direitos."),
-      this.category("analytics", "Snapshots analiticos", analyticsCompanyDailySnapshots + analyticsProductDailySnapshots + analyticsCustomerDailySnapshots, "delete_eligible",
-        "Snapshots derivados podem ser candidatos a exclusao ou recomputacao anonima em fase futura."),
+      this.category(
+        "tenant_identity",
+        "Empresa e licenca",
+        1,
+        "deactivate",
+        "Company deve permanecer como tombstone minimo para billing, auditoria e comprovacao.",
+      ),
+      this.category(
+        "users",
+        "Usuarios, vinculos e funcionarios",
+        memberships + employeeProfiles,
+        "anonymize",
+        "Usuarios podem ser compartilhados entre empresas; remover vinculos exige avaliacao por escopo.",
+      ),
+      this.category(
+        "devices_sessions",
+        "Dispositivos e sessoes",
+        companyDevices + deviceSessions,
+        "deactivate",
+        "A fase futura deve revogar sessoes/dispositivos antes de bloquear sync.",
+      ),
+      this.category(
+        "sync",
+        "Sync, comandos, conflitos e diagnosticos",
+        syncEvents +
+          syncConflicts +
+          syncIncidents +
+          syncSupportCommands +
+          deviceSyncDiagnostics,
+        "review_required",
+        "Eventos e conflitos podem compor auditoria tecnica e comprovacao operacional.",
+      ),
+      this.category(
+        "billing",
+        "Billing, invoices, provider events e auditoria financeira",
+        billingCheckoutSessions +
+          billingInvoices +
+          billingProviderEvents +
+          billingAdminAuditLogs,
+        "retain_justified",
+        "Retencao pode ser exigida por obrigacao legal, auditoria, seguranca e exercicio regular de direitos.",
+      ),
+      this.category(
+        "admin_audit",
+        "Auditoria administrativa",
+        adminAuditLogs,
+        "retain_justified",
+        "Logs administrativos devem preservar trilha before/after e comprovacao.",
+      ),
+      this.category(
+        "customers_crm",
+        "Clientes e CRM",
+        customers +
+          customerTags +
+          customerNotes +
+          customerTasks +
+          customerTimelineEvents,
+        "anonymize",
+        "Dados pessoais de clientes exigem avaliacao por categoria antes de anonimizar ou excluir elegiveis.",
+      ),
+      this.category(
+        "catalog_inventory",
+        "Catalogo, estoque, fornecedores e compras",
+        categories +
+          products +
+          suppliers +
+          supplies +
+          purchases +
+          stockReservations +
+          stockDeductions +
+          supplyCostHistory,
+        "review_required",
+        "Parte dos dados pode ter valor fiscal, financeiro, estoque ou auditoria.",
+      ),
+      this.category(
+        "sales_financial_cash",
+        "Vendas, fiado, contas, caixa e comandas",
+        sales +
+          financialEvents +
+          costs +
+          fiadoPayments +
+          cashEvents +
+          cashSessions +
+          operationalOrders,
+        "retain_justified",
+        "Dados financeiros e caixa podem demandar retencao legal e defesa de direitos.",
+      ),
+      this.category(
+        "analytics",
+        "Snapshots analiticos",
+        analyticsCompanyDailySnapshots +
+          analyticsProductDailySnapshots +
+          analyticsCustomerDailySnapshots,
+        "delete_eligible",
+        "Snapshots derivados podem ser candidatos a exclusao ou recomputacao anonima em fase futura.",
+      ),
     ];
 
     const blockers = await this.buildBlockers(company);
@@ -843,25 +1283,60 @@ export class TenantDeletionService {
           "A empresa possui assinatura/providerSubscriptionId; cancelamento automatico fora do escopo.",
       });
     }
-    this.pushCountBlocker(blockers, "active_devices", activeDevices,
-      "Dispositivos ativos devem ser revogados/bloqueados em fase futura.");
-    this.pushCountBlocker(blockers, "active_sessions", activeSessions,
-      "Sessoes ativas devem ser revogadas em fase futura.");
-    this.pushCountBlocker(blockers, "open_sync_conflicts", openConflicts,
-      "Conflitos de sync abertos exigem triagem antes de quarentena.");
-    this.pushCountBlocker(blockers, "pending_sync_events", pendingSyncEvents,
-      "Eventos de sync pendentes podem indicar dados locais ainda nao conciliados.");
-    this.pushCountBlocker(blockers, "open_cash_sessions", openCashSessions,
-      "Caixas abertos devem ser fechados ou justificados antes da proxima fase.");
-    this.pushCountBlocker(blockers, "open_operational_orders", openOrders,
-      "Comandas/pedidos abertos exigem tratativa operacional.");
-    this.pushCountBlocker(blockers, "pending_costs", pendingCosts,
-      "Contas pendentes podem demandar retencao financeira ou baixa operacional.");
-    this.pushCountBlocker(blockers, "pending_checkout_sessions",
+    this.pushCountBlocker(
+      blockers,
+      "active_devices",
+      activeDevices,
+      "Dispositivos ativos devem ser revogados/bloqueados em fase futura.",
+    );
+    this.pushCountBlocker(
+      blockers,
+      "active_sessions",
+      activeSessions,
+      "Sessoes ativas devem ser revogadas em fase futura.",
+    );
+    this.pushCountBlocker(
+      blockers,
+      "open_sync_conflicts",
+      openConflicts,
+      "Conflitos de sync abertos exigem triagem antes de quarentena.",
+    );
+    this.pushCountBlocker(
+      blockers,
+      "pending_sync_events",
+      pendingSyncEvents,
+      "Eventos de sync pendentes podem indicar dados locais ainda nao conciliados.",
+    );
+    this.pushCountBlocker(
+      blockers,
+      "open_cash_sessions",
+      openCashSessions,
+      "Caixas abertos devem ser fechados ou justificados antes da proxima fase.",
+    );
+    this.pushCountBlocker(
+      blockers,
+      "open_operational_orders",
+      openOrders,
+      "Comandas/pedidos abertos exigem tratativa operacional.",
+    );
+    this.pushCountBlocker(
+      blockers,
+      "pending_costs",
+      pendingCosts,
+      "Contas pendentes podem demandar retencao financeira ou baixa operacional.",
+    );
+    this.pushCountBlocker(
+      blockers,
+      "pending_checkout_sessions",
       pendingCheckoutSessions,
-      "Checkout pendente pode exigir conciliacao de billing.");
-    this.pushCountBlocker(blockers, "open_invoices", openInvoices,
-      "Invoices abertas/falhas/vencidas exigem decisao financeira.");
+      "Checkout pendente pode exigir conciliacao de billing.",
+    );
+    this.pushCountBlocker(
+      blockers,
+      "open_invoices",
+      openInvoices,
+      "Invoices abertas/falhas/vencidas exigem decisao financeira.",
+    );
 
     return blockers;
   }
@@ -895,6 +1370,47 @@ export class TenantDeletionService {
       return 0;
     }
     return delegate.count({ where });
+  }
+
+  private revokeDevicesForQuarantine(
+    client: TenantDeletionClient,
+    companyId: string,
+    previousStatus: "ACTIVE" | "PENDING" | "BLOCKED",
+    changedAt: Date,
+  ) {
+    return client.companyDevice.updateMany({
+      where: {
+        companyId,
+        status: previousStatus,
+        NOT: {
+          user: { isPlatformAdmin: true },
+        },
+      },
+      data: {
+        status: "REVOKED",
+        revokedAt: changedAt,
+        revokedReason: `tenant_pending_deletion:${previousStatus}`,
+      },
+    });
+  }
+
+  private restoreQuarantinedDevices(
+    client: TenantDeletionClient,
+    companyId: string,
+    previousStatus: "ACTIVE" | "PENDING" | "BLOCKED",
+  ) {
+    return client.companyDevice.updateMany({
+      where: {
+        companyId,
+        status: "REVOKED",
+        revokedReason: `tenant_pending_deletion:${previousStatus}`,
+      },
+      data: {
+        status: previousStatus,
+        revokedAt: null,
+        revokedReason: null,
+      },
+    });
   }
 
   private async requireCompany(
@@ -1020,7 +1536,10 @@ export class TenantDeletionService {
       categories?: unknown;
       blockers?: unknown;
     };
-    if (!Array.isArray(snapshot.categories) || !Array.isArray(snapshot.blockers)) {
+    if (
+      !Array.isArray(snapshot.categories) ||
+      !Array.isArray(snapshot.blockers)
+    ) {
       return null;
     }
     return {
@@ -1087,6 +1606,8 @@ export class TenantDeletionService {
         | "IDENTITY_PENDING_SET"
         | "IDENTITY_VERIFIED"
         | "DRY_RUN_GENERATED"
+        | "QUARANTINE_STARTED"
+        | "QUARANTINE_CANCELLED"
         | "REQUEST_CANCELLED"
         | "REQUEST_REJECTED"
         | "REQUEST_VIEWED";
@@ -1263,8 +1784,13 @@ export class TenantDeletionService {
     if (current === target) {
       return null;
     }
-    if (target === "CANCELLED" || target === "REJECTED") {
+    if (target === "CANCELLED") {
       return null;
+    }
+    if (target === "REJECTED") {
+      return current === "FUTURE_PENDING_DELETION"
+        ? "Tenant em quarentena deve ser cancelado antes de uma rejeicao."
+        : null;
     }
     if (target === "IDENTITY_PENDING" && current !== "REQUESTED") {
       return "Identity pending exige solicitacao em REQUESTED.";
@@ -1281,13 +1807,12 @@ export class TenantDeletionService {
 
   private isUniqueConstraintError(error: unknown) {
     return (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) || (
-      typeof error === "object" &&
-      error != null &&
-      "code" in error &&
-      error.code === "P2002"
+      (error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002") ||
+      (typeof error === "object" &&
+        error != null &&
+        "code" in error &&
+        error.code === "P2002")
     );
   }
 
@@ -1308,6 +1833,8 @@ export class TenantDeletionService {
       IDENTITY_PENDING_SET: "tenant.deletion.identity_pending",
       IDENTITY_VERIFIED: "tenant.deletion.verified",
       DRY_RUN_GENERATED: "tenant.deletion.dry_run",
+      QUARANTINE_STARTED: "tenant.deletion.quarantined",
+      QUARANTINE_CANCELLED: "tenant.deletion.quarantine_cancelled",
       REQUEST_CANCELLED: "tenant.deletion.cancelled",
       REQUEST_REJECTED: "tenant.deletion.rejected",
       REQUEST_VIEWED: "tenant.deletion.viewed",
@@ -1388,6 +1915,15 @@ export class TenantDeletionService {
     return {
       ok: false,
       code: "TENANT_DELETION_STATE_CONFLICT",
+      message,
+      auditEventId: null,
+    };
+  }
+
+  private validationError(message: string): TenantDeletionOperationResult {
+    return {
+      ok: false,
+      code: "TENANT_DELETION_VALIDATION_ERROR",
       message,
       auditEventId: null,
     };

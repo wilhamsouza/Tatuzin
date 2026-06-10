@@ -35,8 +35,7 @@ describe("admin permissions service", () => {
     assert.equal(result.code, "ADMIN_PERMISSION_LISTED");
     assert.ok(
       result.knownPermissions?.some(
-        (permission) =>
-          permission.permissionKey === "admin-permissions.manage",
+        (permission) => permission.permissionKey === "admin-permissions.manage",
       ),
     );
     assert.ok(
@@ -44,6 +43,25 @@ describe("admin permissions service", () => {
         (permission) => permission.permissionKey === "support.session.revoke",
       ),
     );
+  });
+
+  it("lista apenas as permissoes proprias sem exigir manage", async () => {
+    const client = createClient([
+      permission("operator", "tenant.deletion.quarantine"),
+      permission("other-admin", "admin-permissions.manage"),
+    ]);
+    const service = new AdminPermissionsService(client);
+
+    const result = await service.listOwnPermissions({
+      actorAdminId: "operator",
+    });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(
+      result.permissions?.map((item) => item.permissionKey),
+      ["tenant.deletion.quarantine"],
+    );
+    assert.equal(client.audits[0]?.data.action, "admin.permission.list_self");
   });
 
   it("concede permissao quando ator possui admin-permissions.manage", async () => {
@@ -84,8 +102,14 @@ describe("admin permissions service", () => {
 
     assert.equal(result.ok, false);
     assert.equal(result.code, "ADMIN_PERMISSION_MANAGE_REQUIRED");
-    assert.equal(client.rows.some((row) => row.actorUserId === "target-admin"), false);
-    assert.equal(client.audits[0]?.data.action, "admin.permission.grant.denied");
+    assert.equal(
+      client.rows.some((row) => row.actorUserId === "target-admin"),
+      false,
+    );
+    assert.equal(
+      client.audits[0]?.data.action,
+      "admin.permission.grant.denied",
+    );
   });
 
   it("bloqueia autoelevacao critica por padrao", async () => {
@@ -111,7 +135,10 @@ describe("admin permissions service", () => {
       ),
       false,
     );
-    assert.equal(client.audits[0]?.data.action, "admin.permission.grant.denied");
+    assert.equal(
+      client.audits[0]?.data.action,
+      "admin.permission.grant.denied",
+    );
   });
 
   it("revoga permissao quando ator possui admin-permissions.manage", async () => {
@@ -166,7 +193,10 @@ describe("admin permissions service", () => {
       )?.isActive,
       true,
     );
-    assert.equal(client.audits[0]?.data.action, "admin.permission.revoke.denied");
+    assert.equal(
+      client.audits[0]?.data.action,
+      "admin.permission.revoke.denied",
+    );
   });
 
   it("lista permissoes persistidas de um admin e audita listagem sensivel", async () => {

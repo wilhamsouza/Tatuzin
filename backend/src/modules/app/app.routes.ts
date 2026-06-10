@@ -2,7 +2,7 @@ import { Router } from 'express';
 
 import {
   requireAppContext,
-  requireAuth,
+  requireTenantOperational,
 } from '../../shared/http/auth-middleware';
 import { asyncHandler } from '../../shared/http/async-handler';
 import { validateBody, validateQuery } from '../../shared/http/validate';
@@ -25,7 +25,7 @@ export const appRouter = Router();
 
 appRouter.post(
   '/device',
-  requireAuth,
+  requireTenantOperational,
   validateBody(deviceRegisterSchema),
   asyncHandler(async (request, response) => {
     const auth = request.auth!;

@@ -111,6 +111,40 @@ export class AdminPermissionsService {
     };
   }
 
+  async listOwnPermissions(input: {
+    actorAdminId: string | null | undefined;
+  }): Promise<AdminPermissionOperationResult> {
+    const actor = this.normalizeActor(input.actorAdminId);
+    if (actor == null) {
+      return this.actorRequired();
+    }
+
+    const permissions = await this.client.adminUserPermission.findMany({
+      where: {
+        actorUserId: actor,
+        isActive: true,
+      },
+      orderBy: [{ permissionKey: "asc" }, { scope: "asc" }, { scopeId: "asc" }],
+    });
+    const auditEventId = await this.auditSuccess({
+      actorAdminId: actor,
+      action: "admin.permission.list_self",
+      targetAdminId: actor,
+      permissionKey: null,
+      reason: null,
+      resultCode: "ADMIN_PERMISSION_LISTED",
+      metadata: { count: permissions.length },
+    });
+
+    return {
+      ok: true,
+      code: "ADMIN_PERMISSION_LISTED",
+      message: "Permissoes administrativas do ator listadas.",
+      auditEventId,
+      permissions,
+    };
+  }
+
   async listAdminPermissions(
     input: ListAdminPermissionsInput,
   ): Promise<AdminPermissionOperationResult> {
@@ -440,12 +474,13 @@ export class AdminPermissionsService {
     };
   }
 
-  private selfGrantBlocked(permissionKey: string): AdminPermissionOperationResult {
+  private selfGrantBlocked(
+    permissionKey: string,
+  ): AdminPermissionOperationResult {
     return {
       ok: false,
       code: "ADMIN_PERMISSION_SELF_GRANT_BLOCKED",
-      message:
-        "Autoconcessao de permissao critica bloqueada por padrao.",
+      message: "Autoconcessao de permissao critica bloqueada por padrao.",
       auditEventId: null,
       details: { permissionKey },
     };

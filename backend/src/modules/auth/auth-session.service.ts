@@ -16,6 +16,7 @@ import {
 } from '../app/company-device.service';
 import { AppError } from '../../shared/http/app-error';
 import { logger } from '../../shared/observability/logger';
+import { TenantLifecycleService } from '../tenant-deletion/tenant-lifecycle.service';
 
 export type SessionClientInput = {
   clientType?: string | null;
@@ -136,10 +137,21 @@ export type SessionDeviceDto = {
 export class AuthSessionService {
   constructor(
     private readonly companyDeviceService = new CompanyDeviceService(),
+    private readonly tenantLifecycleService = new TenantLifecycleService(),
   ) {}
 
   async createSession(input: SessionIssueInput): Promise<SessionTokenBundle> {
     const client = this.resolveClientInput(input.clientInput, input.userId);
+    if (
+      !this.isPlatformAdminSupportSession(
+        input.userIsPlatformAdmin,
+        client.clientType,
+      )
+    ) {
+      await this.tenantLifecycleService.assertTenantOperational(
+        input.companyId,
+      );
+    }
 
     const device = await this.companyDeviceService.registerOrResolve({
       companyId: input.companyId,
@@ -273,6 +285,17 @@ export class AuthSessionService {
       );
     }
 
+    if (
+      !this.isPlatformAdminSupportSession(
+        existingSession.membership.user.isPlatformAdmin,
+        existingSession.clientType,
+      )
+    ) {
+      await this.tenantLifecycleService.assertTenantOperational(
+        existingSession.companyId,
+      );
+    }
+
     if (existingSession.revokedAt != null) {
       await this.recordAudit({
         action: 'token_refresh_failed',
@@ -330,7 +353,10 @@ export class AuthSessionService {
 
     this.assertLicenseAllowsSessionRestore(membership.company.license);
 
-    const client = this.resolveClientInput(input.clientInput, existingSession.userId);
+    const client = this.resolveClientInput(
+      input.clientInput,
+      existingSession.userId,
+    );
     if (
       input.clientInput?.clientInstanceId != null &&
       client.clientInstanceId != existingSession.clientInstanceId
@@ -451,6 +477,7 @@ export class AuthSessionService {
             user: {
               select: {
                 isActive: true,
+                isPlatformAdmin: true,
               },
             },
             company: {
@@ -483,6 +510,17 @@ export class AuthSessionService {
       );
     }
 
+    if (
+      !this.isPlatformAdminSupportSession(
+        session.membership.user.isPlatformAdmin,
+        session.clientType,
+      )
+    ) {
+      await this.tenantLifecycleService.assertTenantOperational(
+        session.companyId,
+      );
+    }
+
     if (session.revokedAt != null) {
       throw new AppError(
         'Esta sessao foi revogada. Faca login novamente.',
@@ -499,7 +537,10 @@ export class AuthSessionService {
       );
     }
 
-    if (!session.membership.user.isActive || !session.membership.company.isActive) {
+    if (
+      !session.membership.user.isActive ||
+      !session.membership.company.isActive
+    ) {
       throw new AppError(
         'Esta conta nao esta mais ativa para acesso cloud.',
         401,
@@ -792,11 +833,7 @@ export class AuthSessionService {
     });
 
     if (!session) {
-      throw new AppError(
-        'Sessao nao encontrada.',
-        404,
-        'SESSION_NOT_FOUND',
-      );
+      throw new AppError('Sessao nao encontrada.', 404, 'SESSION_NOT_FOUND');
     }
 
     return session;
@@ -955,6 +992,13 @@ export class AuthSessionService {
     }
   }
 
+  private isPlatformAdminSupportSession(
+    isPlatformAdmin: boolean,
+    clientType: SessionClientType,
+  ) {
+    return isPlatformAdmin && clientType === SessionClientType.ADMIN_WEB;
+  }
+
   private normalizeOptionalString(rawValue: string | null | undefined) {
     if (rawValue == null) {
       return null;
@@ -964,10 +1008,12 @@ export class AuthSessionService {
     return normalized.length === 0 ? null : normalized;
   }
 
-  private assertLicenseAllowsSessionRestore(license: {
-    status: string;
-    expiresAt: Date | null;
-  } | null) {
+  private assertLicenseAllowsSessionRestore(
+    license: {
+      status: string;
+      expiresAt: Date | null;
+    } | null,
+  ) {
     if (license == null) {
       throw new AppError(
         'Licenca valida obrigatoria para restaurar a sessao do app.',
@@ -1012,7 +1058,9 @@ export class AuthSessionService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private toSessionSummaryDto(session: DeviceSessionWithRelations): SessionSummaryDto {
+  private toSessionSummaryDto(
+    session: DeviceSessionWithRelations,
+  ): SessionSummaryDto {
     return {
       id: session.id,
       userId: session.user.id,
@@ -1066,10 +1114,7 @@ export class AuthSessionService {
     return Date.now() - lastSeenAt.getTime() >= 5 * 60 * 1000;
   }
 
-  private touchSessionHeartbeat(session: {
-    id: string;
-    lastSeenAt: Date;
-  }) {
+  private touchSessionHeartbeat(session: { id: string; lastSeenAt: Date }) {
     if (!this.shouldRefreshHeartbeat(session.lastSeenAt)) {
       return;
     }

@@ -118,8 +118,29 @@ describe("admin permissions routes", () => {
 
     assert.equal(response.status, 200);
     assert.equal(response.data.permissions.length, 1);
-    assert.equal(response.data.permissions[0].permissionKey, "support.session.revoke");
+    assert.equal(
+      response.data.permissions[0].permissionKey,
+      "support.session.revoke",
+    );
     assert.equal(client.audits[0]?.data.action, "admin.permission.list");
+  });
+
+  it("lista permissoes proprias sem exigir admin-permissions.manage", async () => {
+    client.reset([
+      permission("manager", "tenant.deletion.quarantine"),
+      permission("other-admin", "admin-permissions.manage"),
+    ]);
+
+    const response = await requestJson("GET", "/admin/permissions/me");
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(
+      response.data.permissions.map(
+        (item: { permissionKey: string }) => item.permissionKey,
+      ),
+      ["tenant.deletion.quarantine"],
+    );
+    assert.equal(client.audits[0]?.data.action, "admin.permission.list_self");
   });
 
   it("concede permissao com payload valido e audita", async () => {
@@ -134,7 +155,10 @@ describe("admin permissions routes", () => {
 
     assert.equal(response.status, 200);
     assert.equal(response.data.code, "ADMIN_PERMISSION_GRANTED");
-    assert.equal(response.data.permission.permissionKey, "support.session.revoke");
+    assert.equal(
+      response.data.permission.permissionKey,
+      "support.session.revoke",
+    );
     assert.equal(client.audits[0]?.data.action, "admin.permission.grant");
   });
 
@@ -212,7 +236,10 @@ describe("admin permissions routes", () => {
 
     assert.equal(response.status, 422);
     assert.equal(response.data.code, "ADMIN_PERMISSION_VALIDATION_ERROR");
-    assert.equal(client.audits[0]?.data.action, "admin.permission.grant.denied");
+    assert.equal(
+      client.audits[0]?.data.action,
+      "admin.permission.grant.denied",
+    );
     const serialized = JSON.stringify(client.audits[0]?.data.details);
     assert.match(serialized, /\[redacted\]/);
     assert.doesNotMatch(serialized, /secret-token/);
@@ -230,7 +257,10 @@ describe("admin permissions routes", () => {
 
     assert.equal(response.status, 422);
     assert.equal(response.data.code, "ADMIN_PERMISSION_UNSUPPORTED");
-    assert.equal(client.audits[0]?.data.action, "admin.permission.grant.denied");
+    assert.equal(
+      client.audits[0]?.data.action,
+      "admin.permission.grant.denied",
+    );
   });
 
   it("nega grant quando ator nao possui admin-permissions.manage", async () => {
@@ -247,15 +277,17 @@ describe("admin permissions routes", () => {
 
     assert.equal(response.status, 403);
     assert.equal(response.data.code, "ADMIN_PERMISSION_MANAGE_REQUIRED");
-    assert.equal(client.audits[0]?.data.action, "admin.permission.grant.denied");
+    assert.equal(
+      client.audits[0]?.data.action,
+      "admin.permission.grant.denied",
+    );
   });
 });
 
 async function requestJson(method: string, path: string, body?: unknown) {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method,
-    headers:
-      body == null ? undefined : { "content-type": "application/json" },
+    headers: body == null ? undefined : { "content-type": "application/json" },
     body: body == null ? undefined : JSON.stringify(body),
   });
 

@@ -1,7 +1,10 @@
 # Ciclo de vida seguro para exclusao e anonimizacao de tenant
 
-Status: proposta arquitetural. Nenhum fluxo descrito neste documento esta
-implementado ou autorizado para uso em producao.
+Status: Fases 1 e 2 implementam solicitacao, validacao, dry-run e persistencia
+dedicada. A Fase 3 implementa quarentena operacional reversivel no codigo, mas
+as migrations propostas ainda nao foram aplicadas e o fluxo nao esta
+autorizado para uso em producao. Purge, anonimizacao e execucao final continuam
+nao implementados.
 
 ## 1. Objetivo
 
@@ -189,16 +192,24 @@ irreversivel ainda nao ocorreu. Ela permite:
 
 Ao entrar em `PENDING_DELETION`, o sistema deve:
 
-- definir `Company.isActive=false` ou controle equivalente;
-- definir `License.syncEnabled=false`;
+- usar `TenantDeletionRequest.status=FUTURE_PENDING_DELETION` e
+  `activeCompanyGuard` como controle equivalente, sem alterar
+  `Company.isActive`;
+- preservar `License`, billing e `License.syncEnabled` sem mutacao nesta fase;
 - rejeitar login, refresh de token, escrita e sync;
 - impedir novos checkouts e mudancas de plano;
-- revogar todas as sessoes do tenant;
-- revogar ou bloquear todos os dispositivos;
+- revogar sessoes operacionais e dispositivos do tenant;
+- preservar sessoes `ADMIN_WEB` de platform admins autorizados para suporte,
+  sem bypass de RBAC para as acoes do workflow;
 - registrar auditoria before/after.
 
 O bloqueio precisa ser transacional ou compensavel. Nao deve existir uma janela
 em que o tenant esteja marcado para exclusao e ainda consiga gravar dados.
+
+Na implementacao da Fase 3, o cancelamento restaura cada dispositivo ao estado
+anterior (`ACTIVE`, `PENDING` ou `BLOCKED`). Sessoes revogadas nao sao
+reativadas: apos o cancelamento, o usuario deve realizar novo login. Essa
+decisao evita reutilizar refresh tokens invalidados.
 
 ### 8.5 Clearance financeiro
 

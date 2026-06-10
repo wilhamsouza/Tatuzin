@@ -71,6 +71,18 @@ const tenantDeletionPermissionDefinitions: AdminPermissionDefinition[] = [
     requiresPersistentAudit: true,
     requiresExplicitConfirmation: false,
   },
+  {
+    permissionKey: tenantDeletionPermissionKeys[4],
+    description:
+      "Permite colocar tenant em quarentena operacional reversivel, bloqueando acesso e sync sem excluir dados.",
+    riskLevel: "critical",
+    scopes: ["platform", "company"],
+    category: "tenant-deletion",
+    requiresDryRun: true,
+    requiresReason: true,
+    requiresPersistentAudit: true,
+    requiresExplicitConfirmation: true,
+  },
 ];
 
 export const adminPermissionDefinitions: AdminPermissionDefinition[] = [

@@ -92,6 +92,23 @@ final adminUserPermissionsProvider =
           .fetchAdminUserPermissions(adminUserId);
     });
 
+final adminCurrentUserPermissionsProvider =
+    FutureProvider<AdminUserPermissionsSnapshot>((ref) async {
+      ref.watch(adminRefreshTickProvider);
+      final session = ref.watch(adminAuthControllerProvider).session;
+      if (session == null) {
+        return const AdminUserPermissionsSnapshot(
+          adminUserId: '',
+          activePermissions: <AdminUserPermission>[],
+          inactivePermissions: <AdminUserPermission>[],
+          auditEventId: null,
+        );
+      }
+      return ref
+          .watch(adminApiServiceProvider)
+          .fetchOwnAdminPermissions(adminUserId: session.user.id);
+    });
+
 final adminTenantDeletionRequestsProvider =
     FutureProvider.family<
       AdminTenantDeletionRequestsSnapshot,

@@ -6,10 +6,12 @@ import {
   tenantDeletionCreateRequestSchema,
   tenantDeletionDryRunSchema,
   tenantDeletionListQuerySchema,
+  tenantDeletionQuarantineSchema,
   tenantDeletionReasonSchema,
   type TenantDeletionCreateRequestInput,
   type TenantDeletionDryRunInput,
   type TenantDeletionListQueryInput,
+  type TenantDeletionQuarantineInput,
   type TenantDeletionReasonInput,
 } from "./tenant-deletion.schemas";
 import { TenantDeletionService } from "./tenant-deletion.service";
@@ -23,6 +25,7 @@ type TenantDeletionRouterDependencies = {
     | "createRequest"
     | "markIdentityPending"
     | "verifyIdentity"
+    | "quarantineRequest"
     | "cancelRequest"
     | "rejectRequest"
     | "dryRun"
@@ -110,6 +113,22 @@ export function createTenantDeletionRouter(
     asyncHandler(async (request, response) => {
       const body = request.body as TenantDeletionReasonInput;
       const payload = await service.verifyIdentity({
+        ...body,
+        requestId: readParam(request.params.requestId),
+        actorAdminId: request.auth!.userId,
+        ipAddress: request.ip,
+        userAgent: request.get("user-agent") ?? null,
+      });
+      response.status(statusCodeFor(payload)).json(payload);
+    }),
+  );
+
+  router.post(
+    "/requests/:requestId/quarantine",
+    validateBody(tenantDeletionQuarantineSchema),
+    asyncHandler(async (request, response) => {
+      const body = request.body as TenantDeletionQuarantineInput;
+      const payload = await service.quarantineRequest({
         ...body,
         requestId: readParam(request.params.requestId),
         actorAdminId: request.auth!.userId,

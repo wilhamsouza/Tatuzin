@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:tatuzin_admin_web/src/core/auth/admin_auth_storage.dart';
 import 'package:tatuzin_admin_web/src/core/auth/admin_providers.dart';
+import 'package:tatuzin_admin_web/src/core/models/admin_permissions_models.dart';
 import 'package:tatuzin_admin_web/src/core/models/admin_tenant_deletion_models.dart';
 import 'package:tatuzin_admin_web/src/core/network/admin_api_client.dart';
 import 'package:tatuzin_admin_web/src/core/network/admin_api_service.dart';
@@ -136,6 +137,53 @@ void main() {
     expect(requests, isEmpty);
   });
 
+  test(
+    'API envia quarentena e cancelamento sem campos administrativos',
+    () async {
+      final requests = <http.Request>[];
+      final storage = AdminAuthStorage();
+      await storage.saveTokens(
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+      );
+      final service = AdminApiService(
+        apiClient: AdminApiClient(
+          baseUrl: 'https://api.test/api',
+          authStorage: storage,
+          httpClient: MockClient((request) async {
+            requests.add(request);
+            return http.Response(jsonEncode(_createPayload()), 200);
+          }),
+        ),
+        authStorage: storage,
+      );
+
+      await service.quarantineTenantDeletion(
+        companyId: 'company-1',
+        requestId: _requestId,
+        reason: 'Quarentena aprovada apos analise operacional',
+        confirmation: 'QUARENTENA',
+      );
+      await service.cancelTenantDeletion(
+        companyId: 'company-1',
+        requestId: _requestId,
+        reason: 'Solicitacao retirada pelo titular validado',
+      );
+
+      expect(requests.map((request) => request.url.path), [
+        '/api/admin/tenant-deletion/requests/$_requestId/quarantine',
+        '/api/admin/tenant-deletion/requests/$_requestId/cancel',
+      ]);
+      final quarantineBody =
+          jsonDecode(requests.first.body) as Map<String, dynamic>;
+      expect(quarantineBody['confirmation'], 'QUARENTENA');
+      expect(quarantineBody.containsKey('actorAdminId'), isFalse);
+      expect(quarantineBody.containsKey('permissionKeys'), isFalse);
+      final cancelBody = jsonDecode(requests.last.body) as Map<String, dynamic>;
+      expect(cancelBody.containsKey('confirmation'), isFalse);
+    },
+  );
+
   testWidgets('tela deixa claro que o workflow e dedicado e nao destrutivo', (
     tester,
   ) async {
@@ -146,13 +194,97 @@ void main() {
 
     expect(find.text('Registrar solicitacao'), findsNWidgets(2));
     expect(find.text('Inventario dry-run'), findsOneWidget);
-    expect(find.textContaining('Workflow persistido e seguro'), findsOneWidget);
+    expect(find.textContaining('Workflow seguro'), findsOneWidget);
     expect(
-      find.textContaining('Execucao real continua indisponivel'),
+      find.textContaining('execucao final continuam indisponiveis'),
       findsOneWidget,
     );
     expect(find.text('Excluir empresa'), findsNothing);
     expect(find.text('Executar exclusao'), findsNothing);
+  });
+
+  testWidgets('quarentena exige permissao, motivo e confirmacao explicita', (
+    tester,
+  ) async {
+    final service = _FakeTenantDeletionApiService(
+      requestStatus: 'DRY_RUN_READY',
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        service,
+        permissions: _permissions('tenant.deletion.quarantine'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Colocar em quarentena'), findsOneWidget);
+    await tester.ensureVisible(find.text('Colocar em quarentena'));
+    await tester.tap(find.text('Colocar em quarentena'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Os dados permanecem preservados'),
+      findsOneWidget,
+    );
+    await tester.enterText(
+      _textFieldWithLabel('Motivo obrigatorio'),
+      'Quarentena aprovada apos analise operacional',
+    );
+    await tester.enterText(
+      _textFieldWithLabel('Confirmacao explicita'),
+      'QUARENTENA',
+    );
+    final confirmButton = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.widgetWithText(FilledButton, 'Colocar em quarentena'),
+    );
+    await tester.tap(confirmButton);
+    await tester.pumpAndSettle();
+
+    expect(service.quarantineCalls, 1);
+    expect(service.lastConfirmation, 'QUARENTENA');
+    expect(
+      find.textContaining('Quarentena operacional registrada'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('cancelamento de quarentena preserva aviso de novo login', (
+    tester,
+  ) async {
+    final service = _FakeTenantDeletionApiService(
+      requestStatus: 'FUTURE_PENDING_DELETION',
+    );
+
+    await tester.pumpWidget(
+      _testApp(service, permissions: _permissions('tenant.deletion.cancel')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Cancelar quarentena'));
+    await tester.tap(find.text('Cancelar quarentena'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('sessoes revogadas nao serao reativadas'),
+      findsOneWidget,
+    );
+    await tester.enterText(
+      _textFieldWithLabel('Motivo obrigatorio'),
+      'Solicitacao retirada pelo titular validado',
+    );
+    await tester.enterText(
+      _textFieldWithLabel('Confirmacao explicita'),
+      'CANCELAR QUARENTENA',
+    );
+    final confirmButton = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.widgetWithText(FilledButton, 'Cancelar quarentena'),
+    );
+    await tester.tap(confirmButton);
+    await tester.pumpAndSettle();
+
+    expect(service.cancelCalls, 1);
   });
 
   testWidgets('tela registra solicitacao e persiste snapshot dry-run', (
@@ -195,9 +327,18 @@ void main() {
   });
 }
 
-Widget _testApp(AdminApiService service) {
+Widget _testApp(
+  AdminApiService service, {
+  AdminUserPermissionsSnapshot? permissions,
+}) {
   return ProviderScope(
-    overrides: [adminApiServiceProvider.overrideWithValue(service)],
+    overrides: [
+      adminApiServiceProvider.overrideWithValue(service),
+      if (permissions != null)
+        adminCurrentUserPermissionsProvider.overrideWith(
+          (ref) async => permissions,
+        ),
+    ],
     child: const MaterialApp(
       home: Scaffold(
         body: Padding(padding: EdgeInsets.all(16), child: TenantDeletionPage()),
@@ -213,7 +354,7 @@ Finder _textFieldWithLabel(String label) {
 }
 
 class _FakeTenantDeletionApiService extends AdminApiService {
-  _FakeTenantDeletionApiService()
+  _FakeTenantDeletionApiService({this.requestStatus = 'REQUESTED'})
     : super(
         apiClient: AdminApiClient(
           baseUrl: 'https://api.test/api',
@@ -223,16 +364,22 @@ class _FakeTenantDeletionApiService extends AdminApiService {
         authStorage: AdminAuthStorage(),
       );
 
+  final String requestStatus;
   int createCalls = 0;
   int dryRunCalls = 0;
+  int quarantineCalls = 0;
+  int cancelCalls = 0;
   String? lastCreatedCompanyId;
   String? lastDryRunRequestId;
+  String? lastConfirmation;
 
   @override
   Future<AdminTenantDeletionRequestsSnapshot> fetchTenantDeletionRequests({
     AdminTenantDeletionQuery query = const AdminTenantDeletionQuery(),
   }) async {
-    return AdminTenantDeletionRequestsSnapshot.fromMap(_requestsPayload());
+    return AdminTenantDeletionRequestsSnapshot.fromMap(
+      _requestsPayload(status: requestStatus),
+    );
   }
 
   @override
@@ -258,34 +405,60 @@ class _FakeTenantDeletionApiService extends AdminApiService {
     lastDryRunRequestId = requestId;
     return AdminTenantDeletionDryRunResponse.fromMap(_dryRunPayload());
   }
+
+  @override
+  Future<AdminTenantDeletionMutationResult> quarantineTenantDeletion({
+    required String companyId,
+    required String requestId,
+    required String reason,
+    required String confirmation,
+  }) async {
+    quarantineCalls++;
+    lastConfirmation = confirmation;
+    return AdminTenantDeletionMutationResult.fromMap(
+      _createPayload(status: 'FUTURE_PENDING_DELETION'),
+    );
+  }
+
+  @override
+  Future<AdminTenantDeletionMutationResult> cancelTenantDeletion({
+    required String companyId,
+    required String requestId,
+    required String reason,
+  }) async {
+    cancelCalls++;
+    return AdminTenantDeletionMutationResult.fromMap(
+      _createPayload(status: 'CANCELLED'),
+    );
+  }
 }
 
-Map<String, dynamic> _requestsPayload() {
+Map<String, dynamic> _requestsPayload({String status = 'REQUESTED'}) {
   return <String, dynamic>{
     'ok': true,
     'code': 'TENANT_DELETION_REQUEST_LISTED',
     'message': 'Solicitacoes listadas.',
     'auditEventId': null,
-    'requests': <Map<String, dynamic>>[_requestPayload()],
+    'requests': <Map<String, dynamic>>[_requestPayload(status: status)],
   };
 }
 
-Map<String, dynamic> _createPayload() {
+Map<String, dynamic> _createPayload({String status = 'REQUESTED'}) {
   return <String, dynamic>{
     'ok': true,
     'code': 'TENANT_DELETION_REQUEST_RECORDED',
     'message': 'Solicitacao registrada.',
     'auditEventId': 'audit-1',
-    'request': _requestPayload(),
+    'request': _requestPayload(status: status),
   };
 }
 
-Map<String, dynamic> _requestPayload() {
+Map<String, dynamic> _requestPayload({String status = 'REQUESTED'}) {
   return <String, dynamic>{
     'requestId': _requestId,
     'company': _companyPayload(),
-    'status': 'REQUESTED',
-    'identityStatus': 'NOT_STARTED',
+    'status': status,
+    'identityStatus': status == 'REQUESTED' ? 'NOT_STARTED' : 'VERIFIED',
     'source': 'web',
     'createdAt': '2026-06-07T12:00:00.000Z',
     'updatedAt': '2026-06-07T12:00:00.000Z',
@@ -297,8 +470,31 @@ Map<String, dynamic> _requestPayload() {
       'email': 'titular@example.com',
       'channel': 'web',
     },
-    'dryRunSummary': null,
+    'dryRunSummary': status == 'REQUESTED'
+        ? null
+        : <String, dynamic>{'categories': 10, 'blockers': 2},
   };
+}
+
+AdminUserPermissionsSnapshot _permissions(String permissionKey) {
+  return AdminUserPermissionsSnapshot(
+    adminUserId: 'admin-1',
+    activePermissions: <AdminUserPermission>[
+      AdminUserPermission(
+        id: 'permission-1',
+        actorUserId: 'admin-1',
+        permissionKey: permissionKey,
+        scope: 'platform',
+        scopeId: '*',
+        isActive: true,
+        createdAt: DateTime.utc(2026, 6, 10),
+        updatedAt: DateTime.utc(2026, 6, 10),
+        revokedAt: null,
+      ),
+    ],
+    inactivePermissions: const <AdminUserPermission>[],
+    auditEventId: 'permission-audit',
+  );
 }
 
 Map<String, dynamic> _dryRunPayload() {

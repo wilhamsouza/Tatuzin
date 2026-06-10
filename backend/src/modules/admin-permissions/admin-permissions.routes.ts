@@ -12,6 +12,7 @@ type AdminPermissionsRouterDependencies = {
   service?: Pick<
     AdminPermissionsService,
     | "listKnownPermissions"
+    | "listOwnPermissions"
     | "listAdminPermissions"
     | "grantPermission"
     | "revokePermission"
@@ -51,11 +52,23 @@ export function createAdminPermissionsRouter(
   );
 
   router.get(
+    "/me",
+    asyncHandler(async (request, response) => {
+      const payload = await service.listOwnPermissions({
+        actorAdminId: request.auth!.userId,
+      });
+      response.status(statusCodeFor(payload)).json(payload);
+    }),
+  );
+
+  router.get(
     "/users/:adminUserId",
     asyncHandler(async (request, response) => {
       const targetAdminId = readRequiredParam(request.params.adminUserId);
       if (targetAdminId == null) {
-        response.status(422).json(validationResponse("adminUserId obrigatorio."));
+        response
+          .status(422)
+          .json(validationResponse("adminUserId obrigatorio."));
         return;
       }
 
@@ -120,9 +133,12 @@ async function handlePermissionMutation(input: {
 
   const parsedBody = adminPermissionMutationBodySchema.safeParse(input.rawBody);
   if (!parsedBody.success) {
-    const payload = validationResponse("Payload de permissao administrativa invalido.", {
-      issues: parsedBody.error.flatten(),
-    });
+    const payload = validationResponse(
+      "Payload de permissao administrativa invalido.",
+      {
+        issues: parsedBody.error.flatten(),
+      },
+    );
     await auditInvalidPayload(input, payload);
     input.response.status(422).json(payload);
     return;

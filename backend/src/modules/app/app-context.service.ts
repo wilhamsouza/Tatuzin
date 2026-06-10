@@ -6,10 +6,15 @@ import { AppError } from "../../shared/http/app-error";
 import { logger } from "../../shared/observability/logger";
 import { EmployeeContextService } from "../employees/employee-context.service";
 import { getPlanEntitlements } from "../plans/plan-catalog.service";
+import { TenantLifecycleService } from "../tenant-deletion/tenant-lifecycle.service";
 import type { AppContext } from "./app-context.types";
 
 export class AppContextService {
   private readonly employeeContextService = new EmployeeContextService();
+
+  constructor(
+    private readonly tenantLifecycleService = new TenantLifecycleService(),
+  ) {}
 
   async resolveFromRequest(request: Request): Promise<AppContext> {
     const auth = request.auth;
@@ -82,6 +87,10 @@ export class AppContextService {
         "COMPANY_REQUIRED",
       );
     }
+
+    await this.tenantLifecycleService.assertTenantOperational(
+      membership.companyId,
+    );
 
     const license = membership.company.license;
     if (license == null) {

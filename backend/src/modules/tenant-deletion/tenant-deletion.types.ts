@@ -19,6 +19,8 @@ export type TenantDeletionAction =
   | "tenant.deletion.identity_pending"
   | "tenant.deletion.verified"
   | "tenant.deletion.dry_run"
+  | "tenant.deletion.quarantined"
+  | "tenant.deletion.quarantine_cancelled"
   | "tenant.deletion.cancelled"
   | "tenant.deletion.rejected";
 
@@ -29,6 +31,7 @@ export type TenantDeletionOperationCode =
   | "TENANT_DELETION_IDENTITY_PENDING_RECORDED"
   | "TENANT_DELETION_IDENTITY_VERIFIED"
   | "TENANT_DELETION_DRY_RUN_READY"
+  | "TENANT_DELETION_QUARANTINED"
   | "TENANT_DELETION_CANCELLED"
   | "TENANT_DELETION_REJECTED"
   | "TENANT_DELETION_ACTOR_REQUIRED"
