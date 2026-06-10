@@ -747,8 +747,8 @@ describe("operational local-first sync routes", () => {
         payload: {
           uuid: entityLocalId,
           status: "fechado",
-          openedAt: "2026-05-14T12:29:31.566712",
-          closedAt: "2026-05-15T08:59:26.391953",
+          openedAt: "2026-05-14T12:29:31.566712-03:00",
+          closedAt: "2026-05-15T08:59:26.391953-03:00",
           initialFloatCents: 0,
           expectedBalanceCents: 130400,
           countedBalanceCents: 130400,
@@ -804,7 +804,7 @@ describe("operational local-first sync routes", () => {
         payload: {
           uuid: entityLocalId,
           status: "aberto",
-          openedAt: "2026-05-14T12:29:31.566712",
+          openedAt: "2026-05-14T12:29:31.566712-03:00",
           initialFloatCents: 0,
           operatorName: "wilham",
           _sync: {
