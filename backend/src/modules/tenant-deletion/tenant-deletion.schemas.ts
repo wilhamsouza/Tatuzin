@@ -1,8 +1,15 @@
 import { z } from "zod";
 
+import { tenantDeletionStatuses } from "./tenant-deletion.types";
+
 export const tenantDeletionListQuerySchema = z.object({
   companyId: z.string().trim().min(1).optional(),
-  status: z.string().trim().min(1).optional(),
+  status: z
+    .string()
+    .trim()
+    .transform((value) => value.toUpperCase())
+    .pipe(z.enum(tenantDeletionStatuses))
+    .optional(),
 });
 
 const reasonSchema = z
@@ -27,7 +34,7 @@ export const tenantDeletionReasonSchema = z.object({
 
 export const tenantDeletionDryRunSchema = z.object({
   reason: reasonSchema,
-  requestId: z.string().trim().min(1).max(120).optional(),
+  requestId: z.string().uuid("requestId deve ser um UUID valido."),
 });
 
 export type TenantDeletionListQueryInput = z.infer<

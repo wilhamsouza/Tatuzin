@@ -38,7 +38,7 @@ const tenantDeletionPermissionDefinitions: AdminPermissionDefinition[] = [
   {
     permissionKey: tenantDeletionPermissionKeys[1],
     description:
-      "Permite registrar e rejeitar solicitacoes de exclusao de tenant sem executar exclusao real.",
+      "Permite registrar solicitacoes e iniciar a validacao de identidade sem executar exclusao real.",
     riskLevel: "critical",
     scopes: ["platform", "company"],
     category: "tenant-deletion",
@@ -62,7 +62,7 @@ const tenantDeletionPermissionDefinitions: AdminPermissionDefinition[] = [
   {
     permissionKey: tenantDeletionPermissionKeys[3],
     description:
-      "Permite cancelar solicitacao de exclusao de tenant sem alterar dados da empresa.",
+      "Permite cancelar ou rejeitar solicitacao de exclusao de tenant sem alterar dados da empresa.",
     riskLevel: "critical",
     scopes: ["platform", "company"],
     category: "tenant-deletion",

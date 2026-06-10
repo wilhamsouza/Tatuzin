@@ -81,6 +81,8 @@ class AdminTenantDeletionRequest {
     required this.requestId,
     required this.company,
     required this.status,
+    required this.identityStatus,
+    required this.source,
     required this.createdAt,
     required this.updatedAt,
     required this.latestAuditEventId,
@@ -93,6 +95,8 @@ class AdminTenantDeletionRequest {
   final String requestId;
   final AdminTenantDeletionCompany? company;
   final String status;
+  final String identityStatus;
+  final String source;
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final String latestAuditEventId;
@@ -111,6 +115,12 @@ class AdminTenantDeletionRequest {
           ? AdminTenantDeletionCompany.fromMap(company)
           : null,
       status: _readString(map, 'status', fallback: 'REQUESTED'),
+      identityStatus: _readString(
+        map,
+        'identityStatus',
+        fallback: 'NOT_STARTED',
+      ),
+      source: _readString(map, 'source', fallback: 'admin_web'),
       createdAt: _readOptionalDateTime(map, 'createdAt'),
       updatedAt: _readOptionalDateTime(map, 'updatedAt'),
       latestAuditEventId: _readString(map, 'latestAuditEventId'),
@@ -291,7 +301,7 @@ class AdminTenantDeletionDryRun {
       persistenceMode: _readString(
         map,
         'persistenceMode',
-        fallback: 'admin_audit_log_foundation',
+        fallback: 'tenant_deletion_request',
       ),
       categories: (map['categories'] as List<dynamic>? ?? const <dynamic>[])
           .whereType<Map<String, dynamic>>()

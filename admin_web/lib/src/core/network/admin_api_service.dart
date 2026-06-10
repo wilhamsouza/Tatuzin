@@ -303,10 +303,11 @@ class AdminApiService {
   Future<AdminTenantDeletionDryRunResponse> dryRunTenantDeletion({
     required String companyId,
     required String reason,
-    String? requestId,
+    required String requestId,
   }) async {
     final normalizedCompanyId = companyId.trim();
     final normalizedReason = reason.trim();
+    final normalizedRequestId = requestId.trim();
     if (normalizedCompanyId.isEmpty) {
       throw const AdminApiException(
         message: 'Informe a empresa para gerar o dry-run.',
@@ -319,14 +320,19 @@ class AdminApiService {
         code: 'TENANT_DELETION_REASON_REQUIRED',
       );
     }
+    if (normalizedRequestId.isEmpty) {
+      throw const AdminApiException(
+        message: 'Informe o requestId da solicitacao.',
+        code: 'TENANT_DELETION_REQUEST_REQUIRED',
+      );
+    }
 
     final response = await _apiClient.postJson(
       '/admin/tenant-deletion/companies/$normalizedCompanyId/dry-run',
       accessToken: await _readRequiredToken(),
       body: <String, dynamic>{
         'reason': normalizedReason,
-        if (requestId != null && requestId.trim().isNotEmpty)
-          'requestId': requestId.trim(),
+        'requestId': normalizedRequestId,
       },
     );
     if (response is! Map<String, dynamic>) {

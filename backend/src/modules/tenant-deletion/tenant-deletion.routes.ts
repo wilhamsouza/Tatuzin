@@ -19,6 +19,7 @@ type TenantDeletionRouterDependencies = {
   service?: Pick<
     TenantDeletionService,
     | "listRequests"
+    | "getRequest"
     | "createRequest"
     | "markIdentityPending"
     | "verifyIdentity"
@@ -67,6 +68,19 @@ export function createTenantDeletionRouter(
       const payload = await service.createRequest({
         ...body,
         actorAdminId: request.auth!.userId,
+        ipAddress: request.ip,
+        userAgent: request.get("user-agent") ?? null,
+      });
+      response.status(statusCodeFor(payload)).json(payload);
+    }),
+  );
+
+  router.get(
+    "/requests/:requestId",
+    asyncHandler(async (request, response) => {
+      const payload = await service.getRequest({
+        actorAdminId: request.auth!.userId,
+        requestId: readParam(request.params.requestId),
         ipAddress: request.ip,
         userAgent: request.get("user-agent") ?? null,
       });
@@ -169,7 +183,10 @@ function statusCodeFor(payload: TenantDeletionOperationResult) {
     case "TENANT_DELETION_PERMISSION_REQUIRED":
       return 403;
     case "TENANT_DELETION_COMPANY_NOT_FOUND":
+    case "TENANT_DELETION_REQUEST_NOT_FOUND":
       return 404;
+    case "TENANT_DELETION_STATE_CONFLICT":
+      return 409;
     case "TENANT_DELETION_COMPANY_REQUIRED":
     case "TENANT_DELETION_REASON_REQUIRED":
     case "TENANT_DELETION_REQUEST_REQUIRED":

@@ -10,25 +10,15 @@ import type { TenantDeletionPermissionKey } from "../admin-permissions/admin-per
 import { TenantDeletionRbacService } from "./tenant-deletion.rbac";
 import type {
   TenantDeletionAction,
-  TenantDeletionAdminAuditEvent,
-  TenantDeletionAuditDetails,
   TenantDeletionBlocker,
   TenantDeletionCompanySummary,
   TenantDeletionDryRun,
   TenantDeletionInventoryCategory,
   TenantDeletionOperationResult,
+  TenantDeletionPersistedRequest,
   TenantDeletionRequestSummary,
   TenantDeletionStatus,
 } from "./tenant-deletion.types";
-
-const tenantDeletionActions: TenantDeletionAction[] = [
-  "tenant.deletion.requested",
-  "tenant.deletion.identity_pending",
-  "tenant.deletion.verified",
-  "tenant.deletion.dry_run",
-  "tenant.deletion.cancelled",
-  "tenant.deletion.rejected",
-];
 
 type CountDelegate = {
   count(input: { where?: Record<string, unknown> }): Promise<number>;
@@ -40,8 +30,26 @@ type TenantDeletionClient = {
   };
   adminAuditLog: {
     create(input: Record<string, unknown>): Promise<{ id: string }>;
-    findMany(input: Record<string, unknown>): Promise<TenantDeletionAdminAuditEvent[]>;
   };
+  tenantDeletionRequest: {
+    findMany(input: Record<string, unknown>): Promise<TenantDeletionPersistedRequest[]>;
+    findUnique(input: Record<string, unknown>): Promise<TenantDeletionPersistedRequest | null>;
+    findFirst(input: Record<string, unknown>): Promise<TenantDeletionPersistedRequest | null>;
+    create(input: Record<string, unknown>): Promise<TenantDeletionPersistedRequest>;
+    update(input: Record<string, unknown>): Promise<TenantDeletionPersistedRequest>;
+    updateMany(input: Record<string, unknown>): Promise<{ count: number }>;
+  };
+  tenantDeletionAuditEvent: {
+    create(input: Record<string, unknown>): Promise<{
+      id: string;
+      eventType: string;
+      reason: string | null;
+      createdAt: Date;
+    }>;
+  };
+  $transaction?<T>(
+    operation: (client: TenantDeletionClient) => Promise<T>,
+  ): Promise<T>;
 };
 
 type TenantDeletionRbac = Pick<TenantDeletionRbacService, "hasPermission">;
@@ -53,6 +61,19 @@ type ActorInput = {
 };
 
 export class TenantDeletionService {
+  private readonly activeStatuses: TenantDeletionStatus[] = [
+    "REQUESTED",
+    "IDENTITY_PENDING",
+    "VERIFIED",
+    "DRY_RUN_READY",
+    "FUTURE_PENDING_DELETION",
+  ];
+
+  private readonly requestInclude = {
+    company: { include: { license: true } },
+    auditEvents: { orderBy: { createdAt: "desc" }, take: 1 },
+  };
+
   constructor(
     private readonly client: TenantDeletionClient =
       prisma as unknown as TenantDeletionClient,
@@ -83,52 +104,89 @@ export class TenantDeletionService {
       return permission;
     }
 
-    const events = await this.client.adminAuditLog.findMany({
+    const requests = await this.client.tenantDeletionRequest.findMany({
       where: {
-        action: { in: tenantDeletionActions },
-        ...(companyId == null ? {} : { targetCompanyId: companyId }),
+        ...(companyId == null ? {} : { companyId }),
+        ...(input.status == null
+          ? {}
+          : { status: input.status.trim().toUpperCase() }),
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { updatedAt: "desc" },
       take: 250,
-      include: { targetCompany: { include: { license: true } } },
+      include: this.requestInclude,
     });
-
-    const byRequestId = new Map<string, TenantDeletionAdminAuditEvent[]>();
-    for (const event of events) {
-      const details = this.readDetails(event.details);
-      if (details?.requestId == null) {
-        continue;
-      }
-      const list = byRequestId.get(details.requestId) ?? [];
-      list.push(event);
-      byRequestId.set(details.requestId, list);
-    }
-
     const requestedStatus = this.normalizeOptional(input.status)?.toUpperCase();
-    const requests = [...byRequestId.values()]
-      .map((requestEvents) => this.toRequestSummary(requestEvents))
-      .filter((request) =>
-        requestedStatus == null ? true : request.status === requestedStatus,
-      );
+    const items = requests.map((request) => this.toRequestSummary(request));
+    const auditEventId = await this.recordAdminAudit(this.client, {
+      actorAdminId: actor,
+      companyId,
+      action: "tenant.deletion.list",
+      details: {
+        filters: { companyId, status: requestedStatus ?? null },
+        resultCount: items.length,
+        persistenceMode: "tenant_deletion_request",
+      },
+    });
 
     return {
       ok: true,
       code: "TENANT_DELETION_REQUEST_LISTED",
       message: "Solicitacoes de exclusao de tenant listadas.",
-      auditEventId: null,
-      requests,
+      auditEventId,
+      requests: items,
       details: buildAdminListResponse({
-        items: requests,
+        items,
         page: 1,
-        pageSize: requests.length,
-        total: requests.length,
+        pageSize: items.length,
+        total: items.length,
         filters: {
           companyId,
           status: requestedStatus ?? null,
-          persistenceMode: "admin_audit_log_foundation",
+          persistenceMode: "tenant_deletion_request",
         },
         sort: { by: "updatedAt", direction: "desc" },
       }),
+    };
+  }
+
+  async getRequest(input: ActorInput & {
+    requestId: string;
+  }): Promise<TenantDeletionOperationResult> {
+    const actor = this.normalizeRequiredActor(input.actorAdminId);
+    if (actor == null) {
+      return this.actorRequired();
+    }
+    const request = await this.findRequest(input.requestId);
+    if (request == null) {
+      return this.requestNotFound(input.requestId);
+    }
+    const permission = await this.ensurePermission({
+      actorAdminId: actor,
+      permissionKey: "tenant.deletion.read",
+      companyId: request.companyId,
+      deniedAction: "tenant.deletion.get.denied",
+      reason: null,
+    });
+    if (!permission.ok) {
+      return permission;
+    }
+
+    const audit = await this.recordWorkflowEvent(this.client, {
+      request,
+      actorAdminId: actor,
+      eventType: "REQUEST_VIEWED",
+      action: "tenant.deletion.viewed",
+      reason: null,
+      before: this.workflowState(request),
+      after: this.workflowState(request),
+      metadata: this.actorMetadata(input),
+    });
+    return {
+      ok: true,
+      code: "TENANT_DELETION_REQUEST_FOUND",
+      message: "Solicitacao de exclusao de tenant encontrada.",
+      auditEventId: audit.adminAuditEventId,
+      request: this.toRequestSummary(request, audit.workflowEvent),
     };
   }
 
@@ -164,47 +222,121 @@ export class TenantDeletionService {
       return permission;
     }
 
-    const requestId = `tdr_${randomUUID()}`;
-    const auditEventId = await this.recordAudit({
-      actorAdminId: actor,
-      companyId: company.id,
-      action: "tenant.deletion.requested",
-      reason,
-      details: {
-        requestId,
-        status: "REQUESTED",
-        reason,
-        requester: {
-          name: this.normalizeOptional(input.requesterName),
-          email: this.normalizeOptional(input.requesterEmail),
-          channel: this.normalizeOptional(input.requesterChannel),
+    const existing = await this.client.tenantDeletionRequest.findFirst({
+      where: {
+        companyId: company.id,
+        status: {
+          in: this.activeStatuses,
         },
-        metadata: this.actorMetadata(input),
       },
+      orderBy: { createdAt: "desc" },
+      include: this.requestInclude,
     });
+    if (existing != null) {
+      return this.reuseActiveRequest(existing, input, actor, reason);
+    }
+
+    const requestId = randomUUID();
+    const createdAt = this.now();
+    const source =
+      this.normalizeOptional(input.requesterChannel) ?? "admin_web";
+    let result: {
+      request: TenantDeletionPersistedRequest;
+      audit: Awaited<ReturnType<TenantDeletionService["recordWorkflowEvent"]>>;
+    };
+    try {
+      result = await this.inTransaction(async (client) => {
+        const request = await client.tenantDeletionRequest.create({
+          data: {
+            id: requestId,
+            companyId: company.id,
+            activeCompanyGuard: company.id,
+            status: "REQUESTED",
+            requestedByAdminUserId: actor,
+            requestedByEmail: this.normalizeOptional(input.requesterEmail),
+            requestedCompanyNameSnapshot: company.name,
+            source,
+            reason,
+            identityStatus: "NOT_STARTED",
+            createdAt,
+            updatedAt: createdAt,
+          },
+          include: this.requestInclude,
+        });
+        const audit = await this.recordWorkflowEvent(client, {
+          request,
+          actorAdminId: actor,
+          eventType: "REQUEST_CREATED",
+          action: "tenant.deletion.requested",
+          reason,
+          before: null,
+          after: this.workflowState(request),
+          metadata: {
+            ...this.actorMetadata(input),
+            source,
+            requesterEmailProvided:
+              this.normalizeOptional(input.requesterEmail) != null,
+          },
+        });
+        return { request, audit };
+      });
+    } catch (error) {
+      if (!this.isUniqueConstraintError(error)) {
+        throw error;
+      }
+      const racedRequest = await this.client.tenantDeletionRequest.findFirst({
+        where: {
+          companyId: company.id,
+          status: { in: this.activeStatuses },
+        },
+        orderBy: { createdAt: "desc" },
+        include: this.requestInclude,
+      });
+      if (racedRequest == null) {
+        throw error;
+      }
+      return this.reuseActiveRequest(racedRequest, input, actor, reason);
+    }
 
     return {
       ok: true,
       code: "TENANT_DELETION_REQUEST_RECORDED",
       message:
         "Solicitacao registrada. Nenhuma exclusao, anonimizacao ou quarentena foi executada.",
-      auditEventId,
-      request: {
-        requestId,
-        company,
-        status: "REQUESTED",
-        createdAt: this.now().toISOString(),
-        updatedAt: this.now().toISOString(),
-        latestAuditEventId: auditEventId,
-        latestAction: "tenant.deletion.requested",
-        reason,
-        requester: {
-          name: this.normalizeOptional(input.requesterName),
-          email: this.normalizeOptional(input.requesterEmail),
-          channel: this.normalizeOptional(input.requesterChannel),
-        },
-        dryRunSummary: null,
+      auditEventId: result.audit.adminAuditEventId,
+      request: this.toRequestSummary(
+        result.request,
+        result.audit.workflowEvent,
+      ),
+    };
+  }
+
+  private async reuseActiveRequest(
+    request: TenantDeletionPersistedRequest,
+    input: ActorInput,
+    actorAdminId: string,
+    reason: string,
+  ): Promise<TenantDeletionOperationResult> {
+    const audit = await this.recordWorkflowEvent(this.client, {
+      request,
+      actorAdminId,
+      eventType: "REQUEST_VIEWED",
+      action: "tenant.deletion.request.idempotent_reuse",
+      reason,
+      before: this.workflowState(request),
+      after: this.workflowState(request),
+      metadata: {
+        ...this.actorMetadata(input),
+        idempotentReuse: true,
       },
+    });
+    return {
+      ok: true,
+      code: "TENANT_DELETION_REQUEST_RECORDED",
+      message:
+        "Solicitacao ativa existente reutilizada de forma idempotente. Nenhuma exclusao real foi executada.",
+      auditEventId: audit.adminAuditEventId,
+      request: this.toRequestSummary(request, audit.workflowEvent),
     };
   }
 
@@ -218,7 +350,9 @@ export class TenantDeletionService {
       ...input,
       permissionKey: "tenant.deletion.request.manage",
       action: "tenant.deletion.identity_pending",
+      eventType: "IDENTITY_PENDING_SET",
       status: "IDENTITY_PENDING",
+      identityStatus: "PENDING",
       code: "TENANT_DELETION_IDENTITY_PENDING_RECORDED",
       message:
         "Pendencia de validacao de identidade registrada. Nenhuma exclusao real foi executada.",
@@ -235,7 +369,9 @@ export class TenantDeletionService {
       ...input,
       permissionKey: "tenant.deletion.identity.verify",
       action: "tenant.deletion.verified",
+      eventType: "IDENTITY_VERIFIED",
       status: "VERIFIED",
+      identityStatus: "VERIFIED",
       code: "TENANT_DELETION_IDENTITY_VERIFIED",
       message:
         "Validacao de identidade registrada. Execucao, quarentena e anonimizacao continuam fora desta etapa.",
@@ -252,6 +388,7 @@ export class TenantDeletionService {
       ...input,
       permissionKey: "tenant.deletion.cancel",
       action: "tenant.deletion.cancelled",
+      eventType: "REQUEST_CANCELLED",
       status: "CANCELLED",
       code: "TENANT_DELETION_CANCELLED",
       message:
@@ -267,8 +404,9 @@ export class TenantDeletionService {
   }) {
     return this.recordStatusTransition({
       ...input,
-      permissionKey: "tenant.deletion.request.manage",
+      permissionKey: "tenant.deletion.cancel",
       action: "tenant.deletion.rejected",
+      eventType: "REQUEST_REJECTED",
       status: "REJECTED",
       code: "TENANT_DELETION_REJECTED",
       message:
@@ -279,7 +417,7 @@ export class TenantDeletionService {
   async dryRun(input: ActorInput & {
     companyId: string;
     reason: string;
-    requestId?: string | null;
+    requestId: string;
   }): Promise<TenantDeletionOperationResult> {
     const actor = this.normalizeRequiredActor(input.actorAdminId);
     if (actor == null) {
@@ -290,15 +428,20 @@ export class TenantDeletionService {
       return this.reasonRequired();
     }
 
-    const company = await this.requireCompany(input.companyId);
-    if (company == null) {
-      return this.companyNotFound(input.companyId);
+    const request = await this.findRequest(input.requestId);
+    if (request == null) {
+      return this.requestNotFound(input.requestId);
+    }
+    if (request.companyId !== input.companyId.trim()) {
+      return this.stateConflict(
+        "A solicitacao nao pertence a empresa informada.",
+      );
     }
 
     const permission = await this.ensurePermission({
       actorAdminId: actor,
       permissionKey: "tenant.deletion.read",
-      companyId: company.id,
+      companyId: request.companyId,
       deniedAction: "tenant.deletion.dry_run.denied",
       reason,
     });
@@ -306,33 +449,79 @@ export class TenantDeletionService {
       return permission;
     }
 
-    const dryRun = await this.buildDryRun(company);
-    const requestId =
-      this.normalizeOptional(input.requestId) ?? `tdr_dry_${randomUUID()}`;
-    const auditEventId = await this.recordAudit({
-      actorAdminId: actor,
-      companyId: company.id,
-      action: "tenant.deletion.dry_run",
-      reason,
-      details: {
-        requestId,
-        status: "DRY_RUN_READY",
+    if (this.isTerminal(request.status)) {
+      return this.stateConflict(
+        "Solicitacao finalizada nao pode receber novo dry-run.",
+      );
+    }
+    if (request.status !== "VERIFIED" && request.status !== "DRY_RUN_READY") {
+      return this.stateConflict(
+        "Dry-run exige solicitacao com identidade verificada.",
+      );
+    }
+
+    const dryRun = await this.buildDryRun(
+      this.toCompanySummary(request.company),
+    );
+    const generatedAt = this.now();
+    const snapshot = this.persistedDryRunSnapshot(dryRun);
+    const result = await this.inTransaction(async (client) => {
+      const update = await client.tenantDeletionRequest.updateMany({
+        where: {
+          id: request.id,
+          status: request.status,
+          activeCompanyGuard: request.companyId,
+        },
+        data: {
+          status: "DRY_RUN_READY",
+          dryRunSnapshotJson: snapshot as Prisma.InputJsonValue,
+          dryRunGeneratedAt: generatedAt,
+          updatedAt: generatedAt,
+        },
+      });
+      if (update.count !== 1) {
+        return null;
+      }
+      const updated = await client.tenantDeletionRequest.findUnique({
+        where: { id: request.id },
+        include: this.requestInclude,
+      });
+      if (updated == null) {
+        return null;
+      }
+      const audit = await this.recordWorkflowEvent(client, {
+        request: updated,
+        actorAdminId: actor,
+        eventType: "DRY_RUN_GENERATED",
+        action: "tenant.deletion.dry_run",
         reason,
-        dryRun: {
+        before: this.workflowState(request),
+        after: this.workflowState(updated),
+        metadata: {
+          ...this.actorMetadata(input),
           categories: dryRun.categories.length,
           blockers: dryRun.blockers.length,
           blockerKeys: dryRun.blockers.map((blocker) => blocker.key),
         },
-        metadata: this.actorMetadata(input),
-      },
+      });
+      return { request: updated, audit };
     });
+    if (result == null) {
+      return this.stateConflict(
+        "A solicitacao foi alterada por outra acao. Recarregue antes de gerar o dry-run.",
+      );
+    }
 
     return {
       ok: true,
       code: "TENANT_DELETION_DRY_RUN_READY",
       message:
         "Inventario dry-run gerado. Nenhuma exclusao, anonimizacao, desativacao ou cancelamento de billing foi executado.",
-      auditEventId,
+      auditEventId: result.audit.adminAuditEventId,
+      request: this.toRequestSummary(
+        result.request,
+        result.audit.workflowEvent,
+      ),
       dryRun,
     };
   }
@@ -344,7 +533,13 @@ export class TenantDeletionService {
     note?: string | null;
     permissionKey: TenantDeletionPermissionKey;
     action: TenantDeletionAction;
+    eventType:
+      | "IDENTITY_PENDING_SET"
+      | "IDENTITY_VERIFIED"
+      | "REQUEST_CANCELLED"
+      | "REQUEST_REJECTED";
     status: TenantDeletionStatus;
+    identityStatus?: "PENDING" | "VERIFIED";
     code: TenantDeletionOperationResult["code"];
     message: string;
   }): Promise<TenantDeletionOperationResult> {
@@ -361,15 +556,20 @@ export class TenantDeletionService {
       return this.requestRequired();
     }
 
-    const company = await this.requireCompany(input.companyId);
-    if (company == null) {
-      return this.companyNotFound(input.companyId);
+    const request = await this.findRequest(requestId);
+    if (request == null) {
+      return this.requestNotFound(requestId);
+    }
+    if (request.companyId !== input.companyId.trim()) {
+      return this.stateConflict(
+        "A solicitacao nao pertence a empresa informada.",
+      );
     }
 
     const permission = await this.ensurePermission({
       actorAdminId: actor,
       permissionKey: input.permissionKey,
-      companyId: company.id,
+      companyId: request.companyId,
       deniedAction: `${input.action}.denied`,
       reason,
     });
@@ -377,39 +577,93 @@ export class TenantDeletionService {
       return permission;
     }
 
-    const auditEventId = await this.recordAudit({
-      actorAdminId: actor,
-      companyId: company.id,
-      action: input.action,
-      reason,
-      details: {
-        requestId,
-        status: input.status,
+    if (this.isTerminal(request.status)) {
+      if (request.status !== input.status) {
+        return this.stateConflict(
+          "Solicitacao finalizada nao permite nova transicao.",
+        );
+      }
+      const audit = await this.recordWorkflowEvent(this.client, {
+        request,
+        actorAdminId: actor,
+        eventType: input.eventType,
+        action: `${input.action}.idempotent`,
         reason,
+        before: this.workflowState(request),
+        after: this.workflowState(request),
+        metadata: {
+          ...this.actorMetadata(input),
+          note: this.normalizeOptional(input.note),
+          idempotent: true,
+        },
+      });
+      return {
+        ok: true,
+        code: input.code,
+        message: input.message,
+        auditEventId: audit.adminAuditEventId,
+        request: this.toRequestSummary(request, audit.workflowEvent),
+      };
+    }
+
+    const transitionError = this.validateTransition(
+      request.status,
+      input.status,
+    );
+    if (transitionError != null) {
+      return this.stateConflict(transitionError);
+    }
+
+    const changedAt = this.now();
+    const result = await this.inTransaction(async (client) => {
+      const update = await client.tenantDeletionRequest.updateMany({
+        where: {
+          id: request.id,
+          status: request.status,
+          activeCompanyGuard: request.companyId,
+        },
+        data: this.transitionData(input, actor, reason, changedAt),
+      });
+      if (update.count !== 1) {
+        return null;
+      }
+      const updated = await client.tenantDeletionRequest.findUnique({
+        where: { id: request.id },
+        include: this.requestInclude,
+      });
+      if (updated == null) {
+        return null;
+      }
+      const audit = await this.recordWorkflowEvent(client, {
+        request: updated,
+        actorAdminId: actor,
+        eventType: input.eventType,
+        action: input.action,
+        reason,
+        before: this.workflowState(request),
+        after: this.workflowState(updated),
         metadata: {
           ...this.actorMetadata(input),
           note: this.normalizeOptional(input.note),
         },
-      },
+      });
+      return { request: updated, audit };
     });
+    if (result == null) {
+      return this.stateConflict(
+        "A solicitacao foi alterada por outra acao. Recarregue antes de tentar novamente.",
+      );
+    }
 
     return {
       ok: true,
       code: input.code,
       message: input.message,
-      auditEventId,
-      request: {
-        requestId,
-        company,
-        status: input.status,
-        createdAt: this.now().toISOString(),
-        updatedAt: this.now().toISOString(),
-        latestAuditEventId: auditEventId,
-        latestAction: input.action,
-        reason,
-        requester: { name: null, email: null, channel: null },
-        dryRunSummary: null,
-      },
+      auditEventId: result.audit.adminAuditEventId,
+      request: this.toRequestSummary(
+        result.request,
+        result.audit.workflowEvent,
+      ),
     };
   }
 
@@ -525,12 +779,12 @@ export class TenantDeletionService {
       company,
       generatedAt: this.now().toISOString(),
       dryRun: true,
-      persistenceMode: "admin_audit_log_foundation",
+      persistenceMode: "tenant_deletion_request",
       categories: categoriesResult,
       blockers,
       notes: [
         "Dry-run read-only: nenhuma exclusao, anonimizacao, desativacao, revogacao de sessao ou cancelamento de billing foi executado.",
-        "A persistencia definitiva requer migration para TenantDeletionRequest/TenantDeletionAuditEvent antes de quarentena real.",
+        "O workflow esta persistido em TenantDeletionRequest/TenantDeletionAuditEvent; quarentena operacional continua fora desta fase.",
         "Mercado Pago nao deve ser cancelado automaticamente sem fluxo financeiro proprio.",
         "Limpeza local posterior no app pode ser necessaria para remover dados ainda armazenados no dispositivo.",
       ],
@@ -567,12 +821,6 @@ export class TenantDeletionService {
     ]);
 
     const blockers: TenantDeletionBlocker[] = [
-      {
-        key: "no_tenant_deletion_table",
-        severity: "warning",
-        message:
-          "Ainda nao existe tabela dedicada TenantDeletionRequest; esta etapa usa AdminAuditLog como fundacao temporaria.",
-      },
       {
         key: "company_physical_delete_forbidden",
         severity: "blocking",
@@ -736,59 +984,49 @@ export class TenantDeletionService {
   }
 
   private toRequestSummary(
-    events: TenantDeletionAdminAuditEvent[],
+    request: TenantDeletionPersistedRequest,
+    latestEvent = request.auditEvents[0],
   ): TenantDeletionRequestSummary {
-    const sorted = [...events].sort(
-      (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
-    );
-    const latest = sorted[0];
-    const oldest = sorted[sorted.length - 1];
-    const latestDetails = this.readDetails(latest.details);
-    const oldestDetails = this.readDetails(oldest.details);
-    const dryRunDetails = sorted
-      .map((event) => this.readDetails(event.details))
-      .find((details) => details?.dryRun != null);
-
+    const dryRun = this.readDryRunSummary(request.dryRunSnapshotJson);
     return {
-      requestId:
-        latestDetails?.requestId ?? oldestDetails?.requestId ?? "unknown",
-      company:
-        latest.targetCompany == null
-          ? null
-          : this.toCompanySummary(latest.targetCompany),
-      status: latestDetails?.status ?? "REQUESTED",
-      createdAt: oldest.createdAt.toISOString(),
-      updatedAt: latest.createdAt.toISOString(),
-      latestAuditEventId: latest.id,
-      latestAction: latest.action,
-      reason: latestDetails?.reason ?? null,
+      requestId: request.id,
+      company: this.toCompanySummary(request.company),
+      status: request.status,
+      identityStatus: request.identityStatus,
+      source: request.source,
+      createdAt: request.createdAt.toISOString(),
+      updatedAt: request.updatedAt.toISOString(),
+      latestAuditEventId: latestEvent?.id ?? request.id,
+      latestAction: this.actionForEvent(latestEvent?.eventType),
+      reason:
+        request.cancellationReason ??
+        request.rejectionReason ??
+        latestEvent?.reason ??
+        request.reason,
       requester: {
-        name: oldestDetails?.requester?.name ?? null,
-        email: oldestDetails?.requester?.email ?? null,
-        channel: oldestDetails?.requester?.channel ?? null,
+        name: null,
+        email: request.requestedByEmail,
+        channel: request.source,
       },
-      dryRunSummary:
-        dryRunDetails?.dryRun == null
-          ? null
-          : {
-              categories: dryRunDetails.dryRun.categories,
-              blockers: dryRunDetails.dryRun.blockers,
-            },
+      dryRunSummary: dryRun,
     };
   }
 
-  private readDetails(value: unknown): TenantDeletionAuditDetails | null {
+  private readDryRunSummary(value: unknown) {
     if (value == null || typeof value !== "object" || Array.isArray(value)) {
       return null;
     }
-    const details = value as Partial<TenantDeletionAuditDetails>;
-    if (
-      typeof details.requestId !== "string" ||
-      typeof details.status !== "string"
-    ) {
+    const snapshot = value as {
+      categories?: unknown;
+      blockers?: unknown;
+    };
+    if (!Array.isArray(snapshot.categories) || !Array.isArray(snapshot.blockers)) {
       return null;
     }
-    return details as TenantDeletionAuditDetails;
+    return {
+      categories: snapshot.categories.length,
+      blockers: snapshot.blockers.length,
+    };
   }
 
   private async ensurePermission(input: {
@@ -813,17 +1051,14 @@ export class TenantDeletionService {
       };
     }
 
-    const auditEventId = await this.recordAudit({
+    const auditEventId = await this.recordAdminAudit(this.client, {
       actorAdminId: input.actorAdminId,
       companyId: input.companyId ?? null,
       action: input.deniedAction,
-      reason: input.reason,
       details: {
         requestId: "denied",
         status: "REJECTED",
-        reason:
-          input.reason ??
-          "Tentativa bloqueada por ausencia de permissao granular.",
+        reason: input.reason,
         metadata: {
           requiredPermission: input.permissionKey,
           result: "missing_permission",
@@ -842,22 +1077,86 @@ export class TenantDeletionService {
     };
   }
 
-  private async recordAudit(input: {
-    actorAdminId: string;
-    companyId?: string | null;
-    action: string;
-    reason: string | null;
-    details: TenantDeletionAuditDetails;
-  }) {
-    const audit = await this.client.adminAuditLog.create({
+  private async recordWorkflowEvent(
+    client: TenantDeletionClient,
+    input: {
+      request: TenantDeletionPersistedRequest;
+      actorAdminId: string;
+      eventType:
+        | "REQUEST_CREATED"
+        | "IDENTITY_PENDING_SET"
+        | "IDENTITY_VERIFIED"
+        | "DRY_RUN_GENERATED"
+        | "REQUEST_CANCELLED"
+        | "REQUEST_REJECTED"
+        | "REQUEST_VIEWED";
+      action: string;
+      reason: string | null;
+      before: Record<string, unknown> | null;
+      after: Record<string, unknown> | null;
+      metadata: Record<string, unknown>;
+    },
+  ) {
+    const safeBefore =
+      input.before == null
+        ? {}
+        : sanitizeOperationalActionPayload(input.before);
+    const safeAfter =
+      input.after == null ? {} : sanitizeOperationalActionPayload(input.after);
+    const safeMetadata = sanitizeOperationalActionPayload(input.metadata);
+    const workflowEvent = await client.tenantDeletionAuditEvent.create({
+      data: {
+        requestId: input.request.id,
+        companyId: input.request.companyId,
+        actorAdminUserId: input.actorAdminId,
+        eventType: input.eventType,
+        reason: input.reason,
+        beforeJson: safeBefore as Prisma.InputJsonValue,
+        afterJson: safeAfter as Prisma.InputJsonValue,
+        metadataJson: safeMetadata as Prisma.InputJsonValue,
+      },
+      select: {
+        id: true,
+        eventType: true,
+        reason: true,
+        createdAt: true,
+      },
+    });
+    const adminAuditEventId = await this.recordAdminAudit(client, {
+      actorAdminId: input.actorAdminId,
+      companyId: input.request.companyId,
+      action: input.action,
+      details: {
+        requestId: input.request.id,
+        status: input.request.status,
+        identityStatus: input.request.identityStatus,
+        reason: input.reason,
+        before: safeBefore,
+        after: safeAfter,
+        metadata: safeMetadata,
+        workflowAuditEventId: workflowEvent.id,
+      },
+    });
+    return { workflowEvent, adminAuditEventId };
+  }
+
+  private async recordAdminAudit(
+    client: TenantDeletionClient,
+    input: {
+      actorAdminId: string;
+      companyId?: string | null;
+      action: string;
+      details: Record<string, unknown>;
+    },
+  ) {
+    const audit = await client.adminAuditLog.create({
       data: {
         ...userAdminAuditActor(input.actorAdminId),
         targetCompanyId: input.companyId ?? null,
         action: input.action,
-        details: sanitizeOperationalActionPayload({
-          ...input.details,
-          reason: input.reason ?? input.details.reason,
-        }) as Prisma.InputJsonValue,
+        details: sanitizeOperationalActionPayload(
+          input.details,
+        ) as Prisma.InputJsonValue,
       },
       select: { id: true },
     });
@@ -868,8 +1167,152 @@ export class TenantDeletionService {
     return {
       ipAddress: input.ipAddress ?? null,
       userAgent: input.userAgent ?? null,
-      persistenceMode: "admin_audit_log_foundation",
+      persistenceMode: "tenant_deletion_request",
     };
+  }
+
+  private async findRequest(requestId: string) {
+    const normalized = this.normalizeOptional(requestId);
+    if (normalized == null) {
+      return null;
+    }
+    return this.client.tenantDeletionRequest.findUnique({
+      where: { id: normalized },
+      include: this.requestInclude,
+    });
+  }
+
+  private async inTransaction<T>(
+    operation: (client: TenantDeletionClient) => Promise<T>,
+  ) {
+    if (this.client.$transaction != null) {
+      return this.client.$transaction(operation);
+    }
+    return operation(this.client);
+  }
+
+  private workflowState(request: TenantDeletionPersistedRequest) {
+    return {
+      requestId: request.id,
+      companyId: request.companyId,
+      status: request.status,
+      identityStatus: request.identityStatus,
+      dryRunGeneratedAt: request.dryRunGeneratedAt?.toISOString() ?? null,
+      cancelledAt: request.cancelledAt?.toISOString() ?? null,
+      rejectedAt: request.rejectedAt?.toISOString() ?? null,
+      updatedAt: request.updatedAt.toISOString(),
+    };
+  }
+
+  private transitionData(
+    input: {
+      status: TenantDeletionStatus;
+      identityStatus?: "PENDING" | "VERIFIED";
+      note?: string | null;
+    },
+    actorAdminId: string,
+    reason: string,
+    changedAt: Date,
+  ) {
+    const common = {
+      status: input.status,
+      updatedAt: changedAt,
+    };
+    switch (input.status) {
+      case "IDENTITY_PENDING":
+        return {
+          ...common,
+          identityStatus: "PENDING",
+          identityVerificationNotes: this.safeOptionalText(input.note),
+        };
+      case "VERIFIED":
+        return {
+          ...common,
+          identityStatus: "VERIFIED",
+          identityVerifiedByAdminUserId: actorAdminId,
+          identityVerifiedAt: changedAt,
+          identityVerificationNotes: this.safeOptionalText(input.note),
+        };
+      case "CANCELLED":
+        return {
+          ...common,
+          activeCompanyGuard: null,
+          cancelledByAdminUserId: actorAdminId,
+          cancelledAt: changedAt,
+          cancellationReason: reason,
+        };
+      case "REJECTED":
+        return {
+          ...common,
+          activeCompanyGuard: null,
+          rejectedByAdminUserId: actorAdminId,
+          rejectedAt: changedAt,
+          rejectionReason: reason,
+          identityStatus: "FAILED",
+          identityVerificationNotes: this.safeOptionalText(input.note),
+        };
+      default:
+        return common;
+    }
+  }
+
+  private validateTransition(
+    current: TenantDeletionStatus,
+    target: TenantDeletionStatus,
+  ) {
+    if (current === target) {
+      return null;
+    }
+    if (target === "CANCELLED" || target === "REJECTED") {
+      return null;
+    }
+    if (target === "IDENTITY_PENDING" && current !== "REQUESTED") {
+      return "Identity pending exige solicitacao em REQUESTED.";
+    }
+    if (target === "VERIFIED" && current !== "IDENTITY_PENDING") {
+      return "Verificacao exige solicitacao em IDENTITY_PENDING.";
+    }
+    return null;
+  }
+
+  private isTerminal(status: TenantDeletionStatus) {
+    return status === "CANCELLED" || status === "REJECTED";
+  }
+
+  private isUniqueConstraintError(error: unknown) {
+    return (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) || (
+      typeof error === "object" &&
+      error != null &&
+      "code" in error &&
+      error.code === "P2002"
+    );
+  }
+
+  private persistedDryRunSnapshot(dryRun: TenantDeletionDryRun) {
+    return {
+      generatedAt: dryRun.generatedAt,
+      persistenceMode: dryRun.persistenceMode,
+      companyId: dryRun.company.id,
+      categories: dryRun.categories,
+      blockers: dryRun.blockers,
+      notes: dryRun.notes,
+    };
+  }
+
+  private actionForEvent(eventType: string | undefined) {
+    const actions: Record<string, TenantDeletionAction | string> = {
+      REQUEST_CREATED: "tenant.deletion.requested",
+      IDENTITY_PENDING_SET: "tenant.deletion.identity_pending",
+      IDENTITY_VERIFIED: "tenant.deletion.verified",
+      DRY_RUN_GENERATED: "tenant.deletion.dry_run",
+      REQUEST_CANCELLED: "tenant.deletion.cancelled",
+      REQUEST_REJECTED: "tenant.deletion.rejected",
+      REQUEST_VIEWED: "tenant.deletion.viewed",
+    };
+    return eventType == null ? "tenant.deletion.requested" : actions[eventType];
   }
 
   private normalizeRequiredActor(value: string | null | undefined) {
@@ -879,12 +1322,29 @@ export class TenantDeletionService {
 
   private normalizeReason(value: string | null | undefined) {
     const normalized = value?.trim();
-    return normalized == null || normalized.length < 12 ? null : normalized;
+    if (normalized == null || normalized.length < 12) {
+      return null;
+    }
+    const sanitized = sanitizeOperationalActionPayload({
+      value: normalized,
+    }).value;
+    return typeof sanitized === "string" ? sanitized : "[redacted]";
   }
 
   private normalizeOptional(value: string | null | undefined) {
     const normalized = value?.trim();
     return normalized == null || normalized.length === 0 ? null : normalized;
+  }
+
+  private safeOptionalText(value: string | null | undefined) {
+    const normalized = this.normalizeOptional(value);
+    if (normalized == null) {
+      return null;
+    }
+    const sanitized = sanitizeOperationalActionPayload({
+      value: normalized,
+    }).value;
+    return typeof sanitized === "string" ? sanitized : "[redacted]";
   }
 
   private actorRequired(): TenantDeletionOperationResult {
@@ -910,6 +1370,25 @@ export class TenantDeletionService {
       ok: false,
       code: "TENANT_DELETION_REQUEST_REQUIRED",
       message: "requestId obrigatorio.",
+      auditEventId: null,
+    };
+  }
+
+  private requestNotFound(requestId: string): TenantDeletionOperationResult {
+    return {
+      ok: false,
+      code: "TENANT_DELETION_REQUEST_NOT_FOUND",
+      message: "Solicitacao de exclusao de tenant nao encontrada.",
+      auditEventId: null,
+      details: { requestId },
+    };
+  }
+
+  private stateConflict(message: string): TenantDeletionOperationResult {
+    return {
+      ok: false,
+      code: "TENANT_DELETION_STATE_CONFLICT",
+      message,
       auditEventId: null,
     };
   }

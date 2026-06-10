@@ -117,43 +117,75 @@ enum SupportActionExecutionStatus {
   FAILED
 }
 
+enum CompanyDeletionRequestStatus {
+  REQUESTED
+  IDENTITY_PENDING
+  VERIFIED
+  DRY_RUN_READY
+  CANCELLED
+  REJECTED
+  FUTURE_PENDING_DELETION
+}
+
+enum IdentityVerificationStatus {
+  NOT_STARTED
+  PENDING
+  VERIFIED
+  FAILED
+}
+
+enum TenantDeletionAuditEventType {
+  REQUEST_CREATED
+  IDENTITY_PENDING_SET
+  IDENTITY_VERIFIED
+  DRY_RUN_GENERATED
+  REQUEST_CANCELLED
+  REQUEST_REJECTED
+  REQUEST_VIEWED
+}
+
 model User {
-  id                         String                   @id @default(uuid())
-  email                      String                   @unique
-  passwordHash               String
-  name                       String
-  isActive                   Boolean                  @default(true)
-  isPlatformAdmin            Boolean                  @default(false)
-  mustChangePassword         Boolean                  @default(false)
-  temporaryPasswordExpiresAt DateTime?
-  createdAt                  DateTime                 @default(now())
-  updatedAt                  DateTime                 @updatedAt
-  memberships                Membership[]
-  billingCheckoutSessions    BillingCheckoutSession[]
-  billingAdminAuditLogs      BillingAdminAuditLog[]
-  adminAuditLogs             AdminAuditLog[]          @relation("AdminAuditActor")
-  adminUserPermissions       AdminUserPermission[]     @relation("AdminUserPermissionActor")
-  deviceSessions             DeviceSession[]
-  companyDevices             CompanyDevice[]
-  syncEvents                 SyncEvent[]
-  syncConflicts              SyncConflict[]           @relation("SyncConflictUser")
-  resolvedSyncConflicts      SyncConflict[]           @relation("SyncConflictResolver")
-  syncIncidents              SyncIncident[]
-  syncSupportCommands        SyncSupportCommand[]     @relation("SyncSupportCommandActor")
-  deviceSyncDiagnostics      DeviceSyncDiagnostic[]
-  cashSessions               CashSession[]
-  operationalOrders          OperationalOrder[]
-  passwordResetTokens        PasswordResetToken[]
-  sessionAuditActorLogs      SessionAuditLog[]        @relation("SessionAuditActor")
-  sessionAuditSubjectLogs    SessionAuditLog[]        @relation("SessionAuditSubject")
-  customerNotesAuthored      CustomerNote[]           @relation("CustomerNoteAuthor")
-  customerTasksCreated       CustomerTask[]           @relation("CustomerTaskCreator")
-  customerTasksAssigned      CustomerTask[]           @relation("CustomerTaskAssignee")
-  customerTagAssignments     CustomerTagAssignment[]  @relation("CustomerTagAssignmentActor")
-  customerTimelineEvents     CustomerTimelineEvent[]  @relation("CustomerTimelineActor")
-  employeeProfiles           EmployeeProfile[]        @relation("EmployeeProfileUser")
-  employeeProfilesCreated    EmployeeProfile[]        @relation("EmployeeProfileCreatedBy")
-  employeeProfilesUpdated    EmployeeProfile[]        @relation("EmployeeProfileUpdatedBy")
+  id                               String                     @id @default(uuid())
+  email                            String                     @unique
+  passwordHash                     String
+  name                             String
+  isActive                         Boolean                    @default(true)
+  isPlatformAdmin                  Boolean                    @default(false)
+  mustChangePassword               Boolean                    @default(false)
+  temporaryPasswordExpiresAt       DateTime?
+  createdAt                        DateTime                   @default(now())
+  updatedAt                        DateTime                   @updatedAt
+  memberships                      Membership[]
+  billingCheckoutSessions          BillingCheckoutSession[]
+  billingAdminAuditLogs            BillingAdminAuditLog[]
+  adminAuditLogs                   AdminAuditLog[]            @relation("AdminAuditActor")
+  adminUserPermissions             AdminUserPermission[]      @relation("AdminUserPermissionActor")
+  deviceSessions                   DeviceSession[]
+  companyDevices                   CompanyDevice[]
+  syncEvents                       SyncEvent[]
+  syncConflicts                    SyncConflict[]             @relation("SyncConflictUser")
+  resolvedSyncConflicts            SyncConflict[]             @relation("SyncConflictResolver")
+  syncIncidents                    SyncIncident[]
+  syncSupportCommands              SyncSupportCommand[]       @relation("SyncSupportCommandActor")
+  deviceSyncDiagnostics            DeviceSyncDiagnostic[]
+  cashSessions                     CashSession[]
+  operationalOrders                OperationalOrder[]
+  passwordResetTokens              PasswordResetToken[]
+  sessionAuditActorLogs            SessionAuditLog[]          @relation("SessionAuditActor")
+  sessionAuditSubjectLogs          SessionAuditLog[]          @relation("SessionAuditSubject")
+  customerNotesAuthored            CustomerNote[]             @relation("CustomerNoteAuthor")
+  customerTasksCreated             CustomerTask[]             @relation("CustomerTaskCreator")
+  customerTasksAssigned            CustomerTask[]             @relation("CustomerTaskAssignee")
+  customerTagAssignments           CustomerTagAssignment[]    @relation("CustomerTagAssignmentActor")
+  customerTimelineEvents           CustomerTimelineEvent[]    @relation("CustomerTimelineActor")
+  employeeProfiles                 EmployeeProfile[]          @relation("EmployeeProfileUser")
+  employeeProfilesCreated          EmployeeProfile[]          @relation("EmployeeProfileCreatedBy")
+  employeeProfilesUpdated          EmployeeProfile[]          @relation("EmployeeProfileUpdatedBy")
+  tenantDeletionRequestsCreated    TenantDeletionRequest[]    @relation("TenantDeletionRequestCreator")
+  tenantDeletionIdentitiesVerified TenantDeletionRequest[]    @relation("TenantDeletionIdentityVerifier")
+  tenantDeletionRequestsCancelled  TenantDeletionRequest[]    @relation("TenantDeletionRequestCanceller")
+  tenantDeletionRequestsRejected   TenantDeletionRequest[]    @relation("TenantDeletionRequestRejector")
+  tenantDeletionAuditEvents        TenantDeletionAuditEvent[] @relation("TenantDeletionAuditActor")
 }
 
 model AdminUserPermission {
@@ -236,6 +268,8 @@ model Company {
   crmCustomerTimelineEvents       CustomerTimelineEvent[]
   hybridGovernanceProfile         HybridGovernanceProfile?
   employeeProfiles                EmployeeProfile[]
+  tenantDeletionRequests          TenantDeletionRequest[]
+  tenantDeletionAuditEvents       TenantDeletionAuditEvent[]
 }
 
 model Membership {
@@ -629,16 +663,16 @@ model DeviceSyncDiagnostic {
 }
 
 model AdminAuditLog {
-  id              String   @id @default(uuid())
-  actorType        AdminAuditActorType @default(USER)
+  id              String              @id @default(uuid())
+  actorType       AdminAuditActorType @default(USER)
   actorUserId     String?
   actorLabel      String?
   targetCompanyId String?
   action          String
   details         Json?
-  createdAt       DateTime @default(now())
-  actorUser       User?    @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
-  targetCompany   Company? @relation("AdminAuditCompany", fields: [targetCompanyId], references: [id], onDelete: SetNull)
+  createdAt       DateTime            @default(now())
+  actorUser       User?               @relation("AdminAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  targetCompany   Company?            @relation("AdminAuditCompany", fields: [targetCompanyId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([action])
@@ -647,24 +681,81 @@ model AdminAuditLog {
   @@index([targetCompanyId])
 }
 
+model TenantDeletionRequest {
+  id                            String                       @id @default(uuid())
+  companyId                     String
+  activeCompanyGuard            String?                      @unique
+  status                        CompanyDeletionRequestStatus @default(REQUESTED)
+  requestedByAdminUserId        String?
+  requestedByEmail              String?
+  requestedCompanyNameSnapshot  String
+  source                        String
+  reason                        String
+  identityStatus                IdentityVerificationStatus   @default(NOT_STARTED)
+  identityVerifiedByAdminUserId String?
+  identityVerifiedAt            DateTime?
+  identityVerificationNotes     String?
+  dryRunSnapshotJson            Json?
+  dryRunGeneratedAt             DateTime?
+  cancelledByAdminUserId        String?
+  cancelledAt                   DateTime?
+  cancellationReason            String?
+  rejectedByAdminUserId         String?
+  rejectedAt                    DateTime?
+  rejectionReason               String?
+  createdAt                     DateTime                     @default(now())
+  updatedAt                     DateTime                     @updatedAt
+  company                       Company                      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  requestedByAdminUser          User?                        @relation("TenantDeletionRequestCreator", fields: [requestedByAdminUserId], references: [id], onDelete: Restrict)
+  identityVerifiedByAdminUser   User?                        @relation("TenantDeletionIdentityVerifier", fields: [identityVerifiedByAdminUserId], references: [id], onDelete: Restrict)
+  cancelledByAdminUser          User?                        @relation("TenantDeletionRequestCanceller", fields: [cancelledByAdminUserId], references: [id], onDelete: Restrict)
+  rejectedByAdminUser           User?                        @relation("TenantDeletionRequestRejector", fields: [rejectedByAdminUserId], references: [id], onDelete: Restrict)
+  auditEvents                   TenantDeletionAuditEvent[]
+
+  @@index([companyId, status, updatedAt])
+  @@index([status, createdAt])
+  @@index([requestedByAdminUserId, createdAt])
+}
+
+model TenantDeletionAuditEvent {
+  id               String                       @id @default(uuid())
+  requestId        String
+  companyId        String
+  actorAdminUserId String?
+  eventType        TenantDeletionAuditEventType
+  reason           String?
+  beforeJson       Json?
+  afterJson        Json?
+  metadataJson     Json?
+  createdAt        DateTime                     @default(now())
+  request          TenantDeletionRequest        @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  company          Company                      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  actorAdminUser   User?                        @relation("TenantDeletionAuditActor", fields: [actorAdminUserId], references: [id], onDelete: Restrict)
+
+  @@index([requestId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([eventType, createdAt])
+  @@index([actorAdminUserId, createdAt])
+}
+
 model SupportActionExecution {
-  id                    String                       @id @default(uuid())
-  idempotencyKey        String                       @unique
-  requestFingerprint    String
-  dryRunAuditEventId    String
-  actionType            String
-  targetCompanyId       String
-  targetType            String
-  targetId              String
-  actorUserId           String
-  reason                String
-  status                SupportActionExecutionStatus @default(PENDING)
-  beforeAuditEventId    String?
-  afterAuditEventId     String?
-  result                Json?
-  createdAt             DateTime                     @default(now())
-  updatedAt             DateTime                     @updatedAt
-  executedAt            DateTime?
+  id                 String                       @id @default(uuid())
+  idempotencyKey     String                       @unique
+  requestFingerprint String
+  dryRunAuditEventId String
+  actionType         String
+  targetCompanyId    String
+  targetType         String
+  targetId           String
+  actorUserId        String
+  reason             String
+  status             SupportActionExecutionStatus @default(PENDING)
+  beforeAuditEventId String?
+  afterAuditEventId  String?
+  result             Json?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  executedAt         DateTime?
 
   @@index([dryRunAuditEventId])
   @@index([actionType, targetCompanyId, targetType, targetId])

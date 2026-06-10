@@ -103,7 +103,7 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
     return AdminSurface(
       title: 'Registrar solicitacao',
       subtitle:
-          'Cria uma entrada auditada em AdminAuditLog. Nao altera Company, billing, usuarios ou dados operacionais.',
+          'Cria uma solicitacao no workflow dedicado e registra auditoria sanitizada. Nao altera Company, billing, usuarios ou dados operacionais.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -186,8 +186,8 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
           TextField(
             controller: _dryRunRequestController,
             decoration: const InputDecoration(
-              labelText: 'requestId opcional',
-              helperText: 'Use para vincular o dry-run a uma solicitacao.',
+              labelText: 'requestId',
+              helperText: 'Obrigatorio para salvar o snapshot na solicitacao.',
             ),
           ),
           const SizedBox(height: 10),
@@ -227,7 +227,7 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
     return AdminSurface(
       title: 'Solicitacoes de exclusao de tenant',
       subtitle:
-          'Acompanhamento seguro por status. Fluxo persistente definitivo ainda requer migration dedicada.',
+          'Acompanhamento seguro por status usando persistencia dedicada. Execucao real continua indisponivel.',
       trailing: FilledButton.tonalIcon(
         onPressed: () {
           ref.invalidate(adminTenantDeletionRequestsProvider);
@@ -257,6 +257,7 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
                 width: 240,
                 child: DropdownButtonFormField<String?>(
                   initialValue: _statusFilter,
+                  isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Status'),
                   items: const [
                     DropdownMenuItem(value: null, child: Text('Todos')),
@@ -368,10 +369,12 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
 
   Future<void> _runDryRun() async {
     final companyId = _dryRunCompanyController.text.trim();
+    final requestId = _dryRunRequestController.text.trim();
     final reason = _dryRunReasonController.text.trim();
-    if (companyId.isEmpty || reason.length < 12) {
+    if (companyId.isEmpty || requestId.isEmpty || reason.length < 12) {
       setState(() {
-        _error = 'Informe companyId e motivo com pelo menos 12 caracteres.';
+        _error =
+            'Informe companyId, requestId e motivo com pelo menos 12 caracteres.';
         _message = null;
       });
       return;
@@ -387,7 +390,7 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
           .dryRunTenantDeletion(
             companyId: companyId,
             reason: reason,
-            requestId: _dryRunRequestController.text,
+            requestId: requestId,
           );
       if (!mounted) {
         return;
@@ -417,8 +420,12 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
         return 'Informe um motivo com pelo menos 12 caracteres.';
       case 'TENANT_DELETION_COMPANY_NOT_FOUND':
         return 'Empresa nao encontrada.';
+      case 'TENANT_DELETION_REQUEST_NOT_FOUND':
+        return 'Solicitacao nao encontrada.';
+      case 'TENANT_DELETION_STATE_CONFLICT':
+        return 'A solicitacao mudou de estado. Atualize a pagina e tente novamente.';
       default:
-        return error.message;
+        return 'Nao foi possivel concluir a operacao administrativa.';
     }
   }
 }
@@ -442,7 +449,7 @@ class _SafetyBanner extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Fundacao segura/read-only: registra solicitacoes, valida RBAC granular e gera inventario. Nao ha purge fisico, anonimizacao real, quarentena, worker ou cancelamento de Mercado Pago nesta etapa.',
+              'Workflow persistido e seguro: registra solicitacoes, valida RBAC granular e gera inventario dry-run. Nao ha purge fisico, anonimizacao real, quarentena, worker ou cancelamento de Mercado Pago nesta etapa.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: scheme.onSecondaryContainer,
                 fontWeight: FontWeight.w700,
@@ -531,6 +538,8 @@ class _RequestTile extends StatelessWidget {
             runSpacing: 6,
             children: [
               Text('Acao: ${request.latestAction}'),
+              Text('Identidade: ${request.identityStatus}'),
+              Text('Origem: ${request.source}'),
               Text('Audit: ${request.latestAuditEventId}'),
               if (request.updatedAt != null)
                 Text('Atualizado: ${request.updatedAt!.toLocal()}'),

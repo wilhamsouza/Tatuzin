@@ -7,11 +7,9 @@ export const tenantDeletionStatuses = [
   "IDENTITY_PENDING",
   "VERIFIED",
   "DRY_RUN_READY",
-  "PENDING_DELETION",
   "CANCELLED",
-  "EXECUTION_PENDING",
-  "COMPLETED",
   "REJECTED",
+  "FUTURE_PENDING_DELETION",
 ] as const;
 
 export type TenantDeletionStatus = (typeof tenantDeletionStatuses)[number];
@@ -26,6 +24,7 @@ export type TenantDeletionAction =
 
 export type TenantDeletionOperationCode =
   | "TENANT_DELETION_REQUEST_LISTED"
+  | "TENANT_DELETION_REQUEST_FOUND"
   | "TENANT_DELETION_REQUEST_RECORDED"
   | "TENANT_DELETION_IDENTITY_PENDING_RECORDED"
   | "TENANT_DELETION_IDENTITY_VERIFIED"
@@ -37,6 +36,8 @@ export type TenantDeletionOperationCode =
   | "TENANT_DELETION_REASON_REQUIRED"
   | "TENANT_DELETION_COMPANY_REQUIRED"
   | "TENANT_DELETION_REQUEST_REQUIRED"
+  | "TENANT_DELETION_REQUEST_NOT_FOUND"
+  | "TENANT_DELETION_STATE_CONFLICT"
   | "TENANT_DELETION_COMPANY_NOT_FOUND"
   | "TENANT_DELETION_VALIDATION_ERROR";
 
@@ -86,7 +87,7 @@ export type TenantDeletionDryRun = {
   company: TenantDeletionCompanySummary;
   generatedAt: string;
   dryRun: true;
-  persistenceMode: "admin_audit_log_foundation";
+  persistenceMode: "tenant_deletion_request";
   categories: TenantDeletionInventoryCategory[];
   blockers: TenantDeletionBlocker[];
   notes: string[];
@@ -96,6 +97,8 @@ export type TenantDeletionRequestSummary = {
   requestId: string;
   company: TenantDeletionCompanySummary | null;
   status: TenantDeletionStatus;
+  identityStatus: "NOT_STARTED" | "PENDING" | "VERIFIED" | "FAILED";
+  source: string;
   createdAt: string;
   updatedAt: string;
   latestAuditEventId: string;
@@ -141,13 +144,31 @@ export type TenantDeletionAuditDetails = {
   };
 };
 
-export type TenantDeletionAdminAuditEvent = {
+export type TenantDeletionPersistedRequest = {
   id: string;
-  action: string;
+  companyId: string;
+  activeCompanyGuard: string | null;
+  status: TenantDeletionStatus;
+  requestedByAdminUserId: string | null;
+  requestedByEmail: string | null;
+  requestedCompanyNameSnapshot: string;
+  source: string;
+  reason: string;
+  identityStatus: "NOT_STARTED" | "PENDING" | "VERIFIED" | "FAILED";
+  identityVerifiedByAdminUserId: string | null;
+  identityVerifiedAt: Date | null;
+  identityVerificationNotes: string | null;
+  dryRunSnapshotJson: Prisma.JsonValue | null;
+  dryRunGeneratedAt: Date | null;
+  cancelledByAdminUserId: string | null;
+  cancelledAt: Date | null;
+  cancellationReason: string | null;
+  rejectedByAdminUserId: string | null;
+  rejectedAt: Date | null;
+  rejectionReason: string | null;
   createdAt: Date;
-  targetCompanyId: string | null;
-  details: Prisma.JsonValue | null;
-  targetCompany?: {
+  updatedAt: Date;
+  company: {
     id: string;
     name: string;
     legalName: string;
@@ -167,5 +188,11 @@ export type TenantDeletionAdminAuditEvent = {
       canceledAt: Date | null;
       billingSubscriptionStatus: string | null;
     } | null;
-  } | null;
+  };
+  auditEvents: Array<{
+    id: string;
+    eventType: string;
+    reason: string | null;
+    createdAt: Date;
+  }>;
 };
