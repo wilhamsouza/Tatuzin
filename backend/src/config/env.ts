@@ -114,6 +114,10 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value == 'true'),
+  TENANT_DELETION_EXECUTION_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value == 'true'),
 });
 
 const parsed = envSchema.safeParse(process.env);

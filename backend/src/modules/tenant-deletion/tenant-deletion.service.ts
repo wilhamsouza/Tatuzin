@@ -83,6 +83,8 @@ export class TenantDeletionService {
     "VERIFIED",
     "DRY_RUN_READY",
     "FUTURE_PENDING_DELETION",
+    "EXECUTION_IN_PROGRESS",
+    "DELETION_EXECUTED",
   ];
 
   private readonly requestInclude = {
@@ -1525,6 +1527,25 @@ export class TenantDeletionService {
         channel: request.source,
       },
       dryRunSummary: dryRun,
+      executionSummary: this.readExecutionSummary(request),
+    };
+  }
+
+  private readExecutionSummary(request: TenantDeletionPersistedRequest) {
+    if (request.executionStartedAt == null && request.executionProgressJson == null) {
+      return null;
+    }
+    const value = request.executionProgressJson;
+    const progress = value != null && typeof value === "object" && !Array.isArray(value)
+      ? value as { completedCategories?: unknown; failedCategory?: unknown }
+      : {};
+    return {
+      completedCategories: Array.isArray(progress.completedCategories)
+        ? progress.completedCategories.filter((item): item is string => typeof item === "string")
+        : [],
+      failedCategory: typeof progress.failedCategory === "string" ? progress.failedCategory : null,
+      startedAt: request.executionStartedAt?.toISOString() ?? null,
+      completedAt: request.executionCompletedAt?.toISOString() ?? null,
     };
   }
 
@@ -1535,6 +1556,7 @@ export class TenantDeletionService {
     const snapshot = value as {
       categories?: unknown;
       blockers?: unknown;
+      executionRevalidation?: { criticalBlockers?: unknown };
     };
     if (
       !Array.isArray(snapshot.categories) ||
@@ -1542,9 +1564,12 @@ export class TenantDeletionService {
     ) {
       return null;
     }
+    const currentBlockers = snapshot.executionRevalidation?.criticalBlockers;
     return {
       categories: snapshot.categories.length,
-      blockers: snapshot.blockers.length,
+      blockers: Array.isArray(currentBlockers)
+        ? currentBlockers.length
+        : snapshot.blockers.length,
     };
   }
 
@@ -1785,7 +1810,9 @@ export class TenantDeletionService {
       return null;
     }
     if (target === "CANCELLED") {
-      return null;
+      return current === "EXECUTION_IN_PROGRESS" || current === "DELETION_EXECUTED"
+        ? "Execucao irreversivel iniciada nao pode ser cancelada."
+        : null;
     }
     if (target === "REJECTED") {
       return current === "FUTURE_PENDING_DELETION"
@@ -1802,7 +1829,7 @@ export class TenantDeletionService {
   }
 
   private isTerminal(status: TenantDeletionStatus) {
-    return status === "CANCELLED" || status === "REJECTED";
+    return status === "CANCELLED" || status === "REJECTED" || status === "DELETION_EXECUTED";
   }
 
   private isUniqueConstraintError(error: unknown) {
@@ -1838,6 +1865,10 @@ export class TenantDeletionService {
       REQUEST_CANCELLED: "tenant.deletion.cancelled",
       REQUEST_REJECTED: "tenant.deletion.rejected",
       REQUEST_VIEWED: "tenant.deletion.viewed",
+      EXECUTION_STARTED: "tenant.deletion.execution_started",
+      EXECUTION_CATEGORY_COMPLETED: "tenant.deletion.execution_category_completed",
+      EXECUTION_FAILED: "tenant.deletion.execution_failed",
+      EXECUTION_COMPLETED: "tenant.deletion.execution_completed",
     };
     return eventType == null ? "tenant.deletion.requested" : actions[eventType];
   }

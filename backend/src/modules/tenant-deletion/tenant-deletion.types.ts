@@ -10,6 +10,8 @@ export const tenantDeletionStatuses = [
   "CANCELLED",
   "REJECTED",
   "FUTURE_PENDING_DELETION",
+  "EXECUTION_IN_PROGRESS",
+  "DELETION_EXECUTED",
 ] as const;
 
 export type TenantDeletionStatus = (typeof tenantDeletionStatuses)[number];
@@ -22,7 +24,11 @@ export type TenantDeletionAction =
   | "tenant.deletion.quarantined"
   | "tenant.deletion.quarantine_cancelled"
   | "tenant.deletion.cancelled"
-  | "tenant.deletion.rejected";
+  | "tenant.deletion.rejected"
+  | "tenant.deletion.execution_started"
+  | "tenant.deletion.execution_category_completed"
+  | "tenant.deletion.execution_failed"
+  | "tenant.deletion.execution_completed";
 
 export type TenantDeletionOperationCode =
   | "TENANT_DELETION_REQUEST_LISTED"
@@ -34,6 +40,8 @@ export type TenantDeletionOperationCode =
   | "TENANT_DELETION_QUARANTINED"
   | "TENANT_DELETION_CANCELLED"
   | "TENANT_DELETION_REJECTED"
+  | "TENANT_DELETION_EXECUTED"
+  | "TENANT_DELETION_EXECUTION_DISABLED"
   | "TENANT_DELETION_ACTOR_REQUIRED"
   | "TENANT_DELETION_PERMISSION_REQUIRED"
   | "TENANT_DELETION_REASON_REQUIRED"
@@ -116,6 +124,12 @@ export type TenantDeletionRequestSummary = {
     categories: number;
     blockers: number;
   } | null;
+  executionSummary: {
+    completedCategories: string[];
+    failedCategory: string | null;
+    startedAt: string | null;
+    completedAt: string | null;
+  } | null;
 };
 
 export type TenantDeletionOperationResult = {
@@ -169,6 +183,14 @@ export type TenantDeletionPersistedRequest = {
   rejectedByAdminUserId: string | null;
   rejectedAt: Date | null;
   rejectionReason: string | null;
+  executionPlanJson: Prisma.JsonValue | null;
+  executionProgressJson: Prisma.JsonValue | null;
+  executionReceiptJson: Prisma.JsonValue | null;
+  executionStartedAt: Date | null;
+  executionCompletedAt: Date | null;
+  executionAttemptId: string | null;
+  executionLockedAt: Date | null;
+  executedByAdminUserId: string | null;
   createdAt: Date;
   updatedAt: Date;
   company: {

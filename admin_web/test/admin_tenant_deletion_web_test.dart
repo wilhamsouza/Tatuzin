@@ -196,11 +196,20 @@ void main() {
     expect(find.text('Inventario dry-run'), findsOneWidget);
     expect(find.textContaining('Workflow seguro'), findsOneWidget);
     expect(
-      find.textContaining('execucao final continuam indisponiveis'),
+      find.textContaining('execucao seletiva permanece indisponivel'),
       findsOneWidget,
     );
     expect(find.text('Excluir empresa'), findsNothing);
     expect(find.text('Executar exclusao'), findsNothing);
+    expect(find.text('Fase 4 - plano de tratamento'), findsOneWidget);
+    expect(
+      find.textContaining('TENANT_DELETION_EXECUTION_ENABLED'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Sem botao de execucao'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('quarentena exige permissao, motivo e confirmacao explicita', (
@@ -285,6 +294,28 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(service.cancelCalls, 1);
+  });
+
+  testWidgets('tela exibe progresso persistido sem acao destrutiva', (
+    tester,
+  ) async {
+    final service = _FakeTenantDeletionApiService(
+      requestStatus: 'EXECUTION_IN_PROGRESS',
+    );
+
+    await tester.pumpWidget(_testApp(service));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Progresso persistido: 2/9 categorias concluidas'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Concluidas: Revogacao de acessos'), findsOneWidget);
+    expect(find.textContaining('Pendentes: Exclusao de dados de sincronizacao'), findsOneWidget);
+    expect(find.text('Falha atual: Anonimizacao de catalogo'), findsOneWidget);
+    expect(find.textContaining('Company e preservada como tombstone'), findsOneWidget);
+    expect(find.text('Excluir empresa'), findsNothing);
+    expect(find.text('Executar exclusao'), findsNothing);
   });
 
   testWidgets('tela registra solicitacao e persiste snapshot dry-run', (
@@ -473,6 +504,17 @@ Map<String, dynamic> _requestPayload({String status = 'REQUESTED'}) {
     'dryRunSummary': status == 'REQUESTED'
         ? null
         : <String, dynamic>{'categories': 10, 'blockers': 2},
+    'executionSummary': status == 'EXECUTION_IN_PROGRESS'
+        ? <String, dynamic>{
+            'completedCategories': <String>[
+              'access_revocation',
+              'personal_data_anonymization',
+            ],
+            'failedCategory': 'catalog_anonymization',
+            'startedAt': '2026-06-10T14:00:00.000Z',
+            'completedAt': null,
+          }
+        : null,
   };
 }
 

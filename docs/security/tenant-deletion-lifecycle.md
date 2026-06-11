@@ -1,10 +1,10 @@
 # Ciclo de vida seguro para exclusao e anonimizacao de tenant
 
-Status: Fases 1 e 2 implementam solicitacao, validacao, dry-run e persistencia
-dedicada. A Fase 3 implementa quarentena operacional reversivel no codigo, mas
-as migrations propostas ainda nao foram aplicadas e o fluxo nao esta
-autorizado para uso em producao. Purge, anonimizacao e execucao final continuam
-nao implementados.
+Status: Fases 1 a 3 implementam solicitacao, validacao, dry-run, persistencia e
+quarentena operacional reversivel. A Fase 4 implementa no codigo um executor
+seletivo, auditado e retomavel, protegido por `TENANT_DELETION_EXECUTION_ENABLED`
+com default `false`. A migration permanece apenas proposta e nenhuma execucao
+esta autorizada em producao.
 
 ## 1. Objetivo
 
@@ -548,7 +548,44 @@ implementacao.
 | Recriacao do tenant causa colisao | Tombstone e politica para slug/documento |
 | Relatorios quebram apos anonimizacao | Preservar snapshots e invariantes financeiras |
 
-## 16. Roadmap por fases
+## 16. Implementacao da Fase 4
+
+A implementacao atual adiciona `EXECUTION_IN_PROGRESS` e `DELETION_EXECUTED`,
+plano, progresso e comprovante preliminar em `TenantDeletionRequest`. O endpoint
+`POST /api/admin/tenant-deletion/requests/:requestId/execute` exige
+platform admin no router administrativo, `tenant.deletion.execute`, identidade
+verificada, dry-run, quarentena, motivo e a confirmacao `ANONIMIZAR TENANT`.
+
+A feature flag `TENANT_DELETION_EXECUTION_ENABLED` tem default `false`. Com a
+flag desligada, o endpoint registra negacao segura e nao altera dados. Testes
+podem habilita-la somente com PostgreSQL descartavel.
+
+O plano checkpointado executa, em transacoes por categoria:
+
+- revogacao final de sessoes, dispositivos e acessos;
+- anonimizacao de funcionarios, clientes, fornecedores e catalogo operacional;
+- exclusao de CRM livre, payloads de sync e snapshots derivados;
+- minimizacao de notas e metadata financeira, preservando valores e registros;
+- remocao de memberships nao administrativas, sem apagar `User` global;
+- conversao de `Company` em tombstone inativo, sem delete fisico;
+- comprovacao das retencoes de billing e auditoria.
+
+Antes da primeira mutacao, blockers criticos de assinatura, checkout, invoice e
+disputa sao revalidados e persistidos no snapshot. Um lock por request, com
+`executionAttemptId` e `executionLockedAt`, serializa tentativas concorrentes.
+Sessoes `ADMIN_WEB` de platform admins permanecem disponiveis para suporte.
+
+Cada categoria concluida grava `TenantDeletionAuditEvent` e `AdminAuditLog`
+sanitizados, com status e contagens agregadas antes e depois, sem PII. O
+progresso persistido permite retry: categorias concluidas nao
+sao repetidas e falhas mantem o request em `EXECUTION_IN_PROGRESS`.
+
+Permanecem fora desta entrega: ativacao em producao, deploy, migration em banco
+real, dupla aprovacao, worker assincromo distribuido, limpeza do SQLite no app,
+legal hold automatizado e qualquer chamada ou cancelamento no Mercado Pago. A
+feature flag nao deve ser habilitada antes de revisao operacional dessas lacunas.
+
+## 17. Roadmap por fases
 
 ### Fase 0 - Politica e governanca
 
@@ -593,7 +630,7 @@ Saida: tenant pode ser colocado com seguranca em `PENDING_DELETION` e
 
 Saida: operacao controlada, ainda sem purge geral.
 
-### Fase 4 - Worker de tratamento
+### Fase 4 - Tratamento seletivo checkpointado
 
 - job idempotente;
 - disposicoes por categoria;
@@ -636,7 +673,7 @@ Saida: tratamento financeiro seguro sem cancelamento implicito.
 
 Saida: liberacao controlada com evidencia de seguranca.
 
-## 17. Criterios de liberacao
+## 18. Criterios de liberacao
 
 O fluxo nao deve entrar em producao enquanto faltar qualquer item:
 

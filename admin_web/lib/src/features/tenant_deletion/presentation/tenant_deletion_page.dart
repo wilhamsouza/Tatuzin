@@ -65,6 +65,8 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
         children: [
           const _SafetyBanner(),
           const SizedBox(height: 16),
+          const _ExecutionPlanCard(),
+          const SizedBox(height: 16),
           if (_message != null) _StatusBanner(message: _message!, error: false),
           if (_error != null) _StatusBanner(message: _error!, error: true),
           if (_message != null || _error != null) const SizedBox(height: 16),
@@ -231,7 +233,7 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
     return AdminSurface(
       title: 'Solicitacoes de exclusao de tenant',
       subtitle:
-          'Workflow com quarentena operacional reversivel. Exclusao, anonimizacao e execucao final continuam indisponiveis.',
+          'Workflow com quarentena e progresso auditado. A execucao seletiva permanece indisponivel no Admin Web enquanto a feature flag estiver desabilitada.',
       trailing: FilledButton.tonalIcon(
         onPressed: () {
           ref.invalidate(adminTenantDeletionRequestsProvider);
@@ -292,6 +294,14 @@ class _TenantDeletionPageState extends ConsumerState<TenantDeletionPage> {
                     DropdownMenuItem(
                       value: 'FUTURE_PENDING_DELETION',
                       child: Text('PENDING_DELETION / quarentena'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'EXECUTION_IN_PROGRESS',
+                      child: Text('EXECUTION_IN_PROGRESS'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'DELETION_EXECUTED',
+                      child: Text('DELETION_EXECUTED'),
                     ),
                   ],
                   onChanged: (value) => setState(() => _statusFilter = value),
@@ -606,12 +616,56 @@ class _SafetyBanner extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Workflow seguro: a quarentena operacional e reversivel, bloqueia acesso e sync sem excluir ou anonimizar dados. Nao ha worker, purge fisico nem cancelamento automatico de Mercado Pago.',
+              'Workflow seguro: a quarentena continua reversivel. A Fase 4 adiciona execucao seletiva auditada no backend, bloqueada por feature flag e sem purge fisico de Company ou cancelamento automatico de Mercado Pago.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: scheme.onSecondaryContainer,
                 fontWeight: FontWeight.w700,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExecutionPlanCard extends StatelessWidget {
+  const _ExecutionPlanCard();
+
+  static const _steps = <String>[
+    'Revogar sessoes, dispositivos e acessos',
+    'Anonimizar funcionarios, clientes e fornecedores',
+    'Excluir payloads de sync e snapshots derivados',
+    'Minimizar texto livre financeiro',
+    'Remover vinculos nao administrativos do tenant',
+    'Converter Company em tombstone inativo',
+    'Preservar billing, auditoria e registros financeiros justificados',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminSurface(
+      title: 'Fase 4 - plano de tratamento',
+      subtitle:
+          'Execucao definitiva indisponivel no Admin Web. TENANT_DELETION_EXECUTION_ENABLED permanece false por padrao.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final step in _steps)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.check_circle_outline_rounded, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(step)),
+                ],
+              ),
+            ),
+          const SizedBox(height: 6),
+          const Text(
+            'Sem botao de execucao: a ativacao exige revisao de blockers, permissao tenant.deletion.execute e aprovacao operacional separada.',
           ),
         ],
       ),
@@ -644,6 +698,18 @@ class _StatusBanner extends StatelessWidget {
     );
   }
 }
+
+const _executionCategoryLabels = <String, String>{
+  'access_revocation': 'Revogacao de acessos operacionais',
+  'personal_data_anonymization': 'Anonimizacao de dados pessoais',
+  'sync_data_deletion': 'Exclusao de dados de sincronizacao',
+  'analytics_deletion': 'Exclusao de analytics',
+  'catalog_anonymization': 'Anonimizacao de catalogo',
+  'financial_text_minimization': 'Minimizacao de textos financeiros',
+  'membership_cleanup': 'Limpeza de vinculos operacionais',
+  'company_tombstone': 'Conversao da Company em tombstone',
+  'retained_legal_records': 'Preservacao de billing, auditoria e retencoes',
+};
 
 class _RequestTile extends StatelessWidget {
   const _RequestTile({
@@ -724,6 +790,10 @@ class _RequestTile extends StatelessWidget {
             const SizedBox(height: 6),
             Text('Motivo: ${request.reason}'),
           ],
+          if (request.executionSummary != null) ...[
+            const SizedBox(height: 12),
+            _ExecutionProgress(summary: request.executionSummary!),
+          ],
           if (canQuarantine || canCancelQuarantine) ...[
             const SizedBox(height: 12),
             Wrap(
@@ -751,6 +821,71 @@ class _RequestTile extends StatelessWidget {
   }
 }
 
+class _ExecutionProgress extends StatelessWidget {
+  const _ExecutionProgress({required this.summary});
+
+  final AdminTenantDeletionExecutionSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final completed = summary.completedCategories.toSet();
+    final pending = _executionCategoryLabels.keys
+        .where((category) => !completed.contains(category))
+        .toList(growable: false);
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Progresso persistido: ' +
+                completed.length.toString() +
+                '/' +
+                _executionCategoryLabels.length.toString() +
+                ' categorias concluidas',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text('Concluidas: ' + _labels(summary.completedCategories)),
+          const SizedBox(height: 4),
+          Text('Pendentes: ' + _labels(pending)),
+          if (summary.failedCategory != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Falha atual: ' + _label(summary.failedCategory!),
+              style: TextStyle(
+                color: scheme.error,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          const SizedBox(height: 6),
+          const Text(
+            'A Company e preservada como tombstone; billing, auditoria e retencoes justificadas nao sao removidos.',
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _labels(Iterable<String> categories) {
+    if (categories.isEmpty) return 'nenhuma';
+    return categories.map(_label).join(', ');
+  }
+
+  static String _label(String category) {
+    return _executionCategoryLabels[category] ?? category;
+  }
+}
+
 class _StatusChip extends StatelessWidget {
   const _StatusChip({required this.status});
 
@@ -762,7 +897,9 @@ class _StatusChip extends StatelessWidget {
     final color = switch (status) {
       'CANCELLED' || 'REJECTED' => scheme.errorContainer,
       'DRY_RUN_READY' || 'VERIFIED' => scheme.primaryContainer,
-      'FUTURE_PENDING_DELETION' => scheme.tertiaryContainer,
+      'FUTURE_PENDING_DELETION' || 'EXECUTION_IN_PROGRESS' =>
+        scheme.tertiaryContainer,
+      'DELETION_EXECUTED' => scheme.primaryContainer,
       _ => scheme.surfaceContainerHighest,
     };
     return Container(

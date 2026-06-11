@@ -15,6 +15,7 @@ export const tenantDeletionPermissionKeys = [
   "tenant.deletion.identity.verify",
   "tenant.deletion.cancel",
   "tenant.deletion.quarantine",
+  "tenant.deletion.execute",
 ] as const;
 
 export type TenantDeletionPermissionKey =

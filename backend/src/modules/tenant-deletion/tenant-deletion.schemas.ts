@@ -37,6 +37,14 @@ export const tenantDeletionDryRunSchema = z.object({
   requestId: z.string().uuid("requestId deve ser um UUID valido."),
 });
 
+export const tenantDeletionExecutionSchema = tenantDeletionReasonSchema.extend({
+  confirmation: z.literal("ANONIMIZAR TENANT", {
+    errorMap: () => ({
+      message: 'Confirme a operacao informando "ANONIMIZAR TENANT".',
+    }),
+  }),
+});
+
 export const tenantDeletionQuarantineSchema = tenantDeletionReasonSchema.extend(
   {
     confirmation: z.literal("QUARENTENA", {
@@ -61,4 +69,7 @@ export type TenantDeletionDryRunInput = z.infer<
 >;
 export type TenantDeletionQuarantineInput = z.infer<
   typeof tenantDeletionQuarantineSchema
+>;
+export type TenantDeletionExecutionInput = z.infer<
+  typeof tenantDeletionExecutionSchema
 >;

@@ -90,6 +90,7 @@ class AdminTenantDeletionRequest {
     required this.reason,
     required this.requester,
     required this.dryRunSummary,
+    required this.executionSummary,
   });
 
   final String requestId;
@@ -104,11 +105,13 @@ class AdminTenantDeletionRequest {
   final String? reason;
   final AdminTenantDeletionRequester requester;
   final AdminTenantDeletionDryRunSummary? dryRunSummary;
+  final AdminTenantDeletionExecutionSummary? executionSummary;
 
   factory AdminTenantDeletionRequest.fromMap(Map<String, dynamic> map) {
     final company = map['company'];
     final requester = map['requester'];
     final dryRunSummary = map['dryRunSummary'];
+    final executionSummary = map['executionSummary'];
     return AdminTenantDeletionRequest(
       requestId: _readString(map, 'requestId'),
       company: company is Map<String, dynamic>
@@ -135,6 +138,9 @@ class AdminTenantDeletionRequest {
             ),
       dryRunSummary: dryRunSummary is Map<String, dynamic>
           ? AdminTenantDeletionDryRunSummary.fromMap(dryRunSummary)
+          : null,
+      executionSummary: executionSummary is Map<String, dynamic>
+          ? AdminTenantDeletionExecutionSummary.fromMap(executionSummary)
           : null,
     );
   }
@@ -173,6 +179,31 @@ class AdminTenantDeletionDryRunSummary {
     return AdminTenantDeletionDryRunSummary(
       categories: _readOptionalInt(map, 'categories') ?? 0,
       blockers: _readOptionalInt(map, 'blockers') ?? 0,
+    );
+  }
+}
+
+class AdminTenantDeletionExecutionSummary {
+  const AdminTenantDeletionExecutionSummary({
+    required this.completedCategories,
+    required this.failedCategory,
+    required this.startedAt,
+    required this.completedAt,
+  });
+
+  final List<String> completedCategories;
+  final String? failedCategory;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+
+  factory AdminTenantDeletionExecutionSummary.fromMap(
+    Map<String, dynamic> map,
+  ) {
+    return AdminTenantDeletionExecutionSummary(
+      completedCategories: _readStringList(map['completedCategories']),
+      failedCategory: _readOptionalString(map, 'failedCategory'),
+      startedAt: _readOptionalDateTime(map, 'startedAt'),
+      completedAt: _readOptionalDateTime(map, 'completedAt'),
     );
   }
 }

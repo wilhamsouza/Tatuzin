@@ -125,6 +125,8 @@ enum CompanyDeletionRequestStatus {
   CANCELLED
   REJECTED
   FUTURE_PENDING_DELETION
+  EXECUTION_IN_PROGRESS
+  DELETION_EXECUTED
 }
 
 enum IdentityVerificationStatus {
@@ -144,6 +146,10 @@ enum TenantDeletionAuditEventType {
   REQUEST_CANCELLED
   REQUEST_REJECTED
   REQUEST_VIEWED
+  EXECUTION_STARTED
+  EXECUTION_CATEGORY_COMPLETED
+  EXECUTION_FAILED
+  EXECUTION_COMPLETED
 }
 
 model User {
@@ -178,6 +184,7 @@ model User {
   customerNotesAuthored            CustomerNote[]             @relation("CustomerNoteAuthor")
   customerTasksCreated             CustomerTask[]             @relation("CustomerTaskCreator")
   customerTasksAssigned            CustomerTask[]             @relation("CustomerTaskAssignee")
+  executedTenantDeletionRequests   TenantDeletionRequest[]     @relation("TenantDeletionRequestExecutor")
   customerTagAssignments           CustomerTagAssignment[]    @relation("CustomerTagAssignmentActor")
   customerTimelineEvents           CustomerTimelineEvent[]    @relation("CustomerTimelineActor")
   employeeProfiles                 EmployeeProfile[]          @relation("EmployeeProfileUser")
@@ -705,6 +712,14 @@ model TenantDeletionRequest {
   rejectedByAdminUserId         String?
   rejectedAt                    DateTime?
   rejectionReason               String?
+  executionPlanJson             Json?
+  executionProgressJson         Json?
+  executionReceiptJson          Json?
+  executionStartedAt            DateTime?
+  executionCompletedAt          DateTime?
+  executionAttemptId           String?
+  executionLockedAt            DateTime?
+  executedByAdminUserId         String?
   createdAt                     DateTime                     @default(now())
   updatedAt                     DateTime                     @updatedAt
   company                       Company                      @relation(fields: [companyId], references: [id], onDelete: Restrict)
@@ -712,6 +727,7 @@ model TenantDeletionRequest {
   identityVerifiedByAdminUser   User?                        @relation("TenantDeletionIdentityVerifier", fields: [identityVerifiedByAdminUserId], references: [id], onDelete: Restrict)
   cancelledByAdminUser          User?                        @relation("TenantDeletionRequestCanceller", fields: [cancelledByAdminUserId], references: [id], onDelete: Restrict)
   rejectedByAdminUser           User?                        @relation("TenantDeletionRequestRejector", fields: [rejectedByAdminUserId], references: [id], onDelete: Restrict)
+  executedByAdminUser           User?                        @relation("TenantDeletionRequestExecutor", fields: [executedByAdminUserId], references: [id], onDelete: Restrict)
   auditEvents                   TenantDeletionAuditEvent[]
 
   @@index([companyId, status, updatedAt])

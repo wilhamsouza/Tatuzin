@@ -415,6 +415,25 @@ describe("tenant deletion persisted workflow", () => {
     assert.equal(fixture.requests[0]?.status, "CANCELLED");
   });
 
+  it("bloqueia cancelamento depois que a execucao irreversivel iniciou", async () => {
+    const fixture = createFixture([
+      "tenant.deletion.request.manage",
+      "tenant.deletion.cancel",
+    ]);
+    const created = await createRequest(fixture);
+    fixture.requests[0]!.status = "EXECUTION_IN_PROGRESS";
+
+    const result = await fixture.service.cancelRequest({
+      actorAdminId: "admin-1",
+      companyId: "company-1",
+      requestId: created.request!.requestId,
+      reason: "Tentativa de cancelamento apos inicio irreversivel",
+    });
+
+    assert.equal(result.code, "TENANT_DELETION_STATE_CONFLICT");
+    assert.equal(fixture.requests[0]?.status, "EXECUTION_IN_PROGRESS");
+  });
+
   it("bloqueia transicao concorrente quando o status mudou", async () => {
     const fixture = createFixture([
       "tenant.deletion.request.manage",
@@ -879,6 +898,14 @@ function persistedRequestFixture(
     rejectedByAdminUserId: null,
     rejectedAt: null,
     rejectionReason: null,
+    executionPlanJson: null,
+    executionProgressJson: null,
+    executionReceiptJson: null,
+    executionStartedAt: null,
+    executionCompletedAt: null,
+    executionAttemptId: null,
+    executionLockedAt: null,
+    executedByAdminUserId: null,
     createdAt,
     updatedAt: data.updatedAt instanceof Date ? data.updatedAt : createdAt,
     company,

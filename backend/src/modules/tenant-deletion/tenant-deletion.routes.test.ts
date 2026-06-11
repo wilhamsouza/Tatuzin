@@ -15,6 +15,7 @@ const requestId = "11111111-1111-4111-8111-111111111111";
 let server: Server;
 let apiBaseUrl = "";
 let quarantineInput: Record<string, unknown> | null = null;
+let executionInput: Record<string, unknown> | null = null;
 
 describe("tenant deletion quarantine routes", () => {
   before(() => {
@@ -43,6 +44,17 @@ describe("tenant deletion quarantine routes", () => {
               code: "TENANT_DELETION_QUARANTINED",
               message: "Tenant colocado em quarentena.",
               auditEventId: "audit-1",
+            };
+          },
+        } as never,
+        executionService: {
+          async execute(input: Record<string, unknown>) {
+            executionInput = input;
+            return {
+              ok: true,
+              code: "TENANT_DELETION_EXECUTED",
+              message: "Tenant anonimizado.",
+              auditEventId: "audit-execution-1",
             };
           },
         } as never,
@@ -86,6 +98,30 @@ describe("tenant deletion quarantine routes", () => {
     assert.equal(quarantineInput?.companyId, "company-1");
   });
 
+  it("valida confirmacao forte da execucao seletiva", async () => {
+    const response = await requestJsonAt("execute", {
+      companyId: "company-1",
+      reason: "Anonimizacao aprovada apos revisao operacional",
+      confirmation: "ANONIMIZAR TENANT",
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.data.code, "TENANT_DELETION_EXECUTED");
+    assert.equal(executionInput?.actorAdminId, "admin-1");
+    assert.equal(executionInput?.requestId, requestId);
+  });
+
+  it("rejeita confirmacao fraca da execucao", async () => {
+    executionInput = null;
+    const response = await requestJsonAt("execute", {
+      companyId: "company-1",
+      reason: "Anonimizacao aprovada apos revisao operacional",
+      confirmation: "CONFIRMO",
+    });
+    assert.equal(response.status, 422);
+    assert.equal(executionInput, null);
+  });
+
   it("rejeita confirmacao diferente sem chamar o servico", async () => {
     quarantineInput = null;
 
@@ -101,8 +137,12 @@ describe("tenant deletion quarantine routes", () => {
 });
 
 async function requestJson(body: unknown) {
+  return requestJsonAt("quarantine", body);
+}
+
+async function requestJsonAt(action: string, body: unknown) {
   const response = await fetch(
-    `${apiBaseUrl}/admin/tenant-deletion/requests/${requestId}/quarantine`,
+    `${apiBaseUrl}/admin/tenant-deletion/requests/${requestId}/${action}`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },

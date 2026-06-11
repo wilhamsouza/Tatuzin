@@ -5,19 +5,23 @@ import { validateBody, validateQuery } from "../../shared/http/validate";
 import {
   tenantDeletionCreateRequestSchema,
   tenantDeletionDryRunSchema,
+  tenantDeletionExecutionSchema,
   tenantDeletionListQuerySchema,
   tenantDeletionQuarantineSchema,
   tenantDeletionReasonSchema,
   type TenantDeletionCreateRequestInput,
   type TenantDeletionDryRunInput,
+  type TenantDeletionExecutionInput,
   type TenantDeletionListQueryInput,
   type TenantDeletionQuarantineInput,
   type TenantDeletionReasonInput,
 } from "./tenant-deletion.schemas";
+import { TenantDeletionExecutionService } from "./tenant-deletion-execution.service";
 import { TenantDeletionService } from "./tenant-deletion.service";
 import type { TenantDeletionOperationResult } from "./tenant-deletion.types";
 
 type TenantDeletionRouterDependencies = {
+  executionService?: Pick<TenantDeletionExecutionService, "execute">;
   service?: Pick<
     TenantDeletionService,
     | "listRequests"
@@ -37,6 +41,8 @@ export function createTenantDeletionRouter(
 ) {
   const router = Router();
   const service = dependencies.service ?? new TenantDeletionService();
+  const executionService =
+    dependencies.executionService ?? new TenantDeletionExecutionService();
 
   router.use((request, response, next) => {
     if (request.auth?.userId == null || request.auth.userId.trim() === "") {
@@ -140,6 +146,22 @@ export function createTenantDeletionRouter(
   );
 
   router.post(
+    "/requests/:requestId/execute",
+    validateBody(tenantDeletionExecutionSchema),
+    asyncHandler(async (request, response) => {
+      const body = request.body as TenantDeletionExecutionInput;
+      const payload = await executionService.execute({
+        ...body,
+        requestId: readParam(request.params.requestId),
+        actorAdminId: request.auth!.userId,
+        ipAddress: request.ip,
+        userAgent: request.get("user-agent") ?? null,
+      });
+      response.status(statusCodeFor(payload)).json(payload);
+    }),
+  );
+
+  router.post(
     "/requests/:requestId/cancel",
     validateBody(tenantDeletionReasonSchema),
     asyncHandler(async (request, response) => {
@@ -205,6 +227,7 @@ function statusCodeFor(payload: TenantDeletionOperationResult) {
     case "TENANT_DELETION_REQUEST_NOT_FOUND":
       return 404;
     case "TENANT_DELETION_STATE_CONFLICT":
+    case "TENANT_DELETION_EXECUTION_DISABLED":
       return 409;
     case "TENANT_DELETION_COMPANY_REQUIRED":
     case "TENANT_DELETION_REASON_REQUIRED":
