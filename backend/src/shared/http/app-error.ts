@@ -5,6 +5,7 @@ export class AppError extends Error {
     readonly code = 'APP_ERROR',
     readonly details?: unknown,
     readonly headers?: Record<string, string>,
+    readonly responseDetails?: unknown,
   ) {
     super(message);
     this.name = 'AppError';

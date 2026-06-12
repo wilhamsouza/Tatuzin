@@ -259,6 +259,15 @@ void main() {
                 'ok': false,
                 'message': 'Empresa em quarentena.',
                 'code': TenantPendingDeletionException.code,
+                'details': {
+                  'acknowledgementAvailable': true,
+                  'acknowledgement': {
+                    'token': 'signed-ack-token',
+                    'requestId': 'request-1',
+                    'companyId': 'company-1',
+                    'clientInstanceId': 'device-123',
+                  },
+                },
               }),
               423,
             );
@@ -283,12 +292,19 @@ void main() {
                   (error) => error.requestPath,
                   'requestPath',
                   '/sync/push',
-                ),
+                )
+                .having(
+                  (error) => error.acknowledgementToken,
+                  'acknowledgementToken',
+                  'signed-ack-token',
+                )
+                .having((error) => error.companyId, 'companyId', 'company-1'),
           ),
         );
 
         expect(requestCount, 1);
         expect(reportedException, isNotNull);
+        expect(reportedException?.clientInstanceId, 'device-123');
         expect(await tokenStorage.readAccessToken(), isNull);
         expect(await tokenStorage.readRefreshToken(), isNull);
       },

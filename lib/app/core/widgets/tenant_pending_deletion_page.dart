@@ -55,6 +55,16 @@ class TenantPendingDeletionPage extends StatelessWidget {
                         'operacoes enquanto a solicitacao estiver em andamento.',
                       ),
                       const SizedBox(height: 12),
+                      Text(
+                        block.isRemotelyAcknowledged
+                            ? 'Este dispositivo ja foi registrado como informado.'
+                            : 'O registro deste dispositivo sera enviado de forma '
+                                  'segura quando houver conexao.',
+                        key: const Key(
+                          'tenant-pending-deletion-remote-ack-status',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       const Text(
                         'Os dados locais deste dispositivo nao foram apagados '
                         'automaticamente. A remocao do app ou dos dados do app '

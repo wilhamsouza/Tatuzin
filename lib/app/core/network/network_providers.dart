@@ -28,7 +28,8 @@ final realApiClientProvider = Provider<ApiClientContract>((ref) {
     },
     onTenantPendingDeletion: (exception) async {
       final currentSession = ref.read(appSessionProvider);
-      var companyId = currentSession.company.remoteId?.trim();
+      var companyId =
+          exception.companyId ?? currentSession.company.remoteId?.trim();
       var companyName = currentSession.company.displayName.trim();
 
       final isLoginRequest =
@@ -43,11 +44,21 @@ final realApiClientProvider = Provider<ApiClientContract>((ref) {
       }
 
       if (companyId != null && companyId.isNotEmpty) {
+        final clientContext = await ref
+            .read(authTokenStorageProvider)
+            .readClientContext();
         await ref
             .read(tenantOperationalBlockControllerProvider.notifier)
             .markPendingDeletion(
               companyId: companyId,
               companyName: companyName.isEmpty ? null : companyName,
+              acknowledgementToken: exception.acknowledgementToken,
+              tenantDeletionRequestId: exception.tenantDeletionRequestId,
+              clientInstanceId:
+                  exception.clientInstanceId ?? clientContext?.clientInstanceId,
+              deviceLabel: clientContext?.deviceLabel,
+              platform: clientContext?.platform,
+              appVersion: clientContext?.appVersion,
             );
       }
 

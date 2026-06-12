@@ -32,12 +32,20 @@ final class TenantPendingDeletionException extends AppException {
   const TenantPendingDeletionException({
     this.statusCode = 423,
     this.requestPath,
+    this.acknowledgementToken,
+    this.tenantDeletionRequestId,
+    this.companyId,
+    this.clientInstanceId,
   }) : super(tenantPendingDeletionMessage, cause: statusCode);
 
   static const code = 'TENANT_PENDING_DELETION';
 
   final int statusCode;
   final String? requestPath;
+  final String? acknowledgementToken;
+  final String? tenantDeletionRequestId;
+  final String? companyId;
+  final String? clientInstanceId;
 }
 
 const tenantPendingDeletionMessage =

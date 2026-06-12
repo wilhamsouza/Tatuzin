@@ -398,10 +398,36 @@ class RealApiClient implements ApiClientContract {
     final exception = TenantPendingDeletionException(
       statusCode: statusCode,
       requestPath: requestPath,
+      acknowledgementToken: _extractAcknowledgementString(payload, 'token'),
+      tenantDeletionRequestId: _extractAcknowledgementString(
+        payload,
+        'requestId',
+      ),
+      companyId: _extractAcknowledgementString(payload, 'companyId'),
+      clientInstanceId: _extractAcknowledgementString(
+        payload,
+        'clientInstanceId',
+      ),
     );
     await _tokenStorage?.clear();
     await _onTenantPendingDeletion?.call(exception);
     throw exception;
+  }
+
+  String? _extractAcknowledgementString(dynamic payload, String key) {
+    if (payload is! Map<String, dynamic>) {
+      return null;
+    }
+    final details = payload['details'];
+    if (details is! Map<String, dynamic>) {
+      return null;
+    }
+    final acknowledgement = details['acknowledgement'];
+    if (acknowledgement is! Map<String, dynamic>) {
+      return null;
+    }
+    final value = acknowledgement[key];
+    return value is String && value.trim().isNotEmpty ? value.trim() : null;
   }
 
   String? _extractValidationDetails(dynamic payload) {

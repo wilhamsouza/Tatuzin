@@ -39,6 +39,7 @@ export function errorHandler(
   }
 
   if (error instanceof AppError) {
+    const responseDetails = error.responseDetails ?? error.details;
     if (error.headers != null) {
       for (const [headerName, headerValue] of Object.entries(error.headers)) {
         response.setHeader(headerName, headerValue);
@@ -61,12 +62,12 @@ export function errorHandler(
       ok: false,
       message: error.message,
       code: error.code,
-      details: error.details,
+      details: responseDetails,
       requestId,
       error: {
         message: error.message,
         code: error.code,
-        details: error.details,
+        details: responseDetails,
         requestId,
       },
     });

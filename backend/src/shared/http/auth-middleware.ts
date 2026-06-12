@@ -195,7 +195,9 @@ export async function requireTenantOperational(
         'APP_CONTEXT_REQUIRED',
       );
     }
-    await tenantLifecycleService.assertTenantOperational(companyId);
+    await tenantLifecycleService.assertTenantOperational(companyId, {
+      clientInstanceId: request.auth?.clientInstanceId,
+    });
     next();
   } catch (error) {
     next(error);

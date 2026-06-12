@@ -150,6 +150,12 @@ export class AuthSessionService {
     ) {
       await this.tenantLifecycleService.assertTenantOperational(
         input.companyId,
+        {
+          clientInstanceId: client.clientInstanceId,
+          deviceLabel: client.deviceLabel,
+          platform: client.platform,
+          appVersion: client.appVersion,
+        },
       );
     }
 
@@ -293,6 +299,12 @@ export class AuthSessionService {
     ) {
       await this.tenantLifecycleService.assertTenantOperational(
         existingSession.companyId,
+        {
+          clientInstanceId: existingSession.clientInstanceId,
+          deviceLabel: existingSession.deviceLabel,
+          platform: existingSession.platform,
+          appVersion: existingSession.appVersion,
+        },
       );
     }
 
@@ -518,6 +530,9 @@ export class AuthSessionService {
     ) {
       await this.tenantLifecycleService.assertTenantOperational(
         session.companyId,
+        {
+          clientInstanceId: session.clientInstanceId,
+        },
       );
     }
 

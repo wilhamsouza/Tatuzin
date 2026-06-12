@@ -32,6 +32,7 @@ import { salesRouter } from './modules/sales/sales.routes';
 import { syncRouter } from './modules/sync/sync.routes';
 import { suppliesRouter } from './modules/supplies/supplies.routes';
 import { suppliersRouter } from './modules/suppliers/suppliers.routes';
+import { publicTenantDeletionRouter } from './modules/tenant-deletion/tenant-deletion-public.routes';
 import { AppError } from './shared/http/app-error';
 import { errorHandler } from './shared/http/error-handler';
 import { requestContextMiddleware } from './shared/http/request-context';
@@ -121,6 +122,7 @@ export function createApp() {
   });
 
   app.use('/api/auth', authRouter);
+  app.use('/api/tenant-deletion', publicTenantDeletionRouter);
   app.use('/api/app', appRouter);
   app.use('/api/billing', billingRouter);
   app.use('/api/owner', ownerRouter);

@@ -150,6 +150,7 @@ enum TenantDeletionAuditEventType {
   EXECUTION_CATEGORY_COMPLETED
   EXECUTION_FAILED
   EXECUTION_COMPLETED
+  DEVICE_ACKNOWLEDGED
 }
 
 model User {
@@ -184,7 +185,7 @@ model User {
   customerNotesAuthored            CustomerNote[]             @relation("CustomerNoteAuthor")
   customerTasksCreated             CustomerTask[]             @relation("CustomerTaskCreator")
   customerTasksAssigned            CustomerTask[]             @relation("CustomerTaskAssignee")
-  executedTenantDeletionRequests   TenantDeletionRequest[]     @relation("TenantDeletionRequestExecutor")
+  executedTenantDeletionRequests   TenantDeletionRequest[]    @relation("TenantDeletionRequestExecutor")
   customerTagAssignments           CustomerTagAssignment[]    @relation("CustomerTagAssignmentActor")
   customerTimelineEvents           CustomerTimelineEvent[]    @relation("CustomerTimelineActor")
   employeeProfiles                 EmployeeProfile[]          @relation("EmployeeProfileUser")
@@ -215,70 +216,71 @@ model AdminUserPermission {
 }
 
 model Company {
-  id                              String                           @id @default(uuid())
-  name                            String
-  legalName                       String
-  documentNumber                  String?
-  receiptDisplayName              String?
-  receiptDocument                 String?
-  receiptPhone                    String?
-  receiptAddress                  String?
-  receiptFooterMessage            String?
-  showDocumentOnReceipt           Boolean                          @default(true)
-  showPhoneOnReceipt              Boolean                          @default(true)
-  showAddressOnReceipt            Boolean                          @default(true)
-  showFooterMessageOnReceipt      Boolean                          @default(true)
-  slug                            String                           @unique
-  isActive                        Boolean                          @default(true)
-  createdAt                       DateTime                         @default(now())
-  updatedAt                       DateTime                         @updatedAt
-  memberships                     Membership[]
-  license                         License?
-  billingCheckoutSessions         BillingCheckoutSession[]
-  billingProviderEvents           BillingProviderEvent[]
-  billingInvoices                 BillingInvoice[]
-  billingAdminAuditLogs           BillingAdminAuditLog[]
-  syncState                       CompanySyncState?
-  adminAuditLogs                  AdminAuditLog[]                  @relation("AdminAuditCompany")
-  deviceSessions                  DeviceSession[]
-  companyDevices                  CompanyDevice[]
-  syncEvents                      SyncEvent[]
-  syncCheckpoints                 SyncCheckpoint[]
-  syncConflicts                   SyncConflict[]
-  syncIncidents                   SyncIncident[]
-  syncSupportCommands             SyncSupportCommand[]
-  deviceSyncDiagnostics           DeviceSyncDiagnostic[]
-  sessionAuditLogs                SessionAuditLog[]                @relation("SessionAuditCompany")
-  suppliers                       Supplier[]
-  supplies                        Supply[]
-  productRecipeItems              ProductRecipeItem[]
-  categories                      Category[]
-  products                        Product[]
-  customers                       Customer[]
-  purchases                       Purchase[]
-  sales                           Sale[]
-  financialEvents                 FinancialEvent[]
-  costs                           Cost[]
-  fiadoPayments                   FiadoPayment[]
-  cashEvents                      CashEvent[]
-  cashSessions                    CashSession[]
-  operationalOrders               OperationalOrder[]
-  operationalOrderItems           OperationalOrderItem[]
-  stockReservations               StockReservation[]
-  stockDeductions                 StockDeduction[]
-  supplyCostHistory               SupplyCostHistory[]
-  analyticsCompanyDailySnapshots  AnalyticsCompanyDailySnapshot[]
-  analyticsProductDailySnapshots  AnalyticsProductDailySnapshot[]
-  analyticsCustomerDailySnapshots AnalyticsCustomerDailySnapshot[]
-  crmCustomerTags                 CustomerTag[]
-  crmCustomerTagAssignments       CustomerTagAssignment[]
-  crmCustomerNotes                CustomerNote[]
-  crmCustomerTasks                CustomerTask[]
-  crmCustomerTimelineEvents       CustomerTimelineEvent[]
-  hybridGovernanceProfile         HybridGovernanceProfile?
-  employeeProfiles                EmployeeProfile[]
-  tenantDeletionRequests          TenantDeletionRequest[]
-  tenantDeletionAuditEvents       TenantDeletionAuditEvent[]
+  id                                   String                                @id @default(uuid())
+  name                                 String
+  legalName                            String
+  documentNumber                       String?
+  receiptDisplayName                   String?
+  receiptDocument                      String?
+  receiptPhone                         String?
+  receiptAddress                       String?
+  receiptFooterMessage                 String?
+  showDocumentOnReceipt                Boolean                               @default(true)
+  showPhoneOnReceipt                   Boolean                               @default(true)
+  showAddressOnReceipt                 Boolean                               @default(true)
+  showFooterMessageOnReceipt           Boolean                               @default(true)
+  slug                                 String                                @unique
+  isActive                             Boolean                               @default(true)
+  createdAt                            DateTime                              @default(now())
+  updatedAt                            DateTime                              @updatedAt
+  memberships                          Membership[]
+  license                              License?
+  billingCheckoutSessions              BillingCheckoutSession[]
+  billingProviderEvents                BillingProviderEvent[]
+  billingInvoices                      BillingInvoice[]
+  billingAdminAuditLogs                BillingAdminAuditLog[]
+  syncState                            CompanySyncState?
+  adminAuditLogs                       AdminAuditLog[]                       @relation("AdminAuditCompany")
+  deviceSessions                       DeviceSession[]
+  companyDevices                       CompanyDevice[]
+  syncEvents                           SyncEvent[]
+  syncCheckpoints                      SyncCheckpoint[]
+  syncConflicts                        SyncConflict[]
+  syncIncidents                        SyncIncident[]
+  syncSupportCommands                  SyncSupportCommand[]
+  deviceSyncDiagnostics                DeviceSyncDiagnostic[]
+  sessionAuditLogs                     SessionAuditLog[]                     @relation("SessionAuditCompany")
+  suppliers                            Supplier[]
+  supplies                             Supply[]
+  productRecipeItems                   ProductRecipeItem[]
+  categories                           Category[]
+  products                             Product[]
+  customers                            Customer[]
+  purchases                            Purchase[]
+  sales                                Sale[]
+  financialEvents                      FinancialEvent[]
+  costs                                Cost[]
+  fiadoPayments                        FiadoPayment[]
+  cashEvents                           CashEvent[]
+  cashSessions                         CashSession[]
+  operationalOrders                    OperationalOrder[]
+  operationalOrderItems                OperationalOrderItem[]
+  stockReservations                    StockReservation[]
+  stockDeductions                      StockDeduction[]
+  supplyCostHistory                    SupplyCostHistory[]
+  analyticsCompanyDailySnapshots       AnalyticsCompanyDailySnapshot[]
+  analyticsProductDailySnapshots       AnalyticsProductDailySnapshot[]
+  analyticsCustomerDailySnapshots      AnalyticsCustomerDailySnapshot[]
+  crmCustomerTags                      CustomerTag[]
+  crmCustomerTagAssignments            CustomerTagAssignment[]
+  crmCustomerNotes                     CustomerNote[]
+  crmCustomerTasks                     CustomerTask[]
+  crmCustomerTimelineEvents            CustomerTimelineEvent[]
+  hybridGovernanceProfile              HybridGovernanceProfile?
+  employeeProfiles                     EmployeeProfile[]
+  tenantDeletionRequests               TenantDeletionRequest[]
+  tenantDeletionAuditEvents            TenantDeletionAuditEvent[]
+  tenantDeletionDeviceAcknowledgements TenantDeletionDeviceAcknowledgement[]
 }
 
 model Membership {
@@ -691,16 +693,16 @@ model AdminAuditLog {
 }
 
 model TenantDeletionRequest {
-  id                            String                       @id @default(uuid())
+  id                            String                                @id @default(uuid())
   companyId                     String
-  activeCompanyGuard            String?                      @unique
-  status                        CompanyDeletionRequestStatus @default(REQUESTED)
+  activeCompanyGuard            String?                               @unique
+  status                        CompanyDeletionRequestStatus          @default(REQUESTED)
   requestedByAdminUserId        String?
   requestedByEmail              String?
   requestedCompanyNameSnapshot  String
   source                        String
   reason                        String
-  identityStatus                IdentityVerificationStatus   @default(NOT_STARTED)
+  identityStatus                IdentityVerificationStatus            @default(NOT_STARTED)
   identityVerifiedByAdminUserId String?
   identityVerifiedAt            DateTime?
   identityVerificationNotes     String?
@@ -717,18 +719,19 @@ model TenantDeletionRequest {
   executionReceiptJson          Json?
   executionStartedAt            DateTime?
   executionCompletedAt          DateTime?
-  executionAttemptId           String?
-  executionLockedAt            DateTime?
+  executionAttemptId            String?
+  executionLockedAt             DateTime?
   executedByAdminUserId         String?
-  createdAt                     DateTime                     @default(now())
-  updatedAt                     DateTime                     @updatedAt
-  company                       Company                      @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  requestedByAdminUser          User?                        @relation("TenantDeletionRequestCreator", fields: [requestedByAdminUserId], references: [id], onDelete: Restrict)
-  identityVerifiedByAdminUser   User?                        @relation("TenantDeletionIdentityVerifier", fields: [identityVerifiedByAdminUserId], references: [id], onDelete: Restrict)
-  cancelledByAdminUser          User?                        @relation("TenantDeletionRequestCanceller", fields: [cancelledByAdminUserId], references: [id], onDelete: Restrict)
-  rejectedByAdminUser           User?                        @relation("TenantDeletionRequestRejector", fields: [rejectedByAdminUserId], references: [id], onDelete: Restrict)
-  executedByAdminUser           User?                        @relation("TenantDeletionRequestExecutor", fields: [executedByAdminUserId], references: [id], onDelete: Restrict)
+  createdAt                     DateTime                              @default(now())
+  updatedAt                     DateTime                              @updatedAt
+  company                       Company                               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  requestedByAdminUser          User?                                 @relation("TenantDeletionRequestCreator", fields: [requestedByAdminUserId], references: [id], onDelete: Restrict)
+  identityVerifiedByAdminUser   User?                                 @relation("TenantDeletionIdentityVerifier", fields: [identityVerifiedByAdminUserId], references: [id], onDelete: Restrict)
+  cancelledByAdminUser          User?                                 @relation("TenantDeletionRequestCanceller", fields: [cancelledByAdminUserId], references: [id], onDelete: Restrict)
+  rejectedByAdminUser           User?                                 @relation("TenantDeletionRequestRejector", fields: [rejectedByAdminUserId], references: [id], onDelete: Restrict)
+  executedByAdminUser           User?                                 @relation("TenantDeletionRequestExecutor", fields: [executedByAdminUserId], references: [id], onDelete: Restrict)
   auditEvents                   TenantDeletionAuditEvent[]
+  deviceAcknowledgements        TenantDeletionDeviceAcknowledgement[]
 
   @@index([companyId, status, updatedAt])
   @@index([status, createdAt])
@@ -754,6 +757,27 @@ model TenantDeletionAuditEvent {
   @@index([companyId, createdAt])
   @@index([eventType, createdAt])
   @@index([actorAdminUserId, createdAt])
+}
+
+model TenantDeletionDeviceAcknowledgement {
+  id                      String                @id @default(uuid())
+  tenantDeletionRequestId String
+  companyId               String
+  clientInstanceId        String
+  deviceLabel             String?
+  platform                String?
+  appVersion              String?
+  acknowledgedAt          DateTime              @default(now())
+  source                  String
+  metadataJson            Json?
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+  request                 TenantDeletionRequest @relation(fields: [tenantDeletionRequestId], references: [id], onDelete: Restrict)
+  company                 Company               @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantDeletionRequestId, clientInstanceId])
+  @@index([companyId, acknowledgedAt])
+  @@index([tenantDeletionRequestId, acknowledgedAt])
 }
 
 model SupportActionExecution {

@@ -90,6 +90,9 @@ export class AppContextService {
 
     await this.tenantLifecycleService.assertTenantOperational(
       membership.companyId,
+      {
+        clientInstanceId,
+      },
     );
 
     const license = membership.company.license;

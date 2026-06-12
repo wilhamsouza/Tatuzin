@@ -18,6 +18,7 @@ describe("tenant lifecycle operational guard", () => {
   });
 
   it("bloqueia tenant em FUTURE_PENDING_DELETION com codigo claro", async () => {
+    const issuedTokens: unknown[] = [];
     const service = new TenantLifecycleService({
       tenantDeletionRequest: {
         async findFirst() {
@@ -29,14 +30,43 @@ describe("tenant lifecycle operational guard", () => {
           };
         },
       },
+    } as never, {
+      issue(input: unknown) {
+        issuedTokens.push(input);
+        return "signed-acknowledgement-token";
+      },
     } as never);
 
     await assert.rejects(
-      service.assertTenantOperational("company-1"),
-      (error: unknown) =>
-        error instanceof AppError &&
-        error.statusCode === 423 &&
-        error.code === "TENANT_PENDING_DELETION",
+      service.assertTenantOperational("company-1", {
+        clientInstanceId: "device-1",
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof AppError);
+        assert.equal(error.statusCode, 423);
+        assert.equal(error.code, "TENANT_PENDING_DELETION");
+        assert.deepEqual(error.details, {
+          acknowledgementAvailable: true,
+        });
+        assert.deepEqual(error.responseDetails, {
+          acknowledgementAvailable: true,
+          acknowledgement: {
+            token: "signed-acknowledgement-token",
+            requestId: "request-1",
+            companyId: "company-1",
+            clientInstanceId: "device-1",
+          },
+        });
+        assert.equal(JSON.stringify(error.details).includes("signed"), false);
+        return true;
+      },
     );
+    assert.deepEqual(issuedTokens, [
+      {
+        requestId: "request-1",
+        companyId: "company-1",
+        clientInstanceId: "device-1",
+      },
+    ]);
   });
 });
