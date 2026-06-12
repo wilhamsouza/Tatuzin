@@ -45,6 +45,7 @@ class CustomersRepositoryImpl
 
   @override
   Future<int> create(ClientInput input) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseCrmRemoteWrite) {
       try {
         final remote = await _remoteDatasource
@@ -66,6 +67,7 @@ class CustomersRepositoryImpl
 
   @override
   Future<void> delete(int id) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseCrmRemoteWrite) {
       final client = await _localRepository
           .findById(id, includeDeleted: true)
@@ -245,6 +247,7 @@ class CustomersRepositoryImpl
 
   @override
   Future<void> update(int id, ClientInput input) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseCrmRemoteWrite) {
       final client = await _localRepository
           .findById(id, includeDeleted: true)

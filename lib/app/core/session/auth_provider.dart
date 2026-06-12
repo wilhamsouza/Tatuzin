@@ -16,6 +16,7 @@ import 'auth_token_storage.dart';
 import 'cached_session_storage.dart';
 import 'session_provider.dart';
 import 'session_reset.dart';
+import 'tenant_operational_block.dart';
 
 final mockAuthGatewayProvider = Provider<AuthGateway>((ref) {
   return FakeAuthGateway();
@@ -92,6 +93,9 @@ class AuthController extends AsyncNotifier<void> {
       if (session != null) {
         await _applySession(session);
       }
+    } on TenantPendingDeletionException {
+      await ref.read(cachedSessionStorageProvider).clear();
+      ref.read(appSessionProvider.notifier).signOutToLocalMode();
     } on AuthenticationException {
       await ref.read(cachedSessionStorageProvider).clear();
       ref.read(appSessionProvider.notifier).signOutToLocalMode();
@@ -366,6 +370,12 @@ class AuthController extends AsyncNotifier<void> {
     AppSession session, {
     bool preserveRuntimeWhenSamePrincipal = false,
   }) async {
+    if (session.isRemoteAuthenticated && !session.isOfflineFallback) {
+      await ref
+          .read(tenantOperationalBlockControllerProvider.notifier)
+          .clearIfOperational(session.company.remoteId);
+    }
+
     ref.read(autoSyncCoordinatorProvider).cancelPending();
     ref
         .read(appSessionProvider.notifier)
@@ -465,6 +475,18 @@ class AuthController extends AsyncNotifier<void> {
         session: cachedSession,
       );
       throw const NetworkRequestException(firstAccessRequiresConnectionMessage);
+    }
+
+    final tenantBlock = await ref.read(
+      tenantOperationalBlockControllerProvider.future,
+    );
+    if (tenantBlock?.appliesTo(cachedSession) ?? false) {
+      _logOfflineBlocked(
+        reason: 'tenant_pending_deletion',
+        cause: TenantPendingDeletionException.code,
+        session: cachedSession,
+      );
+      throw const TenantPendingDeletionException();
     }
 
     String isolationKey;

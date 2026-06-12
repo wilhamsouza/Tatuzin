@@ -11,6 +11,8 @@ import '../contracts/api_client_contract.dart';
 import '../endpoint_config.dart';
 
 typedef SessionInvalidationHandler = Future<void> Function();
+typedef TenantPendingDeletionHandler =
+    Future<void> Function(TenantPendingDeletionException exception);
 
 class RealApiClient implements ApiClientContract {
   RealApiClient(
@@ -18,14 +20,17 @@ class RealApiClient implements ApiClientContract {
     http.Client? httpClient,
     AuthTokenStorage? tokenStorage,
     SessionInvalidationHandler? onSessionInvalidated,
+    TenantPendingDeletionHandler? onTenantPendingDeletion,
   }) : _httpClient = httpClient ?? http.Client(),
        _tokenStorage = tokenStorage,
-       _onSessionInvalidated = onSessionInvalidated;
+       _onSessionInvalidated = onSessionInvalidated,
+       _onTenantPendingDeletion = onTenantPendingDeletion;
 
   final EndpointConfig _endpointConfig;
   final http.Client _httpClient;
   final AuthTokenStorage? _tokenStorage;
   final SessionInvalidationHandler? _onSessionInvalidated;
+  final TenantPendingDeletionHandler? _onTenantPendingDeletion;
 
   @override
   Future<ApiResponse<void>> delete(
@@ -101,6 +106,12 @@ class RealApiClient implements ApiClientContract {
       final payload = _decodeBody(response);
 
       if (response.statusCode >= 400) {
+        await _throwIfTenantPendingDeletion(
+          payload: payload,
+          statusCode: response.statusCode,
+          requestPath: path,
+        );
+
         if (response.statusCode == 401 &&
             allowRefreshRetry &&
             _shouldAttemptRefresh(path, headers)) {
@@ -248,6 +259,12 @@ class RealApiClient implements ApiClientContract {
       return nextAccessToken;
     }
 
+    await _throwIfTenantPendingDeletion(
+      payload: payload,
+      statusCode: response.statusCode,
+      requestPath: '/auth/refresh',
+    );
+
     final message = _extractErrorMessage(payload, response.statusCode);
     if (response.statusCode == 401 || response.statusCode == 403) {
       await tokenStorage.clear();
@@ -347,6 +364,44 @@ class RealApiClient implements ApiClientContract {
     }
 
     return 'Resposta HTTP $statusCode';
+  }
+
+  String? _extractErrorCode(dynamic payload) {
+    if (payload is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final directCode = payload['code'];
+    if (directCode is String && directCode.trim().isNotEmpty) {
+      return directCode.trim();
+    }
+
+    final nestedError = payload['error'];
+    if (nestedError is Map<String, dynamic>) {
+      final nestedCode = nestedError['code'];
+      if (nestedCode is String && nestedCode.trim().isNotEmpty) {
+        return nestedCode.trim();
+      }
+    }
+    return null;
+  }
+
+  Future<void> _throwIfTenantPendingDeletion({
+    required dynamic payload,
+    required int statusCode,
+    required String requestPath,
+  }) async {
+    if (_extractErrorCode(payload) != TenantPendingDeletionException.code) {
+      return;
+    }
+
+    final exception = TenantPendingDeletionException(
+      statusCode: statusCode,
+      requestPath: requestPath,
+    );
+    await _tokenStorage?.clear();
+    await _onTenantPendingDeletion?.call(exception);
+    throw exception;
   }
 
   String? _extractValidationDetails(dynamic payload) {

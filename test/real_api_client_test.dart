@@ -233,6 +233,66 @@ void main() {
         ),
       );
     });
+
+    test(
+      'mapeia TENANT_PENDING_DELETION sem refresh ou erro generico',
+      () async {
+        var requestCount = 0;
+        TenantPendingDeletionException? reportedException;
+        final tokenStorage = _MemoryAuthTokenStorage(
+          accessToken: 'access-token',
+          refreshToken: 'refresh-token',
+          clientContext: const AuthClientContext(
+            clientType: 'mobile_app',
+            clientInstanceId: 'device-123',
+          ),
+        );
+        final apiClient = RealApiClient(
+          const EndpointConfig(
+            baseUrl: EndpointConfig.productionBaseUrl,
+            apiVersion: EndpointConfig.defaultApiVersion,
+          ),
+          httpClient: MockClient((request) async {
+            requestCount++;
+            return http.Response(
+              jsonEncode({
+                'ok': false,
+                'message': 'Empresa em quarentena.',
+                'code': TenantPendingDeletionException.code,
+              }),
+              423,
+            );
+          }),
+          tokenStorage: tokenStorage,
+          onTenantPendingDeletion: (exception) async {
+            reportedException = exception;
+          },
+        );
+
+        await expectLater(
+          () => apiClient.getJson(
+            '/sync/push',
+            options: const ApiRequestOptions(
+              headers: <String, String>{'Authorization': 'Bearer access-token'},
+            ),
+          ),
+          throwsA(
+            isA<TenantPendingDeletionException>()
+                .having((error) => error.statusCode, 'statusCode', 423)
+                .having(
+                  (error) => error.requestPath,
+                  'requestPath',
+                  '/sync/push',
+                ),
+          ),
+        );
+
+        expect(requestCount, 1);
+        expect(reportedException, isNotNull);
+        expect(await tokenStorage.readAccessToken(), isNull);
+        expect(await tokenStorage.readRefreshToken(), isNull);
+      },
+    );
   });
 }
 

@@ -18,6 +18,7 @@ import 'package:tatuzin/modules/caixa/data/sqlite_cash_repository.dart';
 import 'package:tatuzin/modules/clientes/data/sqlite_client_repository.dart';
 import 'package:tatuzin/app/core/app_context/app_operational_context.dart';
 import 'package:tatuzin/app/core/config/app_environment.dart';
+import 'package:tatuzin/app/core/errors/app_exceptions.dart';
 import 'package:tatuzin/modules/dashboard/data/sqlite_operational_dashboard_repository.dart';
 import 'package:tatuzin/modules/fornecedores/data/sqlite_supplier_repository.dart';
 import 'package:tatuzin/modules/produtos/data/sqlite_product_repository.dart';
@@ -334,6 +335,43 @@ void main() {
       expect(eligible.map((item) => item.event.eventId), [event.eventId]);
     });
 
+    test('falha sem proximo retry nao volta ao sync automatico', () async {
+      final now = DateTime(2026, 6, 12, 12);
+      final appDatabase = _newIsolatedDatabase('terminal-failed-event');
+      addTearDown(() async => _disposeIsolatedDatabase(appDatabase));
+      final database = await appDatabase.database;
+      final repository = SqliteOperationalSyncQueueRepository(appDatabase);
+      final event = _event(entity: 'sale', id: 'sale-blocked');
+
+      await repository.enqueue(database, event: event);
+      final pending = await repository.listPending(
+        limit: 10,
+        retryOnly: false,
+        now: now,
+      );
+      await repository.markFailed(
+        pending,
+        message: TenantPendingDeletionException.code,
+        failedAt: now,
+        nextRetryAt: null,
+      );
+
+      final automaticRetry = await repository.listPending(
+        limit: 10,
+        retryOnly: false,
+        now: now.add(const Duration(days: 1)),
+      );
+      final explicitRetry = await repository.listPending(
+        limit: 10,
+        retryOnly: true,
+        ignoreRetryBackoff: true,
+        now: now,
+      );
+
+      expect(automaticRetry, isEmpty);
+      expect(explicitRetry.map((item) => item.event.eventId), [event.eventId]);
+    });
+
     test(
       'repara operationalOrderItem antigo sem totalCents e volta para fila',
       () async {
@@ -546,6 +584,31 @@ void main() {
       );
       expect(queue.statusByEventId[conflict.eventId], 'conflict:conflict-1');
       expect(snapshotChanges, 1);
+    });
+
+    test('tenant pending deletion interrompe lote sem agendar retry', () async {
+      final event = _event(entity: 'sale', id: 'sale-blocked');
+      final queue = _MemoryOperationalSyncQueueRepository(events: [event]);
+      final remote = _FakeOperationalSyncRemoteDataSource(
+        pushError: const TenantPendingDeletionException(),
+      );
+      final runner = OperationalSyncRunner(
+        queueRepository: queue,
+        remoteDataSource: remote,
+        snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+          version: '1',
+        ),
+        shouldContinue: () => true,
+        onCacheSnapshotChanged: () {},
+      );
+
+      final result = await runner.run(retryOnly: false);
+
+      expect(result.processedCount, 1);
+      expect(result.failedCount, 1);
+      expect(queue.statusByEventId[event.eventId], 'failed');
+      expect(queue.lastFailedNextRetryAt, isNull);
+      expect(remote.pullCallCount, 0);
     });
 
     test('diagnostico conta apenas conflitos OPEN como ativos', () async {
@@ -1980,6 +2043,7 @@ class _MemoryOperationalSyncQueueRepository
   int requeuedEvents = 0;
   int clearedConflicts = 0;
   int clearResolvedConflictCalls = 0;
+  DateTime? lastFailedNextRetryAt;
 
   @override
   Future<bool> enqueue(db, {required OperationalSyncEvent event}) async {
@@ -2049,6 +2113,7 @@ class _MemoryOperationalSyncQueueRepository
     required DateTime failedAt,
     required DateTime? nextRetryAt,
   }) async {
+    lastFailedNextRetryAt = nextRetryAt;
     for (final item in items) {
       statusByEventId[item.event.eventId] = 'failed';
     }
@@ -2181,6 +2246,7 @@ class _FakeOperationalSyncRemoteDataSource
     this.statusServerVersion = '0',
     this.conflicts = const <OperationalSyncConflict>[],
     this.failPull = false,
+    this.pushError,
   }) : pushResponse =
            pushResponse ??
            const OperationalSyncPushResponse(
@@ -2207,6 +2273,7 @@ class _FakeOperationalSyncRemoteDataSource
   final String statusServerVersion;
   final List<OperationalSyncConflict> conflicts;
   final bool failPull;
+  final Object? pushError;
   List<OperationalSyncEvent> lastPushedEvents = const <OperationalSyncEvent>[];
   final diagnostics = <OperationalSyncDiagnosticReport>[];
   List<OperationalSyncSupportCommand> supportCommands =
@@ -2226,6 +2293,10 @@ class _FakeOperationalSyncRemoteDataSource
     String? lastKnownServerVersion,
   }) async {
     lastPushedEvents = events;
+    final error = pushError;
+    if (error != null) {
+      throw error;
+    }
     return pushResponse;
   }
 

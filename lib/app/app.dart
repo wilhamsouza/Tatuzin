@@ -10,10 +10,12 @@ import 'core/providers/app_data_refresh_provider.dart';
 import 'core/session/auth_provider.dart';
 import 'core/session/session_provider.dart';
 import 'core/session/session_reset.dart';
+import 'core/session/tenant_operational_block.dart';
 import 'core/sync/auto_sync_coordinator.dart';
 import 'core/sync/sync_providers.dart';
 import 'core/utils/app_logger.dart';
 import 'core/widgets/app_async_value_view.dart';
+import 'core/widgets/tenant_pending_deletion_page.dart';
 import 'routes/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/app_theme_mode_controller.dart';
@@ -85,8 +87,32 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
 
   @override
   Widget build(BuildContext context) {
-    final startup = ref.watch(appStartupProvider);
     final themeMode = ref.watch(appMaterialThemeModeProvider);
+    final tenantBlockState = ref.watch(
+      tenantOperationalBlockControllerProvider,
+    );
+    final tenantBlock = tenantBlockState.valueOrNull;
+    final session = ref.watch(appSessionProvider);
+
+    if (tenantBlock != null && tenantBlock.shouldPresentFor(session)) {
+      return MaterialApp(
+        title: AppConstants.appName,
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
+        themeMode: themeMode,
+        home: TenantPendingDeletionPage(
+          block: tenantBlock,
+          onAcknowledge: () => unawaited(
+            ref
+                .read(tenantOperationalBlockControllerProvider.notifier)
+                .acknowledge(),
+          ),
+        ),
+      );
+    }
+
+    final startup = ref.watch(appStartupProvider);
 
     return startup.when(
       data: (startupState) {

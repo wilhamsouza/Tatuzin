@@ -50,6 +50,7 @@ class ProductsRepositoryImpl
 
   @override
   Future<int> create(ProductInput input) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseErpRemoteWrite) {
       try {
         final remoteDraft = await _remoteProductFromInput(input);
@@ -78,6 +79,7 @@ class ProductsRepositoryImpl
 
   @override
   Future<void> delete(int id) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseErpRemoteWrite) {
       final product = await _localRepository
           .findById(id, includeDeleted: true)
@@ -248,6 +250,7 @@ class ProductsRepositoryImpl
 
   @override
   Future<void> update(int id, ProductInput input) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseErpRemoteWrite) {
       final product = await _localRepository
           .findById(id, includeDeleted: true)

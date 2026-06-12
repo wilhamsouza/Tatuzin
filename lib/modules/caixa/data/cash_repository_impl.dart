@@ -94,6 +94,7 @@ class CashRepositoryImpl implements CashRepository {
   }
 
   Future<T> _executeWrite<T>(Future<T> Function() localAction) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_dataAccessPolicy.allowRemoteWrite &&
         _operationalContext.canUseCloudWrites) {
       await _remoteDatasource.canReachRemote();

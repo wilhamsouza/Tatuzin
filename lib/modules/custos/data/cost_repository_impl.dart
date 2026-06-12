@@ -31,6 +31,7 @@ class CostRepositoryImpl implements CostRepository {
 
   @override
   Future<CostEntry> cancelCost({required int costId, String? notes}) {
+    _operationalContext?.ensureOperationalWriteAllowed();
     if (_shouldUseRemoteWrite) {
       return _cancelRemoteFirst(costId: costId, notes: notes);
     }
@@ -41,6 +42,7 @@ class CostRepositoryImpl implements CostRepository {
 
   @override
   Future<int> createCost(CreateCostInput input) {
+    _operationalContext?.ensureOperationalWriteAllowed();
     if (_shouldUseRemoteWrite) {
       return _createRemoteFirst(input);
     }
@@ -66,6 +68,7 @@ class CostRepositoryImpl implements CostRepository {
 
   @override
   Future<CostEntry> markCostPaid(MarkCostPaidInput input) {
+    _operationalContext?.ensureOperationalWriteAllowed();
     if (_shouldUseRemoteWrite) {
       return _markPaidRemoteFirst(input);
     }
@@ -110,6 +113,7 @@ class CostRepositoryImpl implements CostRepository {
     required int costId,
     required UpdateCostInput input,
   }) {
+    _operationalContext?.ensureOperationalWriteAllowed();
     if (_shouldUseRemoteWrite) {
       return _updateRemoteFirst(costId: costId, input: input);
     }

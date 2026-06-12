@@ -50,5 +50,14 @@ void main() {
         'Não foi possível falar com a nuvem agora. Verifique sua conexão.',
       );
     });
+
+    test('tenant pending deletion nao vira erro de internet', () {
+      final message = friendlySessionFeedbackMessage(
+        const TenantPendingDeletionException(),
+      );
+
+      expect(message, tenantPendingDeletionMessage);
+      expect(message.toLowerCase(), isNot(contains('internet')));
+    });
   });
 }

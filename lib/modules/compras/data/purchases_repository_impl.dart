@@ -48,6 +48,7 @@ class PurchasesRepositoryImpl
 
   @override
   Future<void> cancel(int purchaseId, {String? reason}) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseErpRemoteWrite) {
       final purchase = await _localRepository
           .findPurchaseForSync(purchaseId)
@@ -98,6 +99,7 @@ class PurchasesRepositoryImpl
 
   @override
   Future<int> create(PurchaseUpsertInput input) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseErpRemoteWrite) {
       try {
         final remoteDraft = await _localRepository
@@ -165,6 +167,7 @@ class PurchasesRepositoryImpl
 
   @override
   Future<PurchaseDetail> registerPayment(PurchasePaymentInput input) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseErpRemoteWrite) {
       final purchase = await _localRepository
           .findPurchaseForSync(input.purchaseId)
@@ -355,6 +358,7 @@ class PurchasesRepositoryImpl
 
   @override
   Future<void> update(int id, PurchaseUpsertInput input) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseErpRemoteWrite) {
       final purchase = await _localRepository
           .findPurchaseForSync(id)

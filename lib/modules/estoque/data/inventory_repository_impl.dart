@@ -36,6 +36,7 @@ class InventoryRepositoryImpl implements InventoryRepository {
 
   @override
   Future<void> adjustStock(InventoryAdjustmentInput input) {
+    _operationalContext?.ensureOperationalWriteAllowed();
     return _localRepository.adjustStock(input);
   }
 

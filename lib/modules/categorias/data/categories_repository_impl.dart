@@ -45,6 +45,7 @@ class CategoriesRepositoryImpl
 
   @override
   Future<int> create(CategoryInput input) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseErpRemoteWrite) {
       try {
         final remote = await _remoteDatasource
@@ -66,6 +67,7 @@ class CategoriesRepositoryImpl
 
   @override
   Future<void> delete(int id) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseErpRemoteWrite) {
       final category = await _localRepository
           .findById(id, includeDeleted: true)
@@ -231,6 +233,7 @@ class CategoriesRepositoryImpl
 
   @override
   Future<void> update(int id, CategoryInput input) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseErpRemoteWrite) {
       final category = await _localRepository
           .findById(id, includeDeleted: true)

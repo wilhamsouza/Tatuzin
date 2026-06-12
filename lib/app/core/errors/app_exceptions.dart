@@ -28,6 +28,23 @@ final class AuthenticationException extends AppException {
   const AuthenticationException(super.message, {super.cause});
 }
 
+final class TenantPendingDeletionException extends AppException {
+  const TenantPendingDeletionException({
+    this.statusCode = 423,
+    this.requestPath,
+  }) : super(tenantPendingDeletionMessage, cause: statusCode);
+
+  static const code = 'TENANT_PENDING_DELETION';
+
+  final int statusCode;
+  final String? requestPath;
+}
+
+const tenantPendingDeletionMessage =
+    'Esta empresa esta em processo de exclusao. O acesso operacional e a '
+    'sincronizacao foram bloqueados. Os dados locais deste dispositivo nao '
+    'foram apagados automaticamente.';
+
 final class InitialPasswordChangeRequiredException extends AppException {
   const InitialPasswordChangeRequiredException(super.message, {super.cause});
 }

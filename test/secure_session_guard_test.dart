@@ -12,6 +12,7 @@ import 'package:tatuzin/app/core/session/cached_session_storage.dart';
 import 'package:tatuzin/app/core/session/company_context.dart';
 import 'package:tatuzin/app/core/session/session_provider.dart';
 import 'package:tatuzin/app/core/session/session_reset.dart';
+import 'package:tatuzin/app/core/session/tenant_operational_block.dart';
 import 'package:tatuzin/app/core/sync/sync_providers.dart';
 import 'package:tatuzin/modules/auth/presentation/pages/login_page.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -175,6 +176,9 @@ void main() {
         cachedSessionStorageProvider.overrideWith(
           (ref) => _MemoryCachedSessionStorage(cachedSession),
         ),
+        tenantOperationalBlockStorageProvider.overrideWith(
+          (ref) => _MemoryTenantOperationalBlockStorage(),
+        ),
         tenantDatabaseExistsProvider.overrideWith((ref) {
           return (isolationKey) async => true;
         }),
@@ -193,6 +197,42 @@ void main() {
     expect(session!.isOfflineFallback, isTrue);
     expect(container.read(appSessionProvider).company.remoteId, 'company-1');
     expect((await container.read(appStartupProvider.future)).isSuccess, isTrue);
+  });
+
+  test('tenant pending deletion nao restaura cache offline', () async {
+    final cachedSession = _remoteSession().copyWith(isOfflineFallback: true);
+    final container = ProviderContainer(
+      overrides: [
+        initialAppEnvironmentProvider.overrideWith((ref) => _remoteEnvironment),
+        remoteAuthGatewayProvider.overrideWith(
+          (ref) => _NetworkFailureGateway(),
+        ),
+        cachedSessionStorageProvider.overrideWith(
+          (ref) => _MemoryCachedSessionStorage(cachedSession),
+        ),
+        tenantOperationalBlockStorageProvider.overrideWith(
+          (ref) => _MemoryTenantOperationalBlockStorage(
+            TenantOperationalBlock(
+              companyId: 'company-1',
+              companyName: 'Cafe Tatuzin',
+              detectedAt: DateTime.utc(2026, 6, 11, 12),
+            ),
+          ),
+        ),
+        tenantDatabaseExistsProvider.overrideWith((ref) {
+          return (isolationKey) async => true;
+        }),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await expectLater(
+      () => container
+          .read(authControllerProvider.notifier)
+          .restoreRemoteSession(),
+      throwsA(isA<TenantPendingDeletionException>()),
+    );
+    expect(container.read(appSessionProvider).isLocalDefault, isTrue);
   });
 
   test(
@@ -327,6 +367,26 @@ class _MemoryCachedSessionStorage implements CachedSessionStorage {
   @override
   Future<void> saveSession(AppSession session) async {
     this.session = session;
+  }
+}
+
+class _MemoryTenantOperationalBlockStorage
+    implements TenantOperationalBlockStorage {
+  _MemoryTenantOperationalBlockStorage([this.block]);
+
+  TenantOperationalBlock? block;
+
+  @override
+  Future<void> clear() async {
+    block = null;
+  }
+
+  @override
+  Future<TenantOperationalBlock?> load() async => block;
+
+  @override
+  Future<void> save(TenantOperationalBlock block) async {
+    this.block = block;
   }
 }
 

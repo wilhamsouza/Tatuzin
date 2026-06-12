@@ -3,11 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../database/app_database.dart';
 import '../errors/app_exceptions.dart';
 import '../session/session_provider.dart';
+import '../session/tenant_operational_block.dart';
 import '../utils/app_logger.dart';
 
 Future<String> requireTenantBootstrapReady(Ref ref, String label) async {
   final session = ref.watch(appSessionProvider);
   final runtimeKey = ref.watch(sessionRuntimeKeyProvider);
+  final tenantBlock = ref
+      .read(tenantOperationalBlockControllerProvider)
+      .valueOrNull;
+
+  ensureTenantOperationalWriteAllowed(tenantBlock, session);
 
   if (!session.hasOperationalIdentity) {
     AppLogger.error(

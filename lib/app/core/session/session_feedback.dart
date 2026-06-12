@@ -1,3 +1,5 @@
+import '../errors/app_exceptions.dart';
+
 String friendlySessionFeedbackMessage(
   Object? error, {
   String fallback = 'Nao foi possivel concluir esta acao agora.',
@@ -11,6 +13,12 @@ String friendlySessionFeedbackMessage(
       .replaceFirst(RegExp(r'^Falha ao chamar [^:]+:\s*'), '')
       .trim();
   final normalized = sanitized.toLowerCase();
+  if (normalized.contains('tenant_pending_deletion') ||
+      normalized.contains('processo de exclusao') ||
+      normalized.contains('processo de exclusÃ£o')) {
+    return tenantPendingDeletionMessage;
+  }
+
   if (normalized.contains('license_expired')) {
     return 'A licença da empresa está expirada. Regularize a assinatura para continuar.';
   }

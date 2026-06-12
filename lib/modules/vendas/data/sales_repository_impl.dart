@@ -37,11 +37,13 @@ class SalesRepositoryImpl implements SaleRepository, SyncFeatureProcessor {
 
   @override
   Future<void> cancelSale({required int saleId, required String reason}) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     await _localRepository.cancelSale(saleId: saleId, reason: reason);
   }
 
   @override
   Future<CompletedSale> completeCashSale({required CheckoutInput input}) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     return _localRepository.completeCashSale(input: input);
   }
 
@@ -49,6 +51,7 @@ class SalesRepositoryImpl implements SaleRepository, SyncFeatureProcessor {
   Future<CompletedSale> completeCreditSale({
     required CheckoutInput input,
   }) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     return _localRepository.completeCreditSale(input: input);
   }
 

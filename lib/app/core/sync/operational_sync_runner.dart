@@ -1,4 +1,5 @@
 import '../utils/app_logger.dart';
+import '../errors/app_exceptions.dart';
 import 'app_snapshot_hydrator.dart';
 import 'app_snapshot_remote_datasource.dart';
 import 'operational_sync_policy.dart';
@@ -142,13 +143,25 @@ class OperationalSyncRunner {
           pending,
           message: error.toString(),
           failedAt: DateTime.now(),
-          nextRetryAt: _nextRetryAt(pending),
+          nextRetryAt: error is TenantPendingDeletionException
+              ? null
+              : _nextRetryAt(pending),
         );
         AppLogger.error(
           '[OperationalSync] push_failed',
           error: error,
           stackTrace: stackTrace,
         );
+        if (error is TenantPendingDeletionException) {
+          return _result(
+            retryOnly: retryOnly,
+            startedAt: startedAt,
+            processedCount: processedCount,
+            syncedCount: syncedCount,
+            failedCount: failedCount,
+            conflictCount: conflictCount,
+          );
+        }
       }
     }
 

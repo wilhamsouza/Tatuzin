@@ -2,8 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../config/app_data_mode.dart';
 import '../config/app_environment.dart';
+import '../session/cached_session_storage.dart';
 import '../session/auth_token_storage.dart';
 import '../session/session_provider.dart';
+import '../session/tenant_operational_block.dart';
 import '../utils/app_logger.dart';
 import 'contracts/api_client_contract.dart';
 import 'fakes/fake_api_client.dart';
@@ -22,6 +24,34 @@ final realApiClientProvider = Provider<ApiClientContract>((ref) {
     endpointConfig,
     tokenStorage: ref.watch(authTokenStorageProvider),
     onSessionInvalidated: () async {
+      ref.read(appSessionProvider.notifier).signOutToLocalMode();
+    },
+    onTenantPendingDeletion: (exception) async {
+      final currentSession = ref.read(appSessionProvider);
+      var companyId = currentSession.company.remoteId?.trim();
+      var companyName = currentSession.company.displayName.trim();
+
+      final isLoginRequest =
+          exception.requestPath == '/auth/login' ||
+          exception.requestPath == '/auth/register';
+      if ((companyId == null || companyId.isEmpty) && !isLoginRequest) {
+        final cachedSession = await ref
+            .read(cachedSessionStorageProvider)
+            .readSession();
+        companyId = cachedSession?.company.remoteId?.trim();
+        companyName = cachedSession?.company.displayName.trim() ?? '';
+      }
+
+      if (companyId != null && companyId.isNotEmpty) {
+        await ref
+            .read(tenantOperationalBlockControllerProvider.notifier)
+            .markPendingDeletion(
+              companyId: companyId,
+              companyName: companyName.isEmpty ? null : companyName,
+            );
+      }
+
+      await ref.read(cachedSessionStorageProvider).clear();
       ref.read(appSessionProvider.notifier).signOutToLocalMode();
     },
   );

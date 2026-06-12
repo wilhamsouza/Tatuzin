@@ -105,23 +105,34 @@ class SqliteOperationalSyncQueueRepository
   }) async {
     final database = await _appDatabase.database;
     final currentTime = now ?? DateTime.now();
-    final statuses = retryOnly
-        ? <String>[OperationalSyncQueueStatus.failed.storageValue]
-        : <String>[
-            OperationalSyncQueueStatus.pending.storageValue,
-            OperationalSyncQueueStatus.failed.storageValue,
-          ];
-    final placeholders = List.filled(statuses.length, '?').join(', ');
-    final retryWhere = ignoreRetryBackoff
-        ? ''
-        : ' AND (next_retry_at IS NULL OR next_retry_at <= ?)';
-    final retryArgs = ignoreRetryBackoff
-        ? const <Object?>[]
-        : <Object?>[currentTime.toIso8601String()];
+    final failedStatus = OperationalSyncQueueStatus.failed.storageValue;
+    final pendingStatus = OperationalSyncQueueStatus.pending.storageValue;
+    late final String where;
+    late final List<Object?> whereArgs;
+    if (ignoreRetryBackoff) {
+      where = retryOnly ? 'status = ?' : 'status IN (?, ?)';
+      whereArgs = retryOnly
+          ? <Object?>[failedStatus]
+          : <Object?>[pendingStatus, failedStatus];
+    } else if (retryOnly) {
+      where =
+          'status = ? AND next_retry_at IS NOT NULL '
+          'AND next_retry_at <= ?';
+      whereArgs = <Object?>[failedStatus, currentTime.toIso8601String()];
+    } else {
+      where =
+          '(status = ? OR (status = ? AND next_retry_at IS NOT NULL '
+          'AND next_retry_at <= ?))';
+      whereArgs = <Object?>[
+        pendingStatus,
+        failedStatus,
+        currentTime.toIso8601String(),
+      ];
+    }
     final rows = await database.query(
       TableNames.operationalSyncEvents,
-      where: 'status IN ($placeholders)$retryWhere',
-      whereArgs: <Object?>[...statuses, ...retryArgs],
+      where: where,
+      whereArgs: whereArgs,
       orderBy: 'created_at ASC, id ASC',
       limit: limit,
     );

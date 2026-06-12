@@ -48,6 +48,7 @@ class SuppliesRepositoryImpl implements SupplyRepository, SyncFeatureProcessor {
 
   @override
   Future<int> create(SupplyInput input) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseErpRemoteWrite) {
       try {
         final remote = await _remoteDatasource
@@ -69,6 +70,7 @@ class SuppliesRepositoryImpl implements SupplyRepository, SyncFeatureProcessor {
 
   @override
   Future<void> deactivate(int id) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseErpRemoteWrite) {
       final supply = await _localRepository
           .findSupplyForSync(id)
@@ -321,6 +323,7 @@ class SuppliesRepositoryImpl implements SupplyRepository, SyncFeatureProcessor {
 
   @override
   Future<void> update(int id, SupplyInput input) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     if (_shouldUseErpRemoteWrite) {
       final supply = await _localRepository
           .findSupplyForSync(id)

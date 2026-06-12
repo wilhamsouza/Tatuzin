@@ -18,6 +18,7 @@ import '../database/app_database.dart';
 import '../network/network_providers.dart';
 import '../session/auth_token_storage.dart';
 import '../utils/app_logger.dart';
+import '../session/tenant_operational_block.dart';
 import 'app_snapshot_hydrator.dart';
 import 'app_snapshot_remote_datasource.dart';
 import 'financial_event_sync_processor.dart';
@@ -144,8 +145,13 @@ final syncQueueEngineProvider = Provider<SyncQueueEngine>((ref) {
     retryPolicy: ref.watch(syncRetryPolicyProvider),
     dependencyResolver: ref.watch(syncDependencyResolverProvider),
     shouldContinue: () {
+      final session = ref.read(appSessionProvider);
+      final tenantBlock = ref
+          .read(tenantOperationalBlockControllerProvider)
+          .valueOrNull;
       return !isDisposed &&
-          ref.read(sessionRuntimeKeyProvider) == sessionRuntimeKey;
+          ref.read(sessionRuntimeKeyProvider) == sessionRuntimeKey &&
+          !(tenantBlock?.appliesTo(session) ?? false);
     },
   );
 });
@@ -166,8 +172,13 @@ final operationalSyncRunnerProvider = Provider<OperationalSyncRunner>((ref) {
     snapshotHydrator: ref.watch(appSnapshotHydratorProvider),
     snapshotRemoteDataSource: ref.watch(appSnapshotRemoteDataSourceProvider),
     shouldContinue: () {
+      final session = ref.read(appSessionProvider);
+      final tenantBlock = ref
+          .read(tenantOperationalBlockControllerProvider)
+          .valueOrNull;
       return !isDisposed &&
-          ref.read(sessionRuntimeKeyProvider) == sessionRuntimeKey;
+          ref.read(sessionRuntimeKeyProvider) == sessionRuntimeKey &&
+          !(tenantBlock?.appliesTo(session) ?? false);
     },
     onCacheSnapshotChanged: () {
       ref.read(appDataRefreshProvider.notifier).state++;
@@ -198,9 +209,13 @@ final autoSyncCoordinatorProvider = Provider<AutoSyncCoordinator>((ref) {
       final session = ref.read(appSessionProvider);
       final company = ref.read(currentCompanyContextProvider);
       final startupState = ref.read(appStartupProvider).valueOrNull;
+      final tenantBlock = ref
+          .read(tenantOperationalBlockControllerProvider)
+          .valueOrNull;
       return environment.remoteSyncEnabled &&
           environment.endpointConfig.isConfigured &&
           session.canStartSync &&
+          !(tenantBlock?.appliesTo(session) ?? false) &&
           company.allowsCloudSync &&
           startupState?.isSuccess == true;
     },
@@ -305,6 +320,15 @@ class SyncBatchRunner {
     }
 
     final session = _ref.read(appSessionProvider);
+    final tenantBlock = _ref
+        .read(tenantOperationalBlockControllerProvider)
+        .valueOrNull;
+    if (tenantBlock?.appliesTo(session) ?? false) {
+      AppLogger.info(
+        '[Sync] batch_runner_skipped reason=tenant_pending_deletion',
+      );
+      return _cancelledResult(retryOnly: retryOnly);
+    }
     if (!session.canStartSync) {
       AppLogger.info(
         '[Sync] batch_runner_skipped reason=missing_sync_identity | '

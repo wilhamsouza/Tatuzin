@@ -60,6 +60,7 @@ class FiadoRepositoryImpl implements FiadoRepository {
   }
 
   Future<T> _executeWrite<T>(Future<T> Function() localAction) async {
+    _operationalContext.ensureOperationalWriteAllowed();
     AppLogger.info(
       'Fiado PDV write committed locally first; sync remains queued in background.',
     );
