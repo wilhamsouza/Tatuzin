@@ -3,6 +3,8 @@ import 'package:sqflite/sqflite.dart';
 import '../utils/app_logger.dart';
 import 'table_names.dart';
 
+part 'future_migrations.dart';
+
 typedef MigrationRunner = Future<void> Function(DatabaseExecutor db);
 
 class MigrationStep {
@@ -51,7 +53,23 @@ abstract final class AppMigrations {
     const MigrationStep(version: 35, up: _createVersion35Schema),
     const MigrationStep(version: 36, up: _createVersion36Schema),
     const MigrationStep(version: 37, up: _createVersion37Schema),
+    ...futureMigrationSteps,
   ];
+
+  static List<int> get versionsForTesting =>
+      _steps.map((step) => step.version).toList(growable: false);
+
+  static Future<void> ensureColumnExistsForTesting(
+    DatabaseExecutor db, {
+    required String tableName,
+    required String columnName,
+    required String columnDefinition,
+  }) => _ensureColumnExists(
+    db,
+    tableName: tableName,
+    columnName: columnName,
+    columnDefinition: columnDefinition,
+  );
 
   static Future<void> runCreate(DatabaseExecutor db, int version) async {
     for (final step in _steps.where((step) => step.version <= version)) {

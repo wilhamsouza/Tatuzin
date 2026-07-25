@@ -1,0 +1,27 @@
+{
+  "version": 37,
+  "migrationVersions": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37],
+  "tables": {
+    "produtos": ["id", "uuid", "nome", "catalog_type", "model_name", "variant_label", "nicho"],
+    "produto_variantes": ["id", "uuid", "produto_id", "sku", "cor", "tamanho", "estoque_mil", "foto_path", "remote_id"],
+    "itens_venda": ["id", "produto_id", "produto_variante_id", "sku_variante_snapshot", "cor_variante_snapshot", "tamanho_variante_snapshot", "observacao_item_snapshot"],
+    "itens_compra": ["id", "produto_id", "produto_variante_id", "sku_variante_snapshot", "cor_variante_snapshot", "tamanho_variante_snapshot"],
+    "pedidos_operacionais_itens": ["id", "pedido_operacional_id", "produto_id", "produto_variante_id", "sku_variante_snapshot", "cor_variante_snapshot", "tamanho_variante_snapshot"],
+    "estoque_reservas": ["id", "uuid", "pedido_operacional_id", "item_pedido_operacional_id", "produto_id", "produto_variante_id", "quantidade_mil", "status"],
+    "inventory_count_items": ["id", "count_session_id", "product_id", "product_variant_id", "stale_override", "applied_from_system_stock_mil", "stale_at_apply"],
+    "operational_sync_events": ["id", "event_id", "entity", "operation", "status", "server_version"],
+    "sale_returns": ["id", "uuid", "sale_id", "exchange_mode", "refund_amount_cents", "credited_amount_cents"]
+  },
+  "indexes": [
+    "idx_produto_variantes_remote_id",
+    "idx_estoque_reservas_pedido",
+    "idx_estoque_reservas_item_active_unique",
+    "idx_operational_sync_status_retry",
+    "idx_operational_sync_server_version",
+    "idx_inventory_count_items_product_variant"
+  ],
+  "triggers": [
+    "trg_produtos_local_catalog_after_insert",
+    "trg_produtos_local_catalog_after_update"
+  ]
+}
