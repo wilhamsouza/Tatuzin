@@ -78,10 +78,13 @@ type MembershipWithRelations = Membership & {
 const FORGOT_PASSWORD_NEUTRAL_MESSAGE =
   "Se existir uma conta com este e-mail, enviaremos as instrucoes para redefinir sua senha.";
 
+const INITIAL_BOOTSTRAP_LOCK_KEY = "auth_register_initial";
+
 export class AuthService {
   constructor(
     private readonly sessionService = new AuthSessionService(),
     private readonly passwordResetDelivery: PasswordResetDeliveryService = new ResendPasswordResetDeliveryService(),
+    private readonly db = prisma,
   ) {}
 
   async register(input: RegisterInput) {
@@ -165,7 +168,7 @@ export class AuthService {
     membershipId: string;
     input: ChangeInitialPasswordInput;
   }) {
-    const user = await prisma.user.findUnique({
+    const user = await this.db.user.findUnique({
       where: { id: params.userId },
       select: {
         id: true,
@@ -203,7 +206,7 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(params.input.newPassword, 10);
-    await prisma.$transaction(async (transaction) => {
+    await this.db.$transaction(async (transaction) => {
       await transaction.user.update({
         where: { id: user.id },
         data: {
@@ -257,7 +260,7 @@ export class AuthService {
   async forgotPassword(input: ForgotPasswordInput) {
     const normalizedEmail = input.email.toLowerCase().trim();
     const emailFingerprint = this.fingerprintEmail(normalizedEmail);
-    const user = await prisma.user.findUnique({
+    const user = await this.db.user.findUnique({
       where: { email: normalizedEmail },
       select: {
         id: true,
@@ -280,7 +283,7 @@ export class AuthService {
     const resetToken = this.generateOpaqueToken();
     const expiresAt = this.buildPasswordResetExpiry();
 
-    await prisma.$transaction(async (transaction) => {
+    await this.db.$transaction(async (transaction) => {
       await transaction.passwordResetToken.deleteMany({
         where: {
           userId: user.id,
@@ -329,7 +332,7 @@ export class AuthService {
     const tokenHash = this.hashOpaqueToken(normalizedToken);
     const now = new Date();
 
-    const existingToken = await prisma.passwordResetToken.findUnique({
+    const existingToken = await this.db.passwordResetToken.findUnique({
       where: { tokenHash },
       include: {
         user: {
@@ -390,7 +393,7 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(input.newPassword, 10);
 
-    await prisma.$transaction(async (transaction) => {
+    await this.db.$transaction(async (transaction) => {
       const consumedTokens = await transaction.passwordResetToken.updateMany({
         where: {
           id: existingToken.id,
@@ -499,25 +502,36 @@ export class AuthService {
       );
     }
 
-    const existingUsers = await prisma.user.count();
-
-    if (existingUsers > 0) {
-      throw new AppError(
-        "Bootstrap inicial disponivel apenas antes do primeiro usuario.",
-        409,
-        "BOOTSTRAP_ALREADY_COMPLETED",
-      );
-    }
-
     const passwordHash = await bcrypt.hash(input.password, 10);
-    const result = await this.createOwnerAccount({
-      companyName: input.companyName,
-      companySlug: input.companySlug,
-      userName: input.userName,
-      email: input.email,
-      passwordHash,
-      isPlatformAdmin: true,
-    });
+    let result: MembershipWithRelations;
+    try {
+      result = await this.db.$transaction(async (transaction) => {
+        await transaction.$executeRaw(
+          Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${INITIAL_BOOTSTRAP_LOCK_KEY}))`,
+        );
+
+        const existingUsers = await transaction.user.count();
+        if (existingUsers > 0) {
+          throw new AppError(
+            "Bootstrap inicial disponivel apenas antes do primeiro usuario.",
+            409,
+            "BOOTSTRAP_ALREADY_COMPLETED",
+          );
+        }
+
+        return this.createOwnerAccountRecords(transaction, {
+          companyName: input.companyName,
+          companySlug: input.companySlug,
+          userName: input.userName,
+          email: input.email,
+          passwordHash,
+          isPlatformAdmin: true,
+        });
+      });
+    } catch (error) {
+      this.rethrowRegistrationConstraintError(error);
+      throw error;
+    }
 
     const sessionTokens = await this.sessionService.createSession({
       userId: result.user.id,
@@ -542,7 +556,7 @@ export class AuthService {
   private async findDefaultMembershipByEmail(
     email: string,
   ): Promise<MembershipWithRelations> {
-    const membership = await prisma.membership.findFirst({
+    const membership = await this.db.membership.findFirst({
       where: {
         user: {
           email: email.toLowerCase().trim(),
@@ -585,7 +599,7 @@ export class AuthService {
   private async findMembershipById(
     membershipId: string,
   ): Promise<MembershipWithRelations> {
-    const membership = await prisma.membership.findUnique({
+    const membership = await this.db.membership.findUnique({
       where: { id: membershipId },
       include: {
         user: true,
@@ -753,12 +767,12 @@ export class AuthService {
     const normalizedEmail = input.email.toLowerCase().trim();
     const normalizedCompanySlug = input.companySlug.toLowerCase().trim();
 
-    const [existingUser, existingCompany] = await prisma.$transaction([
-      prisma.user.findUnique({
+    const [existingUser, existingCompany] = await this.db.$transaction([
+      this.db.user.findUnique({
         where: { email: normalizedEmail },
         select: { id: true },
       }),
-      prisma.company.findUnique({
+      this.db.company.findUnique({
         where: { slug: normalizedCompanySlug },
         select: { id: true },
       }),
@@ -790,64 +804,78 @@ export class AuthService {
     isPlatformAdmin: boolean;
   }): Promise<MembershipWithRelations> {
     try {
-      return await prisma.$transaction(async (transaction) => {
-        const company = await transaction.company.create({
-          data: {
-            name: input.companyName.trim(),
-            legalName: input.companyName.trim(),
-            slug: input.companySlug.toLowerCase().trim(),
-          },
-        });
-
-        const user = await transaction.user.create({
-          data: {
-            email: input.email.toLowerCase().trim(),
-            name: input.userName.trim(),
-            passwordHash: input.passwordHash,
-            isPlatformAdmin: input.isPlatformAdmin,
-          },
-        });
-
-        await transaction.license.create({
-          data: {
-            companyId: company.id,
-            plan: "FREE",
-            status: "ACTIVE",
-            startsAt: new Date(),
-            expiresAt: null,
-            syncEnabled: true,
-          },
-        });
-
-        return transaction.membership.create({
-          data: {
-            userId: user.id,
-            companyId: company.id,
-            role: MembershipRole.OWNER,
-            isDefault: true,
-          },
-          include: {
-            user: true,
-            employeeProfiles: {
-              select: {
-                id: true,
-                status: true,
-                role: true,
-                acceptedAt: true,
-              },
-            },
-            company: {
-              include: {
-                license: true,
-              },
-            },
-          },
-        });
-      });
+      return await this.db.$transaction((transaction) =>
+        this.createOwnerAccountRecords(transaction, input),
+      );
     } catch (error) {
       this.rethrowRegistrationConstraintError(error);
       throw error;
     }
+  }
+
+  private async createOwnerAccountRecords(
+    transaction: Prisma.TransactionClient,
+    input: {
+      companyName: string;
+      companySlug: string;
+      userName: string;
+      email: string;
+      passwordHash: string;
+      isPlatformAdmin: boolean;
+    },
+  ): Promise<MembershipWithRelations> {
+    const company = await transaction.company.create({
+      data: {
+        name: input.companyName.trim(),
+        legalName: input.companyName.trim(),
+        slug: input.companySlug.toLowerCase().trim(),
+      },
+    });
+
+    const user = await transaction.user.create({
+      data: {
+        email: input.email.toLowerCase().trim(),
+        name: input.userName.trim(),
+        passwordHash: input.passwordHash,
+        isPlatformAdmin: input.isPlatformAdmin,
+      },
+    });
+
+    await transaction.license.create({
+      data: {
+        companyId: company.id,
+        plan: "FREE",
+        status: "ACTIVE",
+        startsAt: new Date(),
+        expiresAt: null,
+        syncEnabled: true,
+      },
+    });
+
+    return transaction.membership.create({
+      data: {
+        userId: user.id,
+        companyId: company.id,
+        role: MembershipRole.OWNER,
+        isDefault: true,
+      },
+      include: {
+        user: true,
+        employeeProfiles: {
+          select: {
+            id: true,
+            status: true,
+            role: true,
+            acceptedAt: true,
+          },
+        },
+        company: {
+          include: {
+            license: true,
+          },
+        },
+      },
+    });
   }
 
   private rethrowRegistrationConstraintError(error: unknown): never | void {

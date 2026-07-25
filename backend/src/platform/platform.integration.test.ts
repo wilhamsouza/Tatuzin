@@ -1,15 +1,15 @@
-import assert from 'node:assert/strict';
-import { after, before, beforeEach, describe, it } from 'node:test';
-import type { AddressInfo } from 'node:net';
+import assert from "node:assert/strict";
+import { after, before, beforeEach, describe, it } from "node:test";
+import type { AddressInfo } from "node:net";
 
-import bcrypt from 'bcryptjs';
-import type { Server } from 'http';
+import bcrypt from "bcryptjs";
+import type { Server } from "http";
 
-import { createApp } from '../app';
-import { env } from '../config/env';
-import { prisma } from '../database/prisma';
-import { resetRateLimitStore } from '../shared/http/rate-limit';
-import { platformJobsService } from '../shared/platform/platform-jobs';
+import { createApp } from "../app";
+import { env } from "../config/env";
+import { prisma } from "../database/prisma";
+import { resetRateLimitStore } from "../shared/http/rate-limit";
+import { platformJobsService } from "../shared/platform/platform-jobs";
 
 type JsonResponse = {
   status: number;
@@ -18,26 +18,26 @@ type JsonResponse = {
 };
 
 const runId = `phase3-${Date.now()}`;
-const adminPassword = 'StrongPass123!';
-const rateLimitPassword = 'AnotherStrongPass123!';
+const adminPassword = "StrongPass123!";
+const rateLimitPassword = "AnotherStrongPass123!";
 const adminEmail = `${runId}.admin@tatuzin.test`;
 const rateLimitEmail = `${runId}.ratelimit@tatuzin.test`;
 const registerEmail = `${runId}.register@tatuzin.test`;
 const duplicateSlugEmail = `${runId}.duplicate-slug@tatuzin.test`;
 const bootstrapEmail = `${runId}.bootstrap@tatuzin.test`;
 const baseClientPayload = {
-  clientType: 'admin_web',
+  clientType: "admin_web",
   clientInstanceId: `${runId}-web`,
-  deviceLabel: 'Node Test Browser',
-  platform: 'node-test',
-  appVersion: 'phase3-tests',
+  deviceLabel: "Node Test Browser",
+  platform: "node-test",
+  appVersion: "phase3-tests",
 };
 
 let server: Server;
-let apiBaseUrl = '';
-let primaryCompanyId = '';
-let observedCompanySlug = '';
-let adminUserId = '';
+let apiBaseUrl = "";
+let primaryCompanyId = "";
+let observedCompanySlug = "";
+let adminUserId = "";
 let companiesPrefix = `Tatuzin Platform ${runId}`;
 
 before(async () => {
@@ -69,14 +69,14 @@ after(async () => {
   await prisma.$disconnect();
 });
 
-describe('platform backend hardening', () => {
-  it('keeps health and readiness endpoints available', async () => {
-    const health = await requestJson('GET', '/health');
+describe("platform backend hardening", () => {
+  it("keeps health and readiness endpoints available", async () => {
+    const health = await requestJson("GET", "/health");
     assert.equal(health.status, 200);
     assert.equal((health.data as { ok?: boolean }).ok, true);
-    assert.ok(health.headers.get('x-request-id'));
+    assert.ok(health.headers.get("x-request-id"));
 
-    const readiness = await requestJson('GET', '/readiness');
+    const readiness = await requestJson("GET", "/readiness");
     assert.equal(readiness.status, 200);
     const readinessPayload = readiness.data as {
       ready?: boolean;
@@ -85,30 +85,30 @@ describe('platform backend hardening', () => {
       };
     };
     assert.equal(readinessPayload.ready, true);
-    assert.equal(readinessPayload.checks?.database, 'ok');
+    assert.equal(readinessPayload.checks?.database, "ok");
   });
 
-  it('keeps admin endpoints protected', async () => {
-    const unauthenticated = await requestJson('GET', '/admin/companies');
+  it("keeps admin endpoints protected", async () => {
+    const unauthenticated = await requestJson("GET", "/admin/companies");
     assert.equal(unauthenticated.status, 401);
     assert.equal(
       (unauthenticated.data as { code?: string }).code,
-      'AUTH_REQUIRED',
+      "AUTH_REQUIRED",
     );
 
     const operatorToken = await loginAsUser(rateLimitEmail, rateLimitPassword);
-    const forbidden = await requestJson('GET', '/admin/companies', {
+    const forbidden = await requestJson("GET", "/admin/companies", {
       token: operatorToken,
     });
     assert.equal(forbidden.status, 403);
     assert.equal(
       (forbidden.data as { code?: string }).code,
-      'PLATFORM_ADMIN_REQUIRED',
+      "PLATFORM_ADMIN_REQUIRED",
     );
   });
 
-  it('keeps login, refresh and logout working', async () => {
-    const login = await requestJson('POST', '/auth/login', {
+  it("keeps login, refresh and logout working", async () => {
+    const login = await requestJson("POST", "/auth/login", {
       body: {
         email: adminEmail,
         password: adminPassword,
@@ -127,12 +127,12 @@ describe('platform backend hardening', () => {
     assert.ok(loginPayload.accessToken.length > 20);
     assert.ok(loginPayload.refreshToken.length > 20);
 
-    const me = await requestJson('GET', '/auth/me', {
+    const me = await requestJson("GET", "/auth/me", {
       token: loginPayload.accessToken,
     });
     assert.equal(me.status, 200);
 
-    const refresh = await requestJson('POST', '/auth/refresh', {
+    const refresh = await requestJson("POST", "/auth/refresh", {
       body: {
         refreshToken: loginPayload.refreshToken,
         ...baseClientPayload,
@@ -146,30 +146,30 @@ describe('platform backend hardening', () => {
     assert.ok(refreshPayload.accessToken.length > 20);
     assert.notEqual(refreshPayload.refreshToken, loginPayload.refreshToken);
 
-    const logout = await requestJson('POST', '/auth/logout', {
+    const logout = await requestJson("POST", "/auth/logout", {
       token: refreshPayload.accessToken,
     });
     assert.equal(logout.status, 204);
 
-    const afterLogout = await requestJson('GET', '/auth/me', {
+    const afterLogout = await requestJson("GET", "/auth/me", {
       token: refreshPayload.accessToken,
     });
     assert.equal(afterLogout.status, 401);
     assert.equal(
       (afterLogout.data as { code?: string }).code,
-      'SESSION_REVOKED',
+      "SESSION_REVOKED",
     );
   });
 
-  it('registers a company owner through the public self-serve flow', async () => {
+  it("registers a company owner through the public self-serve flow", async () => {
     const registeredSlug = `${runId}-public-signup`;
-    const response = await requestJson('POST', '/auth/register', {
+    const response = await requestJson("POST", "/auth/register", {
       body: {
-        companyName: '  Tatuzin Cadastro Publico  ',
+        companyName: "  Tatuzin Cadastro Publico  ",
         companySlug: `  ${registeredSlug.toUpperCase()}  `,
-        userName: '  Owner Self Serve  ',
+        userName: "  Owner Self Serve  ",
         email: `  ${registerEmail.toUpperCase()}  `,
-        password: 'OwnerPass123!',
+        password: "OwnerPass123!",
         ...baseClientPayload,
         clientInstanceId: `${runId}-register-web`,
       },
@@ -200,29 +200,26 @@ describe('platform backend hardening', () => {
     assert.ok(payload.accessToken.length > 20);
     assert.ok(payload.refreshToken.length > 20);
     assert.equal(payload.user.email, registerEmail);
-    assert.equal(payload.user.name, 'Owner Self Serve');
+    assert.equal(payload.user.name, "Owner Self Serve");
     assert.equal(payload.user.isPlatformAdmin, false);
-    assert.equal(payload.company.name, 'Tatuzin Cadastro Publico');
+    assert.equal(payload.company.name, "Tatuzin Cadastro Publico");
     assert.equal(payload.company.slug, registeredSlug);
-    assert.equal(payload.company.license?.plan, 'FREE');
-    assert.equal(payload.company.license?.status, 'ACTIVE');
+    assert.equal(payload.company.license?.plan, "FREE");
+    assert.equal(payload.company.license?.status, "ACTIVE");
     assert.equal(payload.company.license?.syncEnabled, true);
     assert.equal(payload.company.license?.expiresAt, null);
-    assert.equal(payload.membership.role, 'OWNER');
+    assert.equal(payload.membership.role, "OWNER");
     assert.equal(payload.membership.isDefault, true);
     assert.equal(payload.session.clientType, baseClientPayload.clientType);
-    assert.equal(
-      payload.session.clientInstanceId,
-      `${runId}-register-web`,
-    );
+    assert.equal(payload.session.clientInstanceId, `${runId}-register-web`);
     assert.equal(payload.session.deviceLabel, baseClientPayload.deviceLabel);
 
-    const me = await requestJson('GET', '/auth/me', {
+    const me = await requestJson("GET", "/auth/me", {
       token: payload.accessToken,
     });
     assert.equal(me.status, 200);
 
-    const currentCompany = await requestJson('GET', '/companies/current', {
+    const currentCompany = await requestJson("GET", "/companies/current", {
       token: payload.accessToken,
     });
     assert.equal(currentCompany.status, 200);
@@ -239,7 +236,7 @@ describe('platform backend hardening', () => {
           };
         }
       ).company?.license?.status,
-      'ACTIVE',
+      "ACTIVE",
     );
     assert.equal(
       (
@@ -254,7 +251,7 @@ describe('platform backend hardening', () => {
           };
         }
       ).company?.license?.plan,
-      'FREE',
+      "FREE",
     );
     assert.equal(
       (
@@ -272,16 +269,13 @@ describe('platform backend hardening', () => {
       null,
     );
 
-    const categories = await requestJson('GET', '/categories', {
+    const categories = await requestJson("GET", "/categories", {
       token: payload.accessToken,
     });
     assert.equal(categories.status, 200);
-    assert.equal(
-      (categories.data as { count?: number }).count,
-      0,
-    );
+    assert.equal((categories.data as { count?: number }).count, 0);
 
-    const refresh = await requestJson('POST', '/auth/refresh', {
+    const refresh = await requestJson("POST", "/auth/refresh", {
       body: {
         refreshToken: payload.refreshToken,
         ...baseClientPayload,
@@ -296,29 +290,29 @@ describe('platform backend hardening', () => {
     assert.ok(refreshedPayload.accessToken.length > 20);
     assert.notEqual(refreshedPayload.refreshToken, payload.refreshToken);
 
-    const logout = await requestJson('POST', '/auth/logout', {
+    const logout = await requestJson("POST", "/auth/logout", {
       token: refreshedPayload.accessToken,
     });
     assert.equal(logout.status, 204);
 
-    const afterLogout = await requestJson('GET', '/auth/me', {
+    const afterLogout = await requestJson("GET", "/auth/me", {
       token: refreshedPayload.accessToken,
     });
     assert.equal(afterLogout.status, 401);
     assert.equal(
       (afterLogout.data as { code?: string }).code,
-      'SESSION_REVOKED',
+      "SESSION_REVOKED",
     );
   });
 
-  it('paginates operational category lists without changing item shape', async () => {
-    const registration = await requestJson('POST', '/auth/register', {
+  it("paginates operational category lists without changing item shape", async () => {
+    const registration = await requestJson("POST", "/auth/register", {
       body: {
-        companyName: 'Tatuzin Paginacao Operacional',
+        companyName: "Tatuzin Paginacao Operacional",
         companySlug: `${runId}-operational-pagination`,
-        userName: 'Operational Pagination Owner',
+        userName: "Operational Pagination Owner",
         email: `${runId}.operational-pagination@tatuzin.test`,
-        password: 'OwnerPass123!',
+        password: "OwnerPass123!",
         ...baseClientPayload,
         clientInstanceId: `${runId}-operational-pagination-web`,
       },
@@ -327,7 +321,7 @@ describe('platform backend hardening', () => {
     const token = (registration.data as { accessToken: string }).accessToken;
 
     for (let index = 1; index <= 5; index += 1) {
-      const createCategory = await requestJson('POST', '/categories', {
+      const createCategory = await requestJson("POST", "/categories", {
         token,
         body: {
           localUuid: `${runId}-operational-category-${index}`,
@@ -341,8 +335,8 @@ describe('platform backend hardening', () => {
     }
 
     const response = await requestJson(
-      'GET',
-      '/categories?page=2&pageSize=2&includeDeleted=true',
+      "GET",
+      "/categories?page=2&pageSize=2&includeDeleted=true",
       {
         token,
       },
@@ -374,14 +368,14 @@ describe('platform backend hardening', () => {
     assert.ok(payload.items.every((item) => item.name.length > 0));
   });
 
-  it('rejects duplicated e-mail during self-serve registration', async () => {
-    const response = await requestJson('POST', '/auth/register', {
+  it("rejects duplicated e-mail during self-serve registration", async () => {
+    const response = await requestJson("POST", "/auth/register", {
       body: {
-        companyName: 'Tatuzin Cadastro Email Duplicado',
+        companyName: "Tatuzin Cadastro Email Duplicado",
         companySlug: `${runId}-duplicate-email`,
-        userName: 'Email Duplicado',
+        userName: "Email Duplicado",
         email: adminEmail,
-        password: 'OwnerPass123!',
+        password: "OwnerPass123!",
         ...baseClientPayload,
         clientInstanceId: `${runId}-duplicate-email-web`,
       },
@@ -390,18 +384,18 @@ describe('platform backend hardening', () => {
     assert.equal(response.status, 409);
     assert.equal(
       (response.data as { code?: string }).code,
-      'EMAIL_ALREADY_IN_USE',
+      "EMAIL_ALREADY_IN_USE",
     );
   });
 
-  it('rejects duplicated company slug during self-serve registration', async () => {
-    const response = await requestJson('POST', '/auth/register', {
+  it("rejects duplicated company slug during self-serve registration", async () => {
+    const response = await requestJson("POST", "/auth/register", {
       body: {
-        companyName: 'Tatuzin Cadastro Slug Duplicado',
+        companyName: "Tatuzin Cadastro Slug Duplicado",
         companySlug: `${runId}-company-1`,
-        userName: 'Slug Duplicado',
+        userName: "Slug Duplicado",
         email: duplicateSlugEmail,
-        password: 'OwnerPass123!',
+        password: "OwnerPass123!",
         ...baseClientPayload,
         clientInstanceId: `${runId}-duplicate-slug-web`,
       },
@@ -410,22 +404,22 @@ describe('platform backend hardening', () => {
     assert.equal(response.status, 409);
     assert.equal(
       (response.data as { code?: string }).code,
-      'COMPANY_SLUG_ALREADY_IN_USE',
+      "COMPANY_SLUG_ALREADY_IN_USE",
     );
   });
 
-  it('keeps bootstrap initial blocked when disabled by environment', async () => {
+  it("keeps bootstrap initial blocked when disabled by environment", async () => {
     const previousAllowInitialBootstrap = env.ALLOW_INITIAL_BOOTSTRAP;
     env.ALLOW_INITIAL_BOOTSTRAP = false;
 
     try {
-      const response = await requestJson('POST', '/auth/register-initial', {
+      const response = await requestJson("POST", "/auth/register-initial", {
         body: {
-          companyName: 'Bootstrap Bloqueado',
+          companyName: "Bootstrap Bloqueado",
           companySlug: `${runId}-bootstrap-disabled`,
-          userName: 'Bootstrap Disabled',
+          userName: "Bootstrap Disabled",
           email: bootstrapEmail,
-          password: 'OwnerPass123!',
+          password: "OwnerPass123!",
           ...baseClientPayload,
           clientInstanceId: `${runId}-bootstrap-web`,
         },
@@ -434,43 +428,143 @@ describe('platform backend hardening', () => {
       assert.equal(response.status, 403);
       assert.equal(
         (response.data as { code?: string }).code,
-        'BOOTSTRAP_DISABLED',
+        "BOOTSTRAP_DISABLED",
+      );
+    } finally {
+      env.ALLOW_INITIAL_BOOTSTRAP = previousAllowInitialBootstrap;
+    }
+  });
+  it("keeps bootstrap initial unavailable after the first user exists", async () => {
+    const previousAllowInitialBootstrap = env.ALLOW_INITIAL_BOOTSTRAP;
+    env.ALLOW_INITIAL_BOOTSTRAP = true;
+
+    try {
+      const response = await requestJson("POST", "/auth/register-initial", {
+        body: {
+          companyName: "Bootstrap Ja Concluido",
+          companySlug: `${runId}-bootstrap-completed`,
+          userName: "Bootstrap Completed",
+          email: `${runId}.bootstrap-completed@tatuzin.test`,
+          password: "OwnerPass123!",
+          ...baseClientPayload,
+          clientInstanceId: `${runId}-bootstrap-completed-web`,
+        },
+      });
+
+      assert.equal(response.status, 409);
+      assert.equal(
+        (response.data as { code?: string }).code,
+        "BOOTSTRAP_ALREADY_COMPLETED",
+      );
+      assert.doesNotMatch(JSON.stringify(response.data), /OwnerPass123!/);
+    } finally {
+      env.ALLOW_INITIAL_BOOTSTRAP = previousAllowInitialBootstrap;
+    }
+  });
+
+  it("rejects weak or invalid initial bootstrap payloads safely", async () => {
+    const previousAllowInitialBootstrap = env.ALLOW_INITIAL_BOOTSTRAP;
+    env.ALLOW_INITIAL_BOOTSTRAP = true;
+
+    try {
+      const weakPassword = await requestJson("POST", "/auth/register-initial", {
+        body: {
+          companyName: "Bootstrap Senha Fraca",
+          companySlug: `${runId}-bootstrap-weak-password`,
+          userName: "Bootstrap Weak",
+          email: `${runId}.bootstrap-weak@tatuzin.test`,
+          password: "1234567",
+          ...baseClientPayload,
+          clientInstanceId: `${runId}-bootstrap-weak-web`,
+        },
+      });
+
+      assert.equal(weakPassword.status, 422);
+      assert.equal(
+        (weakPassword.data as { code?: string }).code,
+        "VALIDATION_ERROR",
+      );
+      assert.doesNotMatch(JSON.stringify(weakPassword.data), /1234567/);
+
+      const invalidPayload = await requestJson(
+        "POST",
+        "/auth/register-initial",
+        {
+          body: {},
+        },
+      );
+      assert.equal(invalidPayload.status, 422);
+      assert.equal(
+        (invalidPayload.data as { code?: string }).code,
+        "VALIDATION_ERROR",
       );
     } finally {
       env.ALLOW_INITIAL_BOOTSTRAP = previousAllowInitialBootstrap;
     }
   });
 
-  it('applies rate limiting to repeated public registration attempts', async () => {
+  it("applies rate limiting to repeated initial bootstrap attempts", async () => {
+    const previousAllowInitialBootstrap = env.ALLOW_INITIAL_BOOTSTRAP;
+    env.ALLOW_INITIAL_BOOTSTRAP = true;
+
+    try {
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const response = await requestJson("POST", "/auth/register-initial", {
+          body: {},
+        });
+
+        assert.equal(response.status, 422);
+        assert.equal(
+          (response.data as { code?: string }).code,
+          "VALIDATION_ERROR",
+        );
+      }
+
+      const blocked = await requestJson("POST", "/auth/register-initial", {
+        body: {},
+      });
+
+      assert.equal(blocked.status, 429);
+      assert.equal(
+        (blocked.data as { code?: string }).code,
+        "AUTH_REGISTER_INITIAL_RATE_LIMITED",
+      );
+      assert.ok(blocked.headers.get("retry-after"));
+    } finally {
+      env.ALLOW_INITIAL_BOOTSTRAP = previousAllowInitialBootstrap;
+    }
+  });
+
+  it("applies rate limiting to repeated public registration attempts", async () => {
     for (let attempt = 1; attempt <= 8; attempt += 1) {
-      const response = await requestJson('POST', '/auth/register', {
+      const response = await requestJson("POST", "/auth/register", {
         body: {},
       });
 
       assert.equal(response.status, 422);
       assert.equal(
         (response.data as { code?: string }).code,
-        'VALIDATION_ERROR',
+        "VALIDATION_ERROR",
       );
     }
 
-    const blocked = await requestJson('POST', '/auth/register', {
+    const blocked = await requestJson("POST", "/auth/register", {
       body: {},
     });
 
     assert.equal(blocked.status, 429);
     assert.equal(
       (blocked.data as { code?: string }).code,
-      'AUTH_REGISTER_RATE_LIMITED',
+      "AUTH_REGISTER_RATE_LIMITED",
     );
-    assert.ok(blocked.headers.get('retry-after'));
+    assert.ok(blocked.headers.get("retry-after"));
   });
 
-  it('keeps companies contract stable for pagination, filters, ordering and shape', async () => {
+  it("keeps companies contract stable for pagination, filters, ordering and shape", async () => {
     const token = await loginAsPlatformAdmin();
 
     const paginated = await requestJson(
-      'GET',
+      "GET",
       `/admin/companies?search=${encodeURIComponent(
         companiesPrefix,
       )}&page=2&pageSize=5&sortBy=name&sortDirection=asc`,
@@ -507,16 +601,16 @@ describe('platform backend hardening', () => {
     assert.equal(paginatedPayload.pagination.hasPrevious, true);
     assert.equal(paginatedPayload.pagination.hasNext, true);
     assert.equal(paginatedPayload.filters.search, companiesPrefix);
-    assert.equal(paginatedPayload.sort.by, 'name');
-    assert.equal(paginatedPayload.sort.direction, 'asc');
+    assert.equal(paginatedPayload.sort.by, "name");
+    assert.equal(paginatedPayload.sort.direction, "asc");
     assert.equal(paginatedPayload.items.length, 5);
     assert.ok(paginatedPayload.items[0]?.id);
     assert.ok(paginatedPayload.items[0]?.name);
-    assert.equal(typeof paginatedPayload.items[0]?.counts.categories, 'number');
-    assert.equal(typeof paginatedPayload.items[0]?.counts.products, 'number');
+    assert.equal(typeof paginatedPayload.items[0]?.counts.categories, "number");
+    assert.equal(typeof paginatedPayload.items[0]?.counts.products, "number");
 
     const filtered = await requestJson(
-      'GET',
+      "GET",
       `/admin/companies?search=${encodeURIComponent(
         observedCompanySlug,
       )}&licenseStatus=active&syncEnabled=true&page=1&pageSize=5&sortBy=name&sortDirection=asc`,
@@ -551,24 +645,25 @@ describe('platform backend hardening', () => {
     assert.equal(filteredPayload.pagination.count, 1);
     assert.equal(filteredPayload.pagination.hasPrevious, false);
     assert.equal(filteredPayload.pagination.hasNext, false);
-    assert.equal(filteredPayload.filters.licenseStatus, 'active');
+    assert.equal(filteredPayload.filters.licenseStatus, "active");
     assert.equal(filteredPayload.filters.syncEnabled, true);
-    assert.equal(filteredPayload.sort.by, 'name');
-    assert.equal(filteredPayload.sort.direction, 'asc');
+    assert.equal(filteredPayload.sort.by, "name");
+    assert.equal(filteredPayload.sort.direction, "asc");
     assert.equal(filteredPayload.items[0]?.name, `${companiesPrefix} 3`);
     assert.ok(
       filteredPayload.items.every(
         (item) =>
-          item.license?.status === 'active' && item.license?.syncEnabled === true,
+          item.license?.status === "active" &&
+          item.license?.syncEnabled === true,
       ),
     );
   });
 
-  it('keeps licenses contract stable for pagination, filters, ordering and shape', async () => {
+  it("keeps licenses contract stable for pagination, filters, ordering and shape", async () => {
     const token = await loginAsPlatformAdmin();
 
     const paginated = await requestJson(
-      'GET',
+      "GET",
       `/admin/licenses?search=${encodeURIComponent(
         companiesPrefix,
       )}&page=2&pageSize=4&sortBy=companyName&sortDirection=asc`,
@@ -605,14 +700,14 @@ describe('platform backend hardening', () => {
     assert.equal(paginatedPayload.pagination.hasPrevious, true);
     assert.equal(paginatedPayload.pagination.hasNext, true);
     assert.equal(paginatedPayload.filters.search, companiesPrefix);
-    assert.equal(paginatedPayload.sort.by, 'companyName');
-    assert.equal(paginatedPayload.sort.direction, 'asc');
+    assert.equal(paginatedPayload.sort.by, "companyName");
+    assert.equal(paginatedPayload.sort.direction, "asc");
     assert.ok(paginatedPayload.items[0]?.companyId);
     assert.ok(paginatedPayload.items[0]?.companyName);
     assert.ok(paginatedPayload.items[0]?.status);
 
     const filtered = await requestJson(
-      'GET',
+      "GET",
       `/admin/licenses?search=${encodeURIComponent(
         observedCompanySlug,
       )}&status=active&syncEnabled=true&page=1&pageSize=3&sortBy=companyName&sortDirection=asc`,
@@ -647,23 +742,23 @@ describe('platform backend hardening', () => {
     assert.equal(filteredPayload.pagination.count, 1);
     assert.equal(filteredPayload.pagination.hasPrevious, false);
     assert.equal(filteredPayload.pagination.hasNext, false);
-    assert.equal(filteredPayload.filters.status, 'active');
+    assert.equal(filteredPayload.filters.status, "active");
     assert.equal(filteredPayload.filters.syncEnabled, true);
-    assert.equal(filteredPayload.sort.by, 'companyName');
-    assert.equal(filteredPayload.sort.direction, 'asc');
+    assert.equal(filteredPayload.sort.by, "companyName");
+    assert.equal(filteredPayload.sort.direction, "asc");
     assert.equal(filteredPayload.items[0]?.companyName, `${companiesPrefix} 3`);
     assert.ok(
       filteredPayload.items.every(
-        (item) => item.status === 'active' && item.syncEnabled === true,
+        (item) => item.status === "active" && item.syncEnabled === true,
       ),
     );
   });
 
-  it('keeps audit summary contract stable for filters, pagination and response shape', async () => {
+  it("keeps audit summary contract stable for filters, pagination and response shape", async () => {
     const token = await loginAsPlatformAdmin();
 
     const patchLicense = await requestJson(
-      'PATCH',
+      "PATCH",
       `/admin/licenses/${primaryCompanyId}`,
       {
         token,
@@ -675,8 +770,8 @@ describe('platform backend hardening', () => {
     assert.equal(patchLicense.status, 200);
 
     const audit = await requestJson(
-      'GET',
-      `/admin/audit/summary?page=1&pageSize=5&companyId=${encodeURIComponent(primaryCompanyId)}&actorUserId=${encodeURIComponent(adminUserId)}&action=${encodeURIComponent('license.updated')}`,
+      "GET",
+      `/admin/audit/summary?page=1&pageSize=5&companyId=${encodeURIComponent(primaryCompanyId)}&actorUserId=${encodeURIComponent(adminUserId)}&action=${encodeURIComponent("license.updated")}`,
       {
         token,
       },
@@ -712,19 +807,19 @@ describe('platform backend hardening', () => {
     assert.equal(auditPayload.sort, null);
     assert.ok(auditPayload.overview.totalEvents >= 1);
     assert.ok(auditPayload.items.length >= 1);
-    assert.equal(auditPayload.filters.action, 'license.updated');
+    assert.equal(auditPayload.filters.action, "license.updated");
     assert.equal(auditPayload.filters.actorUserId, adminUserId);
     assert.equal(auditPayload.filters.companyId, primaryCompanyId);
     assert.ok(
       auditPayload.overview.countsByAction.some(
-        (entry) => entry.action === 'license.updated' && entry.count >= 1,
+        (entry) => entry.action === "license.updated" && entry.count >= 1,
       ),
     );
     assert.ok(
       auditPayload.items.every(
         (event) =>
-          event.action === 'license.updated' &&
-          event.source === 'admin' &&
+          event.action === "license.updated" &&
+          event.source === "admin" &&
           event.actorUser?.id === adminUserId &&
           event.targetCompany?.id === primaryCompanyId,
       ),
@@ -732,11 +827,11 @@ describe('platform backend hardening', () => {
     assert.ok(auditPayload.pagination.count <= 5);
   });
 
-  it('keeps sync summary contract stable for pagination, filters, ordering and shape', async () => {
+  it("keeps sync summary contract stable for pagination, filters, ordering and shape", async () => {
     const token = await loginAsPlatformAdmin();
 
     const paginated = await requestJson(
-      'GET',
+      "GET",
       `/admin/sync/summary?search=${encodeURIComponent(
         companiesPrefix,
       )}&page=1&pageSize=3&sortBy=remoteRecordCount&sortDirection=desc`,
@@ -774,7 +869,10 @@ describe('platform backend hardening', () => {
     };
     const companies = paginatedPayload.items;
     assert.equal(paginatedPayload.overview.totalCompanies, 15);
-    assert.equal(typeof paginatedPayload.overview.syncEnabledCompanies, 'number');
+    assert.equal(
+      typeof paginatedPayload.overview.syncEnabledCompanies,
+      "number",
+    );
     assert.ok(paginatedPayload.overview.syncEnabledCompanies >= 0);
     assert.ok(
       paginatedPayload.overview.syncEnabledCompanies <=
@@ -787,16 +885,18 @@ describe('platform backend hardening', () => {
     assert.equal(paginatedPayload.pagination.count, 3);
     assert.equal(paginatedPayload.pagination.hasNext, true);
     assert.equal(paginatedPayload.filters.search, companiesPrefix);
-    assert.equal(paginatedPayload.sort.by, 'remoteRecordCount');
-    assert.equal(paginatedPayload.sort.direction, 'desc');
+    assert.equal(paginatedPayload.sort.by, "remoteRecordCount");
+    assert.equal(paginatedPayload.sort.direction, "desc");
     assert.equal(companies.length, 3);
     assert.equal(companies[0]?.companySlug, observedCompanySlug);
-    assert.ok(companies[0]?.remoteRecordCount >= (companies[1]?.remoteRecordCount ?? 0));
-    assert.equal(typeof companies[0]?.entityCounts.categories, 'number');
-    assert.equal(typeof companies[0]?.entityCounts.products, 'number');
+    assert.ok(
+      companies[0]?.remoteRecordCount >= (companies[1]?.remoteRecordCount ?? 0),
+    );
+    assert.equal(typeof companies[0]?.entityCounts.categories, "number");
+    assert.equal(typeof companies[0]?.entityCounts.products, "number");
 
     const filtered = await requestJson(
-      'GET',
+      "GET",
       `/admin/sync/summary?search=${encodeURIComponent(
         observedCompanySlug,
       )}&licenseStatus=active&syncEnabled=true&page=1&pageSize=5&sortBy=remoteRecordCount&sortDirection=desc`,
@@ -831,24 +931,24 @@ describe('platform backend hardening', () => {
     assert.equal(filteredPayload.pagination.count, 1);
     assert.equal(filteredPayload.pagination.hasNext, false);
     assert.equal(filteredPayload.filters.search, observedCompanySlug);
-    assert.equal(filteredPayload.filters.licenseStatus, 'active');
+    assert.equal(filteredPayload.filters.licenseStatus, "active");
     assert.equal(filteredPayload.filters.syncEnabled, true);
-    assert.equal(filteredPayload.sort.by, 'remoteRecordCount');
-    assert.equal(filteredPayload.sort.direction, 'desc');
+    assert.equal(filteredPayload.sort.by, "remoteRecordCount");
+    assert.equal(filteredPayload.sort.direction, "desc");
     assert.ok(
       filteredPayload.items.every(
         (company) =>
-          company.licenseStatus === 'active' && company.syncEnabled === true,
+          company.licenseStatus === "active" && company.syncEnabled === true,
       ),
     );
     assert.equal(filteredPayload.items[0]?.companySlug, observedCompanySlug);
   });
 
-  it('exposes an honest operational sync summary', async () => {
+  it("exposes an honest operational sync summary", async () => {
     const token = await loginAsPlatformAdmin();
 
     const response = await requestJson(
-      'GET',
+      "GET",
       `/admin/sync/operational-summary?search=${encodeURIComponent(
         observedCompanySlug,
       )}&page=1&pageSize=5&sortBy=companyName&sortDirection=asc`,
@@ -908,13 +1008,13 @@ describe('platform backend hardening', () => {
     assert.equal(payload.filters.search, observedCompanySlug);
     assert.equal(payload.filters.licenseStatus, null);
     assert.equal(payload.filters.syncEnabled, null);
-    assert.equal(payload.sort.by, 'companyName');
-    assert.equal(payload.sort.direction, 'asc');
-    assert.ok(payload.capabilities.observedSignals.includes('device_sessions'));
-    assert.ok(payload.capabilities.unavailableSignals.includes('local_queue'));
+    assert.equal(payload.sort.by, "companyName");
+    assert.equal(payload.sort.direction, "asc");
+    assert.ok(payload.capabilities.observedSignals.includes("device_sessions"));
+    assert.ok(payload.capabilities.unavailableSignals.includes("local_queue"));
     assert.ok(
       payload.capabilities.telemetryGaps.some(
-        (entry) => entry.featureKey === 'sale_cancellations',
+        (entry) => entry.featureKey === "sale_cancellations",
       ),
     );
     assert.ok(payload.capabilities.notes.length >= 2);
@@ -922,8 +1022,8 @@ describe('platform backend hardening', () => {
 
     const company = payload.items[0]!;
     assert.equal(company.companySlug, observedCompanySlug);
-    assert.equal(company.status, 'healthy');
-    assert.equal(company.statusSource, 'limited_inference');
+    assert.equal(company.status, "healthy");
+    assert.equal(company.statusSource, "limited_inference");
     assert.ok(company.statusReason.length > 20);
     assert.equal(company.activeMobileSessionsCount, 1);
     assert.ok(company.observedRemoteRecordCount >= 2);
@@ -933,19 +1033,19 @@ describe('platform backend hardening', () => {
     assert.ok(
       company.observedFeatures.some(
         (feature) =>
-          feature.featureKey === 'categories' &&
+          feature.featureKey === "categories" &&
           feature.remoteRecordCount >= 1 &&
-          feature.observationKind === 'remote_mirror',
+          feature.observationKind === "remote_mirror",
       ),
     );
   });
 
-  it('applies login rate limiting without breaking normal usage', async () => {
+  it("applies login rate limiting without breaking normal usage", async () => {
     for (let attempt = 1; attempt <= 8; attempt += 1) {
-      const response = await requestJson('POST', '/auth/login', {
+      const response = await requestJson("POST", "/auth/login", {
         body: {
           email: rateLimitEmail,
-          password: 'wrong-password',
+          password: "wrong-password",
           ...baseClientPayload,
           clientInstanceId: `${runId}-rate-limit`,
         },
@@ -954,14 +1054,14 @@ describe('platform backend hardening', () => {
       assert.equal(response.status, 401);
       assert.equal(
         (response.data as { code?: string }).code,
-        'INVALID_CREDENTIALS',
+        "INVALID_CREDENTIALS",
       );
     }
 
-    const blocked = await requestJson('POST', '/auth/login', {
+    const blocked = await requestJson("POST", "/auth/login", {
       body: {
         email: rateLimitEmail,
-        password: 'wrong-password',
+        password: "wrong-password",
         ...baseClientPayload,
         clientInstanceId: `${runId}-rate-limit`,
       },
@@ -970,48 +1070,48 @@ describe('platform backend hardening', () => {
     assert.equal(blocked.status, 429);
     assert.equal(
       (blocked.data as { code?: string }).code,
-      'AUTH_LOGIN_RATE_LIMITED',
+      "AUTH_LOGIN_RATE_LIMITED",
     );
-    assert.ok(blocked.headers.get('retry-after'));
+    assert.ok(blocked.headers.get("retry-after"));
   });
 
-  it('does not trust spoofed x-forwarded-for for login rate limiting', async () => {
+  it("does not trust spoofed x-forwarded-for for login rate limiting", async () => {
     for (let attempt = 1; attempt <= 8; attempt += 1) {
-      const response = await requestJson('POST', '/auth/login', {
+      const response = await requestJson("POST", "/auth/login", {
         body: {
           email: rateLimitEmail,
-          password: 'wrong-password',
+          password: "wrong-password",
           ...baseClientPayload,
           clientInstanceId: `${runId}-spoof-rate-limit`,
         },
         headers: {
-          'X-Forwarded-For': `203.0.113.${attempt}`,
+          "X-Forwarded-For": `203.0.113.${attempt}`,
         },
       });
 
       assert.equal(response.status, 401);
       assert.equal(
         (response.data as { code?: string }).code,
-        'INVALID_CREDENTIALS',
+        "INVALID_CREDENTIALS",
       );
     }
 
-    const blocked = await requestJson('POST', '/auth/login', {
+    const blocked = await requestJson("POST", "/auth/login", {
       body: {
         email: rateLimitEmail,
-        password: 'wrong-password',
+        password: "wrong-password",
         ...baseClientPayload,
         clientInstanceId: `${runId}-spoof-rate-limit`,
       },
       headers: {
-        'X-Forwarded-For': '198.51.100.10',
+        "X-Forwarded-For": "198.51.100.10",
       },
     });
 
     assert.equal(blocked.status, 429);
     assert.equal(
       (blocked.data as { code?: string }).code,
-      'AUTH_LOGIN_RATE_LIMITED',
+      "AUTH_LOGIN_RATE_LIMITED",
     );
   });
 });
@@ -1021,7 +1121,7 @@ async function loginAsPlatformAdmin() {
 }
 
 async function loginAsUser(email: string, password: string) {
-  const response = await requestJson('POST', '/auth/login', {
+  const response = await requestJson("POST", "/auth/login", {
     body: {
       email,
       password,
@@ -1046,19 +1146,18 @@ async function requestJson(
     method,
     headers: {
       ...(options?.body == null
-          ? {}
-          : {
-              'Content-Type': 'application/json',
-            }),
+        ? {}
+        : {
+            "Content-Type": "application/json",
+          }),
       ...(options?.token == null
-          ? {}
-          : {
-              Authorization: `Bearer ${options.token}`,
-            }),
+        ? {}
+        : {
+            Authorization: `Bearer ${options.token}`,
+          }),
       ...(options?.headers ?? {}),
     },
-    body:
-      options?.body == null ? undefined : JSON.stringify(options.body),
+    body: options?.body == null ? undefined : JSON.stringify(options.body),
   });
 
   const rawBody = await response.text();
@@ -1091,8 +1190,8 @@ async function seedFixtures() {
       await prisma.license.create({
         data: {
           companyId: company.id,
-          plan: index % 2 === 0 ? 'pro' : 'starter',
-          status: index % 3 === 0 ? 'TRIAL' : 'ACTIVE',
+          plan: index % 2 === 0 ? "pro" : "starter",
+          status: index % 3 === 0 ? "TRIAL" : "ACTIVE",
           startsAt: new Date(),
           expiresAt: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
           maxDevices: index % 4 === 0 ? 2 : 5,
@@ -1110,7 +1209,7 @@ async function seedFixtures() {
   const adminUser = await prisma.user.create({
     data: {
       email: adminEmail,
-      name: 'Tatuzin Platform Admin',
+      name: "Tatuzin Platform Admin",
       passwordHash: adminPasswordHash,
       isPlatformAdmin: true,
     },
@@ -1121,7 +1220,7 @@ async function seedFixtures() {
     data: {
       userId: adminUser.id,
       companyId: primaryCompanyId,
-      role: 'OWNER',
+      role: "OWNER",
       isDefault: true,
     },
   });
@@ -1130,7 +1229,7 @@ async function seedFixtures() {
     data: {
       userId: adminUser.id,
       companyId: companies[2]!.id,
-      role: 'ADMIN',
+      role: "ADMIN",
       isDefault: false,
     },
   });
@@ -1140,11 +1239,11 @@ async function seedFixtures() {
       userId: adminUser.id,
       companyId: companies[2]!.id,
       membershipId: observedMembership.id,
-      clientType: 'MOBILE_APP',
+      clientType: "MOBILE_APP",
       clientInstanceId: `${runId}-mobile-observed`,
-      deviceLabel: 'Observed Mobile Device',
-      platform: 'android',
-      appVersion: 'phase3-mobile',
+      deviceLabel: "Observed Mobile Device",
+      platform: "android",
+      appVersion: "phase3-mobile",
       refreshTokenHash: `${runId}-observed-mobile-refresh-hash`,
       refreshTokenExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       lastSeenAt: new Date(),
@@ -1155,7 +1254,7 @@ async function seedFixtures() {
     data: {
       companyId: companies[2]!.id,
       localUuid: `${runId}-category-observed`,
-      name: 'Categorias observadas',
+      name: "Categorias observadas",
     },
   });
 
@@ -1163,7 +1262,7 @@ async function seedFixtures() {
     data: {
       companyId: companies[2]!.id,
       localUuid: `${runId}-product-observed`,
-      name: 'Produto observado',
+      name: "Produto observado",
       salePriceCents: 1590,
     },
   });
@@ -1171,7 +1270,7 @@ async function seedFixtures() {
   const rateLimitUser = await prisma.user.create({
     data: {
       email: rateLimitEmail,
-      name: 'Tatuzin Rate Limit User',
+      name: "Tatuzin Rate Limit User",
       passwordHash: rateLimitPasswordHash,
       isPlatformAdmin: false,
     },
@@ -1181,7 +1280,7 @@ async function seedFixtures() {
     data: {
       userId: rateLimitUser.id,
       companyId: primaryCompanyId,
-      role: 'OPERATOR',
+      role: "OPERATOR",
       isDefault: true,
     },
   });

@@ -62,6 +62,15 @@ const registerRateLimit = createRateLimit({
   code: "AUTH_REGISTER_RATE_LIMITED",
 });
 
+const registerInitialRateLimit = createRateLimit({
+  name: "auth_register_initial",
+  windowMs: 30 * 60_000,
+  max: 3,
+  message:
+    "Muitas tentativas de bootstrap inicial. Aguarde antes de tentar novamente.",
+  code: "AUTH_REGISTER_INITIAL_RATE_LIMITED",
+});
+
 const forgotPasswordRateLimit = createRateLimit({
   name: "auth_forgot_password",
   windowMs: 10 * 60_000,
@@ -100,6 +109,7 @@ authRouter.post(
 
 authRouter.post(
   "/register-initial",
+  registerInitialRateLimit,
   validateBody(registerInitialSchema),
   asyncHandler(async (request, response) => {
     const payload = await authService.registerInitial(request.body);

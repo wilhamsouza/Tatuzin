@@ -1,16 +1,11 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 const sessionClientTypeSchema = z
-  .enum(['mobile_app', 'admin_web', 'unknown'])
-  .default('mobile_app');
+  .enum(["mobile_app", "admin_web", "unknown"])
+  .default("mobile_app");
 
 const optionalClientString = (maxLength: number) =>
-  z
-    .string()
-    .trim()
-    .min(1)
-    .max(maxLength)
-    .optional();
+  z.string().trim().min(1).max(maxLength).optional();
 
 const requiredClientInstanceId = z.string().trim().min(1).max(120);
 
@@ -25,11 +20,11 @@ export const sessionClientSchema = z.object({
 export const loginSchema = z.object({
   email: z
     .string()
-    .email('Informe um e-mail valido.')
+    .email("Informe um e-mail valido.")
     .transform((value) => value.trim()),
   password: z
     .string()
-    .min(6, 'A senha precisa ter pelo menos 6 caracteres.')
+    .min(6, "A senha precisa ter pelo menos 6 caracteres.")
     .max(72),
   clientType: sessionClientTypeSchema,
   clientInstanceId: requiredClientInstanceId,
@@ -41,32 +36,34 @@ export const loginSchema = z.object({
 const normalizedNameSchema = z
   .string()
   .trim()
-  .min(3, 'Informe pelo menos 3 caracteres.')
+  .min(3, "Informe pelo menos 3 caracteres.")
   .max(120);
 
 const normalizedRegisterSlugSchema = z
   .string()
   .trim()
   .toLowerCase()
-  .min(3, 'Informe pelo menos 3 caracteres.')
+  .min(3, "Informe pelo menos 3 caracteres.")
   .max(60)
-  .regex(/^[a-z0-9-]+$/, 'Use apenas letras minusculas, numeros e hifens.');
+  .regex(/^[a-z0-9-]+$/, "Use apenas letras minusculas, numeros e hifens.");
 
 const normalizedRegisterEmailSchema = z
   .string()
   .trim()
   .toLowerCase()
-  .email('Informe um e-mail valido.');
+  .email("Informe um e-mail valido.");
+
+const accountPasswordSchema = (message: string) =>
+  z.string().min(8, message).max(72);
 
 export const registerSchema = z.object({
   companyName: normalizedNameSchema,
   companySlug: normalizedRegisterSlugSchema,
   userName: normalizedNameSchema,
   email: normalizedRegisterEmailSchema,
-  password: z
-    .string()
-    .min(8, 'A senha precisa ter pelo menos 8 caracteres.')
-    .max(72),
+  password: accountPasswordSchema(
+    "A senha precisa ter pelo menos 8 caracteres.",
+  ),
   clientType: sessionClientTypeSchema,
   clientInstanceId: requiredClientInstanceId,
   deviceLabel: optionalClientString(120),
@@ -80,16 +77,15 @@ export const registerInitialSchema = z.object({
     .string()
     .min(3)
     .max(60)
-    .regex(/^[a-z0-9-]+$/, 'Use apenas letras minusculas, numeros e hifens.'),
+    .regex(/^[a-z0-9-]+$/, "Use apenas letras minusculas, numeros e hifens."),
   userName: z.string().min(3).max(120),
   email: z
     .string()
-    .email('Informe um e-mail valido.')
+    .email("Informe um e-mail valido.")
     .transform((value) => value.trim()),
-  password: z
-    .string()
-    .min(6, 'A senha precisa ter pelo menos 6 caracteres.')
-    .max(72),
+  password: accountPasswordSchema(
+    "A senha precisa ter pelo menos 8 caracteres.",
+  ),
   clientType: sessionClientTypeSchema,
   clientInstanceId: requiredClientInstanceId,
   deviceLabel: optionalClientString(120),
@@ -112,17 +108,15 @@ export const refreshSchema = z.object({
 
 export const resetPasswordSchema = z.object({
   token: z.string().trim().min(24).max(512),
-  newPassword: z
-    .string()
-    .min(8, 'A nova senha precisa ter pelo menos 8 caracteres.')
-    .max(72),
+  newPassword: accountPasswordSchema(
+    "A nova senha precisa ter pelo menos 8 caracteres.",
+  ),
 });
 
 export const changeInitialPasswordSchema = z.object({
-  newPassword: z
-    .string()
-    .min(8, 'A nova senha precisa ter pelo menos 8 caracteres.')
-    .max(72),
+  newPassword: accountPasswordSchema(
+    "A nova senha precisa ter pelo menos 8 caracteres.",
+  ),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
