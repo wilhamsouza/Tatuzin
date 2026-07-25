@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -75,6 +76,17 @@ class _CompanySupportContent extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SupportHeader(company: company),
+          const SizedBox(height: 16),
+          _GuidedWorkspacePanel(
+            company: company,
+            billingAsync: billingAsync,
+            accessAsync: accessAsync,
+            devicesAsync: devicesAsync,
+            sessionsAsync: sessionsAsync,
+            syncAsync: syncAsync,
+            healthAsync: healthAsync,
+            auditAsync: auditAsync,
+          ),
           const SizedBox(height: 16),
           const _ReadOnlyNotice(),
           const SizedBox(height: 16),
@@ -426,7 +438,10 @@ class _CompanySupportContent extends ConsumerWidget {
         ),
         _SupportMetric(label: 'Motivo', value: 'Obrigatorio'),
         _SupportMetric(label: 'Auditoria', value: 'Preparada'),
-        _SupportMetric(label: 'Execucao real', value: 'Indisponivel na UI'),
+        _SupportMetric(
+          label: 'Execucao real',
+          value: 'Somente com gates seguros',
+        ),
       ],
     );
   }
@@ -798,6 +813,713 @@ class _CompanySupportContent extends ConsumerWidget {
   }
 }
 
+class _GuidedWorkspacePanel extends StatelessWidget {
+  const _GuidedWorkspacePanel({
+    required this.company,
+    required this.billingAsync,
+    required this.accessAsync,
+    required this.devicesAsync,
+    required this.sessionsAsync,
+    required this.syncAsync,
+    required this.healthAsync,
+    required this.auditAsync,
+  });
+
+  final AdminCompanySummary company;
+  final AsyncValue<AdminBillingCompanyStatus> billingAsync;
+  final AsyncValue<AdminCompanyAccessSummary> accessAsync;
+  final AsyncValue<AdminPaginatedResult<AdminDeviceInventoryItem>> devicesAsync;
+  final AsyncValue<List<AdminDeviceSession>> sessionsAsync;
+  final AsyncValue<AdminSyncCenterCompanySummary> syncAsync;
+  final AsyncValue<AdminCompanySyncHealth> healthAsync;
+  final AsyncValue<AdminAuditLogPage> auditAsync;
+
+  @override
+  Widget build(BuildContext context) {
+    final diagnosis = _buildWorkspaceDiagnosis(
+      company: company,
+      billing: billingAsync.valueOrNull,
+      access: accessAsync.valueOrNull,
+      devices: devicesAsync.valueOrNull?.items ?? const [],
+      sessions: sessionsAsync.valueOrNull ?? const [],
+      sync: syncAsync.valueOrNull,
+      health: healthAsync.valueOrNull,
+      audit: auditAsync.valueOrNull,
+    );
+    return AdminSurface(
+      title: 'Workspace de atendimento',
+      subtitle:
+          'Fluxo: problema detectado -> causa provavel -> evidencia -> acao segura -> auditoria -> validacao.',
+      trailing: FilledButton.tonalIcon(
+        onPressed: () => _copyTicketSummary(context, company, diagnosis),
+        icon: const Icon(Icons.content_copy_rounded),
+        label: const Text('Copiar resumo para chamado'),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _WorkspaceMetric(
+                label: 'Status operacional',
+                value: diagnosis.status,
+                tone: diagnosis.tone,
+              ),
+              _WorkspaceMetric(
+                label: 'Licenca/billing',
+                value: diagnosis.billingLabel,
+              ),
+              _WorkspaceMetric(
+                label: 'Ultimo sync',
+                value: diagnosis.lastSyncLabel,
+              ),
+              _WorkspaceMetric(
+                label: 'Sinais principais',
+                value: '${diagnosis.signals.length}',
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 960;
+              final children = [
+                _DiagnosisColumn(
+                  title: 'Causa provavel',
+                  emptyMessage:
+                      'Nenhuma causa critica encontrada com os dados atuais.',
+                  items: diagnosis.causes,
+                  icon: Icons.psychology_alt_rounded,
+                ),
+                _DiagnosisColumn(
+                  title: 'Proxima melhor acao',
+                  emptyMessage: 'Monitorar e validar com o cliente.',
+                  items: diagnosis.nextActions,
+                  icon: Icons.playlist_add_check_rounded,
+                ),
+              ];
+              if (!wide) {
+                return Column(
+                  children: [
+                    children[0],
+                    const SizedBox(height: 12),
+                    children[1],
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: children[0]),
+                  const SizedBox(width: 12),
+                  Expanded(child: children[1]),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 18),
+          _ContextualActions(companyId: company.id),
+          const SizedBox(height: 18),
+          _TimelinePreview(items: diagnosis.timeline),
+          const SizedBox(height: 18),
+          _Runbooks(companyId: company.id),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkspaceDiagnosis {
+  const _WorkspaceDiagnosis({
+    required this.status,
+    required this.tone,
+    required this.billingLabel,
+    required this.lastSyncLabel,
+    required this.signals,
+    required this.causes,
+    required this.nextActions,
+    required this.timeline,
+  });
+
+  final String status;
+  final AdminOperationalTone tone;
+  final String billingLabel;
+  final String lastSyncLabel;
+  final List<String> signals;
+  final List<String> causes;
+  final List<String> nextActions;
+  final List<_TimelineItem> timeline;
+}
+
+class _TimelineItem {
+  const _TimelineItem({
+    required this.when,
+    required this.type,
+    required this.severity,
+    required this.title,
+    required this.description,
+    required this.source,
+    this.route,
+  });
+
+  final DateTime? when;
+  final String type;
+  final AdminOperationalTone severity;
+  final String title;
+  final String description;
+  final String source;
+  final String? route;
+}
+
+_WorkspaceDiagnosis _buildWorkspaceDiagnosis({
+  required AdminCompanySummary company,
+  required AdminBillingCompanyStatus? billing,
+  required AdminCompanyAccessSummary? access,
+  required List<AdminDeviceInventoryItem> devices,
+  required List<AdminDeviceSession> sessions,
+  required AdminSyncCenterCompanySummary? sync,
+  required AdminCompanySyncHealth? health,
+  required AdminAuditLogPage? audit,
+}) {
+  final signals = <String>[];
+  final causes = <String>[];
+  final nextActions = <String>[];
+  final timeline = <_TimelineItem>[];
+
+  final billingStatus = billing?.billing.billingSubscriptionStatus
+      ?.toLowerCase();
+  final licenseStatus =
+      billing?.license?.status.toLowerCase() ??
+      company.license?.status.toLowerCase();
+  final paidPlan =
+      (billing?.license?.plan ?? company.license?.plan ?? 'FREE')
+          .toUpperCase() !=
+      'FREE';
+  if (paidPlan && _isBlockedStatus(licenseStatus)) {
+    signals.add('Plano pago com licenca bloqueada');
+    causes.add('Licenca bloqueada apesar de pagamento ou plano ativo');
+    nextActions.add(
+      'Abrir billing e executar refresh/reconcile com motivo quando aplicavel',
+    );
+  }
+  if (_isBadBillingStatus(billingStatus)) {
+    signals.add("Billing com status ${billingStatus ?? 'indisponivel'}");
+    causes.add(
+      'Evento de cobranca ou webhook pode nao ter conciliado corretamente',
+    );
+    nextActions.add(
+      'Revisar eventos de billing e reconciliar com fluxo auditado',
+    );
+  }
+  if (billing?.events.isNotEmpty == true) {
+    final event = billing!.events.first;
+    timeline.add(
+      _TimelineItem(
+        when: event.createdAt,
+        type: 'billing',
+        severity: event.status.toLowerCase() == 'failed'
+            ? AdminOperationalTone.critical
+            : AdminOperationalTone.ok,
+        title: 'Evento de billing ${event.eventType}',
+        description: event.errorMessage ?? 'Status ${event.status}',
+        source: 'Billing',
+        route: '/billing/${company.id}',
+      ),
+    );
+  }
+
+  if (health != null) {
+    if (health.openConflictsCount > 0) {
+      signals.add('${health.openConflictsCount} conflito(s) aberto(s)');
+      causes.add('Conflito aberto impedindo consolidacao');
+      nextActions.add(
+        'Abrir Sync Center e avaliar reprocessamento ou arquivamento com dry-run',
+      );
+    }
+    if (health.events.failed > 0) {
+      signals.add('${health.events.failed} falha(s) de sync');
+      causes.add('Eventos de sync falhando no backend');
+      nextActions.add('Abrir device com falha e simular comando de sync');
+    }
+    if (health.lastSyncAt == null) {
+      signals.add('Sem sync recente');
+      causes.add('Device sem sync recente');
+      nextActions.add(
+        'Validar dispositivo ativo e acionar comando seguro no Sync Center',
+      );
+    }
+  }
+  if (sync?.latestEvents.isNotEmpty == true) {
+    final event = sync!.latestEvents.first;
+    timeline.add(
+      _TimelineItem(
+        when: event.createdAt,
+        type: 'sync',
+        severity:
+            event.status.toLowerCase() == 'failed' ||
+                event.status.toLowerCase() == 'conflict'
+            ? AdminOperationalTone.critical
+            : AdminOperationalTone.ok,
+        title: 'Sync ${adminSyncCenterStatusLabel(event.status)}',
+        description:
+            '${adminSyncCenterFeatureLabel(event.feature)} / ${adminSyncCenterEntityLabel(event.entity)}',
+        source: 'Sync Center',
+        route: '/sync/${company.id}/events/${event.id}',
+      ),
+    );
+  }
+
+  final problematicDevices = devices
+      .where((device) => device.hasLocalAttention)
+      .toList(growable: false);
+  if (problematicDevices.isNotEmpty) {
+    signals.add(
+      '${problematicDevices.length} dispositivo(s) com diagnostico local',
+    );
+    causes.add('Dispositivo reporta erro, pendencia ou conflito local');
+    nextActions.add('Abrir detalhe do device com falha no Sync Center');
+  }
+  final unknownVersions = devices
+      .where(
+        (device) =>
+            device.clientType.toUpperCase() == 'MOBILE_APP' &&
+            !_hasAppVersion(device.appVersion),
+      )
+      .length;
+  if (unknownVersions > 0) {
+    signals.add('$unknownVersions app(s) sem versao informada');
+    causes.add('Dispositivo antigo ou versao desconhecida');
+    nextActions.add('Confirmar versao instalada antes de acao remota');
+  }
+
+  if (access != null) {
+    if (access.summary.disabledEmployees > 0) {
+      signals.add(
+        '${access.summary.disabledEmployees} funcionario(s) desativado(s)',
+      );
+      causes.add('Funcionario sem acesso operacional');
+      nextActions.add(
+        'Abrir usuario bloqueado e usar fluxo de reativacao com dry-run',
+      );
+    }
+    if (access.summary.invitedEmployees > 0) {
+      signals.add('${access.summary.invitedEmployees} convite(s) pendente(s)');
+      nextActions.add('Validar convite e orientar owner/admin da empresa');
+    }
+  }
+
+  final inactiveSessions = sessions
+      .where((session) => session.status.toLowerCase() != 'active')
+      .length;
+  if (inactiveSessions > 0) {
+    signals.add('$inactiveSessions sessao(oes) nao ativas');
+    nextActions.add(
+      'Abrir console de sessoes e simular revogacao quando houver contrato seguro',
+    );
+  }
+
+  if (audit?.items.isNotEmpty == true) {
+    final entry = audit!.items.first;
+    timeline.add(
+      _TimelineItem(
+        when: entry.createdAt,
+        type: 'auditoria',
+        severity: entry.status.toLowerCase() == 'failed'
+            ? AdminOperationalTone.critical
+            : AdminOperationalTone.ok,
+        title: _auditActionLabel(entry.action),
+        description: entry.reason ?? 'Sem contexto registrado',
+        source: 'Auditoria',
+        route: '/audit?companyId=${company.id}',
+      ),
+    );
+  }
+
+  timeline.sort((left, right) {
+    if (left.when == null && right.when == null) return 0;
+    if (left.when == null) return 1;
+    if (right.when == null) return -1;
+    return right.when!.compareTo(left.when!);
+  });
+
+  final tone =
+      signals.any(
+        (signal) =>
+            signal.contains('falha') ||
+            signal.contains('bloqueada') ||
+            signal.contains('conflito'),
+      )
+      ? AdminOperationalTone.critical
+      : signals.isNotEmpty
+      ? AdminOperationalTone.attention
+      : AdminOperationalTone.ok;
+
+  return _WorkspaceDiagnosis(
+    status: _operationalLabel(tone),
+    tone: tone,
+    billingLabel: billing == null
+        ? 'Indisponivel'
+        : "${billing.license?.plan ?? company.license?.plan ?? 'FREE'} / ${billing.license?.status ?? company.license?.status ?? 'sem status'}",
+    lastSyncLabel: AdminFormatters.formatDateTime(health?.lastSyncAt),
+    signals: signals,
+    causes: causes.toSet().toList(growable: false),
+    nextActions: nextActions.toSet().toList(growable: false),
+    timeline: timeline.take(6).toList(growable: false),
+  );
+}
+
+class _WorkspaceMetric extends StatelessWidget {
+  const _WorkspaceMetric({required this.label, required this.value, this.tone});
+
+  final String label;
+  final String value;
+  final AdminOperationalTone? tone;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 230,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: 6),
+              tone == null
+                  ? Text(
+                      value,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    )
+                  : AdminOperationalStatus(
+                      label: value,
+                      tone: tone!,
+                      compact: true,
+                    ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DiagnosisColumn extends StatelessWidget {
+  const _DiagnosisColumn({
+    required this.title,
+    required this.emptyMessage,
+    required this.items,
+    required this.icon,
+  });
+
+  final String title;
+  final String emptyMessage;
+  final List<String> items;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (items.isEmpty)
+              Text(emptyMessage)
+            else
+              ...items.map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text('- $item'),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ContextualActions extends StatelessWidget {
+  const _ContextualActions({required this.companyId});
+
+  final String companyId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        FilledButton.tonalIcon(
+          onPressed: () => context.go('/companies/$companyId/sync'),
+          icon: const Icon(Icons.sync_problem_rounded),
+          label: const Text('Abrir Sync Center'),
+        ),
+        FilledButton.tonalIcon(
+          onPressed: () => context.go('/billing/$companyId'),
+          icon: const Icon(Icons.payments_rounded),
+          label: const Text('Reconciliar billing'),
+        ),
+        OutlinedButton.icon(
+          onPressed: () => context.go('/companies/$companyId/users'),
+          icon: const Icon(Icons.people_alt_rounded),
+          label: const Text('Abrir usuario bloqueado'),
+        ),
+        OutlinedButton.icon(
+          onPressed: () => context.go('/companies/$companyId/sessions'),
+          icon: const Icon(Icons.login_rounded),
+          label: const Text('Sessoes e revogacao segura'),
+        ),
+        OutlinedButton.icon(
+          onPressed: () => context.go('/audit?companyId=$companyId'),
+          icon: const Icon(Icons.fact_check_rounded),
+          label: const Text('Auditoria'),
+        ),
+      ],
+    );
+  }
+}
+
+class _TimelinePreview extends StatelessWidget {
+  const _TimelinePreview({required this.items});
+
+  final List<_TimelineItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Timeline consolidada',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 10),
+            if (items.isEmpty)
+              const Text(
+                'Sem eventos recentes suficientes para montar timeline consolidada.',
+              )
+            else
+              ...items.map(
+                (item) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: AdminOperationalStatus(
+                    label: item.type,
+                    tone: item.severity,
+                    compact: true,
+                  ),
+                  title: Text(item.title),
+                  subtitle: Text(
+                    '${AdminFormatters.formatDateTime(item.when)} - ${item.source} - ${item.description}',
+                  ),
+                  trailing: item.route == null
+                      ? null
+                      : IconButton(
+                          tooltip: 'Abrir contexto',
+                          onPressed: () => context.go(item.route!),
+                          icon: const Icon(Icons.open_in_new_rounded),
+                        ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Runbooks extends StatelessWidget {
+  const _Runbooks({required this.companyId});
+
+  final String companyId;
+
+  @override
+  Widget build(BuildContext context) {
+    final runbooks = [
+      _Runbook(
+        'Cliente nao sincroniza',
+        'Ver ultimo sync, device ativo e falhas locais.',
+        'Simular comando de sync no device.',
+        'Novo sync reportado sem falhas.',
+        '/companies/$companyId/sync',
+      ),
+      _Runbook(
+        'Venda nao apareceu',
+        'Conferir eventos PDV, conflitos e materializacao.',
+        'Reprocessar evento quando o dry-run liberar.',
+        'Venda aparece nos dados consolidados.',
+        '/companies/$companyId/sync',
+      ),
+      _Runbook(
+        'Assinatura paga mas licenca bloqueada',
+        'Conferir status de billing, eventos e assinatura.',
+        'Refresh/reconcile billing com motivo.',
+        'Licenca volta ao status esperado.',
+        '/billing/$companyId',
+      ),
+      _Runbook(
+        'Funcionario nao acessa',
+        'Validar status, papel, convite e auditoria.',
+        'Reativar acesso operacional com dry-run.',
+        'Funcionario entra no app com permissao correta.',
+        '/companies/$companyId/users',
+      ),
+      _Runbook(
+        'Dispositivo antigo ou versao desconhecida',
+        'Ver appVersion, plataforma e ultimo contato.',
+        'Orientar atualizacao antes de comando remoto.',
+        'Device reporta versao e sync recente.',
+        '/companies/$companyId/devices',
+      ),
+    ];
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Runbooks operacionais',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            ...runbooks.map(
+              (runbook) => ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text(runbook.title),
+                children: [
+                  _DetailLineWidget(
+                    label: 'Evidencias',
+                    value: runbook.evidence,
+                  ),
+                  _DetailLineWidget(
+                    label: 'Acoes seguras',
+                    value: runbook.action,
+                  ),
+                  _DetailLineWidget(
+                    label: 'Criterio de sucesso',
+                    value: runbook.success,
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => context.go(runbook.route),
+                      icon: const Icon(Icons.open_in_new_rounded),
+                      label: const Text('Abrir area relevante'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Runbook {
+  const _Runbook(
+    this.title,
+    this.evidence,
+    this.action,
+    this.success,
+    this.route,
+  );
+
+  final String title;
+  final String evidence;
+  final String action;
+  final String success;
+  final String route;
+}
+
+class _DetailLineWidget extends StatelessWidget {
+  const _DetailLineWidget({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text('$label: $value'),
+      ),
+    );
+  }
+}
+
+void _copyTicketSummary(
+  BuildContext context,
+  AdminCompanySummary company,
+  _WorkspaceDiagnosis diagnosis,
+) {
+  final summary = [
+    'Empresa: ${company.name} (${company.slug})',
+    'Status operacional: ${diagnosis.status}',
+    'Licenca/billing: ${diagnosis.billingLabel}',
+    'Ultimo sync: ${diagnosis.lastSyncLabel}',
+    "Principais sinais: ${diagnosis.signals.isEmpty ? 'nenhum sinal critico' : diagnosis.signals.join('; ')}",
+    "Causa provavel: ${diagnosis.causes.isEmpty ? 'nao identificada com dados atuais' : diagnosis.causes.join('; ')}",
+    "Acoes sugeridas: ${diagnosis.nextActions.isEmpty ? 'monitorar e validar com cliente' : diagnosis.nextActions.join('; ')}",
+    "Ultimas acoes/auditorias: ${diagnosis.timeline.isEmpty ? 'sem eventos recentes' : diagnosis.timeline.map((item) => '${item.source}: ${item.title}').join('; ')}",
+    'Proximos passos: executar apenas acoes com dry-run, motivo obrigatorio, confirmacao explicita e auditoria.',
+  ].join('\n');
+  Clipboard.setData(ClipboardData(text: summary));
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Resumo mascarado copiado para o chamado.')),
+  );
+}
+
+bool _isBlockedStatus(String? value) {
+  final normalized = value?.toLowerCase();
+  return normalized == 'blocked' ||
+      normalized == 'suspended' ||
+      normalized == 'inactive' ||
+      normalized == 'expired' ||
+      normalized == 'canceled' ||
+      normalized == 'cancelled';
+}
+
+bool _isBadBillingStatus(String? value) {
+  return value == 'failed' ||
+      value == 'past_due' ||
+      value == 'unpaid' ||
+      value == 'rejected' ||
+      value == 'cancelled' ||
+      value == 'canceled';
+}
+
 class _SupportHeader extends ConsumerWidget {
   const _SupportHeader({required this.company});
 
@@ -808,7 +1530,7 @@ class _SupportHeader extends ConsumerWidget {
     return AdminSurface(
       title: 'Central de suporte da empresa',
       subtitle:
-          'Hub operacional read-only para investigar ${company.name} sem executar comandos reais.',
+          'Workspace de triagem e resolucao guiada para investigar ${company.name} com acoes criticas protegidas por gates.',
       trailing: Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -839,7 +1561,7 @@ class _SupportHeader extends ConsumerWidget {
               AdminFormatters.formatLicenseStatus(company.license?.status),
             ),
           ),
-          const Chip(label: Text('Read-only')),
+          const Chip(label: Text('Acoes com gates')),
         ],
       ),
     );
@@ -860,7 +1582,7 @@ class _ReadOnlyNotice extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        'Somente leitura nesta fase: sem revogar sessoes, forcar logout, reprocessar sync, alterar licenca ou executar comandos de suporte.',
+        'Acoes criticas exigem dry-run, motivo obrigatorio, confirmacao explicita e ficam registradas em auditoria.',
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
           color: scheme.onSecondaryContainer,
           fontWeight: FontWeight.w800,

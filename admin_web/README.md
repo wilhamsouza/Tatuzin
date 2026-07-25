@@ -94,7 +94,8 @@ recomendados.
 - Login administrativo e restauracao de sessao.
 - Dashboard resumido de plataforma.
 - Empresas e detalhe administrativo.
-- Central de suporte read-only por empresa.
+- Triagem global de suporte por criticidade.
+- Central de suporte por empresa como workspace guiado com causa provavel, timeline, resumo copiavel, runbooks e acoes seguras com gates.
 - Usuarios e funcionarios por empresa.
 - Dispositivos e sessoes globais ou por empresa.
 - Console de sessoes por empresa em `/companies/:companyId/sessions`.

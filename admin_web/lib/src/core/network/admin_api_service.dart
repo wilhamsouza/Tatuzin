@@ -9,6 +9,7 @@ import '../models/admin_models.dart';
 import '../models/admin_permissions_models.dart';
 import '../models/admin_plan_models.dart';
 import '../models/admin_sync_center_models.dart';
+import '../models/admin_support_models.dart';
 import '../models/admin_support_action_models.dart';
 import '../models/admin_tenant_deletion_models.dart';
 import 'admin_api_client.dart';
@@ -141,6 +142,39 @@ class AdminApiService {
           (results[0] as AdminPaginatedResult<AdminCompanySummary>).items,
       auditSummary: results[1] as AdminAuditSummary,
       syncSummary: results[2] as AdminSyncSummary,
+    );
+  }
+
+  Future<AdminSupportTriageSnapshot> fetchSupportTriage() async {
+    final results = await Future.wait<dynamic>([
+      fetchCompanies(
+        query: const AdminCompaniesQuery(
+          page: 1,
+          pageSize: 100,
+          sortBy: 'updatedAt',
+          sortDirection: 'desc',
+        ),
+      ),
+      fetchSyncCenterCompanies(
+        query: const AdminSyncCenterCompaniesQuery(
+          page: 1,
+          pageSize: 100,
+          status: 'all',
+        ),
+      ),
+      fetchBillingCompanies(
+        query: const AdminBillingCompaniesQuery(page: 1, pageSize: 100),
+      ),
+    ]);
+
+    return buildFallbackSupportTriageSnapshot(
+      companies:
+          (results[0] as AdminPaginatedResult<AdminCompanySummary>).items,
+      syncCompanies:
+          (results[1] as AdminPaginatedResult<AdminSyncCenterCompany>).items,
+      billingCompanies:
+          (results[2] as AdminPaginatedResult<AdminBillingCompanySummary>)
+              .items,
     );
   }
 

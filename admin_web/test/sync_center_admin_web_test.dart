@@ -284,7 +284,7 @@ void main() {
     expect(find.text('Auditoria'), findsOneWidget);
   });
 
-  testWidgets('/companies/:companyId/support renderiza central read-only', (
+  testWidgets('/companies/:companyId/support renderiza workspace de triagem', (
     tester,
   ) async {
     _setLargeViewport(tester);
@@ -297,6 +297,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Central de suporte da empresa'), findsOneWidget);
+    expect(find.text('Workspace de atendimento'), findsOneWidget);
+    expect(find.text('Causa provavel'), findsOneWidget);
+    expect(find.text('Proxima melhor acao'), findsOneWidget);
+    expect(find.text('Timeline consolidada'), findsOneWidget);
+    expect(find.text('Runbooks operacionais'), findsOneWidget);
+    expect(
+      find.widgetWithText(FilledButton, 'Copiar resumo para chamado'),
+      findsOneWidget,
+    );
     expect(find.text('Dados da empresa'), findsOneWidget);
     expect(find.text('00.0...1-00'), findsOneWidget);
     expect(find.text('00.000.000/0001-00'), findsNothing);
@@ -313,7 +322,7 @@ void main() {
     expect(find.text('Auditoria'), findsWidgets);
     expect(find.text('Seguranca operacional'), findsOneWidget);
     expect(find.text('Observabilidade operacional'), findsOneWidget);
-    expect(find.text('Status operacional'), findsOneWidget);
+    expect(find.text('Status operacional'), findsWidgets);
     expect(find.text('Permissoes administrativas'), findsWidgets);
     expect(find.text('Simulacoes operacionais'), findsWidgets);
     expect(find.text('Rollout revoke_session'), findsOneWidget);
@@ -382,7 +391,10 @@ void main() {
       find.widgetWithText(FilledButton, 'Abrir Sync Center'),
       findsWidgets,
     );
-    expect(find.textContaining('Somente leitura nesta fase'), findsOneWidget);
+    expect(
+      find.textContaining('Acoes criticas exigem dry-run'),
+      findsOneWidget,
+    );
     expect(find.textContaining('preapproval-secret-full-id'), findsNothing);
     expect(find.text('Revogar sessao'), findsNothing);
     expect(find.text('Forcar sync'), findsNothing);
@@ -409,7 +421,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Central de suporte da empresa'), findsOneWidget);
-    expect(find.text('Status operacional'), findsOneWidget);
+    expect(find.text('Status operacional'), findsWidgets);
   });
 
   testWidgets('Usuarios e funcionarios renderiza abas read-only', (
@@ -903,7 +915,7 @@ void main() {
     expect(find.text('Ultimo sync'), findsOneWidget);
     expect(find.text('Ultimo erro'), findsOneWidget);
     expect(find.text('Pendencias'), findsOneWidget);
-    expect(find.text('Status operacional'), findsOneWidget);
+    expect(find.text('Status operacional'), findsWidgets);
     expect(find.text('Controle de versao Android'), findsOneWidget);
     expect(find.text('Versao instalada'), findsOneWidget);
     expect(find.text('Status versao'), findsOneWidget);

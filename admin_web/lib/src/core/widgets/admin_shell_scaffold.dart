@@ -29,6 +29,12 @@ class AdminShellScaffold extends ConsumerWidget {
       label: 'Empresas',
     ),
     _AdminNavItem(
+      route: '/support',
+      icon: Icons.support_agent_rounded,
+      label: 'Suporte',
+      badge: 'Triagem',
+    ),
+    _AdminNavItem(
       route: '/sync',
       icon: Icons.sync_problem_rounded,
       label: 'Sync Center',
@@ -80,6 +86,7 @@ class AdminShellScaffold extends ConsumerWidget {
     final sessionEmail = auth.session?.user.email ?? 'sem sessao';
     final isAdvancedBilling = currentLocation.startsWith('/billing');
     final hasSyncSupportActions =
+        currentLocation.startsWith('/support') ||
         currentLocation.startsWith('/sync') ||
         (currentLocation.startsWith('/companies/') &&
             currentLocation.endsWith('/sync'));
@@ -329,6 +336,9 @@ class _Sidebar extends StatelessWidget {
               !location.endsWith('/sync') &&
               !location.endsWith('/license'));
     }
+    if (route == '/support') {
+      return location == '/support';
+    }
     if (route == '/sync') {
       return location == '/sync' ||
           location.startsWith('/sync/') ||
@@ -483,6 +493,9 @@ class _ReadOnlyBadge extends StatelessWidget {
 }
 
 String _supportDescription(String location) {
+  if (location.startsWith('/support')) {
+    return 'Mesa de triagem para priorizar empresas, causas provaveis e proximas acoes seguras.';
+  }
   if (location.startsWith('/companies')) {
     return 'Suporte interno para empresas, usuarios, funcionarios, dispositivos, sessoes e licencas.';
   }

@@ -10,6 +10,7 @@ import '../models/admin_models.dart';
 import '../models/admin_permissions_models.dart';
 import '../models/admin_plan_models.dart';
 import '../models/admin_sync_center_models.dart';
+import '../models/admin_support_models.dart';
 import '../models/admin_tenant_deletion_models.dart';
 import '../network/admin_api_client.dart';
 import '../network/admin_api_service.dart';
@@ -52,6 +53,12 @@ final adminDashboardProvider = FutureProvider<AdminDashboardSnapshot>((
   return ref.watch(adminApiServiceProvider).fetchDashboard();
 });
 
+final adminSupportTriageProvider = FutureProvider<AdminSupportTriageSnapshot>((
+  ref,
+) async {
+  ref.watch(adminRefreshTickProvider);
+  return ref.watch(adminApiServiceProvider).fetchSupportTriage();
+});
 final adminCompaniesProvider =
     FutureProvider.family<
       AdminPaginatedResult<AdminCompanySummary>,

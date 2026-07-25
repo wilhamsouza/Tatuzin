@@ -26,6 +26,7 @@ import '../features/permissions/presentation/admin_permissions_page.dart';
 import '../features/plans/presentation/plans_page.dart';
 import '../features/sync_center/presentation/sync_center_pages.dart';
 import '../features/sync_health/presentation/sync_health_page.dart';
+import '../features/support/presentation/support_triage_page.dart';
 import '../features/tenant_deletion/presentation/tenant_deletion_page.dart';
 
 final adminRouterProvider = Provider<GoRouter>((ref) {
@@ -117,6 +118,10 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/companies',
             builder: (context, state) => const CompaniesPage(),
+          ),
+          GoRoute(
+            path: '/support',
+            builder: (context, state) => const SupportTriagePage(),
           ),
           GoRoute(
             path: '/companies/:companyId/sync',
@@ -331,6 +336,9 @@ String _titleForLocation(String location) {
   }
   if (location.startsWith('/companies')) {
     return 'Empresas';
+  }
+  if (location.startsWith('/support')) {
+    return 'Triagem de suporte';
   }
   if (location.startsWith('/sync-health')) {
     return 'Saude do sync';
