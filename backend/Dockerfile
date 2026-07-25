@@ -1,4 +1,4 @@
-FROM node:24-alpine AS base
+FROM node:24.14.1-alpine AS base
 WORKDIR /app
 
 ENV NODE_ENV=production \
@@ -30,7 +30,7 @@ RUN npm ci --omit=dev \
  && npm run prisma:generate \
  && npm cache clean --force
 
-FROM node:24-alpine AS runtime
+FROM node:24.14.1-alpine AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production \

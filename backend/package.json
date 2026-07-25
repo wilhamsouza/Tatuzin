@@ -4,7 +4,7 @@
   "private": true,
   "type": "commonjs",
   "engines": {
-    "node": ">=24.0.0"
+    "node": "24.14.x"
   },
   "scripts": {
     "dev": "tsx watch src/main.ts",
@@ -39,7 +39,7 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
     "@types/jsonwebtoken": "^9.0.9",
-    "@types/node": "^22.13.10",
+    "@types/node": "^24.13.3",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2"
   }

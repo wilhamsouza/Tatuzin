@@ -62,7 +62,7 @@ Nao crie produto, cliente, fornecedor, compra, insumo, custo ou relatorio gerenc
 
 ### Backend
 
-- Node.js `>=24.0.0`
+- Node.js `24.14.x` (local/CI/Docker: `24.14.1`)
 - Express
 - TypeScript
 - Prisma
@@ -332,7 +332,7 @@ Use as versoes definidas no repositorio:
 
 - Flutter SDK compativel com `pubspec.yaml`: Flutter `>=3.38.0`
 - Dart SDK `>=3.10.0 <4.0.0`
-- Node.js `>=24.0.0`
+- Node.js `24.14.x` (local/CI/Docker: `24.14.1`)
 - PostgreSQL
 - Docker/Docker Compose para banco local e runtime de producao do backend
 - Prisma `^6.5.0`

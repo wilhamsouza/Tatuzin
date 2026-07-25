@@ -47,7 +47,7 @@ Na pratica, ele atende autenticacao, sessao, licenciamento e persistencia remota
 
 ## Banco e stack
 
-- Node.js 24+
+- Node.js `24.14.x` (local/CI/Docker: `24.14.1`)
 - Express + TypeScript
 - Prisma
 - PostgreSQL
