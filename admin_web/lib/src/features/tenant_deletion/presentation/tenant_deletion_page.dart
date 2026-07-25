@@ -844,23 +844,19 @@ class _ExecutionProgress extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Progresso persistido: ' +
-                completed.length.toString() +
-                '/' +
-                _executionCategoryLabels.length.toString() +
-                ' categorias concluidas',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
+            'Progresso persistido: ${completed.length}/${_executionCategoryLabels.length} categorias concluidas',
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 6),
-          Text('Concluidas: ' + _labels(summary.completedCategories)),
+          Text('Concluidas: ${_labels(summary.completedCategories)}'),
           const SizedBox(height: 4),
-          Text('Pendentes: ' + _labels(pending)),
+          Text('Pendentes: ${_labels(pending)}'),
           if (summary.failedCategory != null) ...[
             const SizedBox(height: 4),
             Text(
-              'Falha atual: ' + _label(summary.failedCategory!),
+              'Falha atual: ${_label(summary.failedCategory!)}',
               style: TextStyle(
                 color: scheme.error,
                 fontWeight: FontWeight.w700,
@@ -897,8 +893,8 @@ class _StatusChip extends StatelessWidget {
     final color = switch (status) {
       'CANCELLED' || 'REJECTED' => scheme.errorContainer,
       'DRY_RUN_READY' || 'VERIFIED' => scheme.primaryContainer,
-      'FUTURE_PENDING_DELETION' || 'EXECUTION_IN_PROGRESS' =>
-        scheme.tertiaryContainer,
+      'FUTURE_PENDING_DELETION' ||
+      'EXECUTION_IN_PROGRESS' => scheme.tertiaryContainer,
       'DELETION_EXECUTED' => scheme.primaryContainer,
       _ => scheme.surfaceContainerHighest,
     };
