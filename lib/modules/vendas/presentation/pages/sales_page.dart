@@ -103,7 +103,15 @@ class _SalesPageState extends ConsumerState<SalesPage> {
           final horizontalPadding = constraints.maxWidth >= 900
               ? layout.pagePadding + 2
               : layout.pagePaddingCompact;
-          final tileHeight = constraints.maxWidth >= 900 ? 276.0 : 260.0;
+          final textScale = MediaQuery.textScalerOf(context).scale(1);
+          final compactGrid = constraints.maxWidth < 720 || textScale > 1.25;
+          final extraTextHeight =
+              (textScale - 1).clamp(0.0, 0.8).toDouble() * 96;
+          final tileHeight = constraints.maxWidth >= 900
+              ? 276.0
+              : compactGrid
+              ? 248.0 + extraTextHeight
+              : 260.0;
           final maxTileWidth = constraints.maxWidth >= 1200
               ? 216.0
               : constraints.maxWidth >= 720
@@ -631,6 +639,9 @@ class _ProductTile extends ConsumerWidget {
         '${product.modifierGroupCount} complemento${product.modifierGroupCount == 1 ? '' : 's'}',
       if (product.barcode?.isNotEmpty ?? false) 'Cód. ${product.barcode}',
     ];
+    final priceLabel = entry.hasPriceRange
+        ? 'A partir de ${AppFormatters.currencyFromCents(entry.startingPriceCents)}'
+        : AppFormatters.currencyFromCents(entry.startingPriceCents);
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -638,141 +649,182 @@ class _ProductTile extends ConsumerWidget {
       elevation: 0,
       child: InkWell(
         onTap: outOfStock ? null : () => _addProduct(context, ref),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _ProductTileMedia(product: product),
-              const SizedBox(height: 8),
-              Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final textScale = MediaQuery.textScalerOf(context).scale(1);
+            final compact = constraints.maxWidth < 176 || textScale > 1.25;
+            final visibleSecondaryDetails = compact
+                ? textScale > 1.45
+                      ? const <String>[]
+                      : secondaryDetails.take(1).toList(growable: false)
+                : secondaryDetails;
+            final mediaHeight = compact
+                ? textScale > 1.45
+                      ? 28.0
+                      : 52.0
+                : null;
+            final contentPadding = compact ? 8.0 : 10.0;
+            final gapAfterMedia = compact ? 6.0 : 8.0;
+
+            return Padding(
+              padding: EdgeInsets.all(contentPadding),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      entry.displayName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        height: 1.18,
+                  _ProductTileMedia(product: product, height: mediaHeight),
+                  SizedBox(height: gapAfterMedia),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          entry.displayName,
+                          maxLines: compact && textScale > 1.45 ? 1 : 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            height: 1.18,
+                          ),
+                        ),
+                      ),
+                      if (!compact) ...[
+                        const SizedBox(width: 6),
+                        SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: outOfStock
+                                  ? colorScheme.errorContainer.withValues(
+                                      alpha: 0.4,
+                                    )
+                                  : colorScheme.primaryContainer.withValues(
+                                      alpha: 0.7,
+                                    ),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: IconButton(
+                              tooltip: entry.hasVariants
+                                  ? 'Escolher variante'
+                                  : 'Adicionar ao carrinho',
+                              onPressed: outOfStock
+                                  ? null
+                                  : () => _addProduct(context, ref),
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              icon: Icon(
+                                outOfStock
+                                    ? Icons.block_rounded
+                                    : entry.hasVariants
+                                    ? Icons.tune_rounded
+                                    : Icons.add_shopping_cart_rounded,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  SizedBox(height: compact ? 4 : 6),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FittedBox(
+                      alignment: Alignment.centerLeft,
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        priceLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0,
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
+                  SizedBox(height: compact ? 3 : 4),
+                  Text(
+                    '${product.unitMeasure} • $stockLabel',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: 11.5,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  if (visibleSecondaryDetails.isNotEmpty) ...[
+                    SizedBox(height: compact ? 3 : 4),
+                    Text(
+                      visibleSecondaryDetails.join(' • '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
                   SizedBox(
-                    width: 32,
-                    height: 32,
+                    width: double.infinity,
+                    height: compact && textScale > 1.45
+                        ? 30
+                        : compact
+                        ? 32
+                        : 34,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         color: outOfStock
-                            ? colorScheme.errorContainer.withValues(alpha: 0.4)
+                            ? colorScheme.errorContainer.withValues(alpha: 0.55)
                             : colorScheme.primaryContainer.withValues(
-                                alpha: 0.7,
+                                alpha: 0.55,
                               ),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: IconButton(
-                        tooltip: entry.hasVariants
-                            ? 'Escolher variante'
-                            : 'Adicionar ao carrinho',
-                        onPressed: outOfStock
-                            ? null
-                            : () => _addProduct(context, ref),
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                        icon: Icon(
-                          outOfStock
-                              ? Icons.block_rounded
-                              : entry.hasVariants
-                              ? Icons.tune_rounded
-                              : Icons.add_shopping_cart_rounded,
-                          size: 18,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                outOfStock
+                                    ? Icons.block_rounded
+                                    : entry.hasVariants
+                                    ? Icons.tune_rounded
+                                    : Icons.add_shopping_cart_rounded,
+                                size: 14,
+                                color: outOfStock
+                                    ? colorScheme.error
+                                    : colorScheme.primary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                outOfStock
+                                    ? 'Sem estoque'
+                                    : entry.hasVariants
+                                    ? 'Escolher variante'
+                                    : 'Adicionar',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: outOfStock
+                                      ? colorScheme.error
+                                      : colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
-              Text(
-                entry.hasPriceRange
-                    ? 'A partir de ${AppFormatters.currencyFromCents(entry.startingPriceCents)}'
-                    : AppFormatters.currencyFromCents(entry.startingPriceCents),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.2,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '${product.unitMeasure} • $stockLabel',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontSize: 11.5,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-              if (secondaryDetails.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  secondaryDetails.join(' • '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: BoxDecoration(
-                  color: outOfStock
-                      ? colorScheme.errorContainer.withValues(alpha: 0.55)
-                      : colorScheme.primaryContainer.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      outOfStock
-                          ? Icons.block_rounded
-                          : entry.hasVariants
-                          ? Icons.tune_rounded
-                          : Icons.add_shopping_cart_rounded,
-                      size: 14,
-                      color: outOfStock
-                          ? colorScheme.error
-                          : colorScheme.primary,
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        outOfStock
-                            ? 'Sem estoque'
-                            : entry.hasVariants
-                            ? 'Escolher variante'
-                            : 'Adicionar',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: outOfStock
-                              ? colorScheme.error
-                              : colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -952,33 +1004,34 @@ class _ProductTile extends ConsumerWidget {
 }
 
 class _ProductTileMedia extends StatelessWidget {
-  const _ProductTileMedia({required this.product});
+  const _ProductTileMedia({required this.product, this.height});
 
   final Product product;
+  final double? height;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final media = DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: product.hasPhoto
+          ? Image.file(
+              File(product.primaryPhotoPath!),
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) =>
+                  _ProductTileMediaFallback(colorScheme: colorScheme),
+            )
+          : _ProductTileMediaFallback(colorScheme: colorScheme),
+    );
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
-      child: AspectRatio(
-        aspectRatio: 16 / 9,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerLow,
-            border: Border.all(color: colorScheme.outlineVariant),
-          ),
-          child: product.hasPhoto
-              ? Image.file(
-                  File(product.primaryPhotoPath!),
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
-                      _ProductTileMediaFallback(colorScheme: colorScheme),
-                )
-              : _ProductTileMediaFallback(colorScheme: colorScheme),
-        ),
-      ),
+      child: height == null
+          ? AspectRatio(aspectRatio: 16 / 9, child: media)
+          : SizedBox(width: double.infinity, height: height, child: media),
     );
   }
 }

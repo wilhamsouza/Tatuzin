@@ -13,6 +13,7 @@ void main() {
       'lib/modules/dashboard/presentation/pages/dashboard_page.dart',
       'lib/modules/estoque/presentation/pages/inventory_page.dart',
       'lib/modules/auth/presentation/pages/register_page.dart',
+      'lib/modules/vendas/presentation/pages/sales_page.dart',
     ];
 
     const unaccentedSettings =
