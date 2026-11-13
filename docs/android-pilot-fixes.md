@@ -32,12 +32,23 @@
   PostgreSQL. Casos novos cobrem persistência, rollback, permissões, concorrência,
   dependências, projeção remota, vendas do dia, comprovantes e menu em claro/escuro
   com fonte ampliada. O smoke HTTP usa exclusivamente ambiente `isolated-test`.
-- O APK usa o mesmo pacote piloto e cache da chave de testes para atualização direta.
-  A assinatura e o checksum devem ser conferidos na entrega.
+- A primeira chave do piloto não foi preservada pelo cache do CI. A conferência
+  detectou a divergência e bloqueou a entrega como atualização direta.
+- O responsável escolheu instalar em paralelo: o novo pacote é
+  `br.com.tatuzin.gestao.pilot2`, com nome Tatuzin Piloto 2. A versão anterior e seus
+  dados permanecem no aparelho. Dados ainda offline não migram automaticamente;
+  dados sincronizados pertencem à mesma empresa ao entrar novamente.
+- O CI agora produz somente um candidato sem assinatura. O host de distribuição
+  assina com chave persistente em `.release-backups/android-pilot-signing/`, com
+  permissões restritas. Chave e senha nunca são publicadas nem enviadas ao CI.
+- O script `backend/scripts/sign-pilot-apk.sh` recusa o pacote oficial, confere a
+  assinatura e a impressão digital fixada. Guardar backup privado dessa pasta
+  antes de mover ou substituir o servidor; não apagar nem regenerar a chave.
 
 ## Repetição no Android
 
-1. Instalar a atualização do Tatuzin Piloto sem apagar os dados; entrar na empresa de testes.
+1. Instalar Tatuzin Piloto 2 em paralelo, sem desinstalar a versão anterior;
+   entrar na empresa de testes. A nova instalação tem cache local próprio.
 2. Fazer duas vendas e fechar cada comprovante. Abrir Atividade: devem aparecer as
    vendas do dia, sem reaparecer o comprovante anterior.
 3. Abrir uma venda pelo histórico, consultar o comprovante e voltar ao detalhe.

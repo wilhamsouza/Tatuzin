@@ -29,11 +29,6 @@ jobs:
           flutter-version: '3.41.9'
           channel: stable
           cache: true
-      - name: Restore test-only signing certificate
-        uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: tatuzin-pilot-signing-v1
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze --no-pub
       - name: Verify critical pilot flows
@@ -49,20 +44,23 @@ jobs:
         run: |
           APK=build/app/outputs/flutter-apk/app-release.apk
           APKANALYZER="$(find "$ANDROID_HOME/cmdline-tools" -name apkanalyzer -type f | head -n 1)"
-          test "$("$APKANALYZER" manifest application-id "$APK")" = br.com.tatuzin.gestao.pilot
+          test "$("$APKANALYZER" manifest application-id "$APK")" = br.com.tatuzin.gestao.pilot2
           test "$("$APKANALYZER" manifest debuggable "$APK")" = false
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
-          "$APKSIGNER" verify --print-certs "$APK" > build/SIGNING.txt
-          cp "$APK" build/tatuzin-1.0.2-pilot.apk
+          if "$APKSIGNER" verify "$APK" >/dev/null 2>&1; then
+            echo 'The CI candidate must be unsigned; signing belongs to the protected host.'
+            exit 1
+          fi
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -name zipalign -type f | sort -V | tail -n 1)"
+          "$ZIPALIGN" -P 16 -f 4 "$APK" build/tatuzin-1.0.2-pilot2-unsigned.apk
           cd build
-          sha256sum tatuzin-1.0.2-pilot.apk > SHA256SUMS
-          printf 'Source: %s\nVersion: 1.0.2-pilot\nPackage: br.com.tatuzin.gestao.pilot\nSigning: Android test certificate; not a Play Store release\n' "$GITHUB_SHA" > PILOT.txt
+          sha256sum tatuzin-1.0.2-pilot2-unsigned.apk > SHA256SUMS
+          printf 'Source: %s\nVersion: 1.0.2-pilot\nPackage: br.com.tatuzin.gestao.pilot2\nSigning: UNSIGNED CANDIDATE - protected host signing required\n' "$GITHUB_SHA" > PILOT.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: tatuzin-experience-pilot-apk
+          name: tatuzin-pilot2-unsigned-candidate
           path: |
-            build/tatuzin-1.0.2-pilot.apk
-            build/SIGNING.txt
+            build/tatuzin-1.0.2-pilot2-unsigned.apk
             build/SHA256SUMS
             build/PILOT.txt
           retention-days: 30

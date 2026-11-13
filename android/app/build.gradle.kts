@@ -7,7 +7,7 @@ plugins {
 }
 
 val keystoreProperties = Properties()
-// Explicit test distribution only: separate package and the Android test certificate.
+// Explicit test distribution only. The protected host signs the unsigned pilot APK.
 val pilotBuild = providers.gradleProperty("tatuzinPilot").orNull == "true"
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 
@@ -48,10 +48,10 @@ android {
     defaultConfig {
         applicationId = "br.com.tatuzin.gestao"
         if (pilotBuild) {
-            applicationIdSuffix = ".pilot"
+            applicationIdSuffix = ".pilot2"
             versionNameSuffix = "-pilot"
         }
-        manifestPlaceholders["appLabel"] = if (pilotBuild) "Tatuzin Piloto" else "@string/app_name"
+        manifestPlaceholders["appLabel"] = if (pilotBuild) "Tatuzin Piloto 2" else "@string/app_name"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -72,7 +72,7 @@ android {
     buildTypes {
         release {
             if (pilotBuild) {
-                signingConfig = signingConfigs.getByName("debug")
+                signingConfig = null
             } else if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
