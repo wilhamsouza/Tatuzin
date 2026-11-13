@@ -184,7 +184,11 @@ class DashboardPage extends ConsumerWidget {
                             physics: const NeverScrollableScrollPhysics(),
                             crossAxisSpacing: layout.gridGap,
                             mainAxisSpacing: layout.gridGap,
-                            childAspectRatio: isCompact ? 0.9 : 1.08,
+                            childAspectRatio:
+                                (isCompact ? 0.9 : 1.08) /
+                                (MediaQuery.textScalerOf(context).scale(14) /
+                                        14)
+                                    .clamp(1, 2.5),
                             children: [
                               if (canReadSales)
                                 AppMetricCard(
@@ -224,7 +228,11 @@ class DashboardPage extends ConsumerWidget {
                             physics: const NeverScrollableScrollPhysics(),
                             crossAxisSpacing: layout.gridGap,
                             mainAxisSpacing: layout.gridGap,
-                            childAspectRatio: isCompact ? 1.36 : 0.68,
+                            childAspectRatio:
+                                (isCompact ? 1.36 : 0.68) /
+                                (MediaQuery.textScalerOf(context).scale(14) /
+                                        14)
+                                    .clamp(1, 2.5),
                             children: [
                               if (canSell)
                                 _QuickAccessItem(

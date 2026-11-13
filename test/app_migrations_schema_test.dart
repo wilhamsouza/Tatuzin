@@ -15,9 +15,9 @@ void main() {
   });
 
   test('preserva as 37 versoes historicas publicadas', () {
-    expect(AppConstants.databaseVersion, 37);
+    expect(AppConstants.databaseVersion, 38);
     expect(
-      AppMigrations.versionsForTesting,
+      AppMigrations.versionsForTesting.take(37).toList(),
       List<int>.generate(37, (i) => i + 1),
     );
   });
@@ -25,7 +25,7 @@ void main() {
   test('estrutura de migrations futuras esta integrada sem versao vazia', () {
     expect(
       AppMigrations.versionsForTesting,
-      List<int>.generate(37, (i) => i + 1),
+      List<int>.generate(38, (i) => i + 1),
     );
 
     final migrationsSource = File(
@@ -40,9 +40,7 @@ void main() {
     expect(futureSource, contains("part of 'migrations.dart';"));
     expect(
       futureSource,
-      contains(
-        'const List<MigrationStep> futureMigrationSteps = <MigrationStep>[];',
-      ),
+      contains('MigrationStep(version: 38, up: _createVersion38Schema)'),
     );
   });
 
@@ -204,8 +202,11 @@ void _expectMatchesFixture(
   Map<String, Object?> schema,
   Map<String, Object?> fixture,
 ) {
-  expect(schema['version'], fixture['version']);
-  expect(AppMigrations.versionsForTesting, fixture['migrationVersions']);
+  expect(schema['version'], AppConstants.databaseVersion);
+  expect(
+    AppMigrations.versionsForTesting.take(37).toList(),
+    fixture['migrationVersions'],
+  );
 
   final tables = schema['tables']! as Map<String, Object?>;
   final fixtureTables = fixture['tables']! as Map<String, Object?>;

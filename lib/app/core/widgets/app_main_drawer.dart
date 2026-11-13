@@ -29,7 +29,9 @@ class AppMainDrawer extends ConsumerWidget {
     final session = ref.watch(appSessionProvider);
     final accountCloud = ref.watch(accountCloudStatusProvider);
     final internalAccess = ref.watch(internalMobileSurfaceAccessProvider);
-    final currentPath = GoRouterState.of(context).uri.path;
+    final currentPath = GoRouter.of(
+      context,
+    ).routeInformationProvider.value.uri.path;
     final accountModeLabel = accountCloud.accountModeLabel;
     final cloudLabel = accountCloud.commercialBadgeLabel;
 
@@ -58,116 +60,66 @@ class AppMainDrawer extends ConsumerWidget {
 
     return Drawer(
       child: SafeArea(
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.fromLTRB(
-                layout.space8,
-                layout.space8,
-                layout.space8,
-                layout.space7,
-              ),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF0F7B5C), Color(0xFF17A878)],
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.fromLTRB(
+                  layout.space8,
+                  layout.space8,
+                  layout.space8,
+                  layout.space7,
                 ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.16),
-                          borderRadius: BorderRadius.circular(layout.radiusLg),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.22),
-                          ),
-                        ),
-                        child: const Center(
-                          child: TatuzinMascotBadge(size: 36),
-                        ),
-                      ),
-                      SizedBox(width: layout.space6),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              AppConstants.appName,
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0,
-                              ),
-                            ),
-                            SizedBox(height: layout.space2),
-                            Text(
-                              AppConstants.appSlogan,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: Colors.white.withValues(alpha: 0.74),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF0F7B5C), Color(0xFF17A878)],
                   ),
-                  SizedBox(height: layout.space8),
-                  Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.all(layout.space6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(layout.radiusLg),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.18),
-                      ),
-                    ),
-                    child: Row(
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        CircleAvatar(
-                          radius: 18,
-                          backgroundColor: Colors.white.withValues(alpha: 0.2),
-                          foregroundColor: Colors.white,
-                          child: Text(
-                            _initial(authStatus.userLabel),
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(
+                              layout.radiusLg,
+                            ),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.22),
                             ),
                           ),
+                          child: const Center(
+                            child: TatuzinMascotBadge(size: 36),
+                          ),
                         ),
-                        SizedBox(width: layout.space5),
+                        SizedBox(width: layout.space6),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                authStatus.userLabel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.titleSmall?.copyWith(
+                                AppConstants.appName,
+                                style: theme.textTheme.titleLarge?.copyWith(
                                   color: Colors.white,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0,
                                 ),
                               ),
                               SizedBox(height: layout.space2),
                               Text(
-                                authStatus.companyLabel,
+                                AppConstants.appSlogan,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  color: Colors.white.withValues(alpha: 0.78),
+                                  color: Colors.white.withValues(alpha: 0.74),
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ],
@@ -175,374 +127,434 @@ class AppMainDrawer extends ConsumerWidget {
                         ),
                       ],
                     ),
-                  ),
-                ],
+                    SizedBox(height: layout.space8),
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.all(layout.space6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(layout.radiusLg),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.18),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 18,
+                            backgroundColor: Colors.white.withValues(
+                              alpha: 0.2,
+                            ),
+                            foregroundColor: Colors.white,
+                            child: Text(
+                              _initial(authStatus.userLabel),
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: layout.space5),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  authStatus.userLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                SizedBox(height: layout.space2),
+                                Text(
+                                  authStatus.companyLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.white.withValues(alpha: 0.78),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Expanded(
-              child: ListView(
+              Padding(
                 padding: EdgeInsets.fromLTRB(
                   layout.space6,
                   layout.space6,
                   layout.space6,
                   layout.space6,
                 ),
-                children: [
-                  _DrawerGroup(
-                    label: 'OPERAÇÃO',
-                    children: [
-                      for (final destination in destinationsFor(session))
-                        _DrawerItem(
-                          label: destination.label,
-                          icon: destination.icon,
-                          isSelected: selected(destination.path),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: destination.path,
-                            routeName: destination.routeName,
+                child: Column(
+                  children: [
+                    _DrawerGroup(
+                      label: 'OPERAÇÃO',
+                      children: [
+                        for (final destination in destinationsFor(session))
+                          _DrawerItem(
+                            label: destination.label,
+                            icon: destination.icon,
+                            isSelected: selected(destination.path),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: destination.path,
+                              routeName: destination.routeName,
+                            ),
                           ),
-                        ),
-                      if (canAny(['cash.open', 'cash.close', 'cash.withdraw']))
-                        _DrawerItem(
-                          label: 'Caixa',
-                          icon: Icons.account_balance_wallet_rounded,
-                          isSelected: selected(AppRoutePaths.cash),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.cash,
-                            routeName: AppRouteNames.cash,
+                        if (canAny([
+                          'cash.open',
+                          'cash.close',
+                          'cash.withdraw',
+                        ]))
+                          _DrawerItem(
+                            label: 'Caixa',
+                            icon: Icons.account_balance_wallet_rounded,
+                            isSelected: selected(AppRoutePaths.cash),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.cash,
+                              routeName: AppRouteNames.cash,
+                            ),
                           ),
-                        ),
-                      if (canAny(['sales.create']))
-                        _DrawerItem(
-                          label: 'Pedidos',
-                          icon: Icons.receipt_long_rounded,
-                          isSelected: selected(AppRoutePaths.orders),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.orders,
-                            routeName: AppRouteNames.orders,
+                        if (canAny(['sales.create']))
+                          _DrawerItem(
+                            label: 'Pedidos',
+                            icon: Icons.receipt_long_rounded,
+                            isSelected: selected(AppRoutePaths.orders),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.orders,
+                              routeName: AppRouteNames.orders,
+                            ),
                           ),
-                        ),
-                      if (canAny(['customers.read', 'customers.write']))
-                        _DrawerItem(
-                          label: 'Clientes',
-                          icon: Icons.people_alt_rounded,
-                          isSelected: selected(AppRoutePaths.clients),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.clients,
-                            routeName: AppRouteNames.clients,
+                        if (canAny(['customers.read', 'customers.write']))
+                          _DrawerItem(
+                            label: 'Clientes',
+                            icon: Icons.people_alt_rounded,
+                            isSelected: selected(AppRoutePaths.clients),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.clients,
+                              routeName: AppRouteNames.clients,
+                            ),
                           ),
-                        ),
-                      if (canFeaturePermission(FeatureKey.inventoryAdvanced, [
-                        'stock.adjust',
-                        'reports.advanced',
-                      ]))
-                        _DrawerItem(
-                          label: 'Inventário físico',
-                          icon: Icons.fact_check_rounded,
-                          isSelected: selected(AppRoutePaths.inventoryCounts),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.inventoryCounts,
-                            routeName: AppRouteNames.inventoryCounts,
+                        if (canFeaturePermission(FeatureKey.inventoryAdvanced, [
+                          'stock.adjust',
+                          'reports.advanced',
+                        ]))
+                          _DrawerItem(
+                            label: 'Inventário físico',
+                            icon: Icons.fact_check_rounded,
+                            isSelected: selected(AppRoutePaths.inventoryCounts),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.inventoryCounts,
+                              routeName: AppRouteNames.inventoryCounts,
+                            ),
                           ),
-                        ),
-                      if (canFeaturePermission(FeatureKey.purchases, [
-                        'reports.advanced',
-                      ]))
-                        _DrawerItem(
-                          label: 'Compras',
-                          icon: Icons.shopping_bag_outlined,
-                          isSelected: selected(AppRoutePaths.purchases),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.purchases,
-                            routeName: AppRouteNames.purchases,
+                        if (canFeaturePermission(FeatureKey.purchases, [
+                          'reports.advanced',
+                        ]))
+                          _DrawerItem(
+                            label: 'Compras',
+                            icon: Icons.shopping_bag_outlined,
+                            isSelected: selected(AppRoutePaths.purchases),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.purchases,
+                              routeName: AppRouteNames.purchases,
+                            ),
                           ),
-                        ),
-                    ],
-                  ),
-                  _DrawerGroup(
-                    label: 'FINANCEIRO',
-                    children: [
-                      if (canFeaturePermission(FeatureKey.costs, [
-                        'reports.advanced',
-                      ]))
-                        _DrawerItem(
-                          label: 'Custos e lançamentos',
-                          icon: Icons.account_balance_rounded,
-                          isSelected: selected(AppRoutePaths.costs),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.costs,
-                            routeName: AppRouteNames.costs,
+                      ],
+                    ),
+                    _DrawerGroup(
+                      label: 'FINANCEIRO',
+                      children: [
+                        if (canFeaturePermission(FeatureKey.costs, [
+                          'reports.advanced',
+                        ]))
+                          _DrawerItem(
+                            label: 'Custos e lançamentos',
+                            icon: Icons.account_balance_rounded,
+                            isSelected: selected(AppRoutePaths.costs),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.costs,
+                              routeName: AppRouteNames.costs,
+                            ),
                           ),
-                        ),
-                      if (canFeaturePermission(FeatureKey.fiadoManagement, [
-                        'fiado.read',
-                        'fiado.receive',
-                      ]))
-                        _DrawerItem(
-                          label: 'Fiado',
-                          icon: Icons.receipt_long_rounded,
-                          isSelected: selected(AppRoutePaths.fiado),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.fiado,
-                            routeName: AppRouteNames.fiado,
+                        if (canFeaturePermission(FeatureKey.fiadoManagement, [
+                          'fiado.read',
+                          'fiado.receive',
+                        ]))
+                          _DrawerItem(
+                            label: 'Fiado',
+                            icon: Icons.receipt_long_rounded,
+                            isSelected: selected(AppRoutePaths.fiado),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.fiado,
+                              routeName: AppRouteNames.fiado,
+                            ),
                           ),
-                        ),
-                      if (canAny(['reports.basic', 'reports.advanced']))
-                        _DrawerItem(
-                          label: 'Relatórios',
-                          icon: Icons.assessment_rounded,
-                          isSelected: selected(AppRoutePaths.reports),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.reports,
-                            routeName: AppRouteNames.reports,
+                        if (canAny(['reports.basic', 'reports.advanced']))
+                          _DrawerItem(
+                            label: 'Relatórios',
+                            icon: Icons.assessment_rounded,
+                            isSelected: selected(AppRoutePaths.reports),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.reports,
+                              routeName: AppRouteNames.reports,
+                            ),
                           ),
-                        ),
-                      if (canAny([
-                        'sales.create',
-                        'reports.basic',
-                        'reports.advanced',
-                      ]))
-                        _DrawerItem(
-                          label: 'Histórico de vendas',
-                          icon: Icons.history_rounded,
-                          isSelected: selected(AppRoutePaths.salesHistory),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.salesHistory,
-                            routeName: AppRouteNames.salesHistory,
+                        if (canAny([
+                          'sales.create',
+                          'reports.basic',
+                          'reports.advanced',
+                        ]))
+                          _DrawerItem(
+                            label: 'Histórico de vendas',
+                            icon: Icons.history_rounded,
+                            isSelected: selected(AppRoutePaths.salesHistory),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.salesHistory,
+                              routeName: AppRouteNames.salesHistory,
+                            ),
                           ),
-                        ),
-                    ],
-                  ),
-                  _DrawerGroup(
-                    label: 'CADASTROS',
-                    children: [
-                      if (canFeaturePermission(FeatureKey.suppliers, [
-                        'reports.advanced',
-                      ]))
-                        _DrawerItem(
-                          label: 'Fornecedores',
-                          icon: Icons.local_shipping_outlined,
-                          isSelected: selected(AppRoutePaths.suppliers),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.suppliers,
-                            routeName: AppRouteNames.suppliers,
+                      ],
+                    ),
+                    _DrawerGroup(
+                      label: 'CADASTROS',
+                      children: [
+                        if (canFeaturePermission(FeatureKey.suppliers, [
+                          'reports.advanced',
+                        ]))
+                          _DrawerItem(
+                            label: 'Fornecedores',
+                            icon: Icons.local_shipping_outlined,
+                            isSelected: selected(AppRoutePaths.suppliers),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.suppliers,
+                              routeName: AppRouteNames.suppliers,
+                            ),
                           ),
-                        ),
-                      if (canAny(['products.write']))
-                        _DrawerItem(
-                          label: 'Categorias',
-                          icon: Icons.category_rounded,
-                          isSelected: selected(AppRoutePaths.categories),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.categories,
-                            routeName: AppRouteNames.categories,
+                        if (canAny(['products.write']))
+                          _DrawerItem(
+                            label: 'Categorias',
+                            icon: Icons.category_rounded,
+                            isSelected: selected(AppRoutePaths.categories),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.categories,
+                              routeName: AppRouteNames.categories,
+                            ),
                           ),
-                        ),
-                      if (canFeaturePermission(FeatureKey.supplies, [
-                            'stock.adjust',
-                            'products.write',
-                          ]) &&
-                          companyContext.experienceProfile !=
-                              CompanyExperienceProfile.fashion)
-                        _DrawerItem(
-                          label: 'Insumos',
-                          icon: Icons.scale_rounded,
-                          isSelected: selected(AppRoutePaths.supplies),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.supplies,
-                            routeName: AppRouteNames.supplies,
+                        if (canFeaturePermission(FeatureKey.supplies, [
+                              'stock.adjust',
+                              'products.write',
+                            ]) &&
+                            companyContext.experienceProfile !=
+                                CompanyExperienceProfile.fashion)
+                          _DrawerItem(
+                            label: 'Insumos',
+                            icon: Icons.scale_rounded,
+                            isSelected: selected(AppRoutePaths.supplies),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.supplies,
+                              routeName: AppRouteNames.supplies,
+                            ),
                           ),
-                        ),
-                      if (canFeaturePermission(FeatureKey.employees, [
-                        'employees.manage',
-                      ]))
-                        _DrawerItem(
-                          label: 'Funcionários',
-                          icon: Icons.badge_outlined,
-                          isSelected: selected(AppRoutePaths.employees),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.employees,
-                            routeName: AppRouteNames.employees,
+                        if (canFeaturePermission(FeatureKey.employees, [
+                          'employees.manage',
+                        ]))
+                          _DrawerItem(
+                            label: 'Funcionários',
+                            icon: Icons.badge_outlined,
+                            isSelected: selected(AppRoutePaths.employees),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.employees,
+                              routeName: AppRouteNames.employees,
+                            ),
                           ),
-                        ),
-                    ],
-                  ),
-                  _DrawerGroup(
-                    label: 'SISTEMA',
-                    children: [
-                      if (canAdminSettings)
-                        _DrawerItem(
-                          label: 'Conta',
-                          icon: Icons.person_outline_rounded,
-                          isSelected: selected(AppRoutePaths.accountCloud),
-                          statusBadge: AppStatusBadge(
-                            label: accountCloud.commercialBadgeLabel,
-                            tone: accountCloud.commercialTone,
-                            icon: accountCloud.commercialStatusIcon,
+                      ],
+                    ),
+                    _DrawerGroup(
+                      label: 'SISTEMA',
+                      children: [
+                        if (canAdminSettings)
+                          _DrawerItem(
+                            label: 'Conta',
+                            icon: Icons.person_outline_rounded,
+                            isSelected: selected(AppRoutePaths.accountCloud),
+                            statusBadge: AppStatusBadge(
+                              label: accountCloud.commercialBadgeLabel,
+                              tone: accountCloud.commercialTone,
+                              icon: accountCloud.commercialStatusIcon,
+                            ),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.accountCloud,
+                              routeName: AppRouteNames.accountCloud,
+                            ),
                           ),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.accountCloud,
-                            routeName: AppRouteNames.accountCloud,
+                        if (canAdminSettings)
+                          _DrawerItem(
+                            label: 'Empresa',
+                            icon: Icons.storefront_rounded,
+                            isSelected: selected(AppRoutePaths.company),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.company,
+                              routeName: AppRouteNames.company,
+                            ),
                           ),
-                        ),
-                      if (canAdminSettings)
-                        _DrawerItem(
-                          label: 'Empresa',
-                          icon: Icons.storefront_rounded,
-                          isSelected: selected(AppRoutePaths.company),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.company,
-                            routeName: AppRouteNames.company,
+                        if (canAdminSettings)
+                          _DrawerItem(
+                            label: 'Configurações',
+                            icon: Icons.settings_rounded,
+                            isSelected: selected(AppRoutePaths.settings),
+                            onTap: () => _navigateTo(
+                              context,
+                              currentPath: currentPath,
+                              path: AppRoutePaths.settings,
+                              routeName: AppRouteNames.settings,
+                            ),
                           ),
-                        ),
-                      if (canAdminSettings)
-                        _DrawerItem(
-                          label: 'Configurações',
-                          icon: Icons.settings_rounded,
-                          isSelected: selected(AppRoutePaths.settings),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.settings,
-                            routeName: AppRouteNames.settings,
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                layout.space8,
-                layout.space4,
-                layout.space8,
-                layout.space8,
-              ),
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onLongPress: internalAccess.hasAnyAccess
-                    ? () => _showInternalAccessMenu(context, internalAccess)
-                    : null,
-                child: Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(layout.space7),
-                  decoration: BoxDecoration(
-                    color: colors.cardBackground,
-                    borderRadius: BorderRadius.circular(layout.radiusLg),
-                    border: Border.all(color: colors.outlineSoft),
-                    boxShadow: [
-                      BoxShadow(
-                        color: colors.shadowSoft,
-                        blurRadius: layout.shadowBlur,
-                        offset: Offset(0, layout.shadowOffsetY / 2),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${AppConstants.appName} v${AppConstants.appVersion}',
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  layout.space8,
+                  layout.space4,
+                  layout.space8,
+                  layout.space8,
+                ),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onLongPress: internalAccess.hasAnyAccess
+                      ? () => _showInternalAccessMenu(context, internalAccess)
+                      : null,
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(layout.space7),
+                    decoration: BoxDecoration(
+                      color: colors.cardBackground,
+                      borderRadius: BorderRadius.circular(layout.radiusLg),
+                      border: Border.all(color: colors.outlineSoft),
+                      boxShadow: [
+                        BoxShadow(
+                          color: colors.shadowSoft,
+                          blurRadius: layout.shadowBlur,
+                          offset: Offset(0, layout.shadowOffsetY / 2),
                         ),
-                      ),
-                      SizedBox(height: layout.space4),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 220),
-                          child: AppStatusBadge(
-                            label: cloudLabel,
-                            tone: accountCloud.tone,
-                            icon: accountCloud.icon,
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${AppConstants.appName} v${AppConstants.appVersion}',
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                      ),
-                      SizedBox(height: layout.space5),
-                      Text(
-                        'Conta: $accountModeLabel',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w600,
+                        SizedBox(height: layout.space4),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 220),
+                            child: AppStatusBadge(
+                              label: cloudLabel,
+                              tone: accountCloud.tone,
+                              icon: accountCloud.icon,
+                            ),
+                          ),
                         ),
-                      ),
-                      SizedBox(height: layout.space2),
-                      Text(
-                        'Nuvem: $cloudLabel',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
+                        SizedBox(height: layout.space5),
+                        Text(
+                          'Conta: $accountModeLabel',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      if (authStatus.isRemoteAuthenticated) ...[
                         SizedBox(height: layout.space2),
                         Text(
-                          'Licença: ${authStatus.licensePlanLabel} - ${authStatus.licenseStatusLabel}',
+                          'Nuvem: $cloudLabel',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                           ),
                         ),
-                      ],
-                      SizedBox(height: layout.space6),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: authState.isLoading
-                              ? null
-                              : () => _handleSessionAction(context, ref),
-                          icon: Icon(
-                            authStatus.isAuthenticated
-                                ? Icons.logout_rounded
-                                : Icons.login_rounded,
+                        if (authStatus.isRemoteAuthenticated) ...[
+                          SizedBox(height: layout.space2),
+                          Text(
+                            'Licença: ${authStatus.licensePlanLabel} - ${authStatus.licenseStatusLabel}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                           ),
-                          label: Text(
-                            authStatus.isAuthenticated
-                                ? 'Sair da conta'
-                                : 'Entrar com conta',
+                        ],
+                        SizedBox(height: layout.space6),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: authState.isLoading
+                                ? null
+                                : () => _handleSessionAction(context, ref),
+                            icon: Icon(
+                              authStatus.isAuthenticated
+                                  ? Icons.logout_rounded
+                                  : Icons.login_rounded,
+                            ),
+                            label: Text(
+                              authStatus.isAuthenticated
+                                  ? 'Sair da conta'
+                                  : 'Entrar com conta',
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -562,9 +574,8 @@ class AppMainDrawer extends ConsumerWidget {
     required String path,
     required String routeName,
   }) {
-    final navigator = Navigator.of(context);
     final router = GoRouter.of(context);
-    navigator.pop();
+    Scaffold.of(context).closeDrawer();
     if (currentPath == path) {
       return;
     }
@@ -573,10 +584,9 @@ class AppMainDrawer extends ConsumerWidget {
 
   Future<void> _handleSessionAction(BuildContext context, WidgetRef ref) async {
     final authStatus = ref.read(authStatusProvider);
-    final navigator = Navigator.of(context);
     final router = GoRouter.of(context);
     final messenger = ScaffoldMessenger.of(context);
-    navigator.pop();
+    Scaffold.of(context).closeDrawer();
 
     if (!authStatus.isAuthenticated) {
       router.goNamed(AppRouteNames.login);
@@ -756,15 +766,22 @@ class _DrawerItem extends StatelessWidget {
             fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
           ),
         ),
-        trailing:
-            statusBadge ??
-            (isSelected
-                ? Icon(
-                    Icons.chevron_right_rounded,
-                    color: colorScheme.primary,
-                    size: layout.iconMd,
-                  )
-                : null),
+        subtitle: statusBadge == null
+            ? null
+            : Align(
+                alignment: Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 140),
+                  child: statusBadge,
+                ),
+              ),
+        trailing: (isSelected
+            ? Icon(
+                Icons.chevron_right_rounded,
+                color: colorScheme.primary,
+                size: layout.iconMd,
+              )
+            : null),
         onTap: onTap,
       ),
     );

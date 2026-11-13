@@ -12,7 +12,7 @@
     {
       "id": 1, "type": "text", "title": "Como interpretar",
       "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
-      "options": {"mode": "markdown", "content": "Versão **1.0.1-pilot**, janela móvel de 24h por recebimento no servidor. Eventos declarados pelo app; etapas não são uma coorte sequencial. Mediana inclui todos os checkouts. Sem amostra não significa meta atingida. **Avaliação com cinco operadores: pendente de sessões reais.** Alertas ficam no Alertmanager local; nenhum envio externo foi configurado."}
+      "options": {"mode": "markdown", "content": "Versão **1.0.2-pilot**, janela móvel de 24h por recebimento no servidor. Eventos declarados pelo app; etapas não são uma coorte sequencial. Mediana inclui todos os checkouts. Sem amostra não significa meta atingida. **Avaliação com cinco operadores: pendente de sessões reais.** Alertas ficam no Alertmanager local; nenhum envio externo foi configurado."}
     },
     {
       "id": 2, "type": "stat", "title": "API HTTPS pronta",

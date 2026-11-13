@@ -7,6 +7,7 @@ import '../../../app/core/database/app_database.dart';
 import '../../../app/core/database/table_names.dart';
 import '../../../app/core/errors/app_exceptions.dart';
 import '../../../app/core/utils/id_generator.dart';
+import '../../../app/core/sync/operational_sync_event.dart';
 import '../../carrinho/domain/entities/cart_item.dart';
 import '../../clientes/data/customer_credit_database_support.dart';
 import '../../estoque/data/support/inventory_balance_support.dart';
@@ -205,6 +206,36 @@ class SqliteSaleReturnRepository {
         'created_at': nowIso,
         'updated_at': nowIso,
       });
+      await txn.update(
+        TableNames.vendas,
+        {'customer_assignment_locked': 1},
+        where: 'id=?',
+        whereArgs: [input.saleId],
+      );
+      if (_operationalContext.hasRemoteSession) {
+        final lock = OperationalSyncEvent(
+          eventId: IdGenerator.next(),
+          feature: 'pdv',
+          entity: 'saleCustomerLock',
+          operation: 'append',
+          entityLocalId: '${saleRow['uuid']}',
+          occurredAt: DateTime.parse(nowIso),
+          payload: {'saleUuid': saleRow['uuid']},
+        );
+        await txn.insert(TableNames.operationalSyncEvents, {
+          'event_id': lock.eventId,
+          'feature': lock.feature,
+          'entity': lock.entity,
+          'operation': lock.operation,
+          'entity_local_id': lock.entityLocalId,
+          'occurred_at': nowIso,
+          'payload_json': lock.encodePayload(),
+          'status': 'pending',
+          'attempt_count': 0,
+          'created_at': nowIso,
+          'updated_at': nowIso,
+        });
+      }
 
       for (final returnedItem in normalizedReturnedItems) {
         final itemRow = saleItemsById[returnedItem.saleItemId];

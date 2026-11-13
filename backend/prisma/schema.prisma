@@ -1338,6 +1338,12 @@ model Sale {
   cashSessionId             String?
   localUuid                 String
   customerId                String?
+  sellerUserId              String?
+  customerAssignmentRevision Int               @default(0)
+  customerAssignmentLocked   Boolean           @default(false)
+  creditUsedCents            Int               @default(0)
+  creditGeneratedCents       Int               @default(0)
+  customerAssignments       SaleCustomerAssignment[]
   receiptNumber             String?
   paymentType               String
   paymentMethod             String
@@ -1364,6 +1370,23 @@ model Sale {
   @@index([companyId, soldAt])
   @@index([companyId, updatedAt])
   @@index([companyId, status])
+}
+
+model SaleCustomerAssignment {
+  id                 String   @id
+  companyId          String
+  saleId             String
+  previousCustomerId String?
+  customerId         String
+  revision           Int
+  actorUserId        String
+  deviceId           String
+  occurredAt         DateTime
+  createdAt          DateTime @default(now())
+  sale               Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@unique([saleId, revision])
+  @@index([companyId, saleId])
 }
 
 model SaleItem {

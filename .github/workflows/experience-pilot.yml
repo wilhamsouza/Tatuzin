@@ -37,13 +37,13 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze --no-pub
       - name: Verify critical pilot flows
-        run: flutter test --no-pub test/app_navigation_shell_test.dart test/onboarding_test.dart test/checkout_discount_test.dart test/product_form_page_test.dart test/company_experience_profile_test.dart test/product_journey_test.dart
+        run: flutter test --no-pub test/widget_test.dart test/sale_customer_assignment_test.dart test/app_migrations_schema_test.dart test/app_navigation_shell_test.dart test/onboarding_test.dart test/checkout_discount_test.dart test/product_form_page_test.dart test/company_experience_profile_test.dart test/product_journey_test.dart
       - name: Build isolated test APK
         run: >-
           flutter build apk --release --no-pub
           --target-platform android-arm,android-arm64,android-x64
-          --build-name 1.0.1 --build-number "${GITHUB_RUN_NUMBER}"
-          --dart-define=TATUZIN_APP_VERSION=1.0.1-pilot
+          --build-name 1.0.2 --build-number "${GITHUB_RUN_NUMBER}"
+          --dart-define=TATUZIN_APP_VERSION=1.0.2-pilot
       - name: Verify pilot package
         shell: bash
         run: |
@@ -51,15 +51,18 @@ jobs:
           APKANALYZER="$(find "$ANDROID_HOME/cmdline-tools" -name apkanalyzer -type f | head -n 1)"
           test "$("$APKANALYZER" manifest application-id "$APK")" = br.com.tatuzin.gestao.pilot
           test "$("$APKANALYZER" manifest debuggable "$APK")" = false
-          cp "$APK" build/tatuzin-1.0.1-pilot.apk
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          "$APKSIGNER" verify --print-certs "$APK" > build/SIGNING.txt
+          cp "$APK" build/tatuzin-1.0.2-pilot.apk
           cd build
-          sha256sum tatuzin-1.0.1-pilot.apk > SHA256SUMS
-          printf 'Source: %s\nVersion: 1.0.1-pilot\nPackage: br.com.tatuzin.gestao.pilot\nSigning: Android test certificate; not a Play Store release\n' "$GITHUB_SHA" > PILOT.txt
+          sha256sum tatuzin-1.0.2-pilot.apk > SHA256SUMS
+          printf 'Source: %s\nVersion: 1.0.2-pilot\nPackage: br.com.tatuzin.gestao.pilot\nSigning: Android test certificate; not a Play Store release\n' "$GITHUB_SHA" > PILOT.txt
       - uses: actions/upload-artifact@v4
         with:
           name: tatuzin-experience-pilot-apk
           path: |
-            build/tatuzin-1.0.1-pilot.apk
+            build/tatuzin-1.0.2-pilot.apk
+            build/SIGNING.txt
             build/SHA256SUMS
             build/PILOT.txt
           retention-days: 30

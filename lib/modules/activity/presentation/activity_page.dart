@@ -7,7 +7,8 @@ import '../../../app/core/widgets/app_main_drawer.dart';
 import '../../../app/core/widgets/app_list_tile_card.dart';
 import '../../../app/core/widgets/app_section_card.dart';
 import '../../../app/routes/route_names.dart';
-import '../../dashboard/presentation/providers/dashboard_providers.dart';
+import '../../vendas/domain/entities/sale_enums.dart';
+import 'activity_providers.dart';
 
 class ActivityPage extends ConsumerWidget {
   const ActivityPage({super.key});
@@ -15,7 +16,7 @@ class ActivityPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(appSessionProvider);
-    final snapshot = ref.watch(operationalDashboardSnapshotProvider);
+    final snapshot = ref.watch(dailySaleActivityProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Atividade')),
       drawer: const AppMainDrawer(),
@@ -39,32 +40,36 @@ class ActivityPage extends ConsumerWidget {
           ],
           const SizedBox(height: 16),
           AppSectionCard(
-            title: 'Movimentações recentes',
-            subtitle: 'Neste dispositivo.',
+            title: 'Vendas de hoje',
+            subtitle:
+                'Neste dispositivo. Toque para consultar a venda e o cliente.',
             child: snapshot.when(
-              data: (data) => data.recentMovements.isEmpty
-                  ? const Text('As próximas movimentações aparecerão aqui.')
+              data: (data) => data.isEmpty
+                  ? const Text(
+                      'Nenhuma venda registrada hoje neste dispositivo.',
+                    )
                   : Column(
                       children: [
-                        for (final movement in data.recentMovements)
+                        for (final sale in data)
                           ListTile(
                             contentPadding: EdgeInsets.zero,
-                            title: Text(movement.label),
+                            title: Text('Venda ${sale.receiptNumber}'),
                             subtitle: Text(
-                              AppFormatters.shortDate(movement.createdAt),
+                              '${TimeOfDay.fromDateTime(sale.soldAt).format(context)} • ${sale.clientName ?? "Sem cliente"} • ${sale.status.label}',
                             ),
                             trailing: Text(
-                              AppFormatters.currencyFromCents(
-                                movement.amountCents,
-                              ),
+                              AppFormatters.currencyFromCents(sale.finalCents),
+                            ),
+                            onTap: () => context.pushNamed(
+                              AppRouteNames.saleDetail,
+                              pathParameters: {'saleId': '${sale.id}'},
                             ),
                           ),
                       ],
                     ),
-              loading: () => const Text('Carregando movimentações…'),
+              loading: () => const Text('Carregando vendas…'),
               error: (_, _) => TextButton(
-                onPressed: () =>
-                    ref.invalidate(operationalDashboardSnapshotProvider),
+                onPressed: () => ref.invalidate(dailySaleActivityProvider),
                 child: const Text('Tentar carregar novamente'),
               ),
             ),

@@ -22,6 +22,16 @@ import 'package:tatuzin/modules/produtos/domain/entities/product.dart';
 import 'package:tatuzin/modules/produtos/presentation/providers/product_providers.dart';
 import 'package:tatuzin/modules/system/presentation/providers/system_providers.dart';
 import 'package:tatuzin/app/routes/route_names.dart';
+import 'package:tatuzin/app/routes/app_router.dart';
+import 'package:tatuzin/modules/activity/presentation/activity_providers.dart';
+import 'package:tatuzin/modules/vendas/domain/entities/sale_record.dart';
+import 'package:tatuzin/modules/vendas/presentation/providers/sales_providers.dart';
+import 'package:tatuzin/app/routes/sale_receipt_navigation.dart';
+import 'package:tatuzin/modules/comprovantes/domain/entities/commercial_receipt.dart';
+import 'package:tatuzin/modules/comprovantes/presentation/providers/receipt_providers.dart';
+import 'package:tatuzin/modules/comprovantes/presentation/pages/receipt_preview_page.dart';
+import 'package:tatuzin/modules/historico_vendas/presentation/providers/sale_history_providers.dart';
+import 'package:tatuzin/app/core/theme/app_theme_mode_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -36,6 +46,150 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
+  testWidgets(
+    'duas vendas fecham comprovante fora das abas e preservam busca',
+    (tester) async {
+      final container = await _pumpAuthenticatedApp(
+        tester,
+        additionalOverrides: [
+          productListProvider.overrideWith((ref) async => []),
+          salesCatalogProvider.overrideWith((ref) async => []),
+          dailySaleActivityProvider.overrideWith((ref) async => []),
+          saleReturnsProvider.overrideWith((ref, id) async => []),
+          saleDetailProvider.overrideWith(
+            (ref, id) async => throw StateError(
+              'Detalhe indisponível no fixture de navegação',
+            ),
+          ),
+          commercialReceiptProvider.overrideWith(
+            (ref, request) async => CommercialReceipt(
+              type: CommercialReceiptType.cashSale,
+              identifier: '${request.saleId}',
+              issuedAt: DateTime(2026),
+              businessName: 'Loja',
+              title: 'Comprovante',
+              statusLabel: 'Ativa',
+              operationDetails: const [],
+              items: const [],
+              extraDetails: const [],
+              subtotalCents: 1000,
+              discountCents: 0,
+              surchargeCents: 0,
+              totalCents: 1000,
+              subtotalLabel: 'Subtotal',
+              totalLabel: 'Total',
+              footerMessage: 'Teste de navegação',
+            ),
+          ),
+        ],
+      );
+      final router = container.read(appRouterProvider);
+      router.goNamed(AppRouteNames.products);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, 'Camiseta');
+      for (final id in [1, 2]) {
+        showCompletedSaleReceipt(
+          router,
+          saleId: id,
+          isCurrentSession: () => true,
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(ReceiptPreviewPage), findsOneWidget);
+        if (id == 1) {
+          await tester.tap(find.text('Voltar para vendas'));
+        } else {
+          await tester.binding.handlePopRoute();
+        }
+        await tester.pumpAndSettle();
+        expect(find.byType(ReceiptPreviewPage), findsNothing);
+        await tester.tap(
+          find.descendant(
+            of: find.byType(NavigationBar),
+            matching: find.text('Atividade'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Vendas de hoje'), findsOneWidget);
+        expect(find.byType(ReceiptPreviewPage), findsNothing);
+      }
+      router.goNamed(AppRouteNames.saleDetail, pathParameters: {'saleId': '1'});
+      await tester.pumpAndSettle();
+      router.pushNamed(
+        AppRouteNames.saleReceipt,
+        pathParameters: {'saleId': '1'},
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(find.text('Detalhe da venda'), findsOneWidget);
+      router.goNamed(AppRouteNames.products);
+      await tester.pumpAndSettle();
+      expect(find.text('Camiseta'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets('menu por toque e gesto nas cinco abas com fonte ampliada', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.8;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final container = await _pumpAuthenticatedApp(
+      tester,
+      additionalOverrides: [
+        productListProvider.overrideWith((ref) async => []),
+        salesCatalogProvider.overrideWith((ref) async => []),
+        dailySaleActivityProvider.overrideWith(
+          (ref) async => const <SaleRecord>[],
+        ),
+      ],
+    );
+    final router = container.read(appRouterProvider);
+    for (final mode in [AppThemeMode.light, AppThemeMode.dark]) {
+      await container
+          .read(appThemeModeControllerProvider.notifier)
+          .setThemeMode(mode);
+      await tester.pumpAndSettle();
+      for (final route in [
+        AppRouteNames.dashboard,
+        AppRouteNames.products,
+        AppRouteNames.sales,
+        AppRouteNames.activity,
+        AppRouteNames.profile,
+      ]) {
+        router.goNamed(route);
+        await tester.pumpAndSettle();
+        final scaffoldFinder = find.byWidgetPredicate(
+          (w) => w is Scaffold && w.drawer != null,
+        );
+        final scaffold = tester.state<ScaffoldState>(scaffoldFinder.last);
+        final menuIcon = find.byWidgetPredicate(
+          (widget) =>
+              widget is Icon &&
+              (widget.icon == Icons.menu || widget.icon == Icons.menu_rounded),
+        );
+        await tester.tap(menuIcon.last);
+        await tester.pumpAndSettle();
+        expect(find.byType(AppMainDrawer), findsOneWidget);
+        expect(find.textContaining('Tatuzin v'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        scaffold.closeDrawer();
+        await tester.pumpAndSettle();
+        await tester.dragFrom(const Offset(1, 180), const Offset(280, 0));
+        await tester.pumpAndSettle();
+        expect(scaffold.isDrawerOpen, true);
+        expect(tester.takeException(), isNull);
+        scaffold.closeDrawer();
+        await tester.pumpAndSettle();
+      }
+    }
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('app abre shell somente com sessão tenant válida', (
@@ -350,7 +504,7 @@ void main() {
   });
 }
 
-Future<void> _pumpAuthenticatedApp(
+Future<ProviderContainer> _pumpAuthenticatedApp(
   WidgetTester tester, {
   List<Override> additionalOverrides = const [],
 }) async {
@@ -451,6 +605,7 @@ Future<void> _pumpAuthenticatedApp(
   await tester.pumpAndSettle();
 
   expect(find.text('Continuar offline'), findsNothing);
+  return container;
 }
 
 Future<void> _openMainDrawer(WidgetTester tester) async {

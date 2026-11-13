@@ -19,6 +19,7 @@ import '../../../vendas/domain/entities/sale_item_detail.dart';
 import '../../../vendas/presentation/providers/sales_providers.dart';
 import '../../domain/entities/sale_return.dart';
 import '../providers/sale_history_providers.dart';
+import '../widgets/sale_customer_assignment_card.dart';
 
 class SaleDetailPage extends ConsumerWidget {
   const SaleDetailPage({super.key, required this.saleId});
@@ -39,6 +40,11 @@ class SaleDetailPage extends ConsumerWidget {
           padding: const EdgeInsets.all(20),
           children: [
             _SaleSummaryCard(detail: detail),
+            const SizedBox(height: 16),
+            SaleCustomerAssignmentCard(
+              saleId: saleId,
+              hasClient: detail.sale.clientId != null,
+            ),
             const SizedBox(height: 16),
             _ReceiptCard(detail: detail),
             const SizedBox(height: 16),

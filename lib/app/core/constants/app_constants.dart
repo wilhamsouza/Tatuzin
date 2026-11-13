@@ -8,7 +8,7 @@ abstract final class AppConstants {
     defaultValue: '1.0.0',
   );
   static const databaseName = 'simples_erp_pdv.db';
-  static const databaseVersion = 37;
+  static const databaseVersion = 38;
   static const defaultLocalOperatorName = 'Operador local';
   static const defaultLocalCompanyName = 'Empresa local';
 }

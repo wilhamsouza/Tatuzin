@@ -8,6 +8,8 @@ abstract final class OperationalSyncPolicy {
     'operationalOrder',
     'operationalOrderItem',
     'sale',
+    'saleCustomerAssignment',
+    'saleCustomerLock',
     'saleItem',
     'payment',
     'receipt',

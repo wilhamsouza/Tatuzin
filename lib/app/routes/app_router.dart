@@ -46,6 +46,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ),
     routes: <RouteBase>[
       ...buildAuthRoutes(),
+      ...buildReceiptRoutes(),
       if (!session.company.experienceRefreshEnabled) ...[
         ...buildHomeRoutes(),
         ...buildAccountRoutes(),

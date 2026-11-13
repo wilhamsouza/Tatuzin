@@ -60,6 +60,7 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      ref.read(appDataRefreshProvider.notifier).state++;
       ref.invalidate(companyOnboardingProvider);
       unawaited(ref.read(productJourneyProvider).flush());
       ref.read(autoSyncCoordinatorProvider).onAppResumed();

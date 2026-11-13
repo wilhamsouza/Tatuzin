@@ -19,6 +19,8 @@ import '../../../caixa/presentation/providers/cash_providers.dart';
 import '../../../carrinho/domain/entities/cart_item.dart';
 import '../../../carrinho/presentation/providers/cart_provider.dart';
 import '../../../clientes/domain/entities/client.dart';
+import '../../../activity/presentation/activity_providers.dart';
+import '../../../../app/routes/sale_receipt_navigation.dart';
 import '../../../clientes/presentation/providers/client_providers.dart';
 import '../../../dashboard/presentation/providers/dashboard_providers.dart';
 import '../../../fiado/presentation/providers/fiado_providers.dart';
@@ -403,54 +405,51 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                         ),
                 ),
                 const SizedBox(height: 12),
-                if (_showAdvanced ||
-                    _selectedClient != null ||
-                    _saleType == SaleType.fiado)
-                  AppSectionCard(
-                    title: _saleType == SaleType.fiado
-                        ? 'Cliente e vencimento'
-                        : 'Cliente da venda',
-                    subtitle: _saleType == SaleType.fiado
-                        ? 'Preencha estes dados para registrar o fiado.'
-                        : 'Opcional. Use se quiser vincular a venda ao histórico do cliente.',
-                    padding: sectionPadding,
-                    child: Column(
-                      children: [
-                        _ClientSelector(
-                          selectedClient: _selectedClient,
-                          isRequired: _saleType == SaleType.fiado,
-                          isBusy: isSubmitting,
-                          onPickClient: () async {
-                            final client = await _pickClient(context);
-                            if (client == null) {
-                              return;
-                            }
-                            _setSelectedClient(client);
-                          },
-                          onClearClient: _selectedClient == null || isSubmitting
-                              ? null
-                              : () => _setSelectedClient(null),
-                        ),
-                        if (_saleType == SaleType.fiado) ...[
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              onPressed: isSubmitting
-                                  ? null
-                                  : () => _pickDueDate(context),
-                              icon: const Icon(Icons.event_outlined),
-                              label: Text(
-                                _dueDate == null
-                                    ? 'Selecionar vencimento'
-                                    : 'Vencimento: ${AppFormatters.shortDate(_dueDate!)}',
-                              ),
+                AppSectionCard(
+                  title: _saleType == SaleType.fiado
+                      ? 'Cliente e vencimento'
+                      : 'Cliente da venda',
+                  subtitle: _saleType == SaleType.fiado
+                      ? 'Preencha estes dados para registrar o fiado.'
+                      : 'Opcional. Use se quiser vincular a venda ao histórico do cliente.',
+                  padding: sectionPadding,
+                  child: Column(
+                    children: [
+                      _ClientSelector(
+                        selectedClient: _selectedClient,
+                        isRequired: _saleType == SaleType.fiado,
+                        isBusy: isSubmitting,
+                        onPickClient: () async {
+                          final client = await _pickClient(context);
+                          if (client == null) {
+                            return;
+                          }
+                          _setSelectedClient(client);
+                        },
+                        onClearClient: _selectedClient == null || isSubmitting
+                            ? null
+                            : () => _setSelectedClient(null),
+                      ),
+                      if (_saleType == SaleType.fiado) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: isSubmitting
+                                ? null
+                                : () => _pickDueDate(context),
+                            icon: const Icon(Icons.event_outlined),
+                            label: Text(
+                              _dueDate == null
+                                  ? 'Selecionar vencimento'
+                                  : 'Vencimento: ${AppFormatters.shortDate(_dueDate!)}',
                             ),
                           ),
-                        ],
+                        ),
                       ],
-                    ),
+                    ],
                   ),
+                ),
                 if (_saleType == SaleType.cash && _selectedClient != null) ...[
                   const SizedBox(height: 12),
                   AppSectionCard(
@@ -1024,16 +1023,20 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       ref.invalidate(currentCashMovementsProvider);
       ref.invalidate(cashSessionHistoryProvider);
       ref.invalidate(saleHistoryListProvider);
+      ref.invalidate(dailySaleActivityProvider);
       ref.invalidate(operationalDashboardSnapshotProvider);
 
       if (!context.mounted) {
         return;
       }
 
-      context.goNamed(
-        AppRouteNames.saleReceipt,
-        pathParameters: {'saleId': '${sale.saleId}'},
-        extra: true,
+      final router = GoRouter.of(context);
+      final container = ProviderScope.containerOf(context, listen: false);
+      showCompletedSaleReceipt(
+        router,
+        saleId: sale.saleId,
+        isCurrentSession: () =>
+            container.read(sessionRuntimeKeyProvider) == runtimeKey,
       );
     } catch (error) {
       if (!context.mounted) {

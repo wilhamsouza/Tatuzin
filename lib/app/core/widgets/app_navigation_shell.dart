@@ -37,7 +37,7 @@ class AppNavigationShell extends ConsumerWidget {
                 final branch = destinations[index].branch;
                 shell.goBranch(
                   branch,
-                  initialLocation: branch == shell.currentIndex,
+                  initialLocation: branch == 3 || branch == shell.currentIndex,
                 );
               },
               destinations: [

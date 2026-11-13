@@ -39,7 +39,17 @@ void main() {
         find.byKey(const Key('checkout-discount-manage-button')),
         findsNothing,
       );
-      expect(find.text('Cliente da venda'), findsNothing);
+      await tester.scrollUntilVisible(
+        find.text('Cliente da venda'),
+        150,
+        scrollable: find
+            .descendant(
+              of: find.byType(ListView).first,
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(find.text('Cliente da venda'), findsOneWidget);
       expect(tester.getRect(find.text('Pix')).bottom, lessThan(800));
       expect(
         tester.getRect(find.byKey(const Key('checkout-confirm-button'))).bottom,
