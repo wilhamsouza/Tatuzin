@@ -3,6 +3,10 @@
 Ambiente confirmado pelo responsável: testes, produto ainda não lançado.
 Distribuição escolhida: APK para instalação direta.
 
+[Baixar o ZIP do APK piloto](https://github.com/wilhamsouza/Tatuzin/actions/runs/43455821449/artifacts/14054251967).
+Extrair `tatuzin-1.0.1-pilot.apk`, instalar e entrar com a conta da empresa de testes.
+O APK foi gerado e validado pelo CI; as sessões observadas abaixo continuam pendentes.
+
 ## APK e dados
 
 O APK `Tatuzin Piloto` usa o pacote `br.com.tatuzin.gestao.pilot`, certificado
@@ -65,6 +69,11 @@ houver dados da versão anterior; ausência de dados não significa zero erros.
 Durante cada sessão verificar `/api/readiness`, logs `http.request.failed` e o
 relatório de jornada. Uma indisponibilidade, operação duplicada/perdida ou acesso
 indevido exige interromper a ampliação e reverter a experiência.
+
+Coleta contínua está ativa a cada minuto por `tatuzin-experience-collector.timer`.
+O painel Grafana `tatuzin-experience-pilot` usa a infraestrutura local existente.
+Os três alertas ficam no Alertmanager local; não há notificações externas.
+Amostra atual sem vendas do piloto mantém mediana sem dados e avaliação pendente.
 
 ## Liberação e reversão
 
