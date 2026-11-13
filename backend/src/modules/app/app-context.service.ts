@@ -8,6 +8,7 @@ import { EmployeeContextService } from "../employees/employee-context.service";
 import { getPlanEntitlements } from "../plans/plan-catalog.service";
 import { TenantLifecycleService } from "../tenant-deletion/tenant-lifecycle.service";
 import type { AppContext } from "./app-context.types";
+import { isCompanyOnboardingEnabled, isCompanyExperienceEnabled } from './company-onboarding.service';
 
 export class AppContextService {
   private readonly employeeContextService = new EmployeeContextService();
@@ -177,6 +178,9 @@ export class AppContextService {
       },
       company: {
         id: membership.company.id,
+        experienceProfile: membership.company.experienceProfile as 'moda' | 'alimentacao' | 'misto',
+        onboardingEnabled: isCompanyOnboardingEnabled(membership.company.id),
+        experienceRefreshEnabled: isCompanyExperienceEnabled(membership.company.id),
         name: membership.company.name,
         legalName: membership.company.legalName,
         documentNumber: membership.company.documentNumber,

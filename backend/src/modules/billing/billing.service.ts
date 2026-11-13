@@ -63,11 +63,12 @@ export class BillingService {
         priceCents: 0,
         currency: "BRL",
         billingCycle: "free",
-        description: "Comece vendendo no PDV com um dispositivo.",
+        description: "Comece a vender e organize o caixa da sua loja.",
         featuresSummary: [
           "PDV, caixa e produtos",
           "Clientes basicos e fiado no checkout",
           "Relatorio diario simples",
+          "1 dispositivo, sem funcionarios adicionais",
         ],
       },
       {
@@ -76,11 +77,12 @@ export class BillingService {
         priceCents: env.BILLING_BASIC_PRICE_CENTS,
         currency: "BRL",
         billingCycle: "monthly",
-        description: "Gestao individual completa para operar a loja.",
+        description: "Controle o estoque, as compras e os valores a receber trabalhando por conta propria.",
         featuresSummary: [
           "Fiado completo",
           "Insumos, custos, fornecedores e compras",
           "Estoque avancado e relatorios basicos",
+          "1 dispositivo, sem funcionarios adicionais",
         ],
       },
       {
@@ -89,11 +91,13 @@ export class BillingService {
         priceCents: env.BILLING_PRO_PRICE_CENTS,
         currency: "BRL",
         billingCycle: "monthly",
-        description: "Equipe, dispositivos e relatorios avancados.",
+        description: "Organize sua equipe e acompanhe a loja em varios dispositivos.",
         featuresSummary: [
           "Multi-dispositivo",
           "Funcionarios, permissoes e comissoes",
           "Relatorios avancados",
+          "Ate 100 dispositivos e 100 funcionarios",
+          "Painel de acompanhamento pelo navegador (somente consulta)",
         ],
       },
     ];

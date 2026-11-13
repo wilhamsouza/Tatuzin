@@ -217,6 +217,11 @@ model AdminUserPermission {
 
 model Company {
   id                                   String                                @id @default(uuid())
+  experienceProfile                    String                                @default("moda")
+  onboardingProductAt                  DateTime?
+  onboardingCashAt                     DateTime?
+  onboardingCompletedAt                DateTime?
+  productJourneyEvents                 ProductJourneyEvent[]
   name                                 String
   legalName                            String
   documentNumber                       String?
@@ -897,6 +902,26 @@ model Category {
   @@unique([companyId, localUuid])
   @@index([companyId, updatedAt])
   @@index([companyId, name])
+}
+
+model ProductJourneyEvent {
+  id                String   @id @default(uuid())
+  companyId         String
+  deviceId          String
+  eventId           String
+  name              String
+  attemptId         String?
+  durationMs        Int?
+  occurredAt        DateTime
+  receivedAt        DateTime @default(now())
+  appVersion        String
+  plan              String
+  experienceProfile String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, deviceId, eventId])
+  @@index([receivedAt])
+  @@index([companyId, name, receivedAt])
 }
 
 model Product {

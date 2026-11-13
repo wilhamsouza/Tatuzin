@@ -14,14 +14,21 @@ import { deviceRegisterSchema } from './app.schemas';
 import { companyReceiptSettingsPatchSchema } from './company-settings.schemas';
 import { CompanySettingsService } from './company-settings.service';
 import { CompanyDeviceService } from './company-device.service';
+import { CompanyOnboardingService } from './company-onboarding.service';
 
 const appBootstrapService = new AppBootstrapService();
 const appContextService = new AppContextService();
 const appSnapshotService = new AppSnapshotService();
 const companySettingsService = new CompanySettingsService();
 const companyDeviceService = new CompanyDeviceService();
+const companyOnboardingService = new CompanyOnboardingService();
 
 export const appRouter = Router();
+
+appRouter.post('/onboarding/reconcile', requireAppContext,
+  asyncHandler(async (request, response) => {
+    response.json(await companyOnboardingService.reconcile(request.appContext!));
+  }));
 
 appRouter.post(
   '/device',

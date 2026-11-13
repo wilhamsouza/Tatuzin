@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../app/core/entitlements/plan_entitlements.dart';
 import '../../../../app/core/session/session_provider.dart';
 import '../providers/billing_providers.dart';
+import '../../../onboarding/presentation/onboarding_providers.dart';
 
 const proTrialOfferFriendlyError =
     'Nao foi possivel iniciar a assinatura agora. Tente novamente em alguns minutos.';
@@ -27,6 +28,11 @@ class _ProTrialOfferGateState extends ConsumerState<ProTrialOfferGate> {
   @override
   Widget build(BuildContext context) {
     ref.listen(billingStatusProvider, (_, __) => _scheduleOfferCheck());
+    ref.listen(companyOnboardingProvider, (_, __) => _scheduleOfferCheck());
+    ref.listen(sessionRuntimeKeyProvider, (_, __) {
+      _offerCheckedForSession = false;
+      _scheduleOfferCheck();
+    });
     _scheduleOfferCheck();
     return widget.child;
   }
@@ -49,6 +55,11 @@ class _ProTrialOfferGateState extends ConsumerState<ProTrialOfferGate> {
     }
 
     final status = ref.read(billingStatusProvider).valueOrNull;
+    final onboarding = ref.read(companyOnboardingProvider);
+    if (!onboarding.hasValue || onboarding.hasError) return;
+    if (onboarding.valueOrNull?.canOfferTrial(session.startedAt) == false) {
+      return;
+    }
     if (status == null ||
         status.plan != PlanKey.free ||
         status.pendingPlan != null ||

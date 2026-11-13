@@ -176,6 +176,8 @@ void main() {
       );
 
       expect(snapshot.soldTodayCents, 2400);
+      expect(snapshot.todaySalesCount, 1);
+      expect(snapshot.hasOpenCashSession, true);
       expect(snapshot.currentCashCents, 18500);
       expect(snapshot.pendingFiadoCount, 1);
       expect(snapshot.pendingFiadoCents, 1800);
@@ -183,6 +185,47 @@ void main() {
       expect(snapshot.recentMovementsCount, 2);
       expect(snapshot.recentMovements.first.label, 'Venda recebida');
       expect(snapshot.recentMovements.last.label, 'Sangria');
+
+      final template = Map<String, Object?>.from(
+        (await database.query(
+          TableNames.vendas,
+          where: 'status = ? AND numero_cupom != ?',
+          whereArgs: ['ativa', 'cupom-fiado'],
+          limit: 1,
+        )).first,
+      )..remove('id');
+      for (var index = 0; index < 6; index++) {
+        await database.insert(TableNames.vendas, {
+          ...template,
+          'uuid': 'extra-sale-$index-${now.microsecondsSinceEpoch}',
+          'numero_cupom': 'extra-$index',
+          'valor_total_centavos': 100,
+          'valor_final_centavos': 100,
+          'data_venda': now.toIso8601String(),
+        });
+        await database.insert(TableNames.caixaMovimentos, {
+          'uuid': 'extra-movement-$index-${now.microsecondsSinceEpoch}',
+          'sessao_id': openCashSessionId,
+          'tipo_movimento': 'venda',
+          'valor_centavos': 100,
+          'criado_em': now.toIso8601String(),
+        });
+      }
+      await database.insert(TableNames.vendas, {
+        ...template,
+        'uuid': 'cancelled-${now.microsecondsSinceEpoch}',
+        'numero_cupom': 'cancelled-extra',
+        'status': 'cancelada',
+        'valor_final_centavos': 99999,
+        'data_venda': now.toIso8601String(),
+      });
+      container.invalidate(operationalDashboardSnapshotProvider);
+      final updated = await container.read(
+        operationalDashboardSnapshotProvider.future,
+      );
+      expect(updated.todaySalesCount, 7);
+      expect(updated.soldTodayCents, 3000);
+      expect(updated.recentMovementsCount, 5);
     },
   );
 }

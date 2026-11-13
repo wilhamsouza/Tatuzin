@@ -6,6 +6,9 @@ import 'package:tatuzin/app/core/session/app_user.dart';
 import 'package:tatuzin/app/core/session/company_context.dart';
 import 'package:tatuzin/app/core/session/session_provider.dart';
 import 'package:tatuzin/app/core/theme/app_theme.dart';
+import 'dart:async';
+import 'package:tatuzin/modules/caixa/domain/entities/cash_session.dart';
+import 'package:tatuzin/modules/caixa/presentation/providers/cash_providers.dart';
 import 'package:tatuzin/modules/carrinho/domain/entities/cart_item.dart';
 import 'package:tatuzin/modules/carrinho/presentation/providers/cart_provider.dart';
 import 'package:tatuzin/modules/checkout/presentation/pages/checkout_page.dart';
@@ -19,6 +22,67 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets(
+    'simple checkout keeps payment and confirm visible at 360 by 800',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await _pumpCheckoutPage(
+        tester,
+        session: _session(membershipRole: 'OWNER'),
+        openAdvanced: false,
+      );
+      expect(
+        find.byKey(const Key('checkout-discount-manage-button')),
+        findsNothing,
+      );
+      expect(find.text('Cliente da venda'), findsNothing);
+      expect(tester.getRect(find.text('Pix')).bottom, lessThan(800));
+      expect(
+        tester.getRect(find.byKey(const Key('checkout-confirm-button'))).bottom,
+        lessThanOrEqualTo(800),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'confirm is disabled while the initial cash validation is pending',
+    (tester) async {
+      final cash = Completer<CashSession?>();
+      await _pumpCheckoutPage(
+        tester,
+        session: _session(membershipRole: 'OWNER'),
+        openAdvanced: false,
+        overrides: [
+          currentCashSessionProvider.overrideWith((ref) => cash.future),
+        ],
+      );
+      await tester.tap(find.byKey(const Key('checkout-confirm-button')));
+      await tester.pump();
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const Key('checkout-confirm-button')),
+            )
+            .onPressed,
+        isNull,
+      );
+      cash.complete(null);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const Key('checkout-confirm-button')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+    },
+  );
 
   testWidgets('OWNER consegue abrir o fluxo de desconto no checkout', (
     tester,
@@ -261,8 +325,10 @@ Future<ProviderContainer> _pumpCheckoutPage(
   WidgetTester tester, {
   required AppSession session,
   int unitPriceCents = 5000,
+  bool openAdvanced = true,
+  List<Override> overrides = const [],
 }) async {
-  final container = ProviderContainer();
+  final container = ProviderContainer(overrides: overrides);
   addTearDown(container.dispose);
   container
       .read(appSessionProvider.notifier)
@@ -283,6 +349,10 @@ Future<ProviderContainer> _pumpCheckoutPage(
     ),
   );
   await tester.pumpAndSettle();
+  if (openAdvanced) {
+    await tester.tap(find.text('Mais opções'));
+    await tester.pumpAndSettle();
+  }
   return container;
 }
 
@@ -326,6 +396,7 @@ AppSession _session({
       kind: AppUserKind.remoteAuthenticated,
     ),
     company: CompanyContext(
+      experienceRefreshEnabled: true,
       localId: null,
       remoteId: 'company-1',
       displayName: 'Cafe Oliveira',

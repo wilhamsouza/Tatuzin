@@ -57,6 +57,7 @@ class ProductPhotosSection extends StatelessWidget {
               );
 
               final button = FilledButton.tonalIcon(
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
                 onPressed: photos.length >= maxPhotos || isPickingPhoto
                     ? null
                     : onAddPhoto,

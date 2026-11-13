@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/session/auth_provider.dart';
+import '../../../../app/core/session/session_provider.dart';
+import '../../../../app/core/entitlements/plan_entitlements.dart';
 import '../../../../app/core/sync/sync_providers.dart';
 import '../../../../app/core/utils/payment_method_note_codec.dart';
 import '../../../../app/core/widgets/app_card.dart';
@@ -23,6 +25,7 @@ import '../../../historico_vendas/presentation/providers/sale_history_providers.
 import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../domain/entities/operational_dashboard_snapshot.dart';
 import '../providers/dashboard_providers.dart';
+import '../../../onboarding/presentation/onboarding_checklist.dart';
 
 class DashboardPage extends ConsumerWidget {
   const DashboardPage({super.key});
@@ -36,6 +39,19 @@ class DashboardPage extends ConsumerWidget {
     final autoSyncSnapshot = ref.watch(autoSyncSnapshotProvider);
     final tokens = context.appColors;
     final layout = context.appLayout;
+    final session = ref.watch(appSessionProvider);
+    bool canAny(List<String> permissions) =>
+        permissions.any(session.canAccessPermission);
+    final canSell = canAny(['sales.create']);
+    final canReadSales = canAny([
+      'sales.create',
+      'reports.basic',
+      'reports.advanced',
+    ]);
+    final canCash = canAny(['cash.open', 'cash.close', 'cash.withdraw']);
+    final canFiado =
+        session.hasFeature(FeatureKey.fiadoManagement) &&
+        canAny(['fiado.read', 'fiado.receive']);
 
     return Scaffold(
       appBar: AppBar(
@@ -86,16 +102,17 @@ class DashboardPage extends ConsumerWidget {
             layout.space10,
           ),
           children: [
+            const CompanyOnboardingCard(),
             snapshotAsync.when(
               data: (snapshot) {
                 final inventorySummary = InventoryAlertService.summarize(
                   inventoryItemsAsync.valueOrNull ?? const [],
                 );
-                final lowStockCount = inventorySummary.belowMinimumItems;
+                final lowStockCount =
+                    canAny(['products.read', 'products.write', 'stock.adjust'])
+                    ? inventorySummary.belowMinimumItems
+                    : 0;
                 final pendingSendCount = accountCloud.pendingCount;
-                final recentSalesCount = snapshot.recentMovements
-                    .where((movement) => movement.label == 'Venda recebida')
-                    .length;
                 final dashboardLooksEmpty = _dashboardLooksEmpty(snapshot);
                 final hasCloudAttention =
                     accountCloud.conflictCount > 0 ||
@@ -120,67 +137,81 @@ class DashboardPage extends ConsumerWidget {
                       ),
                       SizedBox(height: layout.sectionGap),
                     ],
-                    _FaturamentoHeroCard(
-                      value: AppFormatters.currencyFromCents(
-                        snapshot.soldTodayCents,
+                    if (canReadSales)
+                      _FaturamentoHeroCard(
+                        value: AppFormatters.currencyFromCents(
+                          snapshot.soldTodayCents,
+                        ),
+                        caption: 'Hoje, neste dispositivo',
+                        onTap: () => _openTodaySales(context, ref),
                       ),
-                      caption: 'Resumo operacional do dispositivo',
-                      onTap: () => _openTodaySales(context, ref),
-                    ),
                     SizedBox(height: layout.sectionGap),
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final isCompact = constraints.maxWidth < 420;
-                        return GridView.count(
-                          crossAxisCount: 2,
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          crossAxisSpacing: layout.gridGap,
-                          mainAxisSpacing: layout.gridGap,
-                          childAspectRatio: isCompact ? 0.9 : 1.08,
-                          children: [
-                            AppMetricCard(
-                              label: 'Vendas',
-                              value: '$recentSalesCount',
-                              caption: 'Nas movimentações recentes',
-                              icon: Icons.point_of_sale_rounded,
-                              accentColor: tokens.sales.base,
-                              onTap: () => _openTodaySales(context, ref),
+                    if (canCash) ...[
+                      AppSectionCard(
+                        title: snapshot.hasOpenCashSession
+                            ? 'Caixa aberto'
+                            : 'Caixa fechado',
+                        subtitle: snapshot.cashNeedsConfirmation
+                            ? 'Confirme o troco inicial para preparar seu caixa.'
+                            : snapshot.hasOpenCashSession
+                            ? 'Acompanhe os movimentos e confira seu caixa.'
+                            : 'Abra o caixa para começar os recebimentos.',
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () =>
+                                context.pushNamed(AppRouteNames.cash),
+                            icon: const Icon(
+                              Icons.account_balance_wallet_outlined,
                             ),
-                            AppMetricCard(
-                              label: 'Fiado',
-                              value: AppFormatters.currencyFromCents(
-                                snapshot.pendingFiadoCents,
-                              ),
-                              caption:
-                                  '${snapshot.pendingFiadoCount} nota(s) em aberto',
-                              icon: Icons.receipt_long_rounded,
-                              accentColor: tokens.warning.base,
-                              onTap: () =>
-                                  context.pushNamed(AppRouteNames.fiado),
+                            label: Text(
+                              snapshot.hasOpenCashSession
+                                  ? 'Ver caixa'
+                                  : 'Abrir caixa',
                             ),
-                            AppMetricCard(
-                              label: 'Clientes',
-                              value: '-',
-                              caption: 'Cadastro em Clientes',
-                              icon: Icons.people_alt_rounded,
-                              accentColor: tokens.info.base,
-                              onTap: () =>
-                                  context.pushNamed(AppRouteNames.clients),
-                            ),
-                            AppMetricCard(
-                              label: 'Ticket médio',
-                              value: '-',
-                              caption: 'Disponível nos relatórios',
-                              icon: Icons.trending_up_rounded,
-                              accentColor: tokens.success.base,
-                              onTap: () =>
-                                  context.pushNamed(AppRouteNames.reports),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: layout.sectionGap),
+                    ],
+                    if (canReadSales || canFiado)
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isCompact = constraints.maxWidth < 420;
+                          return GridView.count(
+                            crossAxisCount: 2,
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            crossAxisSpacing: layout.gridGap,
+                            mainAxisSpacing: layout.gridGap,
+                            childAspectRatio: isCompact ? 0.9 : 1.08,
+                            children: [
+                              if (canReadSales)
+                                AppMetricCard(
+                                  label: 'Vendas',
+                                  value: '${snapshot.todaySalesCount}',
+                                  caption: 'Hoje, neste dispositivo',
+                                  icon: Icons.point_of_sale_rounded,
+                                  accentColor: tokens.sales.base,
+                                  onTap: () => _openTodaySales(context, ref),
+                                ),
+                              if (canFiado)
+                                AppMetricCard(
+                                  label: 'Fiado',
+                                  value: AppFormatters.currencyFromCents(
+                                    snapshot.pendingFiadoCents,
+                                  ),
+                                  caption:
+                                      '${snapshot.pendingFiadoCount} nota(s) em aberto',
+                                  icon: Icons.receipt_long_rounded,
+                                  accentColor: tokens.warning.base,
+                                  onTap: () =>
+                                      context.pushNamed(AppRouteNames.fiado),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
                     SizedBox(height: layout.sectionGap),
                     AppSectionCard(
                       title: 'Acesso rápido',
@@ -195,67 +226,81 @@ class DashboardPage extends ConsumerWidget {
                             mainAxisSpacing: layout.gridGap,
                             childAspectRatio: isCompact ? 1.36 : 0.68,
                             children: [
-                              _QuickAccessItem(
-                                label: 'Nova venda',
-                                icon: Icons.point_of_sale_rounded,
-                                palette: tokens.sales,
-                                onTap: () =>
-                                    context.pushNamed(AppRouteNames.sales),
-                              ),
-                              _QuickAccessItem(
-                                label: 'Cliente',
-                                icon: Icons.person_add_alt_1_rounded,
-                                palette: tokens.info,
-                                onTap: () =>
-                                    context.pushNamed(AppRouteNames.clientForm),
-                              ),
-                              _QuickAccessItem(
-                                label: 'Caixa',
-                                icon: Icons.account_balance_wallet_rounded,
-                                palette: tokens.cashflowPositive,
-                                onTap: () =>
-                                    context.pushNamed(AppRouteNames.cash),
-                              ),
-                              _QuickAccessItem(
-                                label: 'Relatório',
-                                icon: Icons.insights_rounded,
-                                palette: tokens.success,
-                                onTap: () =>
-                                    context.pushNamed(AppRouteNames.reports),
-                              ),
+                              if (canSell)
+                                _QuickAccessItem(
+                                  label: 'Nova venda',
+                                  icon: Icons.point_of_sale_rounded,
+                                  palette: tokens.sales,
+                                  onTap: () =>
+                                      context.pushNamed(AppRouteNames.sales),
+                                ),
+                              if (canAny(['products.read', 'products.write']))
+                                _QuickAccessItem(
+                                  label: 'Produtos',
+                                  icon: Icons.inventory_2_outlined,
+                                  palette: tokens.info,
+                                  onTap: () =>
+                                      context.pushNamed(AppRouteNames.products),
+                                ),
+                              if (canAny(['customers.write']))
+                                _QuickAccessItem(
+                                  label: 'Cliente',
+                                  icon: Icons.person_add_alt_1_rounded,
+                                  palette: tokens.info,
+                                  onTap: () => context.pushNamed(
+                                    AppRouteNames.clientForm,
+                                  ),
+                                ),
+                              if (canCash)
+                                _QuickAccessItem(
+                                  label: 'Caixa',
+                                  icon: Icons.account_balance_wallet_rounded,
+                                  palette: tokens.cashflowPositive,
+                                  onTap: () =>
+                                      context.pushNamed(AppRouteNames.cash),
+                                ),
+                              if (canAny(['reports.basic', 'reports.advanced']))
+                                _QuickAccessItem(
+                                  label: 'Relatório',
+                                  icon: Icons.insights_rounded,
+                                  palette: tokens.success,
+                                  onTap: () =>
+                                      context.pushNamed(AppRouteNames.reports),
+                                ),
                             ],
                           );
                         },
                       ),
                     ),
                     SizedBox(height: layout.sectionGap),
-                    AppSectionCard(
-                      title: 'Últimas vendas',
-                      subtitle: 'Movimentos comerciais recentes do caixa.',
-                      child: snapshot.recentMovements.isEmpty
-                          ? const AppEmptyState(
-                              title: 'Sem transações recentes',
-                              message:
-                                  'Quando uma venda ou movimento de caixa acontecer, ela aparece aqui.',
-                              compact: true,
-                            )
-                          : Column(
-                              children: [
-                                for (
-                                  var index = 0;
-                                  index < snapshot.recentMovements.length;
-                                  index++
-                                ) ...[
-                                  _RecentMovementTile(
-                                    movement: snapshot.recentMovements[index],
-                                  ),
-                                  if (index <
-                                      snapshot.recentMovements.length - 1)
-                                    SizedBox(height: layout.blockGap),
+                    if (canReadSales)
+                      AppSectionCard(
+                        title: 'Movimentações recentes',
+                        subtitle: 'Movimentos comerciais recentes do caixa.',
+                        child: snapshot.recentMovements.isEmpty
+                            ? const AppEmptyState(
+                                title: 'Sem transações recentes',
+                                message:
+                                    'Quando uma venda ou movimento de caixa acontecer, ela aparece aqui.',
+                                compact: true,
+                              )
+                            : Column(
+                                children: [
+                                  for (
+                                    var index = 0;
+                                    index < snapshot.recentMovements.length;
+                                    index++
+                                  ) ...[
+                                    _RecentMovementTile(
+                                      movement: snapshot.recentMovements[index],
+                                    ),
+                                    if (index <
+                                        snapshot.recentMovements.length - 1)
+                                      SizedBox(height: layout.blockGap),
+                                  ],
                                 ],
-                              ],
-                            ),
-                    ),
+                              ),
+                      ),
                     SizedBox(height: layout.sectionGap),
                     _DashboardSyncCard(accountCloud: accountCloud),
                     if (lowStockCount > 0 || pendingSendCount > 0) ...[
@@ -278,7 +323,7 @@ class DashboardPage extends ConsumerWidget {
                               SizedBox(height: layout.blockGap),
                             if (pendingSendCount > 0)
                               _DashboardAlertTile(
-                                title: 'Vendas aguardando envio',
+                                title: 'Atualizações aguardando envio',
                                 subtitle:
                                     '$pendingSendCount registro(s) aguardando sincronização.',
                                 icon: Icons.schedule_send_rounded,
@@ -595,7 +640,7 @@ class _DashboardSyncCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        'Status de sync',
+                        'Seus dados',
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),

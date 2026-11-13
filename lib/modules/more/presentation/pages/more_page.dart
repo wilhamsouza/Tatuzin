@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/theme/app_design_tokens.dart';
@@ -7,16 +8,23 @@ import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/routes/route_names.dart';
+import '../../../../app/routes/route_guards.dart';
+import '../../../../app/core/session/session_provider.dart';
+import '../../../../app/core/session/auth_provider.dart';
+import '../../../../app/core/entitlements/plan_entitlements.dart';
 
-class MorePage extends StatelessWidget {
-  const MorePage({super.key});
+class MorePage extends ConsumerWidget {
+  const MorePage({super.key, this.title = 'Mais'});
+  final String title;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final layout = context.appLayout;
+    final session = ref.watch(appSessionProvider);
+    final auth = ref.watch(authControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Mais')),
+      appBar: AppBar(title: Text(title)),
       drawer: const AppMainDrawer(),
       body: ListView(
         padding: EdgeInsets.fromLTRB(
@@ -26,9 +34,11 @@ class MorePage extends StatelessWidget {
           layout.space10,
         ),
         children: [
-          const AppPageHeader(
-            title: 'Mais',
-            subtitle: 'Acesse as outras areas da sua loja.',
+          AppPageHeader(
+            title: title,
+            subtitle: title == 'Perfil'
+                ? '${session.user.displayName} · ${session.company.displayName}'
+                : 'Acesse as outras areas da sua loja.',
             badgeLabel: 'Menu',
             badgeIcon: Icons.apps_rounded,
             emphasized: true,
@@ -123,35 +133,90 @@ class MorePage extends StatelessWidget {
               ),
             ],
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MoreSection extends StatelessWidget {
-  const _MoreSection({required this.title, required this.items});
-
-  final String title;
-  final List<_MoreItem> items;
-
-  @override
-  Widget build(BuildContext context) {
-    final layout = context.appLayout;
-
-    return AppSectionCard(
-      title: title,
-      child: Column(
-        children: [
-          for (var index = 0; index < items.length; index++) ...[
-            items[index],
-            if (index < items.length - 1) SizedBox(height: layout.blockGap),
+          if (title == 'Perfil') ...[
+            SizedBox(height: layout.sectionGap),
+            OutlinedButton.icon(
+              onPressed: auth.isLoading
+                  ? null
+                  : () async {
+                      try {
+                        await ref
+                            .read(authControllerProvider.notifier)
+                            .signOutCurrentSession();
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Não foi possível concluir a saída. Tente novamente.',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+              icon: const Icon(Icons.logout),
+              label: const Text('Sair da conta'),
+            ),
           ],
         ],
       ),
     );
   }
 }
+
+class _MoreSection extends ConsumerWidget {
+  const _MoreSection({required this.title, required this.items});
+
+  final String title;
+  final List<_MoreItem> items;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final layout = context.appLayout;
+    final session = ref.watch(appSessionProvider);
+    final visible = items
+        .where((item) {
+          final path = _profilePaths[item.routeName]!;
+          final feature = _profileFeatures[item.routeName];
+          return canAccessNavigationPath(session, path) &&
+              (feature == null || session.hasFeature(feature));
+        })
+        .toList(growable: false);
+    if (visible.isEmpty) return const SizedBox.shrink();
+
+    return AppSectionCard(
+      title: title,
+      child: Column(
+        children: [
+          for (var index = 0; index < visible.length; index++) ...[
+            visible[index],
+            if (index < visible.length - 1) SizedBox(height: layout.blockGap),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+const _profilePaths = {
+  AppRouteNames.clients: AppRoutePaths.clients,
+  AppRouteNames.fiado: AppRoutePaths.fiado,
+  AppRouteNames.inventory: AppRoutePaths.inventory,
+  AppRouteNames.purchases: AppRoutePaths.purchases,
+  AppRouteNames.suppliers: AppRoutePaths.suppliers,
+  AppRouteNames.cash: AppRoutePaths.cash,
+  AppRouteNames.costs: AppRoutePaths.costs,
+  AppRouteNames.reports: AppRoutePaths.reports,
+  AppRouteNames.accountCloud: AppRoutePaths.accountCloud,
+  AppRouteNames.company: AppRoutePaths.company,
+  AppRouteNames.settings: AppRoutePaths.settings,
+};
+const _profileFeatures = {
+  AppRouteNames.fiado: FeatureKey.fiadoManagement,
+  AppRouteNames.purchases: FeatureKey.purchases,
+  AppRouteNames.suppliers: FeatureKey.suppliers,
+  AppRouteNames.costs: FeatureKey.costs,
+};
 
 class _MoreItem extends StatelessWidget {
   const _MoreItem({

@@ -55,13 +55,16 @@ void main() {
     final drawerScrollable = _mainDrawerScrollable();
 
     await tester.scrollUntilVisible(
-      find.text('Produtos'),
+      find.descendant(of: find.byType(Drawer), matching: find.text('Produtos')),
       120,
       scrollable: drawerScrollable,
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Produtos'), findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(Drawer), matching: find.text('Produtos')),
+      findsOneWidget,
+    );
 
     await tester.scrollUntilVisible(
       find.text('Configurações'),
@@ -134,13 +137,15 @@ void main() {
     final drawerScrollable = _mainDrawerScrollable();
 
     await tester.scrollUntilVisible(
-      find.text('Produtos'),
+      find.descendant(of: find.byType(Drawer), matching: find.text('Produtos')),
       120,
       scrollable: drawerScrollable,
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Produtos'));
+    await tester.tap(
+      find.descendant(of: find.byType(Drawer), matching: find.text('Produtos')),
+    );
     await tester.pumpAndSettle();
 
     expect(find.byType(Drawer), findsNothing);
@@ -199,7 +204,7 @@ void main() {
       ],
     );
 
-    await tester.ensureVisible(find.text('Últimas vendas'));
+    await tester.ensureVisible(find.text('Movimentações recentes'));
     await tester.pumpAndSettle();
 
     expect(find.text('Venda recebida'), findsOneWidget);
@@ -421,6 +426,7 @@ Future<void> _pumpAuthenticatedApp(
           kind: AppUserKind.remoteAuthenticated,
         ),
         company: const CompanyContext(
+          experienceRefreshEnabled: true,
           localId: null,
           remoteId: 'company-1',
           displayName: 'Cafe Oliveira',

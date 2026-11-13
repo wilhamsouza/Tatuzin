@@ -4,11 +4,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../modules/account/presentation/providers/account_cloud_providers.dart';
 import '../../routes/route_names.dart';
+import '../../routes/app_destinations.dart';
 import '../theme/app_design_tokens.dart';
 import '../constants/app_constants.dart';
 import '../entitlements/plan_entitlements.dart';
 import '../session/auth_provider.dart';
 import '../session/session_provider.dart';
+import '../session/company_context.dart';
 import 'app_status_badge.dart';
 import 'tatuzin_brand.dart';
 
@@ -189,30 +191,16 @@ class AppMainDrawer extends ConsumerWidget {
                   _DrawerGroup(
                     label: 'OPERAÇÃO',
                     children: [
-                      _DrawerItem(
-                        label: 'Dashboard',
-                        icon: Icons.space_dashboard_rounded,
-                        isSelected: selected(AppRoutePaths.dashboard),
-                        onTap: () => _navigateTo(
-                          context,
-                          currentPath: currentPath,
-                          path: AppRoutePaths.dashboard,
-                          routeName: AppRouteNames.dashboard,
-                        ),
-                      ),
-                      if (canAny(['sales.create']))
+                      for (final destination in destinationsFor(session))
                         _DrawerItem(
-                          label: 'PDV / Vendas',
-                          icon: Icons.point_of_sale_rounded,
-                          isSelected:
-                              selected(AppRoutePaths.sales) ||
-                              selected(AppRoutePaths.cart) ||
-                              selected(AppRoutePaths.checkout),
+                          label: destination.label,
+                          icon: destination.icon,
+                          isSelected: selected(destination.path),
                           onTap: () => _navigateTo(
                             context,
                             currentPath: currentPath,
-                            path: AppRoutePaths.sales,
-                            routeName: AppRouteNames.sales,
+                            path: destination.path,
+                            routeName: destination.routeName,
                           ),
                         ),
                       if (canAny(['cash.open', 'cash.close', 'cash.withdraw']))
@@ -249,21 +237,6 @@ class AppMainDrawer extends ConsumerWidget {
                             currentPath: currentPath,
                             path: AppRoutePaths.clients,
                             routeName: AppRouteNames.clients,
-                          ),
-                        ),
-                      if (canAny(['products.read', 'products.write']))
-                        _DrawerItem(
-                          label: 'Produtos',
-                          icon: Icons.inventory_2_rounded,
-                          isSelected:
-                              selected(AppRoutePaths.products) ||
-                              (selected(AppRoutePaths.inventory) &&
-                                  !selected(AppRoutePaths.inventoryCounts)),
-                          onTap: () => _navigateTo(
-                            context,
-                            currentPath: currentPath,
-                            path: AppRoutePaths.products,
-                            routeName: AppRouteNames.products,
                           ),
                         ),
                       if (canFeaturePermission(FeatureKey.inventoryAdvanced, [
@@ -389,9 +362,11 @@ class AppMainDrawer extends ConsumerWidget {
                           ),
                         ),
                       if (canFeaturePermission(FeatureKey.supplies, [
-                        'stock.adjust',
-                        'products.write',
-                      ]))
+                            'stock.adjust',
+                            'products.write',
+                          ]) &&
+                          companyContext.experienceProfile !=
+                              CompanyExperienceProfile.fashion)
                         _DrawerItem(
                           label: 'Insumos',
                           icon: Icons.scale_rounded,

@@ -14,6 +14,7 @@ import 'core/session/tenant_operational_block.dart';
 import 'core/sync/auto_sync_coordinator.dart';
 import 'core/sync/sync_providers.dart';
 import 'core/utils/app_logger.dart';
+import 'core/telemetry/product_journey.dart';
 import 'core/widgets/app_async_value_view.dart';
 import 'core/widgets/tenant_pending_deletion_page.dart';
 import 'routes/app_router.dart';
@@ -23,6 +24,7 @@ import '../modules/billing/presentation/providers/billing_checkout_return.dart';
 import '../modules/billing/presentation/providers/billing_providers.dart';
 import '../modules/billing/presentation/widgets/pro_trial_offer_gate.dart';
 import '../modules/dashboard/presentation/providers/dashboard_providers.dart';
+import '../modules/onboarding/presentation/onboarding_providers.dart';
 
 class ErpPdvApp extends ConsumerStatefulWidget {
   const ErpPdvApp({super.key});
@@ -34,6 +36,7 @@ class ErpPdvApp extends ConsumerStatefulWidget {
 class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
     with WidgetsBindingObserver {
   late final AutoSyncCoordinator _autoSyncCoordinator;
+  late final ProductJourney _productJourney;
 
   @override
   void initState() {
@@ -43,10 +46,12 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
     ref.read(authControllerProvider);
     _autoSyncCoordinator = ref.read(autoSyncCoordinatorProvider);
     _autoSyncCoordinator.startSupportCommandPolling();
+    _productJourney = ref.read(productJourneyProvider)..start();
   }
 
   @override
   void dispose() {
+    _productJourney.stop();
     unawaited(_autoSyncCoordinator.dispose());
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -55,6 +60,8 @@ class _ErpPdvAppState extends ConsumerState<ErpPdvApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      ref.invalidate(companyOnboardingProvider);
+      unawaited(ref.read(productJourneyProvider).flush());
       ref.read(autoSyncCoordinatorProvider).onAppResumed();
       unawaited(_refreshBillingAfterCheckoutReturn());
     }

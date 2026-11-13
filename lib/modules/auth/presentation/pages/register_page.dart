@@ -21,7 +21,6 @@ class RegisterPage extends ConsumerStatefulWidget {
 class _RegisterPageState extends ConsumerState<RegisterPage> {
   final TextEditingController _userNameController = TextEditingController();
   final TextEditingController _companyNameController = TextEditingController();
-  final TextEditingController _companySlugController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
@@ -30,7 +29,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   void dispose() {
     _userNameController.dispose();
     _companyNameController.dispose();
-    _companySlugController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -84,14 +82,14 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Criar conta na nuvem',
+                            'Comece a organizar sua loja',
                             style: theme.textTheme.headlineSmall?.copyWith(
                               fontWeight: FontWeight.w800,
                             ),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Cadastre sua empresa e o dono da empresa para entrar no Tatuzin conectado.',
+                            'Crie sua conta e prepare sua primeira venda.',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                             ),
@@ -116,34 +114,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                             textInputAction: TextInputAction.next,
                             enabled: !isBusy,
                             prefixIcon: const Icon(Icons.storefront_outlined),
-                          ),
-                          const SizedBox(height: 12),
-                          AppInput(
-                            controller: _companySlugController,
-                            labelText: 'Slug da empresa',
-                            hintText: 'minha-loja',
-                            textInputAction: TextInputAction.next,
-                            enabled: !isBusy,
-                            prefixIcon: const Icon(Icons.tag_rounded),
-                            onChanged: (value) {
-                              final normalized = _normalizeSlug(value);
-                              if (normalized == value) {
-                                return;
-                              }
-                              _companySlugController.value = TextEditingValue(
-                                text: normalized,
-                                selection: TextSelection.collapsed(
-                                  offset: normalized.length,
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Use apenas letras minusculas, numeros e hifens.',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
                           ),
                           const SizedBox(height: 12),
                           AppInput(
@@ -243,13 +213,11 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     final messenger = ScaffoldMessenger.of(context);
     final userName = _userNameController.text.trim();
     final companyName = _companyNameController.text.trim();
-    final companySlug = _normalizeSlug(_companySlugController.text);
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
     if (userName.isEmpty ||
         companyName.isEmpty ||
-        companySlug.isEmpty ||
         email.isEmpty ||
         password.isEmpty) {
       messenger.showSnackBar(
@@ -282,26 +250,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       return;
     }
 
-    if (companySlug.length < 3) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text(
-            'O slug da empresa precisa ter pelo menos 3 caracteres.',
-          ),
-        ),
-      );
-      return;
-    }
-
-    if (!_isValidSlug(companySlug)) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Use um slug com letras minusculas, numeros e hifens.'),
-        ),
-      );
-      return;
-    }
-
     if (password.length < 8) {
       messenger.showSnackBar(
         const SnackBar(
@@ -316,7 +264,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
           .read(authControllerProvider.notifier)
           .signUpRemote(
             companyName: companyName,
-            companySlug: companySlug,
             userName: userName,
             email: email,
             password: password,
@@ -340,14 +287,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
         ),
       );
     }
-  }
-
-  String _normalizeSlug(String value) {
-    return value.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]+'), '-');
-  }
-
-  bool _isValidSlug(String value) {
-    return RegExp(r'^[a-z0-9-]+$').hasMatch(value);
   }
 
   bool _isValidEmail(String value) {

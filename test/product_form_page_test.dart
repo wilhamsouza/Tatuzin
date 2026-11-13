@@ -1,5 +1,7 @@
 import 'package:tatuzin/app/core/database/app_database.dart';
 import 'package:tatuzin/app/core/errors/app_exceptions.dart';
+import 'package:tatuzin/app/core/session/session_provider.dart';
+import 'package:tatuzin/app/core/session/company_context.dart';
 import 'package:tatuzin/app/theme/app_theme.dart';
 import 'package:tatuzin/modules/categorias/domain/entities/category.dart';
 import 'package:tatuzin/modules/categorias/presentation/providers/category_providers.dart';
@@ -25,6 +27,46 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
+
+  testWidgets('new fashion product can be simple with no category or grid', (
+    tester,
+  ) async {
+    final repository = _RecordingProductRepository();
+    final container = _createContainer(
+      repository: repository,
+      localRepository: _FakeLocalProductRepository(const []),
+    );
+    addTearDown(container.dispose);
+    final company = container.read(currentCompanyContextProvider);
+    container
+        .read(appSessionProvider.notifier)
+        .updateCompany(
+          company.copyWith(experienceProfile: CompanyExperienceProfile.fashion),
+        );
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const ProductFormPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    Finder field(String label) => find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == label,
+    );
+    await tester.enterText(field('Nome do produto'), 'Camiseta básica');
+    await tester.ensureVisible(field('Preco de venda'));
+    await tester.enterText(field('Preco de venda'), '49,90');
+    await tester.tap(find.text('Criar produto'));
+    await tester.pumpAndSettle();
+    expect(repository.createCalls, 1);
+    expect(repository.createdInput!.niche, ProductNiches.fashion);
+    expect(repository.createdInput!.catalogType, ProductCatalogTypes.simple);
+    expect(repository.createdInput!.categoryId, isNull);
+    expect(repository.createdInput!.variants, isEmpty);
+  });
 
   test('grade de moda interpreta M/G e preto/azul como matriz 2x2', () {
     final draft = const FashionGridDraft()
