@@ -13,7 +13,17 @@ final dailySaleActivityProvider = FutureProvider<List<SaleRecord>>((ref) async {
   final end = DateTime(now.year, now.month, now.day + 1);
   final timer = Timer(end.difference(now), ref.invalidateSelf);
   ref.onDispose(timer.cancel);
-  return ref
+  // Remote records are UTC, while existing device records may be local ISO strings.
+  // Read a bounded margin, then compare actual instants in the device's calendar.
+  final candidates = await ref
       .watch(saleHistoryRepositoryProvider)
-      .search(from: start, to: end.subtract(const Duration(microseconds: 1)));
+      .search(
+        from: DateTime(now.year, now.month, now.day - 2),
+        to: DateTime(now.year, now.month, now.day + 3),
+      );
+  final sales = candidates.where((sale) {
+    final local = sale.soldAt.toLocal();
+    return !local.isBefore(start) && local.isBefore(end);
+  }).toList()..sort((a, b) => b.soldAt.compareTo(a.soldAt));
+  return sales;
 });

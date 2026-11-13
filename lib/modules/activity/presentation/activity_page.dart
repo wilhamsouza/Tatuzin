@@ -55,7 +55,7 @@ class ActivityPage extends ConsumerWidget {
                             contentPadding: EdgeInsets.zero,
                             title: Text('Venda ${sale.receiptNumber}'),
                             subtitle: Text(
-                              '${TimeOfDay.fromDateTime(sale.soldAt).format(context)} • ${sale.clientName ?? "Sem cliente"} • ${sale.status.label}',
+                              '${TimeOfDay.fromDateTime(sale.soldAt.toLocal()).format(context)} • ${sale.clientName ?? "Sem cliente"} • ${sale.status.label}',
                             ),
                             trailing: Text(
                               AppFormatters.currencyFromCents(sale.finalCents),

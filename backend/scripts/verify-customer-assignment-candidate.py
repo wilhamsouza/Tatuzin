@@ -8,7 +8,9 @@ from pathlib import Path
 
 # The shared smoke refuses all writes unless readiness says isolated-test.
 state = runpy.run_path(str(Path(__file__).with_name('verify-experience-candidate.py')))
-request = state['request']
+def request(method, path, body=None, expected=200):
+    return state['request'](method, path, body, expected=202 if path == '/sync/push' else expected)
+
 first_uuid, second_uuid, sale_uuid = (str(uuid.uuid4()) for _ in range(3))
 first = request('POST', '/customers', {'localUuid': first_uuid, 'name': 'Candidate client A'}, expected=201)['customer']
 second = request('POST', '/customers', {'localUuid': second_uuid, 'name': 'Candidate client B'}, expected=201)['customer']

@@ -283,8 +283,32 @@ void main() {
       );
       addTearDown(scope.dispose);
       setTestTenantSession(scope);
+      final start = DateTime(now.year, now.month, now.day);
+      for (final entry in {
+        'utc-today': now.toUtc().toIso8601String(),
+        'offset-yesterday': start
+            .toUtc()
+            .add(const Duration(hours: 1))
+            .toIso8601String()
+            .replaceFirst('Z', '+03:00'),
+      }.entries) {
+        await db.insert(TableNames.vendas, {
+          'uuid': entry.key,
+          'tipo_venda': 'vista',
+          'forma_pagamento': 'pix',
+          'status': 'ativa',
+          'valor_total_centavos': 1000,
+          'valor_final_centavos': 1000,
+          'numero_cupom': entry.key,
+          'data_venda': entry.value,
+        });
+      }
       final today = await scope.read(dailySaleActivityProvider.future);
-      expect(today.length, 9);
+      expect(today.length, 10);
+      expect(
+        today.any((sale) => sale.receiptNumber == 'offset-yesterday'),
+        false,
+      );
       expect(today.any((sale) => sale.receiptNumber == 'yesterday'), false);
     },
   );

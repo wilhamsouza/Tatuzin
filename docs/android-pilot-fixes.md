@@ -6,6 +6,7 @@
   Voltar do Android retorna a Vender; comprovante aberto pelo histórico volta ao detalhe.
 - Atividade abre nas vendas de hoje do dispositivo, sem o limite de cinco movimentos
   do dashboard. Mostra cliente, horário, valor e situação e permite consultar o detalhe.
+  Registros UTC recebidos da sincronização são classificados e exibidos no horário local.
 - Cliente está disponível no checkout sem abrir Mais opções. O evento envia a
   identidade remota/UUID do cadastro e o recebimento entre dispositivos preserva o vínculo.
 - Detalhe da venda permite vincular ou alterar cliente de venda ativa sem fiado,
@@ -48,3 +49,16 @@
    pelo gesto nas cinco abas, nos dois temas e com fonte ampliada.
 
 Os testes automatizados não substituem esta repetição em aparelho físico.
+
+## Publicação no ambiente de testes
+
+Em 13/11/2026, backend atualizado para `tatuzin-backend:customer-fixes-20261113`,
+imagem `sha256:f858ee0045e2d5c02ebe512cbb589094bc70c40182d1da808994899546542759`.
+Backup privado anterior às alterações em `.release-backups/customer-fixes-20261113/`,
+com dump conferido, fora do Git. Imagem anterior preservada como
+`tatuzin-backend:rollback-customer-fixes-20261113`.
+
+Migration aplicada, readiness HTTPS saudável e coleta do piloto ativa.
+Quinze verificações HTTP passaram no candidato isolado, incluindo o contrato real
+de push/pull da associação. Nenhuma venda ou associação sintética foi criada no
+ambiente compartilhado. Monitoramento passa a acompanhar `1.0.2-pilot`.
