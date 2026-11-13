@@ -23,7 +23,7 @@ test -s "${SIGNING_DIR}/certificate.sha256"
 mkdir -p "$(dirname "$OUTPUT_APK")"
 apksigner sign --ks "${SIGNING_DIR}/pilot.p12" --ks-type PKCS12 \
   --ks-key-alias tatuzin-pilot --ks-pass "file:${SIGNING_DIR}/password" \
-  --key-pass "file:${SIGNING_DIR}/password" --out "$OUTPUT_APK" "$INPUT_APK"
+  --out "$OUTPUT_APK" "$INPUT_APK"
 actual="$(apksigner verify --print-certs "$OUTPUT_APK")"
 expected="$(cat "${SIGNING_DIR}/certificate.sha256")"
 if ! printf '%s\n' "$actual" | rg -Fq "$expected"; then

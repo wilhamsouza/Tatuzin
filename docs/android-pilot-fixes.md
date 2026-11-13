@@ -73,3 +73,20 @@ Migration aplicada, readiness HTTPS saudável e coleta do piloto ativa.
 Quinze verificações HTTP passaram no candidato isolado, incluindo o contrato real
 de push/pull da associação. Nenhuma venda ou associação sintética foi criada no
 ambiente compartilhado. Monitoramento passa a acompanhar `1.0.2-pilot`.
+
+## APK final assinado
+
+[Baixar Tatuzin Piloto 2](https://api.tatuzin.com.br/downloads/tatuzin-1.0.2-piloto-2.apk)
+e [checksum](https://api.tatuzin.com.br/downloads/tatuzin-1.0.2-piloto-2.sha256).
+
+- Pacote `br.com.tatuzin.gestao.pilot2`, versionCode 5, versão 1.0.2-pilot.
+- Assinado no host com a chave persistente; esquemas APK v2 e v3 verificados.
+- SHA-256 do APK: `76b08de268595c7835f60e02bf9a608f5c9381efbcc2743baa7f5eaf41a3fe3e`.
+- Certificado SHA-256: `ac32b18025da277535d163f0ead1b0dda515aa8c993134ffc48d5d410bb0fb47`.
+- Download HTTPS completo e checksum conferidos; 98.825.465 bytes.
+- Fonte do candidato: merge de teste `f54bbc870a3d7428bc3c069dd2b1764576778eda`,
+  branch `47089271672bb5085e0f898dc6c1993fd975f8f7`, CI aprovado.
+
+Instalar em paralelo e abrir **Tatuzin Piloto 2**. Não desinstalar a versão anterior
+para esta avaliação. Dados ainda offline continuam nela; a nova instalação tem
+seu próprio cache local. A repetição dos cenários no Android continua pendente.
