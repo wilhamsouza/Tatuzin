@@ -300,9 +300,15 @@ void main() {
     await tester.tap(find.byIcon(Icons.menu));
     await tester.pumpAndSettle();
 
-    expect(find.text('PDV / Vendas'), findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(Drawer), matching: find.text('Vender')),
+      findsOneWidget,
+    );
     expect(find.text('Caixa'), findsWidgets);
-    expect(find.text('Produtos'), findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(Drawer), matching: find.text('Produtos')),
+      findsOneWidget,
+    );
     expect(find.text('Funcionários'), findsNothing);
     expect(find.text('Configurações'), findsNothing);
     expect(find.text('Relatórios'), findsNothing);
@@ -351,6 +357,8 @@ List<Override> _baseOverrides({AuthGateway? remoteGateway}) {
     appStartupProvider.overrideWith(
       (ref) async => const AppStartupState.success(),
     ),
+    dashboardDailyOverviewProvider.overrideWith((ref) async => null),
+    dashboardSalesTrendProvider.overrideWith((ref) async => []),
     operationalDashboardSnapshotProvider.overrideWith(
       (ref) async => const OperationalDashboardSnapshot(
         soldTodayCents: 0,
@@ -432,6 +440,7 @@ void _setValidTenantSession(ProviderContainer container) {
           kind: AppUserKind.remoteAuthenticated,
         ),
         company: const CompanyContext(
+          experienceRefreshEnabled: true,
           localId: null,
           remoteId: 'company-1',
           displayName: 'Cafe Oliveira',

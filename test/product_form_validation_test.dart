@@ -22,11 +22,11 @@ void main() {
     await tester.pump();
 
     expect(find.text('Informe o nome do produto'), findsOneWidget);
-    expect(find.text('Informe a categoria do produto'), findsOneWidget);
+    expect(find.text('Informe a categoria do produto'), findsNothing);
     expect(find.text('Informe um preco de venda valido'), findsOneWidget);
   });
 
-  testWidgets('formulario de produto informa categoria obrigatoria', (
+  testWidgets('formulario de produto aceita categoria opcional', (
     tester,
   ) async {
     final formKey = GlobalKey<FormState>();
@@ -38,11 +38,11 @@ void main() {
       price: '59,90',
     );
 
-    expect(formKey.currentState!.validate(), isFalse);
+    expect(formKey.currentState!.validate(), isTrue);
     await tester.pump();
 
     expect(find.text('Informe o nome do produto'), findsNothing);
-    expect(find.text('Informe a categoria do produto'), findsOneWidget);
+    expect(find.text('Informe a categoria do produto'), findsNothing);
   });
 
   testWidgets('formulario de produto valido passa sem erro de nome/categoria', (

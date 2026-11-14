@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:path/path.dart' as path;
 
 import 'package:tatuzin/app/core/database/table_names.dart';
 import 'package:tatuzin/app/core/errors/app_exceptions.dart';
@@ -246,8 +247,10 @@ void main() {
   test(
     'compra faz rollback do saldo se a gravacao do movimento falhar',
     () async {
-      final failurePath =
-          '${Directory.systemTemp.path}\\purchase-stock-rollback-${DateTime.now().microsecondsSinceEpoch}.db';
+      final failurePath = path.join(
+        Directory.systemTemp.path,
+        'purchase-stock-rollback-${DateTime.now().microsecondsSinceEpoch}.db',
+      );
       final failureDatabase = await databaseFactoryFfi.openDatabase(
         failurePath,
         options: OpenDatabaseOptions(

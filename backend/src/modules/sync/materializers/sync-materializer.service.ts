@@ -9,6 +9,7 @@ import { PaymentMaterializer } from './payment.materializer';
 import { ReceiptMaterializer } from './receipt.materializer';
 import { SaleMaterializer } from './sale.materializer';
 import { StockMaterializer } from './stock.materializer';
+import { SaleCustomerAssignmentMaterializer } from './sale-customer-assignment.materializer';
 
 export class SyncMaterializerService {
   constructor(
@@ -32,6 +33,9 @@ export class SyncMaterializerService {
     input: SyncMaterializerInput,
   ): Promise<SyncMaterializerResult> {
     switch (input.event.entity) {
+      case 'saleCustomerAssignment':
+      case 'saleCustomerLock':
+        return new SaleCustomerAssignmentMaterializer().materialize(input);
       case 'cashSession':
         return this.cashSessionMaterializer.materialize(input);
       case 'cashMovement':

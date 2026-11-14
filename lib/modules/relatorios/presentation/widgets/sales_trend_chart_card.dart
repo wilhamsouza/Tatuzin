@@ -14,11 +14,14 @@ class SalesTrendChartCard extends StatelessWidget {
     required this.points,
     this.title = 'Tendência de vendas',
     this.subtitle = 'Leitura rápida do comportamento do período.',
+    this.emptyMessage =
+        'Tente alterar o período ou limpar os filtros para comparar outra janela.',
   });
 
   final List<ReportSalesTrendPoint> points;
   final String title;
   final String subtitle;
+  final String emptyMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -27,10 +30,9 @@ class SalesTrendChartCard extends StatelessWidget {
         title: title,
         subtitle: subtitle,
         padding: const EdgeInsets.all(14),
-        child: const ReportEmptyState(
+        child: ReportEmptyState(
           title: 'Ainda não há vendas neste período.',
-          message:
-              'Tente alterar o período ou limpar os filtros para comparar outra janela.',
+          message: emptyMessage,
         ),
       );
     }
@@ -58,27 +60,31 @@ class SalesTrendChartCard extends StatelessWidget {
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 2),
-                      child: Tooltip(
-                        message:
-                            '${point.label}: ${AppFormatters.currencyFromCents(point.netSalesCents)}',
-                        child: Align(
-                          alignment: Alignment.bottomCenter,
-                          child: FractionallySizedBox(
-                            heightFactor: maxValue == 0
-                                ? 0.10
-                                : math.max(
-                                    0.10,
-                                    math.min(
-                                      1.0,
-                                      point.netSalesCents / maxValue,
+                      child: Semantics(
+                        label:
+                            '${point.label}: ${point.salesCount} venda(s), ${AppFormatters.currencyFromCents(point.netSalesCents)}',
+                        child: Tooltip(
+                          message:
+                              '${point.label}: ${AppFormatters.currencyFromCents(point.netSalesCents)}',
+                          child: Align(
+                            alignment: Alignment.bottomCenter,
+                            child: FractionallySizedBox(
+                              heightFactor: maxValue == 0
+                                  ? 0
+                                  : math.max(
+                                      0,
+                                      math.min(
+                                        1.0,
+                                        point.netSalesCents / maxValue,
+                                      ),
                                     ),
-                                  ),
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: palette.base,
-                                borderRadius: BorderRadius.circular(8),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: palette.base,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const SizedBox(width: double.infinity),
                               ),
-                              child: const SizedBox(width: double.infinity),
                             ),
                           ),
                         ),
@@ -87,6 +93,21 @@ class SalesTrendChartCard extends StatelessWidget {
                   ),
               ],
             ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            children: [
+              Text(
+                'De ${points.first.label}',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+              Text(
+                'Até ${points.last.label}',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           _TrendSummary(points: points, maxValue: maxValue),
@@ -114,20 +135,17 @@ class _TrendSummary extends StatelessWidget {
           next.netSalesCents > current.netSalesCents ? next : current,
     );
 
-    return Row(
+    return Wrap(
+      spacing: 12,
+      runSpacing: 4,
       children: [
-        Expanded(
-          child: Text(
-            'Pico ${peak.label}: ${AppFormatters.currencyFromCents(maxValue)}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w700,
-            ),
+        Text(
+          'Pico ${peak.label}: ${AppFormatters.currencyFromCents(maxValue)}',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
           ),
         ),
-        const SizedBox(width: 8),
         Text(
           '$totalSales venda(s)',
           style: theme.textTheme.labelSmall?.copyWith(

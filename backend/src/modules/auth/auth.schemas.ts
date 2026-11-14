@@ -58,7 +58,7 @@ const accountPasswordSchema = (message: string) =>
 
 export const registerSchema = z.object({
   companyName: normalizedNameSchema,
-  companySlug: normalizedRegisterSlugSchema,
+  companySlug: normalizedRegisterSlugSchema.optional(),
   userName: normalizedNameSchema,
   email: normalizedRegisterEmailSchema,
   password: accountPasswordSchema(

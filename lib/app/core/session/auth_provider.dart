@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../telemetry/product_journey.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -162,7 +163,7 @@ class AuthController extends AsyncNotifier<void> {
 
   Future<AppSession> signUpRemote({
     required String companyName,
-    required String companySlug,
+    String companySlug = '',
     required String userName,
     required String email,
     required String password,
@@ -186,6 +187,9 @@ class AuthController extends AsyncNotifier<void> {
             password: password,
           );
       await _applySession(session);
+      ref
+          .read(productJourneyProvider)
+          .record(JourneyEvent.registrationCompleted, owner: session);
       state = const AsyncData(null);
       return session;
     } catch (error, stackTrace) {

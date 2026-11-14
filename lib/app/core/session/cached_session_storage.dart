@@ -28,6 +28,12 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
   static const _companyNameKey = 'session.cached.company_name';
   static const _companyLegalNameKey = 'session.cached.company_legal_name';
   static const _companyDocumentKey = 'session.cached.company_document';
+  static const _experienceRefreshKey =
+      'session.cached.company_experience_refresh';
+  static const _onboardingEnabledKey =
+      'session.cached.company_onboarding_enabled';
+  static const _experienceProfileKey =
+      'session.cached.company_experience_profile';
   static const _receiptDisplayNameKey =
       'session.cached.company.receipt_display_name';
   static const _receiptDocumentKey = 'session.cached.company.receipt_document';
@@ -68,6 +74,9 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
       'session.cached.entitlements.report_periods';
 
   static const _allKeys = <String>[
+    _experienceRefreshKey,
+    _onboardingEnabledKey,
+    _experienceProfileKey,
     _userIdKey,
     _userNameKey,
     _userEmailKey,
@@ -139,6 +148,12 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
         isPlatformAdmin: preferences.getBool(_userPlatformAdminKey) ?? false,
       ),
       company: CompanyContext(
+        experienceRefreshEnabled:
+            preferences.getBool(_experienceRefreshKey) ?? false,
+        onboardingEnabled: preferences.getBool(_onboardingEnabledKey) ?? false,
+        experienceProfile: CompanyExperienceProfile.fromValue(
+          preferences.getString(_experienceProfileKey),
+        ),
         localId: null,
         remoteId: companyId,
         displayName: companyName,
@@ -218,6 +233,18 @@ class SharedPreferencesCachedSessionStorage implements CachedSessionStorage {
       session.company.documentNumber,
     );
     await _saveReceiptSettings(preferences, session.company.receiptSettings);
+    await preferences.setBool(
+      _experienceRefreshKey,
+      session.company.experienceRefreshEnabled,
+    );
+    await preferences.setBool(
+      _onboardingEnabledKey,
+      session.company.onboardingEnabled,
+    );
+    await preferences.setString(
+      _experienceProfileKey,
+      session.company.experienceProfile.key,
+    );
     await _setOptionalString(
       preferences,
       _licensePlanKey,

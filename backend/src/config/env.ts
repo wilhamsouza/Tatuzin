@@ -91,6 +91,12 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
   TRUST_PROXY: optionalTrimmedString,
   APP_ENV: z.string().trim().min(1).default('local-development'),
+  PRODUCT_ONBOARDING_ENABLED: z.enum(['true', 'false']).default('false')
+    .transform((value) => value === 'true'),
+  PRODUCT_ONBOARDING_COMPANY_IDS: z.string().default(''),
+  PRODUCT_EXPERIENCE_ENABLED: z.enum(['true', 'false']).default('false')
+    .transform((value) => value === 'true'),
+  PRODUCT_EXPERIENCE_COMPANY_IDS: z.string().default(''),
   PLATFORM_JOB_SWEEP_INTERVAL_MS: z.coerce
     .number()
     .int()

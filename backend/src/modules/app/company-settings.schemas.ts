@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export const experienceProfileSchema = z.enum(['moda', 'alimentacao', 'misto']);
+
 const optionalText = (max: number, fieldLabel: string) =>
   z
     .string({
@@ -11,6 +13,7 @@ const optionalText = (max: number, fieldLabel: string) =>
 
 export const companyReceiptSettingsPatchSchema = z
   .object({
+    experienceProfile: experienceProfileSchema.optional(),
     receiptDisplayName: optionalText(80, 'Nome no comprovante'),
     receiptDocument: optionalText(32, 'CPF/CNPJ'),
     receiptPhone: optionalText(32, 'Telefone/WhatsApp'),

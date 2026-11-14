@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/core/entitlements/plan_entitlements.dart';
 import '../../../../app/core/formatters/app_formatters.dart';
 import '../../../../app/core/session/session_provider.dart';
+import '../../../../app/core/telemetry/product_journey.dart';
 import '../../../../app/core/widgets/app_button.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
@@ -14,11 +15,22 @@ import '../providers/billing_checkout_return.dart';
 import '../providers/billing_providers.dart';
 import '../providers/checkout_launcher.dart';
 
-class SubscriptionPage extends ConsumerWidget {
+class SubscriptionPage extends ConsumerStatefulWidget {
   const SubscriptionPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SubscriptionPage> createState() => _SubscriptionPageState();
+}
+
+class _SubscriptionPageState extends ConsumerState<SubscriptionPage> {
+  @override
+  void initState() {
+    super.initState();
+    ref.read(productJourneyProvider).record(JourneyEvent.plansViewed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final plansAsync = ref.watch(billingPlansProvider);
     final statusAsync = ref.watch(billingStatusProvider);
     final company = ref.watch(currentCompanyContextProvider);

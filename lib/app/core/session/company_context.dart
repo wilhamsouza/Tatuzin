@@ -1,6 +1,24 @@
 import '../constants/app_constants.dart';
 import '../entitlements/plan_entitlements.dart';
 
+enum CompanyExperienceProfile {
+  fashion('moda', 'Moda'),
+  food('alimentacao', 'Alimentação'),
+  mixed('misto', 'Misto');
+
+  const CompanyExperienceProfile(this.key, this.label);
+  final String key;
+  final String label;
+
+  static CompanyExperienceProfile fromValue(Object? value) {
+    return switch (value) {
+      'moda' => fashion,
+      'alimentacao' => food,
+      _ => mixed,
+    };
+  }
+}
+
 class CompanyContext {
   const CompanyContext({
     required this.localId,
@@ -14,6 +32,9 @@ class CompanyContext {
     this.licenseExpiresAt,
     this.maxDevices,
     this.syncEnabled = false,
+    this.experienceProfile = CompanyExperienceProfile.mixed,
+    this.onboardingEnabled = false,
+    this.experienceRefreshEnabled = false,
     this.receiptSettings = const CompanyReceiptSettings.defaults(),
     PlanEntitlements? entitlements,
   }) : entitlements = entitlements ?? PlanEntitlements.free;
@@ -30,6 +51,9 @@ class CompanyContext {
       licenseExpiresAt = null,
       maxDevices = null,
       syncEnabled = false,
+      experienceProfile = CompanyExperienceProfile.mixed,
+      onboardingEnabled = false,
+      experienceRefreshEnabled = false,
       receiptSettings = const CompanyReceiptSettings.defaults(),
       entitlements = PlanEntitlements.free;
 
@@ -44,6 +68,9 @@ class CompanyContext {
   final DateTime? licenseExpiresAt;
   final int? maxDevices;
   final bool syncEnabled;
+  final CompanyExperienceProfile experienceProfile;
+  final bool onboardingEnabled;
+  final bool experienceRefreshEnabled;
   final CompanyReceiptSettings receiptSettings;
   final PlanEntitlements entitlements;
 
@@ -128,6 +155,9 @@ class CompanyContext {
   String? get _normalizedLicenseStatus => licenseStatus?.trim().toLowerCase();
 
   CompanyContext copyWith({
+    CompanyExperienceProfile? experienceProfile,
+    bool? onboardingEnabled,
+    bool? experienceRefreshEnabled,
     String? displayName,
     String? legalName,
     String? documentNumber,
@@ -145,6 +175,10 @@ class CompanyContext {
       licenseExpiresAt: licenseExpiresAt,
       maxDevices: maxDevices,
       syncEnabled: syncEnabled,
+      experienceProfile: experienceProfile ?? this.experienceProfile,
+      onboardingEnabled: onboardingEnabled ?? this.onboardingEnabled,
+      experienceRefreshEnabled:
+          experienceRefreshEnabled ?? this.experienceRefreshEnabled,
       receiptSettings: receiptSettings ?? this.receiptSettings,
       entitlements: entitlements,
     );

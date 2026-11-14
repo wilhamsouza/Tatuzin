@@ -585,6 +585,9 @@ Future<void> _createSchema(
       numero_cupom TEXT,
       data_venda TEXT,
       usuario_id INTEGER,
+      seller_remote_user_id TEXT,
+      customer_assignment_revision INTEGER NOT NULL DEFAULT 0,
+      customer_assignment_locked INTEGER NOT NULL DEFAULT 0,
       observacao TEXT,
       cancelada_em TEXT,
       venda_origem_id INTEGER

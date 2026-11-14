@@ -1,0 +1,6 @@
+# Overlay for the existing test environment only. Never include in a public rollout.
+services:
+  backend:
+    environment:
+      PRODUCT_ONBOARDING_ENABLED: 'true'
+      PRODUCT_EXPERIENCE_ENABLED: 'true'

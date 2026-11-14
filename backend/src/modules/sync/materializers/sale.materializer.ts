@@ -146,6 +146,14 @@ export class SaleMaterializer {
       ]) ?? 0;
 
     const customerId = await this.resolveCustomerId(input);
+    if (customerId == null && firstUuid(input.payload, ['customerServerId','customerId']) != null) {
+      return { outcome: 'rejected', code: 'CUSTOMER_NOT_AVAILABLE',
+        message: 'Cliente não está disponível nesta empresa.' };
+    }
+    if (customerId == null && firstString(input.payload, ['customerUuid']) != null) {
+      return { outcome: 'deferred', code: 'CUSTOMER_DEPENDENCY_PENDING',
+        message: 'Aguardando sincronização do cliente da venda.' };
+    }
     const cashSession = await this.findCashSession(input);
     const created = await input.tx.sale.create({
       data: {
@@ -153,6 +161,9 @@ export class SaleMaterializer {
         cashSessionId: cashSession?.id,
         localUuid,
         customerId,
+        sellerUserId: input.context.user.id,
+        creditUsedCents: nonNegativeInt(input.payload, ['creditUsedCents']) ?? 0,
+        creditGeneratedCents: nonNegativeInt(input.payload, ['creditGeneratedCents']) ?? 0,
         receiptNumber,
         paymentType: this.paymentType(input),
         paymentMethod: this.paymentMethod(input),
@@ -391,13 +402,13 @@ export class SaleMaterializer {
       "customerId",
       "customerServerId",
     ]);
-    if (customerId == null) {
-      return null;
-    }
+    const customerUuid = firstString(input.payload, ['customerUuid']);
+    if (customerId == null && customerUuid == null) return null;
     const customer = await input.tx.customer.findFirst({
       where: {
-        id: customerId,
+        ...(customerId ? { id: customerId } : { localUuid: customerUuid! }),
         companyId: input.context.company.id,
+        isActive: true,
         deletedAt: null,
       },
       select: { id: true },

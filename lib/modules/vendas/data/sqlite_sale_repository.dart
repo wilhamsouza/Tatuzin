@@ -466,6 +466,7 @@ class SqliteSaleRepository implements SaleRepository {
       'numero_cupom': receiptNumber,
       'data_venda': nowIso,
       'usuario_id': _operationalContext.currentLocalUserId,
+      'seller_remote_user_id': _operationalContext.currentRemoteUserId,
       'observacao': SaleValidationSupport.cleanNullable(input.notes),
       'cancelada_em': null,
       'venda_origem_id': null,
@@ -674,6 +675,13 @@ class SqliteSaleRepository implements SaleRepository {
             ),
         };
 
+    final customerRows = input.clientId == null
+        ? <Map<String, Object?>>[]
+        : await txn.rawQuery(
+            'SELECT c.*, s.remote_id FROM ${TableNames.clientes} c LEFT JOIN ${TableNames.syncRegistros} s ON s.feature_key = ? AND s.local_id = c.id WHERE c.id = ? LIMIT 1',
+            [SyncFeatureKeys.customers, input.clientId],
+          );
+    final customer = customerRows.isEmpty ? null : customerRows.first;
     await queue.enqueue(
       txn,
       event: OperationalSyncEvent(
@@ -700,6 +708,8 @@ class SqliteSaleRepository implements SaleRepository {
           'saleType': saleType.dbValue,
           'paymentMethod': input.paymentMethod.dbValue,
           'clientId': input.clientId,
+          'customerServerId': customer?['remote_id'],
+          'customerUuid': customer?['uuid'],
           'operationalOrderId': input.operationalOrderId,
           'subtotalCents': input.itemsTotalCents,
           'itemsTotalCents': input.itemsTotalCents,

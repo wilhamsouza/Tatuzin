@@ -7,6 +7,8 @@ plugins {
 }
 
 val keystoreProperties = Properties()
+// Explicit test distribution only. The protected host signs the unsigned pilot APK.
+val pilotBuild = providers.gradleProperty("tatuzinPilot").orNull == "true"
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 
 if (keystorePropertiesFile.exists()) {
@@ -21,7 +23,7 @@ gradle.taskGraph.whenReady {
                 taskName.startsWith("bundle") ||
                 taskName.startsWith("package"))
     }
-    if (releasePackageTaskRequested && !keystorePropertiesFile.exists()) {
+    if (releasePackageTaskRequested && !pilotBuild && !keystorePropertiesFile.exists()) {
         throw GradleException(
             "Release Android sem keystore.properties foi bloqueado. " +
                 "Configure a assinatura release ou use Google Play App Signing antes de gerar o artefato."
@@ -45,6 +47,11 @@ android {
 
     defaultConfig {
         applicationId = "br.com.tatuzin.gestao"
+        if (pilotBuild) {
+            applicationIdSuffix = ".pilot2"
+            versionNameSuffix = "-pilot"
+        }
+        manifestPlaceholders["appLabel"] = if (pilotBuild) "Tatuzin Piloto 2" else "@string/app_name"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -64,7 +71,9 @@ android {
 
     buildTypes {
         release {
-            if (keystorePropertiesFile.exists()) {
+            if (pilotBuild) {
+                signingConfig = null
+            } else if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
             isMinifyEnabled = false

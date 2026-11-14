@@ -217,6 +217,11 @@ model AdminUserPermission {
 
 model Company {
   id                                   String                                @id @default(uuid())
+  experienceProfile                    String                                @default("moda")
+  onboardingProductAt                  DateTime?
+  onboardingCashAt                     DateTime?
+  onboardingCompletedAt                DateTime?
+  productJourneyEvents                 ProductJourneyEvent[]
   name                                 String
   legalName                            String
   documentNumber                       String?
@@ -899,6 +904,26 @@ model Category {
   @@index([companyId, name])
 }
 
+model ProductJourneyEvent {
+  id                String   @id @default(uuid())
+  companyId         String
+  deviceId          String
+  eventId           String
+  name              String
+  attemptId         String?
+  durationMs        Int?
+  occurredAt        DateTime
+  receivedAt        DateTime @default(now())
+  appVersion        String
+  plan              String
+  experienceProfile String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, deviceId, eventId])
+  @@index([receivedAt])
+  @@index([companyId, name, receivedAt])
+}
+
 model Product {
   id                                     String                  @id @default(uuid())
   companyId                              String
@@ -1313,6 +1338,12 @@ model Sale {
   cashSessionId             String?
   localUuid                 String
   customerId                String?
+  sellerUserId              String?
+  customerAssignmentRevision Int               @default(0)
+  customerAssignmentLocked   Boolean           @default(false)
+  creditUsedCents            Int               @default(0)
+  creditGeneratedCents       Int               @default(0)
+  customerAssignments       SaleCustomerAssignment[]
   receiptNumber             String?
   paymentType               String
   paymentMethod             String
@@ -1339,6 +1370,23 @@ model Sale {
   @@index([companyId, soldAt])
   @@index([companyId, updatedAt])
   @@index([companyId, status])
+}
+
+model SaleCustomerAssignment {
+  id                 String   @id
+  companyId          String
+  saleId             String
+  previousCustomerId String?
+  customerId         String
+  revision           Int
+  actorUserId        String
+  deviceId           String
+  occurredAt         DateTime
+  createdAt          DateTime @default(now())
+  sale               Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@unique([saleId, revision])
+  @@index([companyId, saleId])
 }
 
 model SaleItem {
