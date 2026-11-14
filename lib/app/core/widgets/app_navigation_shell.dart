@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../routes/app_destinations.dart';
 import '../../routes/route_names.dart';
 import '../session/session_provider.dart';
+import '../theme/dashboard_theme.dart';
 
 class AppNavigationShell extends ConsumerWidget {
   const AppNavigationShell({
@@ -20,6 +21,9 @@ class AppNavigationShell extends ConsumerWidget {
     final selected = destinations.indexWhere(
       (destination) => destination.branch == shell.currentIndex,
     );
+    final navigationTheme = shell.currentIndex == 0
+        ? DashboardTheme.of(context)
+        : Theme.of(context);
     final focused =
         path == AppRoutePaths.checkout ||
         path == AppRoutePaths.cart ||
@@ -30,36 +34,40 @@ class AppNavigationShell extends ConsumerWidget {
       body: shell,
       bottomNavigationBar: focused
           ? null
-          : NavigationBar(
-              height: 76,
-              selectedIndex: selected < 0 ? 0 : selected,
-              onDestinationSelected: (index) {
-                final branch = destinations[index].branch;
-                shell.goBranch(
-                  branch,
-                  initialLocation: branch == 3 || branch == shell.currentIndex,
-                );
-              },
-              destinations: [
-                for (final destination in destinations)
-                  NavigationDestination(
-                    label: destination.label,
-                    icon: destination.branch == 2
-                        ? Container(
-                            width: 48,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(
-                              destination.icon,
-                              color: Theme.of(context).colorScheme.onPrimary,
-                            ),
-                          )
-                        : Icon(destination.icon),
-                  ),
-              ],
+          : Theme(
+              data: navigationTheme,
+              child: NavigationBar(
+                height: 76,
+                selectedIndex: selected < 0 ? 0 : selected,
+                onDestinationSelected: (index) {
+                  final branch = destinations[index].branch;
+                  shell.goBranch(
+                    branch,
+                    initialLocation:
+                        branch == 3 || branch == shell.currentIndex,
+                  );
+                },
+                destinations: [
+                  for (final destination in destinations)
+                    NavigationDestination(
+                      label: destination.label,
+                      icon: destination.branch == 2
+                          ? Container(
+                              width: 48,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: navigationTheme.colorScheme.primary,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                destination.icon,
+                                color: navigationTheme.colorScheme.onPrimary,
+                              ),
+                            )
+                          : Icon(destination.icon),
+                    ),
+                ],
+              ),
             ),
     );
   }

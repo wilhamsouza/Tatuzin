@@ -1,5 +1,8 @@
 import 'package:tatuzin/app/core/database/app_database.dart';
 import 'package:tatuzin/app/core/database/table_names.dart';
+import 'package:tatuzin/app/core/providers/app_data_refresh_provider.dart';
+import 'package:tatuzin/modules/relatorios/domain/entities/report_filter.dart';
+import 'package:tatuzin/modules/relatorios/presentation/providers/report_providers.dart';
 import 'package:tatuzin/app/core/session/app_session.dart';
 import 'package:tatuzin/app/core/session/app_user.dart';
 import 'package:tatuzin/app/core/session/company_context.dart';
@@ -36,6 +39,10 @@ void main() {
             company: session.company,
             isOfflineFallback: session.isOfflineFallback,
             clientInstanceId: session.clientInstanceId,
+            membership: const AppMembershipContext(
+              role: 'OWNER',
+              permissions: {},
+            ),
           );
       await container.read(appStartupProvider.future);
 
@@ -226,6 +233,54 @@ void main() {
       expect(updated.todaySalesCount, 7);
       expect(updated.soldTodayCents, 3000);
       expect(updated.recentMovementsCount, 5);
+
+      final reportFilter = ReportFilter(
+        start: DateTime(2025),
+        endExclusive: DateTime(2025, 2),
+      );
+      container.read(reportFilterProvider.notifier).replace(reportFilter);
+      final subscription = container.listen(
+        dashboardSalesTrendProvider,
+        (_, _) {},
+      );
+      addTearDown(subscription.close);
+      final trend = await container.read(dashboardSalesTrendProvider.future);
+      expect(trend, hasLength(7));
+      expect(trend.last.netSalesCents, 3000);
+      expect(trend.last.salesCount, 7);
+      expect(trend[5].netSalesCents, 3000);
+      expect(trend.take(5).every((point) => point.netSalesCents == 0), isTrue);
+      expect(container.read(reportFilterProvider), same(reportFilter));
+
+      await database.insert(TableNames.vendas, {
+        ...template,
+        'uuid': 'refresh-sale-${now.microsecondsSinceEpoch}',
+        'numero_cupom': 'refresh-sale',
+        'valor_total_centavos': 500,
+        'valor_final_centavos': 500,
+        'data_venda': now.toIso8601String(),
+      });
+      container.read(appDataRefreshProvider.notifier).state++;
+      final refreshedTrend = await container.read(
+        dashboardSalesTrendProvider.future,
+      );
+      expect(refreshedTrend.last.netSalesCents, 3500);
+      expect(refreshedTrend.last.salesCount, 8);
+      expect(container.read(reportFilterProvider), same(reportFilter));
+    },
+  );
+
+  test(
+    'home não consulta relatórios sem permissão nem inicia bootstrap',
+    () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      expect(
+        await container.read(dashboardDailyOverviewProvider.future),
+        isNull,
+      );
+      expect(await container.read(dashboardSalesTrendProvider.future), isEmpty);
+      expect(container.exists(appStartupProvider), isFalse);
     },
   );
 }

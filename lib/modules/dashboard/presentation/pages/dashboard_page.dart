@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,349 +14,449 @@ import '../../../../app/core/widgets/app_card.dart';
 import '../../../../app/core/widgets/app_empty_state.dart';
 import '../../../../app/core/widgets/app_list_tile_card.dart';
 import '../../../../app/core/widgets/app_main_drawer.dart';
-import '../../../../app/core/widgets/app_metric_card.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/widgets/app_state_card.dart';
 import '../../../../app/core/widgets/app_status_badge.dart';
+import '../../../../app/core/widgets/tatuzin_brand.dart';
 import '../../../../app/routes/route_names.dart';
+import '../../../../app/routes/route_guards.dart';
 import '../../../../app/core/theme/app_design_tokens.dart';
+import '../../../../app/core/theme/dashboard_theme.dart';
 import '../../../account/presentation/providers/account_cloud_providers.dart';
 import '../../../estoque/domain/services/inventory_alert_service.dart';
 import '../../../estoque/presentation/providers/inventory_providers.dart';
 import '../../../historico_vendas/presentation/providers/sale_history_providers.dart';
+import '../../../relatorios/presentation/widgets/sales_trend_chart_card.dart';
 import '../../../vendas/domain/entities/sale_enums.dart';
 import '../../domain/entities/operational_dashboard_snapshot.dart';
 import '../providers/dashboard_providers.dart';
+import '../widgets/dashboard_feed_widgets.dart';
 import '../../../onboarding/presentation/onboarding_checklist.dart';
 
-class DashboardPage extends ConsumerWidget {
+class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final snapshotAsync = ref.watch(operationalDashboardSnapshotProvider);
-    final accountCloud = ref.watch(accountCloudStatusProvider);
-    final inventoryItemsAsync = ref.watch(inventoryItemOptionsProvider);
-    final authStatus = ref.watch(authStatusProvider);
-    final autoSyncSnapshot = ref.watch(autoSyncSnapshotProvider);
-    final tokens = context.appColors;
-    final layout = context.appLayout;
+  Widget build(BuildContext context) =>
+      Theme(data: DashboardTheme.of(context), child: const _DashboardFeed());
+}
+
+class _DashboardFeed extends ConsumerStatefulWidget {
+  const _DashboardFeed();
+
+  @override
+  ConsumerState<_DashboardFeed> createState() => _DashboardFeedState();
+}
+
+class _DashboardFeedState extends ConsumerState<_DashboardFeed> {
+  Timer? _midnightTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleNextDay();
+  }
+
+  void _scheduleNextDay() {
+    final now = DateTime.now();
+    final nextDay = DateTime(now.year, now.month, now.day + 1);
+    _midnightTimer = Timer(nextDay.difference(now), () {
+      if (!mounted) return;
+      ref.invalidate(dashboardDayProvider);
+      _scheduleNextDay();
+    });
+  }
+
+  @override
+  void dispose() {
+    _midnightTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final session = ref.watch(appSessionProvider);
-    bool canAny(List<String> permissions) =>
-        permissions.any(session.canAccessPermission);
-    final canSell = canAny(['sales.create']);
-    final canReadSales = canAny([
-      'sales.create',
-      'reports.basic',
-      'reports.advanced',
-    ]);
-    final canCash = canAny(['cash.open', 'cash.close', 'cash.withdraw']);
+    bool canOpen(String path) => canAccessNavigationPath(session, path);
+    final canSell = canOpen(AppRoutePaths.sales);
+    final canReadSales = canOpen(AppRoutePaths.salesHistory);
+    final canCash = canOpen(AppRoutePaths.cash);
+    final canInventory = canOpen(AppRoutePaths.inventory);
+    final canReports = canOpen(AppRoutePaths.reports);
     final canFiado =
         session.hasFeature(FeatureKey.fiadoManagement) &&
-        canAny(['fiado.read', 'fiado.receive']);
+        canOpen(AppRoutePaths.fiado);
+    final snapshotAsync = ref.watch(operationalDashboardSnapshotProvider);
+    final accountCloud = ref.watch(accountCloudStatusProvider);
+    final inventory = canInventory
+        ? ref.watch(inventoryItemOptionsProvider)
+        : null;
+    final auth = ref.watch(authStatusProvider);
+    final autoSync = ref.watch(autoSyncSnapshotProvider);
+    final colors = context.appColors;
+    final layout = context.appLayout;
+    final alertCount =
+        accountCloud.pendingCount +
+        accountCloud.conflictCount +
+        accountCloud.errorCount +
+        accountCloud.blockedCount;
 
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: _DashboardAppBarTitle(
-          title: 'Início',
-          subtitle:
-              '${_greeting(DateTime.now())} - Dashboard comercial - ${_dateLabel(DateTime.now())}',
+        title: Text(
+          'Tatuzin',
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
         ),
         actions: [
           IconButton(
             tooltip: 'Status da conta e sincronização',
             onPressed: () => context.pushNamed(AppRouteNames.accountCloud),
             icon: Badge(
-              isLabelVisible: accountCloud.pendingCount > 0,
-              label: Text('${accountCloud.pendingCount}'),
+              isLabelVisible: alertCount > 0,
+              label: Text('$alertCount'),
               child: const Icon(Icons.notifications_none_rounded),
             ),
           ),
-          Padding(
-            padding: EdgeInsets.only(right: layout.space6),
-            child: CircleAvatar(
-              radius: 18,
-              backgroundColor: tokens.brand.surface,
-              foregroundColor: tokens.brand.base,
-              child: Text(
-                _initial(authStatus.userLabel),
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: tokens.brand.base,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
+          IconButton(
+            tooltip: 'Abrir perfil de ${auth.userLabel}',
+            onPressed: () => context.pushNamed(AppRouteNames.profile),
+            icon: CircleAvatar(
+              radius: 17,
+              backgroundColor: colors.brand.surface,
+              foregroundColor: colors.brand.onSurface,
+              child: Text(_initial(auth.userLabel)),
             ),
           ),
         ],
       ),
       drawer: const AppMainDrawer(),
+      floatingActionButton: canSell
+          ? FloatingActionButton.extended(
+              heroTag: 'dashboard-new-sale',
+              onPressed: () => context.pushNamed(AppRouteNames.sales),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Nova venda'),
+            )
+          : null,
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(operationalDashboardSnapshotProvider);
-          await ref.read(operationalDashboardSnapshotProvider.future);
+          ref.invalidate(dashboardDayProvider);
+          if (canInventory) ref.invalidate(inventoryItemOptionsProvider);
+          try {
+            await ref.read(operationalDashboardSnapshotProvider.future);
+          } catch (_) {
+            // The provider renders the recoverable error state below.
+          }
         },
         child: ListView(
+          key: const PageStorageKey('dashboard-feed'),
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.fromLTRB(
             layout.pagePadding,
-            layout.space5,
+            8,
             layout.pagePadding,
-            layout.space10,
+            96 * (MediaQuery.textScalerOf(context).scale(14) / 14).clamp(1, 2),
           ),
           children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const TatuzinMascotBadge(size: 48),
+                SizedBox(width: layout.blockGap),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        session.company.displayName,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_greeting(DateTime.now())} • ${_dateLabel(DateTime.now())}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => context.pushNamed(AppRouteNames.accountCloud),
+                icon: Icon(accountCloud.icon, size: 18),
+                label: Text(accountCloud.statusLabel),
+              ),
+            ),
+            SingleChildScrollView(
+              key: const ValueKey('dashboard-shortcuts'),
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (canReadSales)
+                    DashboardShortcut(
+                      label: 'Vendas',
+                      icon: Icons.bar_chart_rounded,
+                      onTap: () => _openTodaySales(context, ref),
+                    ),
+                  if (canCash)
+                    DashboardShortcut(
+                      label: 'Caixa',
+                      icon: Icons.point_of_sale_outlined,
+                      onTap: () => context.pushNamed(AppRouteNames.cash),
+                    ),
+                  if (canInventory)
+                    DashboardShortcut(
+                      label: 'Estoque',
+                      icon: Icons.inventory_2_outlined,
+                      onTap: () => context.pushNamed(AppRouteNames.inventory),
+                    ),
+                  if (session.hasFeature(FeatureKey.employees) &&
+                      canOpen(AppRoutePaths.employees))
+                    DashboardShortcut(
+                      label: 'Equipe',
+                      icon: Icons.groups_outlined,
+                      onTap: () => context.pushNamed(AppRouteNames.employees),
+                    ),
+                  if (canReports)
+                    DashboardShortcut(
+                      label: 'Relatórios',
+                      icon: Icons.insights_rounded,
+                      onTap: () => context.pushNamed(AppRouteNames.reports),
+                    ),
+                  if (canOpen(AppRoutePaths.products))
+                    DashboardShortcut(
+                      label: 'Produtos',
+                      icon: Icons.shopping_bag_outlined,
+                      onTap: () => context.pushNamed(AppRouteNames.products),
+                    ),
+                  if (canOpen(AppRoutePaths.clients))
+                    DashboardShortcut(
+                      label: 'Clientes',
+                      icon: Icons.people_outline,
+                      onTap: () => context.pushNamed(AppRouteNames.clients),
+                    ),
+                ],
+              ),
+            ),
+            SizedBox(height: layout.sectionGap),
             const CompanyOnboardingCard(),
             snapshotAsync.when(
               data: (snapshot) {
-                final inventorySummary = InventoryAlertService.summarize(
-                  inventoryItemsAsync.valueOrNull ?? const [],
-                );
-                final lowStockCount =
-                    canAny(['products.read', 'products.write', 'stock.adjust'])
-                    ? inventorySummary.belowMinimumItems
-                    : 0;
-                final pendingSendCount = accountCloud.pendingCount;
-                final dashboardLooksEmpty = _dashboardLooksEmpty(snapshot);
-                final hasCloudAttention =
-                    accountCloud.conflictCount > 0 ||
-                    accountCloud.errorCount > 0 ||
-                    accountCloud.pendingCount > 0 ||
-                    accountCloud.statusLabel ==
-                        'Dados do servidor desatualizados';
-                final isInitialHydrationRunning =
-                    dashboardLooksEmpty &&
+                final lowStockCount = inventory?.hasValue == true
+                    ? InventoryAlertService.summarize(
+                        inventory!.requireValue,
+                      ).belowMinimumItems
+                    : null;
+                final empty = _dashboardLooksEmpty(snapshot);
+                final hydrating =
+                    empty &&
                     (accountCloud.syncingNowCount > 0 ||
-                        autoSyncSnapshot.isRunning ||
-                        autoSyncSnapshot.isScheduled);
-
+                        autoSync.isRunning ||
+                        autoSync.isScheduled);
                 return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (dashboardLooksEmpty &&
-                        (hasCloudAttention || isInitialHydrationRunning)) ...[
+                    if (empty &&
+                        (alertCount > 0 ||
+                            hydrating ||
+                            accountCloud.statusLabel ==
+                                'Dados do servidor desatualizados')) ...[
                       _DashboardDataNotice(
-                        isLoading: isInitialHydrationRunning,
+                        isLoading: hydrating,
                         accountCloud: accountCloud,
                       ),
                       SizedBox(height: layout.sectionGap),
                     ],
-                    if (canReadSales)
-                      _FaturamentoHeroCard(
-                        value: AppFormatters.currencyFromCents(
-                          snapshot.soldTodayCents,
-                        ),
-                        caption: 'Hoje, neste dispositivo',
-                        onTap: () => _openTodaySales(context, ref),
-                      ),
-                    SizedBox(height: layout.sectionGap),
-                    if (canCash) ...[
-                      AppSectionCard(
-                        title: snapshot.hasOpenCashSession
-                            ? 'Caixa aberto'
-                            : 'Caixa fechado',
-                        subtitle: snapshot.cashNeedsConfirmation
-                            ? 'Confirme o troco inicial para preparar seu caixa.'
-                            : snapshot.hasOpenCashSession
-                            ? 'Acompanhe os movimentos e confira seu caixa.'
-                            : 'Abra o caixa para começar os recebimentos.',
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: () =>
-                                context.pushNamed(AppRouteNames.cash),
-                            icon: const Icon(
-                              Icons.account_balance_wallet_outlined,
-                            ),
-                            label: Text(
-                              snapshot.hasOpenCashSession
-                                  ? 'Ver caixa'
-                                  : 'Abrir caixa',
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: layout.sectionGap),
-                    ],
-                    if (canReadSales || canFiado)
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final isCompact = constraints.maxWidth < 420;
-                          return GridView.count(
-                            crossAxisCount: 2,
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            crossAxisSpacing: layout.gridGap,
-                            mainAxisSpacing: layout.gridGap,
-                            childAspectRatio:
-                                (isCompact ? 0.9 : 1.08) /
-                                (MediaQuery.textScalerOf(context).scale(14) /
-                                        14)
-                                    .clamp(1, 2.5),
+                    AppSectionCard(
+                      title: 'Resumo do dia',
+                      subtitle:
+                          'Hoje, neste dispositivo. Valores da base local; o fiado vendido ainda pode estar a receber.',
+                      tone: AppCardTone.brand,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          DashboardMetricLayout(
                             children: [
                               if (canReadSales)
-                                AppMetricCard(
-                                  label: 'Vendas',
-                                  value: '${snapshot.todaySalesCount}',
-                                  caption: 'Hoje, neste dispositivo',
-                                  icon: Icons.point_of_sale_rounded,
-                                  accentColor: tokens.sales.base,
-                                  onTap: () => _openTodaySales(context, ref),
-                                ),
-                              if (canFiado)
-                                AppMetricCard(
-                                  label: 'Fiado',
+                                DashboardMetric(
+                                  key: const ValueKey('dashboard-today-sales'),
+                                  label: 'Vendas de hoje',
                                   value: AppFormatters.currencyFromCents(
-                                    snapshot.pendingFiadoCents,
+                                    snapshot.soldTodayCents,
                                   ),
                                   caption:
-                                      '${snapshot.pendingFiadoCount} nota(s) em aberto',
-                                  icon: Icons.receipt_long_rounded,
-                                  accentColor: tokens.warning.base,
-                                  onTap: () =>
-                                      context.pushNamed(AppRouteNames.fiado),
-                                ),
-                            ],
-                          );
-                        },
-                      ),
-                    SizedBox(height: layout.sectionGap),
-                    AppSectionCard(
-                      title: 'Acesso rápido',
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final isCompact = constraints.maxWidth < 420;
-                          return GridView.count(
-                            crossAxisCount: isCompact ? 2 : 4,
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            crossAxisSpacing: layout.gridGap,
-                            mainAxisSpacing: layout.gridGap,
-                            childAspectRatio:
-                                (isCompact ? 1.36 : 0.68) /
-                                (MediaQuery.textScalerOf(context).scale(14) /
-                                        14)
-                                    .clamp(1, 2.5),
-                            children: [
-                              if (canSell)
-                                _QuickAccessItem(
-                                  label: 'Nova venda',
-                                  icon: Icons.point_of_sale_rounded,
-                                  palette: tokens.sales,
-                                  onTap: () =>
-                                      context.pushNamed(AppRouteNames.sales),
-                                ),
-                              if (canAny(['products.read', 'products.write']))
-                                _QuickAccessItem(
-                                  label: 'Produtos',
-                                  icon: Icons.inventory_2_outlined,
-                                  palette: tokens.info,
-                                  onTap: () =>
-                                      context.pushNamed(AppRouteNames.products),
-                                ),
-                              if (canAny(['customers.write']))
-                                _QuickAccessItem(
-                                  label: 'Cliente',
-                                  icon: Icons.person_add_alt_1_rounded,
-                                  palette: tokens.info,
-                                  onTap: () => context.pushNamed(
-                                    AppRouteNames.clientForm,
-                                  ),
+                                      '${snapshot.todaySalesCount} venda(s) ativa(s)',
+                                  icon: Icons.shopping_bag_outlined,
+                                  onTap: () => _openTodaySales(context, ref),
                                 ),
                               if (canCash)
-                                _QuickAccessItem(
-                                  label: 'Caixa',
-                                  icon: Icons.account_balance_wallet_rounded,
-                                  palette: tokens.cashflowPositive,
+                                DashboardMetric(
+                                  label: 'Caixa atual',
+                                  value: snapshot.hasOpenCashSession
+                                      ? AppFormatters.currencyFromCents(
+                                          snapshot.currentCashCents,
+                                        )
+                                      : 'Fechado',
+                                  caption: snapshot.cashNeedsConfirmation
+                                      ? 'Confirme o troco inicial'
+                                      : snapshot.hasOpenCashSession
+                                      ? 'Sessão aberta'
+                                      : 'Abra para receber',
+                                  icon: Icons.point_of_sale_outlined,
+                                  accent: colors.info.base,
                                   onTap: () =>
                                       context.pushNamed(AppRouteNames.cash),
                                 ),
-                              if (canAny(['reports.basic', 'reports.advanced']))
-                                _QuickAccessItem(
-                                  label: 'Relatório',
-                                  icon: Icons.insights_rounded,
-                                  palette: tokens.success,
-                                  onTap: () =>
-                                      context.pushNamed(AppRouteNames.reports),
-                                ),
+                              if (canReports) const _DashboardProfit(),
                             ],
-                          );
-                        },
+                          ),
+                          if (!canReadSales && !canCash && !canReports)
+                            const Text(
+                              'Use os atalhos disponíveis para o seu acesso.',
+                            ),
+                          if (canInventory) ...[
+                            SizedBox(height: layout.blockGap),
+                            _DashboardAlertTile(
+                              title: lowStockCount == null
+                                  ? 'Estoque'
+                                  : lowStockCount > 0
+                                  ? 'Estoque baixo: $lowStockCount item(ns)'
+                                  : 'Estoque em dia',
+                              subtitle: inventory!.hasError
+                                  ? 'Não foi possível consultar o estoque. Toque para conferir.'
+                                  : lowStockCount == null
+                                  ? 'Consultando disponibilidade…'
+                                  : lowStockCount > 0
+                                  ? 'Confira os itens que precisam de reposição.'
+                                  : 'Nenhum item abaixo do mínimo cadastrado.',
+                              icon: Icons.inventory_2_outlined,
+                              tone: lowStockCount != null && lowStockCount > 0
+                                  ? AppCardTone.warning
+                                  : AppCardTone.standard,
+                              onTap: () =>
+                                  context.pushNamed(AppRouteNames.inventory),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                     SizedBox(height: layout.sectionGap),
-                    if (canReadSales)
+                    if (canReports) ...[
+                      const _DashboardMovement(),
+                      SizedBox(height: layout.sectionGap),
+                    ],
+                    AppSectionCard(
+                      title: 'Pendências',
+                      subtitle: 'O que precisa da sua atenção.',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (canFiado && snapshot.pendingFiadoCount > 0)
+                            _DashboardAlertTile(
+                              title: 'Contas a receber',
+                              subtitle:
+                                  '${snapshot.pendingFiadoCount} nota(s) em aberto • ${AppFormatters.currencyFromCents(snapshot.pendingFiadoCents)}',
+                              icon: Icons.receipt_long_outlined,
+                              tone: AppCardTone.warning,
+                              onTap: () =>
+                                  context.pushNamed(AppRouteNames.fiado),
+                            ),
+                          if (canSell &&
+                              snapshot.activeOperationalOrdersCount > 0)
+                            _DashboardAlertTile(
+                              title: 'Pedidos em andamento',
+                              subtitle:
+                                  '${snapshot.activeOperationalOrdersCount} pedido(s) para acompanhar.',
+                              icon: Icons.assignment_outlined,
+                              tone: AppCardTone.info,
+                              onTap: () =>
+                                  context.pushNamed(AppRouteNames.orders),
+                            ),
+                          if (canInventory &&
+                              (lowStockCount == null || lowStockCount > 0))
+                            _DashboardAlertTile(
+                              title: 'Reposição de estoque',
+                              subtitle: lowStockCount == null
+                                  ? 'Consulta de estoque indisponível ou em andamento.'
+                                  : '$lowStockCount item(ns) abaixo do mínimo.',
+                              icon: Icons.inventory_2_outlined,
+                              tone: AppCardTone.warning,
+                              onTap: () =>
+                                  context.pushNamed(AppRouteNames.inventory),
+                            ),
+                          if (alertCount > 0)
+                            _DashboardAlertTile(
+                              title: 'Sincronização',
+                              subtitle:
+                                  '${accountCloud.pendingCount} pendente(s), ${accountCloud.conflictCount} conflito(s), ${accountCloud.errorCount} erro(s), ${accountCloud.blockedCount} bloqueado(s).',
+                              icon: Icons.sync_rounded,
+                              tone: AppCardTone.info,
+                              onTap: () =>
+                                  context.pushNamed(AppRouteNames.accountCloud),
+                            ),
+                          if ((!canFiado || snapshot.pendingFiadoCount == 0) &&
+                              (!canSell ||
+                                  snapshot.activeOperationalOrdersCount == 0) &&
+                              (!canInventory || lowStockCount == 0) &&
+                              alertCount == 0)
+                            const Text(
+                              'Nenhuma pendência nos dados disponíveis para seu acesso.',
+                            ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: layout.sectionGap),
+                    if (canCash) ...[
                       AppSectionCard(
-                        title: 'Movimentações recentes',
-                        subtitle: 'Movimentos comerciais recentes do caixa.',
+                        title: 'Últimas movimentações',
+                        subtitle: snapshot.hasOpenCashSession
+                            ? 'Até 5 movimentos do caixa aberto.'
+                            : 'Até 5 movimentos de caixa registrados neste dispositivo.',
+                        trailing: TextButton(
+                          onPressed: () =>
+                              context.pushNamed(AppRouteNames.cash),
+                          child: const Text('Ver caixa'),
+                        ),
                         child: snapshot.recentMovements.isEmpty
                             ? const AppEmptyState(
                                 title: 'Sem transações recentes',
                                 message:
-                                    'Quando uma venda ou movimento de caixa acontecer, ela aparece aqui.',
+                                    'As vendas recebidas e os movimentos de caixa aparecerão aqui.',
                                 compact: true,
                               )
                             : Column(
                                 children: [
-                                  for (
-                                    var index = 0;
-                                    index < snapshot.recentMovements.length;
-                                    index++
-                                  ) ...[
-                                    _RecentMovementTile(
-                                      movement: snapshot.recentMovements[index],
+                                  for (final movement
+                                      in snapshot.recentMovements)
+                                    Padding(
+                                      padding: EdgeInsets.only(
+                                        bottom: layout.blockGap,
+                                      ),
+                                      child: _RecentMovementTile(
+                                        movement: movement,
+                                      ),
                                     ),
-                                    if (index <
-                                        snapshot.recentMovements.length - 1)
-                                      SizedBox(height: layout.blockGap),
-                                  ],
                                 ],
                               ),
                       ),
-                    SizedBox(height: layout.sectionGap),
-                    _DashboardSyncCard(accountCloud: accountCloud),
-                    if (lowStockCount > 0 || pendingSendCount > 0) ...[
                       SizedBox(height: layout.sectionGap),
-                      AppSectionCard(
-                        title: 'Alertas',
-                        child: Column(
-                          children: [
-                            if (lowStockCount > 0)
-                              _DashboardAlertTile(
-                                title: 'Produtos com estoque baixo',
-                                subtitle:
-                                    '$lowStockCount produto(s) precisam de reposição.',
-                                icon: Icons.inventory_2_outlined,
-                                tone: AppCardTone.warning,
-                                onTap: () =>
-                                    context.pushNamed(AppRouteNames.inventory),
-                              ),
-                            if (lowStockCount > 0 && pendingSendCount > 0)
-                              SizedBox(height: layout.blockGap),
-                            if (pendingSendCount > 0)
-                              _DashboardAlertTile(
-                                title: 'Atualizações aguardando envio',
-                                subtitle:
-                                    '$pendingSendCount registro(s) aguardando sincronização.',
-                                icon: Icons.schedule_send_rounded,
-                                tone: AppCardTone.info,
-                                onTap: () => context.pushNamed(
-                                  AppRouteNames.accountCloud,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
                     ],
+                    _DashboardSyncCard(accountCloud: accountCloud),
                   ],
                 );
               },
-              loading: () => const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: AppStateCard(
-                  title: 'Atualizando dashboard',
-                  message: 'Buscando o resumo mais recente do dia.',
-                  tone: AppStateTone.loading,
-                  compact: true,
-                ),
+              loading: () => const AppStateCard(
+                title: 'Atualizando dashboard',
+                message: 'Buscando o resumo mais recente do dia.',
+                tone: AppStateTone.loading,
+                compact: true,
               ),
               error: (_, _) => AppSectionCard(
                 title: 'Falha ao carregar o dashboard',
@@ -379,15 +481,124 @@ class DashboardPage extends ConsumerWidget {
 
   void _openTodaySales(BuildContext context, WidgetRef ref) {
     final now = DateTime.now();
-    final startOfDay = DateTime(now.year, now.month, now.day);
-    final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
-
     ref.read(saleHistorySearchQueryProvider.notifier).state = '';
     ref.read(saleHistoryStatusFilterProvider.notifier).state = null;
     ref.read(saleHistoryTypeFilterProvider.notifier).state = null;
-    ref.read(saleHistoryFromProvider.notifier).state = startOfDay;
-    ref.read(saleHistoryToProvider.notifier).state = endOfDay;
+    ref.read(saleHistoryFromProvider.notifier).state = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    );
+    ref.read(saleHistoryToProvider.notifier).state = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      23,
+      59,
+      59,
+    );
     context.pushNamed(AppRouteNames.salesHistory);
+  }
+}
+
+class _DashboardProfit extends ConsumerWidget {
+  const _DashboardProfit();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(dashboardDailyOverviewProvider);
+    final overview = value.asData?.value;
+    final available = overview != null && overview.isRealizedProfitAvailable;
+    return DashboardMetric(
+      label: 'Lucro realizado',
+      value: available
+          ? AppFormatters.currencyFromCents(overview.realizedProfitCents)
+          : value.isLoading
+          ? 'Consultando…'
+          : 'Indisponível',
+      caption: available
+          ? 'Local • fiado proporcional ao recebido. Antes das despesas.'
+          : value.isLoading
+          ? 'Calculando com os custos registrados.'
+          : overview?.realizedProfitUnavailableReason ??
+                'Não foi possível consultar. Confira nos relatórios.',
+      icon: Icons.insights_rounded,
+      onTap: () => context.pushNamed(AppRouteNames.reports),
+    );
+  }
+}
+
+class _DashboardMovement extends ConsumerWidget {
+  const _DashboardMovement();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final trend = ref.watch(dashboardSalesTrendProvider);
+    final theme = Theme.of(context);
+    // A contrasting feed card, using the same report widget and real series.
+    const background = Color(0xFF3C2068);
+    final scheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFFB998FF),
+      brightness: Brightness.dark,
+    ).copyWith(surface: background);
+    final colors = context.appColors.copyWith(
+      cardBackground: background,
+      outlineSoft: const Color(0xFF72539B),
+      interactive: context.appColors.interactive.copyWith(
+        onSurface: scheme.onSurfaceVariant,
+      ),
+      sales: context.appColors.sales.copyWith(base: const Color(0xFFD2B8FF)),
+    );
+    return Theme(
+      data: theme.copyWith(
+        colorScheme: scheme,
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(foregroundColor: scheme.primary),
+        ),
+        textTheme: theme.textTheme.apply(
+          bodyColor: scheme.onSurface,
+          displayColor: scheme.onSurface,
+        ),
+        extensions: [
+          ...theme.extensions.values.where((e) => e is! AppColorTokens),
+          colors,
+        ],
+      ),
+      child: trend.when(
+        data: (points) => SalesTrendChartCard(
+          title: 'Movimento da loja',
+          emptyMessage:
+              'As vendas registradas neste dispositivo nos últimos 7 dias aparecerão aqui.',
+          subtitle:
+              'Vendas líquidas • últimos 7 dias • base local, sem consolidar outros dispositivos.',
+          points:
+              points
+                  .where((p) => p.salesCount > 0 || p.netSalesCents != 0)
+                  .isEmpty
+              ? const []
+              : points,
+        ),
+        loading: () => const AppSectionCard(
+          title: 'Movimento da loja',
+          child: Text('Consultando as vendas dos últimos 7 dias…'),
+        ),
+        error: (_, _) => AppSectionCard(
+          title: 'Movimento da loja',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Não foi possível consultar a série de vendas. O resumo do dia continua disponível.',
+              ),
+              TextButton(
+                onPressed: () => ref.invalidate(dashboardSalesTrendProvider),
+                child: const Text('Tentar novamente'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -429,186 +640,6 @@ class _DashboardDataNotice extends StatelessWidget {
       message: message,
       tone: isLoading ? AppStateTone.loading : AppStateTone.warning,
       compact: true,
-    );
-  }
-}
-
-class _DashboardAppBarTitle extends StatelessWidget {
-  const _DashboardAppBarTitle({required this.title, required this.subtitle});
-
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(title),
-        Text(
-          subtitle,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FaturamentoHeroCard extends StatelessWidget {
-  const _FaturamentoHeroCard({
-    required this.value,
-    required this.caption,
-    required this.onTap,
-  });
-
-  final String value;
-  final String caption;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final layout = context.appLayout;
-
-    return AppCard(
-      onTap: onTap,
-      padding: EdgeInsets.all(layout.space10),
-      gradient: const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFF0F7B5C), Color(0xFF17A878)],
-      ),
-      borderColor: Colors.transparent,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: layout.space3,
-                  runSpacing: layout.space2,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.payments_rounded,
-                      color: Colors.white.withValues(alpha: 0.82),
-                      size: layout.iconLg,
-                    ),
-                    Text(
-                      'Faturamento hoje',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: Colors.white.withValues(alpha: 0.82),
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: layout.space3,
-                        vertical: layout.space2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.14),
-                        borderRadius: BorderRadius.circular(layout.radiusSm),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.18),
-                        ),
-                      ),
-                      child: Text(
-                        'Vendas de hoje',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Colors.white.withValues(alpha: 0.82),
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: layout.space6),
-                Text(
-                  value,
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                SizedBox(height: layout.space3),
-                Text(
-                  caption,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.78),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(width: layout.space8),
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(layout.radiusLg),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
-            ),
-            child: const Icon(Icons.arrow_forward_rounded, color: Colors.white),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _QuickAccessItem extends StatelessWidget {
-  const _QuickAccessItem({
-    required this.label,
-    required this.icon,
-    required this.palette,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final AppTonePalette palette;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final layout = context.appLayout;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(layout.radiusLg),
-      onTap: onTap,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: palette.surface,
-              borderRadius: BorderRadius.circular(layout.radiusLg),
-              border: Border.all(color: palette.border),
-            ),
-            child: Icon(icon, color: palette.base, size: 24),
-          ),
-          SizedBox(height: layout.space5),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: context.appColors.interactive.onSurface,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -739,60 +770,24 @@ class _RecentMovementTile extends StatelessWidget {
       OperationalDashboardMovementDirection.neutral => Icons.sync_alt_rounded,
     };
 
-    return AppCard(
-      padding: EdgeInsets.all(layout.compactCardPadding),
-      child: Row(
+    return AppListTileCard(
+      title: movement.label,
+      subtitle: _friendlyMovementDescription(movement),
+      leading: Icon(icon, color: amountColor, size: layout.iconLg),
+      footer: Wrap(
+        spacing: layout.space4,
+        runSpacing: layout.space2,
         children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: amountColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(layout.radiusMd),
-            ),
-            child: Padding(
-              padding: EdgeInsets.all(layout.space4),
-              child: Icon(icon, color: amountColor, size: layout.iconMd),
+          Text(
+            AppFormatters.currencyFromCents(movement.amountCents),
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              color: amountColor,
+              fontWeight: FontWeight.w800,
             ),
           ),
-          SizedBox(width: layout.space4),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  movement.label,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                SizedBox(height: layout.space2),
-                Text(
-                  _friendlyMovementDescription(movement),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(width: layout.space4),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                AppFormatters.currencyFromCents(movement.amountCents),
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: amountColor,
-                ),
-              ),
-              SizedBox(height: layout.space2),
-              Text(
-                AppFormatters.shortDateTime(movement.createdAt),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
+          Text(
+            AppFormatters.shortDateTime(movement.createdAt.toLocal()),
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
       ),

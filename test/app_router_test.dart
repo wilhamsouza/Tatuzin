@@ -357,6 +357,8 @@ List<Override> _baseOverrides({AuthGateway? remoteGateway}) {
     appStartupProvider.overrideWith(
       (ref) async => const AppStartupState.success(),
     ),
+    dashboardDailyOverviewProvider.overrideWith((ref) async => null),
+    dashboardSalesTrendProvider.overrideWith((ref) async => []),
     operationalDashboardSnapshotProvider.overrideWith(
       (ref) async => const OperationalDashboardSnapshot(
         soldTodayCents: 0,

@@ -1,3 +1,9 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:ui' as ui;
+
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:tatuzin/app/app.dart';
 import 'package:tatuzin/app/core/config/app_data_mode.dart';
 import 'package:tatuzin/app/core/config/app_environment.dart';
@@ -15,6 +21,12 @@ import 'package:tatuzin/app/core/widgets/app_main_drawer.dart';
 import 'package:tatuzin/modules/dashboard/domain/entities/operational_dashboard_snapshot.dart';
 import 'package:tatuzin/modules/dashboard/presentation/pages/dashboard_page.dart';
 import 'package:tatuzin/modules/dashboard/presentation/providers/dashboard_providers.dart';
+import 'package:tatuzin/modules/dashboard/presentation/widgets/dashboard_feed_widgets.dart';
+import 'package:tatuzin/modules/relatorios/domain/entities/report_overview_summary.dart';
+import 'package:tatuzin/modules/relatorios/domain/entities/report_sales_trend_point.dart';
+import 'package:tatuzin/modules/relatorios/domain/entities/report_filter.dart';
+import 'package:tatuzin/modules/relatorios/presentation/providers/report_providers.dart';
+import 'package:tatuzin/modules/onboarding/presentation/onboarding_providers.dart';
 import 'package:tatuzin/modules/estoque/domain/entities/inventory_count_session.dart';
 import 'package:tatuzin/modules/estoque/domain/entities/inventory_item.dart';
 import 'package:tatuzin/modules/estoque/presentation/providers/inventory_providers.dart';
@@ -46,6 +58,255 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
+  for (final variant in [
+    (width: 360.0, height: 800.0, scale: 1.0, mode: AppThemeMode.light),
+    (width: 360.0, height: 640.0, scale: 1.8, mode: AppThemeMode.dark),
+    (width: 412.0, height: 915.0, scale: 2.0, mode: AppThemeMode.light),
+  ]) {
+    testWidgets(
+      'feed mobile ${variant.width} ${variant.scale} ${variant.mode.name}',
+      (tester) async {
+        tester.view.physicalSize = Size(variant.width, variant.height);
+        final disableShadows = debugDisableShadows;
+        debugDisableShadows = false;
+        addTearDown(() => debugDisableShadows = disableShadows);
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = variant.scale;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final fonts = FontLoader('NotoSans')
+          ..addFont(rootBundle.load('assets/fonts/NotoSans-Regular.ttf'))
+          ..addFont(rootBundle.load('assets/fonts/NotoSans-Bold.ttf'));
+        await fonts.load();
+        final container = await _pumpAuthenticatedApp(
+          tester,
+          additionalOverrides: [
+            companyOnboardingProvider.overrideWith((ref) async => null),
+            dashboardDailyOverviewProvider.overrideWith(
+              (ref) async => _dashboardOverview(),
+            ),
+            dashboardSalesTrendProvider.overrideWith(
+              (ref) async => [
+                for (var day = 1; day <= 7; day++)
+                  ReportSalesTrendPoint(
+                    bucketStart: DateTime(2026, 11, day),
+                    bucketEndExclusive: DateTime(2026, 11, day + 1),
+                    label: '$day/11',
+                    salesCount: day == 2 ? 0 : day,
+                    grossSalesCents: day == 2 ? 0 : day * 1000,
+                    netSalesCents: day == 2 ? 0 : day * 1000,
+                  ),
+              ],
+            ),
+            operationalDashboardSnapshotProvider.overrideWith(
+              (ref) async => OperationalDashboardSnapshot(
+                soldTodayCents: 152340,
+                todaySalesCount: 12,
+                hasOpenCashSession: true,
+                currentCashCents: 81300,
+                pendingFiadoCount: 4,
+                pendingFiadoCents: 92750,
+                activeOperationalOrdersCount: 3,
+                recentMovements: [
+                  OperationalDashboardRecentMovement(
+                    label: 'Venda recebida',
+                    amountCents: 12000,
+                    createdAt: DateTime(2026, 11, 7, 15),
+                    direction: OperationalDashboardMovementDirection.inflow,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+        await container
+            .read(appThemeModeControllerProvider.notifier)
+            .setThemeMode(variant.mode);
+        await tester.pumpAndSettle();
+        final prefix =
+            '${variant.width.toInt()}x${variant.height.toInt()}-${variant.mode.name}-${variant.scale}';
+        await _captureDashboard(tester, '$prefix-top');
+        final semantics = tester.ensureSemantics();
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        semantics.dispose();
+        final feed = find.byKey(const PageStorageKey('dashboard-feed'));
+        for (final title in [
+          'Resumo do dia',
+          'Lucro realizado',
+          'Movimento da loja',
+          'Pendências',
+          'Últimas movimentações',
+          'Seus dados',
+        ]) {
+          await tester.scrollUntilVisible(
+            find.text(title),
+            180,
+            scrollable: find
+                .descendant(of: feed, matching: find.byType(Scrollable))
+                .first,
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: title);
+          if (title == 'Movimento da loja' || title == 'Pendências') {
+            await _captureDashboard(
+              tester,
+              '$prefix-${title == 'Pendências' ? 'pending' : 'movement'}',
+            );
+          }
+        }
+        expect(find.text('Nova venda'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox.shrink());
+        debugDisableShadows = disableShadows;
+      },
+    );
+  }
+
+  testWidgets(
+    'lucro sem custo e série vazia não exibem indicadores inventados',
+    (tester) async {
+      await _pumpAuthenticatedApp(
+        tester,
+        additionalOverrides: [
+          companyOnboardingProvider.overrideWith((ref) async => null),
+          dashboardDailyOverviewProvider.overrideWith(
+            (ref) async => _dashboardOverview(costsKnown: false),
+          ),
+        ],
+      );
+      await tester.ensureVisible(find.text('Lucro realizado'));
+      expect(find.text('Custo não informado'), findsOneWidget);
+      expect(find.text('Indisponível'), findsOneWidget);
+      await tester.ensureVisible(find.text('Movimento da loja'));
+      expect(find.text('Ainda não há vendas neste período.'), findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow), findsNothing);
+      expect(find.byIcon(Icons.favorite_border), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'offline preserva métricas locais sem tratar falha de estoque como zero',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await _pumpAuthenticatedApp(
+        tester,
+        additionalOverrides: [
+          companyOnboardingProvider.overrideWith((ref) async => null),
+          inventoryItemOptionsProvider.overrideWith(
+            (ref) async => throw StateError('stock-query-failed'),
+          ),
+          backendConnectionStatusProvider.overrideWith(
+            (ref) async => BackendConnectionStatus(
+              isConfigured: true,
+              isReachable: false,
+              companyLookupSucceeded: false,
+              endpointLabel: 'https://api.tatuzin.com.br/api',
+              message: 'offline',
+              checkedAt: DateTime.now(),
+            ),
+          ),
+        ],
+      );
+      expect(find.text('Sem internet'), findsAtLeastNWidgets(1));
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('dashboard-today-sales')),
+      );
+      expect(find.text('R\$ 1.523,40'), findsOneWidget);
+      await tester.ensureVisible(
+        find.textContaining('Não foi possível consultar o estoque.'),
+      );
+      expect(find.text('Estoque em dia'), findsNothing);
+      expect(find.textContaining('stock-query-failed'), findsNothing);
+      await _captureDashboard(tester, 'offline-partial');
+    },
+  );
+
+  testWidgets('feed conserva filtros dos relatórios e respeita permissões', (
+    tester,
+  ) async {
+    final container = await _pumpAuthenticatedApp(tester);
+    final filter = ReportFilter(
+      start: DateTime(2025),
+      endExclusive: DateTime(2025, 2),
+    );
+    container.read(reportFilterProvider.notifier).replace(filter);
+    final session = container.read(appSessionProvider);
+    container
+        .read(appSessionProvider.notifier)
+        .setAuthenticatedSession(
+          scope: session.scope,
+          user: session.user,
+          company: session.company,
+          clientInstanceId: session.clientInstanceId,
+          membership: const AppMembershipContext(
+            role: 'OPERATOR',
+            permissions: {'sales.create'},
+          ),
+        );
+    await tester.pumpAndSettle();
+    final shortcuts = find.byType(DashboardShortcut);
+    expect(
+      find.descendant(of: shortcuts, matching: find.text('Equipe')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: shortcuts, matching: find.text('Relatórios')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: shortcuts, matching: find.text('Caixa')),
+      findsNothing,
+    );
+    expect(find.text('Lucro realizado'), findsNothing);
+    expect(container.read(reportFilterProvider), same(filter));
+    expect(find.text('Nova venda'), findsOneWidget);
+    expect(await container.read(dashboardDailyOverviewProvider.future), isNull);
+  });
+
+  testWidgets('falha da série preserva resumo e oferece nova tentativa', (
+    tester,
+  ) async {
+    await _pumpAuthenticatedApp(
+      tester,
+      additionalOverrides: [
+        companyOnboardingProvider.overrideWith((ref) async => null),
+        dashboardSalesTrendProvider.overrideWith(
+          (ref) async => throw StateError('private-db-error'),
+        ),
+      ],
+    );
+    await tester.ensureVisible(find.text('Movimento da loja'));
+    expect(
+      find.textContaining('Não foi possível consultar a série'),
+      findsOneWidget,
+    );
+    expect(find.text('Tentar novamente'), findsAtLeastNWidgets(1));
+    expect(find.text('Resumo do dia'), findsOneWidget);
+    expect(find.textContaining('private-db-error'), findsNothing);
+  });
+
+  testWidgets('carregamento preserva atalhos e botão de nova venda', (
+    tester,
+  ) async {
+    final pending = Completer<OperationalDashboardSnapshot>();
+    await _pumpAuthenticatedApp(
+      tester,
+      settle: false,
+      additionalOverrides: [
+        companyOnboardingProvider.overrideWith((ref) async => null),
+        operationalDashboardSnapshotProvider.overrideWith(
+          (ref) => pending.future,
+        ),
+      ],
+    );
+    expect(find.text('Atualizando dashboard'), findsOneWidget);
+    expect(find.byType(DashboardShortcut), findsWidgets);
+    expect(find.text('Nova venda'), findsOneWidget);
   });
 
   testWidgets(
@@ -358,11 +619,11 @@ void main() {
       ],
     );
 
-    await tester.ensureVisible(find.text('Movimentações recentes'));
+    await tester.ensureVisible(find.text('Últimas movimentações'));
     await tester.pumpAndSettle();
 
     expect(find.text('Venda recebida'), findsOneWidget);
-    expect(find.text('Pagamento em dinheiro.'), findsOneWidget);
+    expect(find.textContaining('Pagamento em dinheiro.'), findsOneWidget);
     expect(find.textContaining('[pm:dinheiro]'), findsNothing);
     expect(find.textContaining('177811123456'), findsNothing);
   });
@@ -507,6 +768,7 @@ void main() {
 Future<ProviderContainer> _pumpAuthenticatedApp(
   WidgetTester tester, {
   List<Override> additionalOverrides = const [],
+  bool settle = true,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -530,6 +792,8 @@ Future<ProviderContainer> _pumpAuthenticatedApp(
           recentMovements: <OperationalDashboardRecentMovement>[],
         ),
       ),
+      dashboardDailyOverviewProvider.overrideWith((ref) async => null),
+      dashboardSalesTrendProvider.overrideWith((ref) async => []),
       inventoryItemOptionsProvider.overrideWith(
         (ref) async => const <InventoryItem>[],
       ),
@@ -599,10 +863,22 @@ Future<ProviderContainer> _pumpAuthenticatedApp(
       );
 
   await tester.pumpWidget(
-    UncontrolledProviderScope(container: container, child: const ErpPdvApp()),
+    UncontrolledProviderScope(
+      container: container,
+      child: const RepaintBoundary(
+        key: ValueKey('dashboard-preview'),
+        child: ErpPdvApp(),
+      ),
+    ),
   );
 
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    for (var frame = 0; frame < 5; frame++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+  }
 
   expect(find.text('Continuar offline'), findsNothing);
   return container;
@@ -614,6 +890,67 @@ Future<void> _openMainDrawer(WidgetTester tester) async {
 
   expect(find.byType(AppMainDrawer), findsOneWidget);
 }
+
+// Preview artifacts use test fixtures only, never real company/customer data.
+Future<void> _captureDashboard(WidgetTester tester, String name) async {
+  final icons = FontLoader('MaterialIcons')
+    ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+  await icons.load();
+  await tester.runAsync(
+    () => precacheImage(
+      const AssetImage('assets/branding/logo-transparent.png'),
+      tester.element(find.byType(DashboardPage)),
+    ),
+  );
+  await tester.pump();
+  final boundary = tester.renderObject<RenderRepaintBoundary>(
+    find.byKey(const ValueKey('dashboard-preview')),
+  );
+  await tester.runAsync(() async {
+    final image = await boundary.toImage(pixelRatio: 1);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    final dir = Directory('build/phase1-mobile');
+    await dir.create(recursive: true);
+    await File(
+      '${dir.path}/$name.png',
+    ).writeAsBytes(bytes!.buffer.asUint8List());
+    image.dispose();
+  });
+}
+
+ReportOverviewSummary _dashboardOverview({bool costsKnown = true}) =>
+    ReportOverviewSummary(
+      filter: ReportFilter(
+        start: DateTime(2026, 11, 7),
+        endExclusive: DateTime(2026, 11, 8),
+      ),
+      grossSalesCents: 152340,
+      netSalesCents: 152340,
+      totalReceivedCents: 120000,
+      costOfGoodsSoldCents: 80000,
+      realizedProfitCents: costsKnown ? 40000 : 0,
+      isRealizedProfitAvailable: costsKnown,
+      realizedProfitUnavailableReason: costsKnown
+          ? null
+          : 'Custo não informado',
+      salesCount: 12,
+      totalDiscountCents: 0,
+      totalSurchargeCents: 0,
+      pendingFiadoCents: 92750,
+      pendingFiadoCount: 4,
+      cancelledSalesCount: 0,
+      cancelledSalesCents: 0,
+      totalPurchasedCents: 0,
+      totalPurchasePaymentsCents: 0,
+      totalPurchasePendingCents: 0,
+      cashSalesReceivedCents: 120000,
+      fiadoReceiptsCents: 0,
+      totalCreditGeneratedCents: 0,
+      totalCreditUsedCents: 0,
+      totalOutstandingCreditCents: 0,
+      topCreditCustomers: const [],
+      paymentSummaries: const [],
+    );
 
 Finder _mainDrawerScrollable() {
   final drawerScrollable = find.descendant(
