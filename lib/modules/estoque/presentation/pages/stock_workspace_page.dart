@@ -426,7 +426,7 @@ class _StockWorkspaceState extends ConsumerState<StockWorkspacePage> {
                   if (pendingLocalRefresh)
                     StockNotice(
                       message:
-                          'Existe uma alteração confirmada no servidor que ainda precisa ser refletida neste aparelho. A venda fica protegida até a atualização.',
+                          'Há uma alteração de estoque aguardando conferência neste aparelho. Confira a operação e atualize o saldo antes de vender.',
                       action: 'Conferir operação e atualizar saldo',
                       onAction: () async {
                         final complete = await ref
@@ -438,7 +438,7 @@ class _StockWorkspaceState extends ConsumerState<StockWorkspacePage> {
                               content: Text(
                                 complete
                                     ? 'Saldo local atualizado.'
-                                    : 'A alteração continua confirmada no servidor. Confira a conexão e as pendências de sincronização.',
+                                    : 'Não foi possível concluir a conferência. Confira a conexão e as pendências de sincronização.',
                               ),
                             ),
                           );

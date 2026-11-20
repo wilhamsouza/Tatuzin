@@ -59,7 +59,7 @@ abstract final class CentralStockRefreshSupport {
   static Future<void> assertReady(DatabaseExecutor db) async {
     if ((await read(db)).isNotEmpty) {
       throw const ValidationException(
-        'Há uma alteração de estoque confirmada no servidor ainda não refletida neste aparelho. Abra Estoque e toque em Atualizar saldo deste aparelho antes de vender.',
+        'Há uma conferência de saldo pendente neste aparelho. Peça ao responsável para conferir a operação em Estoque antes de vender.',
       );
     }
   }
