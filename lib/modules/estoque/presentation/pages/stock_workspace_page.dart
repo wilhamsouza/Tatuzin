@@ -85,7 +85,7 @@ class _StockWorkspaceState extends ConsumerState<StockWorkspacePage> {
   String? movementType;
   DateTimeRange? movementPeriod;
   String? failure;
-  bool loading = true, localOnly = false;
+  bool loading = true, localOnly = false, pendingLocalRefresh = false;
   InventoryJson cap = {}, data = {};
   List<InventoryJson> items = [], drafts = [];
   @override
@@ -114,7 +114,7 @@ class _StockWorkspaceState extends ConsumerState<StockWorkspacePage> {
     InventoryJson nextCap = {}, nextData = {};
     List<InventoryJson> nextItems = [], nextDrafts = [];
     String? nextFailure;
-    bool nextLocal = false;
+    bool nextLocal = false, nextPending = false;
     try {
       try {
         nextCap = await api.read('/capabilities');
@@ -150,6 +150,7 @@ class _StockWorkspaceState extends ConsumerState<StockWorkspacePage> {
         nextItems = inventoryRows(nextData['items']);
       }
       nextDrafts = await api.drafts();
+      nextPending = await api.hasPendingLocalRefresh();
     } catch (error) {
       nextFailure = stockError(error);
       if (tab == 0 &&
@@ -202,6 +203,7 @@ class _StockWorkspaceState extends ConsumerState<StockWorkspacePage> {
         drafts = nextDrafts;
         failure = nextFailure;
         localOnly = nextLocal;
+        pendingLocalRefresh = nextPending;
         loading = false;
         total = inventoryNumber(inventoryJson(data['pagination'])['total']);
       });
@@ -254,39 +256,31 @@ class _StockWorkspaceState extends ConsumerState<StockWorkspacePage> {
               children: [
                 Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
                 const SizedBox(height: 12),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: SegmentedButton<int>(
-                    showSelectedIcon: false,
-                    segments: [
-                      const ButtonSegment(
-                        value: 0,
-                        icon: Icon(Icons.inventory_2_outlined),
-                        label: Text('Saldos'),
-                      ),
-                      const ButtonSegment(
-                        value: 1,
-                        icon: Icon(Icons.history),
-                        label: Text('Movimentações'),
-                      ),
-                      if (ref
-                          .watch(appSessionProvider)
-                          .hasFeature(FeatureKey.inventoryAdvanced))
-                        const ButtonSegment(
-                          value: 2,
-                          icon: Icon(Icons.fact_check_outlined),
-                          label: Text('Contagens'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final entry in const {
+                      0: 'Saldos',
+                      1: 'Movimentações',
+                      2: 'Contagens',
+                    }.entries)
+                      if (entry.key != 2 ||
+                          ref
+                              .watch(appSessionProvider)
+                              .hasFeature(FeatureKey.inventoryAdvanced))
+                        ChoiceChip(
+                          label: Text(entry.value),
+                          selected: tab == entry.key,
+                          onSelected: (_) {
+                            setState(() {
+                              tab = entry.key;
+                              page = 1;
+                            });
+                            _reload();
+                          },
                         ),
-                    ],
-                    selected: {tab},
-                    onSelectionChanged: (value) {
-                      setState(() {
-                        tab = value.first;
-                        page = 1;
-                      });
-                      _reload();
-                    },
-                  ),
+                  ],
                 ),
                 if (tab == 1) ...[
                   const SizedBox(height: 12),
@@ -429,6 +423,29 @@ class _StockWorkspaceState extends ConsumerState<StockWorkspacePage> {
                 key: PageStorageKey('stock-workspace-$tab'),
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                 children: [
+                  if (pendingLocalRefresh)
+                    StockNotice(
+                      message:
+                          'Existe uma alteração confirmada no servidor que ainda precisa ser refletida neste aparelho. A venda fica protegida até a atualização.',
+                      action: 'Conferir operação e atualizar saldo',
+                      onAction: () async {
+                        final complete = await ref
+                            .read(centralInventoryApiProvider)
+                            .refreshLocalStock();
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                complete
+                                    ? 'Saldo local atualizado.'
+                                    : 'A alteração continua confirmada no servidor. Confira a conexão e as pendências de sincronização.',
+                              ),
+                            ),
+                          );
+                        }
+                        await _reload();
+                      },
+                    ),
                   if (failure != null)
                     StockNotice(
                       message:

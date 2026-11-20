@@ -5,6 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../app/core/errors/app_exceptions.dart';
+import '../../../app/core/database/app_database.dart';
+import '../../../app/core/providers/app_data_refresh_provider.dart';
+import '../../produtos/presentation/providers/product_providers.dart';
+import 'confirmed_inventory_mirror.dart';
 import '../../../app/core/network/contracts/api_client_contract.dart';
 import '../../../app/core/network/network_providers.dart';
 import '../../../app/core/session/auth_token_storage.dart';
@@ -36,12 +40,116 @@ final centralInventoryApiProvider = Provider<CentralInventoryApi>((ref) {
   final session = ref.watch(appSessionProvider);
   final key = ref.watch(sessionIsolationKeyProvider);
   final runtimeKey = ref.watch(sessionRuntimeKeyProvider);
-  return CentralInventoryApi(
+  final mirror = ConfirmedInventoryMirror(ref.read(appDatabaseProvider));
+  void ensureCurrent() {
+    if (ref.read(sessionRuntimeKeyProvider) != runtimeKey) {
+      throw const ValidationException('A sessão mudou. Reabra o estoque.');
+    }
+  }
+
+  late final CentralInventoryApi api;
+  String? latestCountId;
+  Future<bool> refreshLocal(InventoryJson? committed) async {
+    ensureCurrent();
+    if (committed != null) {
+      final rows = committed['item'] is Map
+          ? [inventoryJson(committed['item'])]
+          : inventoryRows(committed['items']);
+      if (rows.isEmpty) {
+        throw const ValidationException(
+          'O servidor confirmou a operação, mas não retornou o saldo para este aparelho.',
+        );
+      }
+      await mirror.stage(rows, ensureCurrent: ensureCurrent);
+      latestCountId = inventoryJson(committed['session'])['id'] as String?;
+    }
+    Future<bool> fetchAndMirror() async {
+      final countItems = <String, InventoryJson>{};
+      return mirror.refreshPending(
+        prepare: () async {
+          await ref
+              .read(operationalSyncRunnerProvider)
+              .run(retryOnly: false, ignoreRetryBackoff: true);
+          ensureCurrent();
+          // Applied count details return all current quantities in one query.
+          // A receipt may be an idempotent replay, so never mirror it directly.
+          if (latestCountId != null) {
+            final response = await api.read(
+              '/counts/$latestCountId',
+              allowCache: false,
+            );
+            for (final item in inventoryRows(response['items'])) {
+              countItems[inventoryItemKey(item)] = item;
+            }
+          }
+        },
+        fetchCurrent: (item) async {
+          final counted = countItems[inventoryItemKey(item)];
+          if (counted != null) return counted;
+          final response = await api.read(
+            '/items/${item['productId']}',
+            query: {
+              if (item['productVariantId'] != null)
+                'productVariantId': item['productVariantId'],
+            },
+            allowCache: false,
+          );
+          return inventoryJson(response['item']);
+        },
+        ensureCurrent: ensureCurrent,
+      );
+    }
+
+    var complete = await fetchAndMirror();
+    if (!complete && session.canAccessPermission('products.read')) {
+      final records = await ref
+          .read(productsRemoteDatasourceProvider)
+          .listAll();
+      for (final record in records) {
+        ensureCurrent();
+        await ref.read(localProductRepositoryProvider).upsertFromRemote(record);
+      }
+      complete = await fetchAndMirror();
+    }
+    ensureCurrent();
+    return complete;
+  }
+
+  api = CentralInventoryApi(
     client: ref.read(realApiClientProvider),
     tokens: ref.read(authTokenStorageProvider),
     namespace: key,
     userId: session.user.remoteId ?? '',
     canWrite: session.canAccessPermission('stock.adjust'),
+    onQuantityPending: (resource, body) async {
+      final rows = <InventoryJson>[];
+      if (resource.startsWith('/counts/')) {
+        final id = resource.split('/')[2];
+        final detail = await api.read('/counts/$id', allowCache: false);
+        rows.addAll(inventoryRows(detail['items']));
+      } else {
+        rows.add({
+          'productId': body['productId'],
+          'productVariantId': body['productVariantId'],
+        });
+      }
+      await mirror.stageIntent(
+        rows,
+        body['requestId'] as String,
+        ensureCurrent: ensureCurrent,
+      );
+    },
+    onQuantityResolved: (requestId) =>
+        mirror.resolveIntent(requestId, ensureCurrent: ensureCurrent),
+    onQuantityCommitted: (response) async {
+      try {
+        return await refreshLocal(response);
+      } finally {
+        ensureCurrent();
+        ref.read(appDataRefreshProvider.notifier).state++;
+      }
+    },
+    pendingLocalRefresh: () async => (await mirror.pending()).isNotEmpty,
     ensureCurrent: () {
       if (ref.read(sessionIsolationKeyProvider) != key ||
           ref.read(sessionRuntimeKeyProvider) != runtimeKey) {
@@ -76,6 +184,7 @@ final centralInventoryApiProvider = Provider<CentralInventoryApi>((ref) {
       );
     },
   );
+  return api;
 });
 
 /// Inventory is server authoritative. Local storage holds read snapshots and
@@ -90,6 +199,10 @@ class CentralInventoryApi {
     required this.prepareWrite,
     required this.ensureCurrent,
     Future<SharedPreferences> Function()? preferences,
+    this.onQuantityCommitted,
+    this.pendingLocalRefresh,
+    this.onQuantityPending,
+    this.onQuantityResolved,
   }) : _preferences = preferences ?? SharedPreferences.getInstance;
 
   final ApiClientContract client;
@@ -100,7 +213,122 @@ class CentralInventoryApi {
   final Future<void> Function() prepareWrite;
   final void Function() ensureCurrent;
   final Future<SharedPreferences> Function() _preferences;
+  final Future<bool> Function(InventoryJson? response)? onQuantityCommitted;
+  final Future<bool> Function()? pendingLocalRefresh;
+  final Future<void> Function(String resource, InventoryJson body)?
+  onQuantityPending;
+  final Future<void> Function(String requestId)? onQuantityResolved;
+
+  Future<bool> hasPendingLocalRefresh() async =>
+      (await _intents()).isNotEmpty ||
+      (await pendingLocalRefresh?.call() ?? false);
+  Future<bool> refreshLocalStock() async {
+    ensureCurrent();
+    try {
+      for (final intent in await _intents()) {
+        if (!canWrite) return false;
+        await prepareWrite();
+        final body = inventoryJson(intent['body']);
+        final resource = intent['resource'] as String;
+        await onQuantityPending?.call(resource, body);
+        late final ApiResponse<InventoryJson> response;
+        try {
+          response = await _send(intent['method'] as String, resource, body);
+          ensureCurrent();
+        } catch (error) {
+          if (!_definiteRejection(error)) return false;
+          await onQuantityResolved?.call(body['requestId'] as String);
+          await _forgetIntent(body['requestId'] as String);
+          continue;
+        }
+        await onQuantityResolved?.call(body['requestId'] as String);
+        await _forgetIntent(body['requestId'] as String);
+        try {
+          await onQuantityCommitted?.call(response.data);
+        } catch (_) {
+          return false;
+        }
+      }
+      return await onQuantityCommitted?.call(null) ?? true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   String get _prefix => 'inventory.workspace.$namespace.$userId.';
+
+  Future<List<InventoryJson>> _intents() async {
+    ensureCurrent();
+    final saved = (await _preferences()).getString('${_prefix}quantityIntents');
+    ensureCurrent();
+    return saved == null ? [] : inventoryRows(jsonDecode(saved));
+  }
+
+  Future<void> _rememberIntent(
+    String method,
+    String resource,
+    InventoryJson body,
+  ) async {
+    final values = await _intents();
+    final prior = values.where(
+      (v) => inventoryJson(v['body'])['requestId'] == body['requestId'],
+    );
+    if (prior.isNotEmpty &&
+        jsonEncode(prior.first['body']) != jsonEncode(body)) {
+      throw const ValidationException(
+        'Confira a operação pendente antes de alterar seus dados.',
+      );
+    }
+    values.removeWhere(
+      (v) => inventoryJson(v['body'])['requestId'] == body['requestId'],
+    );
+    values.add({'method': method, 'resource': resource, 'body': body});
+    ensureCurrent();
+    await (await _preferences()).setString(
+      '${_prefix}quantityIntents',
+      jsonEncode(values),
+    );
+  }
+
+  Future<void> _forgetIntent(String requestId) async {
+    final values = await _intents();
+    values.removeWhere(
+      (v) => inventoryJson(v['body'])['requestId'] == requestId,
+    );
+    ensureCurrent();
+    await (await _preferences()).setString(
+      '${_prefix}quantityIntents',
+      jsonEncode(values),
+    );
+  }
+
+  bool _definiteRejection(Object error) =>
+      error is NetworkRequestException &&
+      error.cause is int &&
+      (error.cause as int) >= 400 &&
+      (error.cause as int) < 500 &&
+      ![408, 429].contains(error.cause);
+
+  Future<ApiResponse<InventoryJson>> _send(
+    String method,
+    String resource,
+    InventoryJson body,
+  ) async {
+    final options = await _options();
+    return switch (method) {
+      'PUT' => client.putJson(
+        '/inventory$resource',
+        body: body,
+        options: options,
+      ),
+      'PATCH' => client.patchJson(
+        '/inventory$resource',
+        body: body,
+        options: options,
+      ),
+      _ => client.postJson('/inventory$resource', body: body, options: options),
+    };
+  }
 
   Future<ApiRequestOptions> _options([
     Map<String, Object?> query = const {},
@@ -173,25 +401,50 @@ class CentralInventoryApi {
         'A operação central de estoque ainda não está habilitada para esta empresa.',
       );
     }
-    final options = await _options();
-    final response = switch (method) {
-      'PUT' => await client.putJson(
-        '/inventory$resource',
-        body: body,
-        options: options,
-      ),
-      'PATCH' => await client.patchJson(
-        '/inventory$resource',
-        body: body,
-        options: options,
-      ),
-      _ => await client.postJson(
-        '/inventory$resource',
-        body: body,
-        options: options,
-      ),
-    };
+    final quantityWrite =
+        resource == '/adjustments' ||
+        resource == '/initial-balances' ||
+        RegExp(r'^/counts/[^/]+/apply$').hasMatch(resource);
+    final durable = quantityWrite && onQuantityPending != null;
+    if (durable) {
+      if (body['requestId'] is! String) {
+        throw const ValidationException(
+          'Identificação da operação obrigatória.',
+        );
+      }
+      await _rememberIntent(method, resource, body);
+      await onQuantityPending!(resource, body);
+    }
+    late final ApiResponse<InventoryJson> response;
+    try {
+      response = await _send(method, resource, body);
+    } catch (error) {
+      if (durable && _definiteRejection(error)) {
+        await onQuantityResolved?.call(body['requestId'] as String);
+        await _forgetIntent(body['requestId'] as String);
+        try {
+          await onQuantityCommitted?.call(null);
+        } catch (_) {
+          /* Keep the local guard. */
+        }
+      }
+      rethrow;
+    }
     ensureCurrent();
+    if (quantityWrite && onQuantityCommitted != null) {
+      var refreshed = false;
+      try {
+        if (durable) {
+          await onQuantityResolved?.call(body['requestId'] as String);
+        }
+        if (durable) await _forgetIntent(body['requestId'] as String);
+        refreshed = await onQuantityCommitted!(response.data);
+      } catch (_) {
+        // The central mutation is already committed. A cache failure must never
+        // become a failed adjustment or cause the write to be replayed.
+      }
+      return {...response.data, 'localRefreshPending': !refreshed};
+    }
     return response.data;
   }
 

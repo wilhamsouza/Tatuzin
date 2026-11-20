@@ -367,7 +367,7 @@ class _StockAdjustmentState extends ConsumerState<CentralStockAdjustmentPage> {
       setState(() => busy = true);
       final api = ref.read(centralInventoryApiProvider);
       await api.saveDraft(_draft());
-      await api.write(
+      final confirmed = await api.write(
         'POST',
         widget.draft['initialize'] == true
             ? '/initial-balances'
@@ -383,7 +383,18 @@ class _StockAdjustmentState extends ConsumerState<CentralStockAdjustmentPage> {
         },
       );
       await api.removeDraft(inventoryText(widget.draft['id']));
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              confirmed['localRefreshPending'] == true
+                  ? 'Movimentação confirmada no servidor. Atualize o saldo deste aparelho em Estoque antes de vender.'
+                  : 'Movimentação confirmada e saldo deste aparelho atualizado.',
+            ),
+          ),
+        );
+        Navigator.of(context).pop();
+      }
     } catch (e) {
       if (mounted) {
         setState(

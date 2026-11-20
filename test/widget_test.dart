@@ -1004,6 +1004,8 @@ class _NoSessionGateway implements AuthGateway {
 
 class _InventoryNavigationFixture extends Fake implements CentralInventoryApi {
   @override
+  Future<bool> hasPendingLocalRefresh() async => false;
+  @override
   Future<InventoryJson> read(
     String resource, {
     Map<String, Object?> query = const {},

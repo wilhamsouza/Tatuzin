@@ -24,6 +24,7 @@ class _CentralCountState extends ConsumerState<CentralCountPage> {
   List<InventoryJson> items = [], removed = [];
   bool busy = true, cached = false, canTransfer = false, draftLoaded = false;
   String? error;
+  bool localRefreshPending = false;
   final keys = <String, String>{};
   @override
   void initState() {
@@ -51,6 +52,9 @@ class _CentralCountState extends ConsumerState<CentralCountPage> {
           .read(centralInventoryApiProvider)
           .read('/capabilities');
       canTransfer = capabilities['canTransferCounts'] == true;
+      localRefreshPending = await ref
+          .read(centralInventoryApiProvider)
+          .hasPendingLocalRefresh();
       error = null;
     } catch (e) {
       error = stockError(e);
@@ -95,6 +99,13 @@ class _CentralCountState extends ConsumerState<CentralCountPage> {
         if (session['assigneeUserId'] != null)
           Text(
             'Responsável: ${inventoryText(session['assigneeName'], inventoryText(session['assigneeUserId']))}',
+          ),
+        if (localRefreshPending)
+          StockNotice(
+            message:
+                'A contagem está confirmada no servidor. O saldo deste aparelho ainda precisa ser atualizado antes de vender.',
+            action: 'Atualizar saldo deste aparelho',
+            onAction: _refreshLocalStock,
           ),
         if (cached)
           const StockNotice(
@@ -377,12 +388,26 @@ class _CentralCountState extends ConsumerState<CentralCountPage> {
           });
       session = inventoryJson(result['session']);
       items = inventoryRows(result['items']);
+      localRefreshPending = result['localRefreshPending'] == true;
       error = null;
       keys.remove(action);
     } catch (e) {
       error = stockError(e);
     }
     if (mounted) setState(() => busy = false);
+  }
+
+  Future<void> _refreshLocalStock() async {
+    setState(() => busy = true);
+    final complete = await ref
+        .read(centralInventoryApiProvider)
+        .refreshLocalStock();
+    if (mounted) {
+      setState(() {
+        busy = false;
+        localRefreshPending = !complete;
+      });
+    }
   }
 
   Future<void> _transfer() async {
