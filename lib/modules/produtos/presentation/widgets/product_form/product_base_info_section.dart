@@ -72,7 +72,7 @@ class ProductBaseInfoSection extends StatelessWidget {
     final layout = context.appLayout;
 
     return AppSectionCard(
-      title: 'Informacoes do produto',
+      title: 'Informações básicas e preços',
       subtitle: 'Preencha o essencial para cadastrar seu produto.',
       tone: AppCardTone.standard,
       child: Column(
@@ -196,7 +196,7 @@ class ProductBaseInfoSection extends StatelessWidget {
           Divider(color: colorScheme.outlineVariant),
           SizedBox(height: layout.sectionGap),
           Text(
-            'Preco e estoque',
+            'Preços',
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
             ),
@@ -259,13 +259,15 @@ class ProductBaseInfoSection extends StatelessWidget {
           else
             TextFormField(
               controller: stockController,
+              readOnly: true,
+              enableInteractiveSelection: false,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: InputDecoration(
-                labelText: isEditing ? 'Estoque atual' : 'Estoque inicial',
+              decoration: const InputDecoration(
+                labelText: 'Saldo de referência',
                 helperText:
-                    'Informe a quantidade conforme a unidade de medida.',
+                    'Para registrar entradas ou saídas, use Estoque após salvar.',
               ),
               validator: (value) {
                 final raw = (value ?? '').trim();

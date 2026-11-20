@@ -15,7 +15,7 @@ void main() {
   });
 
   test('preserva as 37 versoes historicas publicadas', () {
-    expect(AppConstants.databaseVersion, 38);
+    expect(AppConstants.databaseVersion, 39);
     expect(
       AppMigrations.versionsForTesting.take(37).toList(),
       List<int>.generate(37, (i) => i + 1),
@@ -25,7 +25,7 @@ void main() {
   test('estrutura de migrations futuras esta integrada sem versao vazia', () {
     expect(
       AppMigrations.versionsForTesting,
-      List<int>.generate(38, (i) => i + 1),
+      List<int>.generate(39, (i) => i + 1),
     );
 
     final migrationsSource = File(
@@ -41,6 +41,10 @@ void main() {
     expect(
       futureSource,
       contains('MigrationStep(version: 38, up: _createVersion38Schema)'),
+    );
+    expect(
+      futureSource,
+      contains('MigrationStep(version: 39, up: _createVersion39Schema)'),
     );
   });
 

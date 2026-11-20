@@ -250,19 +250,16 @@ class AppMainDrawer extends ConsumerWidget {
                               routeName: AppRouteNames.clients,
                             ),
                           ),
-                        if (canFeaturePermission(FeatureKey.inventoryAdvanced, [
-                          'stock.adjust',
-                          'reports.advanced',
-                        ]))
+                        if (canAny(['stock.adjust', 'reports.advanced']))
                           _DrawerItem(
-                            label: 'Inventário físico',
+                            label: 'Estoque',
                             icon: Icons.fact_check_rounded,
-                            isSelected: selected(AppRoutePaths.inventoryCounts),
+                            isSelected: selected(AppRoutePaths.inventory),
                             onTap: () => _navigateTo(
                               context,
                               currentPath: currentPath,
-                              path: AppRoutePaths.inventoryCounts,
-                              routeName: AppRouteNames.inventoryCounts,
+                              path: AppRoutePaths.inventory,
+                              routeName: AppRouteNames.inventory,
                             ),
                           ),
                         if (canFeaturePermission(FeatureKey.purchases, [

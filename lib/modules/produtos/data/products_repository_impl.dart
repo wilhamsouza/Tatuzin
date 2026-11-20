@@ -346,8 +346,7 @@ class ProductsRepositoryImpl
 
       final remoteRecord = await _toRemoteRecord(product);
       final remoteId = product.remoteId ?? item.remoteId;
-      final persisted =
-          (remoteId == null || item.operation == SyncQueueOperation.create)
+      final persisted = (remoteId == null)
           ? await _remoteDatasource.create(remoteRecord)
           : await _remoteDatasource.update(remoteId, remoteRecord);
 
@@ -516,6 +515,7 @@ class ProductsRepositoryImpl
 
   Product _remoteProductToEntity(RemoteProductRecord remote) {
     return Product(
+      catalogRevision: remote.catalogRevision,
       id: _remotePlaceholderId(remote.remoteId),
       uuid: remote.localUuid,
       name: remote.name,
@@ -588,6 +588,7 @@ class ProductsRepositoryImpl
                   : null)
         : null;
     return RemoteProductRecord(
+      catalogRevision: input.expectedCatalogRevision,
       remoteId: remoteId,
       localUuid: localUuid ?? IdGenerator.next(),
       remoteCategoryId: await _remoteCategoryIdForInput(input),
@@ -612,6 +613,7 @@ class ProductsRepositoryImpl
       variants: input.variants
           .map(
             (variant) => RemoteProductVariantRecord(
+              remoteId: variant.remoteId,
               sku: variant.sku,
               displayName: variant.displayName,
               colorLabel: variant.colorLabel,

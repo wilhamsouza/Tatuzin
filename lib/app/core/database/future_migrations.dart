@@ -5,6 +5,7 @@ part of 'migrations.dart';
 // or reordering already distributed versions.
 const List<MigrationStep> futureMigrationSteps = <MigrationStep>[
   MigrationStep(version: 38, up: _createVersion38Schema),
+  MigrationStep(version: 39, up: _createVersion39Schema),
 ];
 
 Future<void> _createVersion38Schema(DatabaseExecutor db) async {
@@ -29,5 +30,11 @@ Future<void> _createVersion38Schema(DatabaseExecutor db) async {
   )''');
   await db.execute(
     'CREATE INDEX idx_sale_customer_assignments_sale ON sale_customer_assignments(sale_id, expected_revision)',
+  );
+}
+
+Future<void> _createVersion39Schema(DatabaseExecutor db) async {
+  await db.execute(
+    'ALTER TABLE ${TableNames.produtos} ADD COLUMN catalog_revision INTEGER',
   );
 }

@@ -1,3 +1,6 @@
+import 'package:tatuzin/modules/categorias/presentation/providers/category_providers.dart';
+import 'package:tatuzin/modules/estoque/data/central_inventory_api.dart';
+import 'package:tatuzin/modules/estoque/presentation/pages/stock_workspace_page.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -27,7 +30,6 @@ import 'package:tatuzin/modules/relatorios/domain/entities/report_sales_trend_po
 import 'package:tatuzin/modules/relatorios/domain/entities/report_filter.dart';
 import 'package:tatuzin/modules/relatorios/presentation/providers/report_providers.dart';
 import 'package:tatuzin/modules/onboarding/presentation/onboarding_providers.dart';
-import 'package:tatuzin/modules/estoque/domain/entities/inventory_count_session.dart';
 import 'package:tatuzin/modules/estoque/domain/entities/inventory_item.dart';
 import 'package:tatuzin/modules/estoque/presentation/providers/inventory_providers.dart';
 import 'package:tatuzin/modules/produtos/domain/entities/product.dart';
@@ -732,36 +734,31 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('abre o inventario fisico pelo drawer', (tester) async {
-    await _pumpAuthenticatedApp(
-      tester,
-      additionalOverrides: [
-        inventoryItemsProvider.overrideWith(
-          (ref) async => const <InventoryItem>[],
-        ),
-        inventoryCountSessionsProvider.overrideWith(
-          (ref) async => const <InventoryCountSession>[],
-        ),
-      ],
-    );
-
+  testWidgets('abre Estoque pelo drawer e Contagens dentro do módulo', (
+    tester,
+  ) async {
+    await _pumpAuthenticatedApp(tester);
     await _openMainDrawer(tester);
-
-    final drawerScrollable = _mainDrawerScrollable();
-
-    await tester.scrollUntilVisible(
-      find.text('Inventário físico'),
-      120,
-      scrollable: drawerScrollable,
+    expect(find.text('Inventário físico'), findsNothing);
+    final stockMenu = find.descendant(
+      of: find.byType(Drawer),
+      matching: find.text('Estoque'),
     );
+    await tester.scrollUntilVisible(
+      stockMenu,
+      120,
+      scrollable: _mainDrawerScrollable(),
+    );
+    await tester.tap(stockMenu);
     await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Inventário físico'));
-    await tester.pumpAndSettle();
-
     expect(find.byType(Drawer), findsNothing);
-    expect(find.text('Nova sessão'), findsAtLeastNWidgets(1));
-    expect(find.text('Em andamento'), findsOneWidget);
+    expect(find.byType(StockWorkspacePage), findsOneWidget);
+    expect(find.text('Saldos'), findsOneWidget);
+    await tester.ensureVisible(find.text('Contagens'));
+    await tester.tap(find.text('Contagens'));
+    await tester.pumpAndSettle();
+    expect(find.text('Nova contagem'), findsOneWidget);
+    expect(find.text('Histórico antigo deste aparelho'), findsOneWidget);
   });
 }
 
@@ -772,6 +769,10 @@ Future<ProviderContainer> _pumpAuthenticatedApp(
 }) async {
   final container = ProviderContainer(
     overrides: [
+      categoryOptionsProvider.overrideWith((ref) async => []),
+      centralInventoryApiProvider.overrideWithValue(
+        _InventoryNavigationFixture(),
+      ),
       initialAppEnvironmentProvider.overrideWith(
         (ref) => AppEnvironment.remoteDefault().copyWith(
           dataMode: AppDataMode.futureHybridReady,
@@ -999,4 +1000,22 @@ class _NoSessionGateway implements AuthGateway {
 
   @override
   Future<void> signOut() async {}
+}
+
+class _InventoryNavigationFixture extends Fake implements CentralInventoryApi {
+  @override
+  Future<InventoryJson> read(
+    String resource, {
+    Map<String, Object?> query = const {},
+    bool allowCache = true,
+  }) async => {
+    'enabled': true,
+    'canRead': true,
+    'canAdjust': true,
+    'canCount': true,
+    'items': <InventoryJson>[],
+    'pagination': {'total': 0},
+  };
+  @override
+  Future<List<InventoryJson>> drafts() async => [];
 }

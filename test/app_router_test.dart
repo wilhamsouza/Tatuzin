@@ -1,3 +1,8 @@
+import 'package:tatuzin/app/core/theme/dashboard_theme.dart';
+import 'package:tatuzin/modules/produtos/presentation/pages/products_page.dart';
+import 'package:tatuzin/modules/categorias/presentation/providers/category_providers.dart';
+import 'package:tatuzin/modules/estoque/data/central_inventory_api.dart';
+import 'package:tatuzin/modules/estoque/presentation/pages/stock_workspace_page.dart';
 import 'package:tatuzin/app/app.dart';
 import 'package:tatuzin/app/core/config/app_data_mode.dart';
 import 'package:tatuzin/app/core/config/app_environment.dart';
@@ -171,7 +176,7 @@ void main() {
     expect(find.text('Rota indisponivel'), findsOneWidget);
   });
 
-  testWidgets('/produtos e /estoque abrem o hub na aba correta', (
+  testWidgets('/produtos e /estoque abrem áreas separadas preservando rotas', (
     tester,
   ) async {
     await _pumpApp(tester, authenticated: true);
@@ -183,14 +188,24 @@ void main() {
     expect(find.text('Produtos'), findsWidgets);
     expect(find.text('Novo produto'), findsWidgets);
     expect(find.text('Movimentações'), findsNothing);
+    final productsContext = tester.element(find.byType(ProductsPage));
+    expect(
+      Theme.of(productsContext).colorScheme.primary,
+      DashboardTheme.of(productsContext).colorScheme.primary,
+    );
 
     router.go(AppRoutePaths.inventory);
     await tester.pumpAndSettle();
 
-    expect(find.text('Produtos'), findsWidgets);
-    expect(find.text('Novo ajuste'), findsWidgets);
+    expect(find.byType(StockWorkspacePage), findsOneWidget);
+    final stockContext = tester.element(find.byType(StockWorkspacePage));
+    expect(
+      Theme.of(stockContext).colorScheme.primary,
+      DashboardTheme.of(stockContext).colorScheme.primary,
+    );
+    expect(find.text('Saldos'), findsOneWidget);
     expect(find.text('Movimentações'), findsOneWidget);
-    expect(find.text('Ajuste'), findsNothing);
+    expect(find.text('Novo produto'), findsNothing);
   });
 
   testWidgets('rota protegida sem sessao redireciona para login', (
@@ -345,6 +360,10 @@ void main() {
 
 List<Override> _baseOverrides({AuthGateway? remoteGateway}) {
   return <Override>[
+    categoryOptionsProvider.overrideWith((ref) async => []),
+    centralInventoryApiProvider.overrideWithValue(
+      _InventoryNavigationFixture(),
+    ),
     initialAppEnvironmentProvider.overrideWith(
       (ref) => AppEnvironment.remoteDefault().copyWith(
         dataMode: AppDataMode.futureHybridReady,
@@ -609,4 +628,22 @@ class _InitialPasswordGateway extends _NoSessionGateway {
       'Voce precisa criar uma nova senha para continuar.',
     );
   }
+}
+
+class _InventoryNavigationFixture extends Fake implements CentralInventoryApi {
+  @override
+  Future<InventoryJson> read(
+    String resource, {
+    Map<String, Object?> query = const {},
+    bool allowCache = true,
+  }) async => {
+    'enabled': true,
+    'canRead': true,
+    'canAdjust': true,
+    'canCount': true,
+    'items': <InventoryJson>[],
+    'pagination': {'total': 0},
+  };
+  @override
+  Future<List<InventoryJson>> drafts() async => [];
 }

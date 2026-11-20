@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'app_design_tokens.dart';
 
-/// Mobile feed palette, scoped to the home so other workflows keep their theme.
+/// Tatuzin palette scoped to home, catalog and inventory surfaces.
+/// Other operational workflows keep their existing theme.
 abstract final class DashboardTheme {
   static ThemeData of(BuildContext context) {
     final theme = Theme.of(context);

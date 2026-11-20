@@ -119,10 +119,15 @@ class _FashionGridSectionState extends State<FashionGridSection> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: stockController,
+                      readOnly: true,
+                      enableInteractiveSelection: false,
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
-                      decoration: const InputDecoration(labelText: 'Estoque'),
+                      decoration: const InputDecoration(
+                        labelText: 'Saldo de referência',
+                        helperText: 'Movimente quantidades no módulo Estoque.',
+                      ),
                     ),
                     const SizedBox(height: 12),
                     TextField(

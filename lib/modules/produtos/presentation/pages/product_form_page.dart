@@ -10,7 +10,6 @@ import '../../../../app/core/session/company_context.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/utils/money_parser.dart';
-import '../../../../app/core/utils/quantity_parser.dart';
 import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../../categorias/domain/entities/category.dart';
 import '../../../categorias/presentation/providers/category_providers.dart';
@@ -773,6 +772,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
           : null;
 
       final input = ProductInput(
+        expectedCatalogRevision: widget.initialProduct?.catalogRevision,
         name: resolvedName,
         description: _cleanNullable(_descriptionController.text),
         categoryId: _selectedCategoryId,
@@ -792,9 +792,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         unitMeasure: _selectedUnitMeasure,
         costCents: MoneyParser.parseToCents(_costController.text),
         salePriceCents: MoneyParser.parseToCents(_priceController.text),
-        stockMil: _usesVariantStock
-            ? _fashionGridDraft.totalStockMil
-            : QuantityParser.parseToMil(_stockController.text),
+        stockMil: widget.initialProduct?.stockMil ?? 0,
         isActive: _isActive,
       );
 
