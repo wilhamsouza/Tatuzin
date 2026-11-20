@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/core/errors/app_exceptions.dart';
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/entitlements/plan_entitlements.dart';
+import '../../../../app/core/telemetry/product_journey.dart';
 import '../../../../app/core/session/app_session.dart';
 import '../../../../app/core/session/session_provider.dart';
 import '../../../../app/core/utils/app_logger.dart';
@@ -17,6 +19,8 @@ import '../../../caixa/presentation/providers/cash_providers.dart';
 import '../../../carrinho/domain/entities/cart_item.dart';
 import '../../../carrinho/presentation/providers/cart_provider.dart';
 import '../../../clientes/domain/entities/client.dart';
+import '../../../activity/presentation/activity_providers.dart';
+import '../../../../app/routes/sale_receipt_navigation.dart';
 import '../../../clientes/presentation/providers/client_providers.dart';
 import '../../../dashboard/presentation/providers/dashboard_providers.dart';
 import '../../../fiado/presentation/providers/fiado_providers.dart';
@@ -43,10 +47,20 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
   late final TextEditingController _creditAmountController;
   late final TextEditingController _amountReceivedController;
   bool _leaveChangeAsCredit = false;
+  JourneyCheckoutAttempt? _journeyAttempt;
+  bool _showAdvanced = false;
+  bool _isFinalizing = false;
 
   @override
   void initState() {
     super.initState();
+    _showAdvanced = !ref
+        .read(appSessionProvider)
+        .company
+        .experienceRefreshEnabled;
+    if (!ref.read(cartProvider).isEmpty) {
+      _journeyAttempt = ref.read(productJourneyProvider).beginCheckout();
+    }
     _notesController = TextEditingController();
     _creditAmountController = TextEditingController();
     _amountReceivedController = TextEditingController();
@@ -54,6 +68,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
 
   @override
   void dispose() {
+    _journeyAttempt?.exit();
     _notesController.dispose();
     _creditAmountController.dispose();
     _amountReceivedController.dispose();
@@ -65,7 +80,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     final cart = ref.watch(cartProvider);
     final session = ref.watch(appSessionProvider);
     final checkoutState = ref.watch(checkoutControllerProvider);
-    final isSubmitting = checkoutState.isLoading;
+    final isSubmitting = checkoutState.isLoading || _isFinalizing;
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     const sectionPadding = EdgeInsets.fromLTRB(14, 14, 14, 14);
@@ -184,71 +199,101 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                AppSectionCard(
-                  title: 'Desconto',
-                  subtitle:
-                      'Aplique um abatimento no fechamento mantendo o subtotal original dos itens.',
-                  padding: sectionPadding,
-                  child: _CheckoutDiscountSection(
-                    cart: cart,
-                    enabled: !isSubmitting,
-                    canManageDiscount: canManageDiscount,
-                    onManageDiscount: () => _handleDiscountPressed(context),
-                    onRemoveDiscount: cart.hasSaleDiscount
-                        ? () => _handleRemoveDiscount(context)
-                        : null,
+                if (session.company.experienceRefreshEnabled)
+                  OutlinedButton.icon(
+                    onPressed: isSubmitting
+                        ? null
+                        : () => setState(() => _showAdvanced = !_showAdvanced),
+                    icon: const Icon(Icons.tune_rounded),
+                    label: Text(_showAdvanced ? 'Menos opções' : 'Mais opções'),
                   ),
-                ),
-                const SizedBox(height: 12),
-                AppSectionCard(
-                  title: 'Tipo da venda',
-                  subtitle: 'Escolha o tipo de fechamento da venda.',
-                  padding: sectionPadding,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _ChoiceCard(
-                          label: 'À vista',
-                          subtitle: 'Recebimento imediato',
-                          icon: Icons.payments_outlined,
-                          selected: _saleType == SaleType.cash,
-                          onTap: isSubmitting
-                              ? null
-                              : () {
-                                  setState(() {
-                                    _saleType = SaleType.cash;
-                                    if (_paymentMethod == PaymentMethod.fiado) {
-                                      _paymentMethod = PaymentMethod.cash;
-                                    }
-                                    _dueDate = null;
-                                  });
-                                },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _ChoiceCard(
-                          label: 'Fiado',
-                          subtitle: 'Cliente e vencimento',
-                          icon: Icons.receipt_long_rounded,
-                          selected: _saleType == SaleType.fiado,
-                          onTap: isSubmitting
-                              ? null
-                              : () {
-                                  setState(() {
-                                    _saleType = SaleType.fiado;
-                                    _paymentMethod = PaymentMethod.fiado;
-                                    _creditAmountController.clear();
-                                    _amountReceivedController.clear();
-                                    _leaveChangeAsCredit = false;
-                                  });
-                                },
-                        ),
-                      ),
-                    ],
+                if (_showAdvanced || cart.hasSaleDiscount) ...[
+                  AppSectionCard(
+                    title: 'Desconto',
+                    subtitle:
+                        'Aplique um abatimento no fechamento mantendo o subtotal original dos itens.',
+                    padding: sectionPadding,
+                    child: _CheckoutDiscountSection(
+                      cart: cart,
+                      enabled: !isSubmitting,
+                      canManageDiscount: canManageDiscount,
+                      onManageDiscount: () => _handleDiscountPressed(context),
+                      onRemoveDiscount: cart.hasSaleDiscount
+                          ? () => _handleRemoveDiscount(context)
+                          : null,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
+                  const SizedBox(height: 12),
+                ],
+                if (_showAdvanced || _saleType == SaleType.fiado) ...[
+                  AppSectionCard(
+                    title: 'Tipo da venda',
+                    subtitle: 'Escolha o tipo de fechamento da venda.',
+                    padding: sectionPadding,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _ChoiceCard(
+                            label: 'À vista',
+                            subtitle: 'Recebimento imediato',
+                            icon: Icons.payments_outlined,
+                            selected: _saleType == SaleType.cash,
+                            onTap: isSubmitting
+                                ? null
+                                : () {
+                                    setState(() {
+                                      _saleType = SaleType.cash;
+                                      if (_paymentMethod ==
+                                          PaymentMethod.fiado) {
+                                        _paymentMethod = PaymentMethod.cash;
+                                      }
+                                      _dueDate = null;
+                                    });
+                                  },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _ChoiceCard(
+                            label: 'Fiado',
+                            subtitle:
+                                session.hasFeature(FeatureKey.fiadoManagement)
+                                ? 'Cliente e vencimento'
+                                : 'Acompanhamento no Básico',
+                            icon: Icons.receipt_long_rounded,
+                            selected: _saleType == SaleType.fiado,
+                            onTap: isSubmitting
+                                ? null
+                                : () {
+                                    setState(() {
+                                      _saleType = SaleType.fiado;
+                                      _paymentMethod = PaymentMethod.fiado;
+                                      _creditAmountController.clear();
+                                      _amountReceivedController.clear();
+                                      _leaveChangeAsCredit = false;
+                                    });
+                                  },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (_saleType == SaleType.fiado &&
+                    !session.hasFeature(FeatureKey.fiadoManagement)) ...[
+                  AppSectionCard(
+                    title: 'Sobre o fiado no Free',
+                    subtitle:
+                        'Você pode registrar a venda. O acompanhamento das pendências e os recebimentos pelo app fazem parte do Básico.',
+                    child: TextButton(
+                      onPressed: () =>
+                          context.pushNamed(AppRouteNames.subscription),
+                      child: const Text('Conhecer os planos'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 AppSectionCard(
                   title: 'Forma de pagamento',
                   subtitle: _saleType == SaleType.cash
@@ -291,11 +336,21 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                                 physics: const NeverScrollableScrollPhysics(),
                                 itemCount: 3,
                                 gridDelegate:
-                                    const SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: 2,
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount:
+                                          MediaQuery.textScalerOf(
+                                                context,
+                                              ).scale(1) >
+                                              1.3
+                                          ? 1
+                                          : 2,
                                       crossAxisSpacing: 10,
                                       mainAxisSpacing: 10,
-                                      childAspectRatio: 1.7,
+                                      mainAxisExtent:
+                                          112 *
+                                          MediaQuery.textScalerOf(
+                                            context,
+                                          ).scale(1).clamp(1.0, 2.5),
                                     ),
                                 itemBuilder: (context, index) {
                                   final method = [
@@ -306,7 +361,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
 
                                   return _ChoiceCard(
                                     label: method.label,
-                                    subtitle: 'Disponível agora',
+                                    subtitle: '',
                                     icon: method == PaymentMethod.cash
                                         ? Icons.payments_outlined
                                         : method == PaymentMethod.pix
@@ -526,158 +581,163 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                   ),
                 ],
                 const SizedBox(height: 12),
-                AppSectionCard(
-                  title: 'Conferência rápida',
-                  subtitle:
-                      'Mantenha o foco no pagamento e abra os itens só se precisar revisar.',
-                  padding: sectionPadding,
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _CheckoutSummaryMetric(
-                              label: 'Itens',
-                              value: '${cart.totalItems}',
-                              icon: Icons.shopping_bag_outlined,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _CheckoutSummaryMetric(
-                              label: cart.hasSaleDiscount
-                                  ? 'Subtotal'
-                                  : 'Total',
-                              value: AppFormatters.currencyFromCents(
-                                cart.hasSaleDiscount
-                                    ? cart.subtotalCents
-                                    : cart.totalCents,
+                if (_showAdvanced)
+                  AppSectionCard(
+                    title: 'Conferência rápida',
+                    subtitle:
+                        'Mantenha o foco no pagamento e abra os itens só se precisar revisar.',
+                    padding: sectionPadding,
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _CheckoutSummaryMetric(
+                                label: 'Itens',
+                                value: '${cart.totalItems}',
+                                icon: Icons.shopping_bag_outlined,
                               ),
-                              icon: Icons.payments_outlined,
                             ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _CheckoutSummaryMetric(
+                                label: cart.hasSaleDiscount
+                                    ? 'Subtotal'
+                                    : 'Total',
+                                value: AppFormatters.currencyFromCents(
+                                  cart.hasSaleDiscount
+                                      ? cart.subtotalCents
+                                      : cart.totalCents,
+                                ),
+                                icon: Icons.payments_outlined,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (cart.hasSaleDiscount) ...[
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _CheckoutSummaryMetric(
+                                  label: 'Desconto',
+                                  value: AppFormatters.currencyFromCents(
+                                    cart.appliedSaleDiscountCents,
+                                  ),
+                                  icon: Icons.percent_rounded,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _CheckoutSummaryMetric(
+                                  label: 'Total',
+                                  value: AppFormatters.currencyFromCents(
+                                    cart.totalCents,
+                                  ),
+                                  icon: Icons.payments_outlined,
+                                  emphasize: true,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
-                      ),
-                      if (cart.hasSaleDiscount) ...[
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _CheckoutSummaryMetric(
-                                label: 'Desconto',
-                                value: AppFormatters.currencyFromCents(
-                                  cart.appliedSaleDiscountCents,
+                        if (appliedCreditCents > 0) ...[
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _CheckoutSummaryMetric(
+                                  label: 'Haver aplicado',
+                                  value: AppFormatters.currencyFromCents(
+                                    appliedCreditCents,
+                                  ),
+                                  icon: Icons.account_balance_wallet_outlined,
                                 ),
-                                icon: Icons.percent_rounded,
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _CheckoutSummaryMetric(
-                                label: 'Total',
-                                value: AppFormatters.currencyFromCents(
-                                  cart.totalCents,
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _CheckoutSummaryMetric(
+                                  label: 'Receber agora',
+                                  value: AppFormatters.currencyFromCents(
+                                    immediateDueCents,
+                                  ),
+                                  icon: Icons.payments_outlined,
+                                  emphasize: immediateDueCents > 0,
                                 ),
-                                icon: Icons.payments_outlined,
-                                emphasize: true,
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      if (appliedCreditCents > 0) ...[
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _CheckoutSummaryMetric(
-                                label: 'Haver aplicado',
-                                value: AppFormatters.currencyFromCents(
-                                  appliedCreditCents,
-                                ),
-                                icon: Icons.account_balance_wallet_outlined,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _CheckoutSummaryMetric(
-                                label: 'Receber agora',
-                                value: AppFormatters.currencyFromCents(
-                                  immediateDueCents,
-                                ),
-                                icon: Icons.payments_outlined,
-                                emphasize: immediateDueCents > 0,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: () => context.goNamed(AppRouteNames.cart),
-                          icon: const Icon(Icons.shopping_cart_outlined),
-                          label: const Text('Voltar ao carrinho'),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Theme(
-                        data: theme.copyWith(dividerColor: Colors.transparent),
-                        child: ExpansionTile(
-                          tilePadding: EdgeInsets.zero,
-                          childrenPadding: EdgeInsets.zero,
-                          title: Text(
-                            'Ver itens da venda',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          subtitle: Text(
-                            cart.items.first.productName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          children: [
-                            const SizedBox(height: 6),
-                            for (
-                              var index = 0;
-                              index < cart.items.length;
-                              index++
-                            ) ...[
-                              _CheckoutItemRow(item: cart.items[index]),
-                              if (index < cart.items.length - 1)
-                                const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 8),
-                                  child: Divider(height: 1),
-                                ),
                             ],
-                          ],
+                          ),
+                        ],
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () =>
+                                context.goNamed(AppRouteNames.cart),
+                            icon: const Icon(Icons.shopping_cart_outlined),
+                            label: const Text('Voltar ao carrinho'),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                AppSectionCard(
-                  title: 'Observação',
-                  subtitle:
-                      'Opcional. Use somente se precisar registrar contexto extra.',
-                  padding: sectionPadding,
-                  child: TextField(
-                    controller: _notesController,
-                    minLines: 1,
-                    maxLines: 3,
-                    textInputAction: TextInputAction.done,
-                    decoration: const InputDecoration(
-                      hintText: 'Adicionar observação',
-                      isDense: true,
+                        const SizedBox(height: 6),
+                        Theme(
+                          data: theme.copyWith(
+                            dividerColor: Colors.transparent,
+                          ),
+                          child: ExpansionTile(
+                            tilePadding: EdgeInsets.zero,
+                            childrenPadding: EdgeInsets.zero,
+                            title: Text(
+                              'Ver itens da venda',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: Text(
+                              cart.items.first.productName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            children: [
+                              const SizedBox(height: 6),
+                              for (
+                                var index = 0;
+                                index < cart.items.length;
+                                index++
+                              ) ...[
+                                _CheckoutItemRow(item: cart.items[index]),
+                                if (index < cart.items.length - 1)
+                                  const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 8),
+                                    child: Divider(height: 1),
+                                  ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
+                const SizedBox(height: 12),
+                if (_showAdvanced || _notesController.text.isNotEmpty)
+                  AppSectionCard(
+                    title: 'Observação',
+                    subtitle:
+                        'Opcional. Use somente se precisar registrar contexto extra.',
+                    padding: sectionPadding,
+                    child: TextField(
+                      controller: _notesController,
+                      minLines: 1,
+                      maxLines: 3,
+                      textInputAction: TextInputAction.done,
+                      decoration: const InputDecoration(
+                        hintText: 'Adicionar observação',
+                        isDense: true,
+                      ),
+                    ),
+                  ),
                 if (checkoutState.hasError) ...[
                   const SizedBox(height: 12),
                   Card(
@@ -786,6 +846,7 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
+                            key: const Key('checkout-confirm-button'),
                             onPressed: isSubmitting
                                 ? null
                                 : () => _finalize(context),
@@ -815,6 +876,17 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
   }
 
   Future<void> _finalize(BuildContext context) async {
+    if (_isFinalizing) return;
+    setState(() => _isFinalizing = true);
+    try {
+      await _finalizeSale(context);
+    } finally {
+      if (mounted) setState(() => _isFinalizing = false);
+    }
+  }
+
+  Future<void> _finalizeSale(BuildContext context) async {
+    final runtimeKey = ref.read(sessionRuntimeKeyProvider);
     final messenger = ScaffoldMessenger.of(context);
     final cartState = ref.read(cartProvider);
     final saleType = _saleType;
@@ -875,7 +947,9 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
     }
 
     if (saleType == SaleType.cash && immediateDueCents > 0) {
-      final currentCashSession = await ref.read(currentCashSessionProvider.future);
+      final currentCashSession = await ref.read(
+        currentCashSessionProvider.future,
+      );
       if (currentCashSession == null) {
         messenger.showSnackBar(
           SnackBar(
@@ -928,10 +1002,13 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       changeLeftAsCreditCents: changeLeftAsCreditCents,
     );
 
+    if (!mounted || ref.read(sessionRuntimeKeyProvider) != runtimeKey) return;
     try {
       final sale = await ref
           .read(checkoutControllerProvider.notifier)
           .finalize(input);
+
+      _journeyAttempt?.complete();
 
       ref.read(cartProvider.notifier).clear();
       ref.invalidate(productListProvider);
@@ -946,22 +1023,27 @@ class _CheckoutPageState extends ConsumerState<CheckoutPage> {
       ref.invalidate(currentCashMovementsProvider);
       ref.invalidate(cashSessionHistoryProvider);
       ref.invalidate(saleHistoryListProvider);
+      ref.invalidate(dailySaleActivityProvider);
       ref.invalidate(operationalDashboardSnapshotProvider);
 
       if (!context.mounted) {
         return;
       }
 
-      context.goNamed(
-        AppRouteNames.saleReceipt,
-        pathParameters: {'saleId': '${sale.saleId}'},
-        extra: true,
+      final router = GoRouter.of(context);
+      final container = ProviderScope.containerOf(context, listen: false);
+      showCompletedSaleReceipt(
+        router,
+        saleId: sale.saleId,
+        isCurrentSession: () =>
+            container.read(sessionRuntimeKeyProvider) == runtimeKey,
       );
     } catch (error) {
       if (!context.mounted) {
         return;
       }
       _showMessage(context, _errorMessage(error));
+      _journeyAttempt?.fail();
     }
   }
 
@@ -1922,15 +2004,17 @@ class _ChoiceCard extends StatelessWidget {
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
-              const SizedBox(height: 3),
-              Text(
-                subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+              if (subtitle.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

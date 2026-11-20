@@ -74,6 +74,10 @@ class SqliteOperationalSyncProjectionApplier
         case 'sale':
           await _applySale(txn, change, projection);
           break;
+        case 'saleCustomerAssignment':
+        case 'saleCustomerLock':
+          await _applySaleCustomerAssignment(txn, projection);
+          break;
         case 'saleItem':
           await _applySaleItem(txn, change, projection);
           break;
@@ -377,12 +381,28 @@ class SqliteOperationalSyncProjectionApplier
               'valor_recebido_imediato_centavos',
               'haver_utilizado_centavos',
               'haver_gerado_centavos',
+              'cliente_id',
+              'customer_assignment_revision',
+              'seller_remote_user_id',
             ],
             where: 'id = ?',
             whereArgs: [existingLocalId],
             limit: 1,
           );
     final existingRow = existingRows.isEmpty ? null : existingRows.first;
+    final incomingRevision =
+        _int(projection['customerAssignmentRevision']) ?? 0;
+    final existingRevision =
+        _int(existingRow?['customer_assignment_revision']) ?? 0;
+    int? saleClientId = existingRow?['cliente_id'] as int?;
+    if (projection.containsKey('customerId') &&
+        incomingRevision >= existingRevision) {
+      saleClientId = await _assignmentCustomerId(
+        db,
+        projection['customerId'],
+        null,
+      );
+    }
     final finalAmountCents =
         _int(totals['totalAmountCents']) ??
         _int(projection['totalCents']) ??
@@ -439,7 +459,13 @@ class SqliteOperationalSyncProjectionApplier
       tableName: TableNames.vendas,
       values: <String, Object?>{
         'uuid': localUuid,
-        'cliente_id': null,
+        'cliente_id': saleClientId,
+        'customer_assignment_revision': incomingRevision > existingRevision
+            ? incomingRevision
+            : existingRevision,
+        'seller_remote_user_id':
+            _string(projection['sellerUserId']) ??
+            existingRow?['seller_remote_user_id'],
         'tipo_venda': saleType,
         'forma_pagamento': paymentMethod,
         'status': _saleStatus(_string(projection['status'])),
@@ -473,6 +499,59 @@ class SqliteOperationalSyncProjectionApplier
       remoteId: remoteId,
       createdAtIso: createdAt,
       updatedAtIso: createdAt,
+    );
+  }
+
+  Future<int?> _assignmentCustomerId(
+    DatabaseExecutor db,
+    Object? remoteId,
+    Object? uuid,
+  ) async {
+    if (remoteId == null && uuid == null) return null;
+    final rows = await db.rawQuery(
+      '''SELECT c.id FROM ${TableNames.clientes} c
+      LEFT JOIN ${TableNames.syncRegistros} s ON s.feature_key=? AND s.local_id=c.id
+      WHERE (? IS NOT NULL AND s.remote_id=?) OR (? IS NOT NULL AND c.uuid=?) LIMIT 1''',
+      [SyncFeatureKeys.customers, remoteId, remoteId, uuid, uuid],
+    );
+    if (rows.isEmpty) {
+      throw StateError('Cliente remoto ainda não disponível no cache local.');
+    }
+    return rows.single['id'] as int;
+  }
+
+  Future<void> _applySaleCustomerAssignment(
+    DatabaseExecutor db,
+    Map<String, dynamic> projection,
+  ) async {
+    final rows = await db.query(
+      TableNames.vendas,
+      where: 'uuid=?',
+      whereArgs: [projection['saleUuid']],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw StateError('Venda da associação ainda não disponível localmente.');
+    }
+    final revision = _int(projection['revision']);
+    if (revision == null ||
+        revision < (rows.single['customer_assignment_revision'] as int)) {
+      return;
+    }
+    final customer = await _assignmentCustomerId(
+      db,
+      projection['customerServerId'],
+      projection['customerUuid'],
+    );
+    await db.update(
+      TableNames.vendas,
+      {
+        'cliente_id': customer,
+        'customer_assignment_revision': revision,
+        if (projection['locked'] == true) 'customer_assignment_locked': 1,
+      },
+      where: 'id=?',
+      whereArgs: [rows.single['id']],
     );
   }
 
@@ -1184,10 +1263,7 @@ class SqliteOperationalSyncProjectionApplier
     return '[pm:$cleanedPaymentMethod] ${cleanedDescription ?? ''}'.trim();
   }
 
-  String? _encodeSessionNotes({
-    String? visibleNotes,
-    String? operatorName,
-  }) {
+  String? _encodeSessionNotes({String? visibleNotes, String? operatorName}) {
     final cleanedVisibleNotes = _clean(visibleNotes);
     final cleanedOperatorName = _clean(operatorName);
     final lines = <String>[];

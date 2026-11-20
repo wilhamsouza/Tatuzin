@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../../app/core/database/table_names.dart';
 import '../../../../app/core/errors/app_exceptions.dart';
+import 'central_stock_refresh_support.dart';
 
 class InventoryBalanceMutation {
   const InventoryBalanceMutation({
@@ -31,6 +32,7 @@ abstract final class InventoryBalanceSupport {
     required String insufficientProductStockMessage,
     required String insufficientVariantStockMessage,
   }) async {
+    if (quantityDeltaMil < 0) await CentralStockRefreshSupport.assertReady(db);
     if (productVariantId != null) {
       final variantRows = await db.query(
         TableNames.produtoVariantes,

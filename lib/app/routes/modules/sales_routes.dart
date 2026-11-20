@@ -53,6 +53,12 @@ List<RouteBase> buildSalesRoutes() {
         (saleId) => SaleDetailPage(saleId: saleId),
       ),
     ),
+  ];
+}
+
+// Receipts are root overlays, never retained inside an operational tab.
+List<RouteBase> buildReceiptRoutes() {
+  return <RouteBase>[
     GoRoute(
       path: AppRoutePaths.saleReceipt,
       name: AppRouteNames.saleReceipt,

@@ -44,7 +44,10 @@ class ReceiptPreviewPage extends ConsumerWidget {
         showSuccessBanner && request.type == CommercialReceiptRequestType.sale;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Comprovante')),
+      appBar: AppBar(
+        title: const Text('Comprovante'),
+        leading: BackButton(onPressed: () => _close(context)),
+      ),
       body: receiptAsync.when(
         data: (receipt) {
           return Column(
@@ -59,12 +62,21 @@ class ReceiptPreviewPage extends ConsumerWidget {
                     children: [
                       if (showBackToSales) ...[
                         FilledButton.icon(
-                          onPressed: () => context.goNamed(AppRouteNames.sales),
+                          onPressed: () => _close(context),
                           icon: const Icon(Icons.storefront_rounded),
                           label: const Text('Voltar para vendas'),
                         ),
                         const SizedBox(height: 8),
                       ],
+                      if (request.type == CommercialReceiptRequestType.sale)
+                        TextButton.icon(
+                          onPressed: () => context.goNamed(
+                            AppRouteNames.saleDetail,
+                            pathParameters: {'saleId': '${request.saleId}'},
+                          ),
+                          icon: const Icon(Icons.person_outline),
+                          label: const Text('Detalhes e cliente da venda'),
+                        ),
                       ReceiptActionBar(request: request, showViewAction: false),
                     ],
                   ),
@@ -88,5 +100,15 @@ class ReceiptPreviewPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  void _close(BuildContext context) {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.goNamed(
+        showSuccessBanner ? AppRouteNames.sales : AppRouteNames.activity,
+      );
+    }
   }
 }

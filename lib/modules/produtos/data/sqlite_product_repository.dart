@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../../app/core/app_context/record_identity.dart';
 import '../../../app/core/database/app_database.dart';
 import '../../../app/core/database/table_names.dart';
+import '../../../app/core/errors/app_exceptions.dart';
 import '../../../app/core/sync/sqlite_sync_metadata_repository.dart';
 import '../../../app/core/sync/sqlite_sync_queue_repository.dart';
 import '../../../app/core/sync/sync_error_type.dart';
@@ -212,10 +213,6 @@ class SqliteProductRepository implements ProductRepository {
   Future<void> update(int id, ProductInput input) async {
     final database = await _appDatabase.database;
     final now = DateTime.now();
-    final resolvedStockMil = _resolveProductStockMil(
-      input.stockMil,
-      input.variants,
-    );
 
     await database.transaction((txn) async {
       final existing = await _findRowById(txn, id);
@@ -223,6 +220,12 @@ class SqliteProductRepository implements ProductRepository {
         return;
       }
 
+      if (input.expectedCatalogRevision != null &&
+          existing['catalog_revision'] != input.expectedCatalogRevision) {
+        throw const ValidationException(
+          'O cadastro mudou em outro dispositivo. Atualize o produto antes de editar novamente.',
+        );
+      }
       await txn.update(
         TableNames.produtos,
         {
@@ -240,7 +243,7 @@ class SqliteProductRepository implements ProductRepository {
               : input.unitMeasure.trim(),
           ..._resolveLocalCostColumns(existing, input),
           'preco_venda_centavos': input.salePriceCents,
-          'estoque_mil': resolvedStockMil,
+          'estoque_mil': existing['estoque_mil'],
           'ativo': input.isActive ? 1 : 0,
           'atualizado_em': now.toIso8601String(),
         },
@@ -291,6 +294,7 @@ class SqliteProductRepository implements ProductRepository {
         txn: txn,
         productId: id,
         variants: input.variants,
+        preserveStock: true,
       );
       await _syncRecipeState(
         txn,
@@ -518,6 +522,10 @@ class SqliteProductRepository implements ProductRepository {
     );
     try {
       await database.transaction((txn) async {
+        final pendingRows = await txn.rawQuery(
+          "SELECT 1 FROM ${TableNames.operationalSyncEvents} WHERE status IN ('pending', 'pushing', 'failed', 'rejected', 'conflict') LIMIT 1",
+        );
+        final preservePendingStock = pendingRows.isNotEmpty;
         final metadataByRemoteId = await _syncMetadataRepository.findByRemoteId(
           txn,
           featureKey: featureKey,
@@ -581,6 +589,7 @@ class SqliteProductRepository implements ProductRepository {
           await txn.update(
             TableNames.produtos,
             {
+              'catalog_revision': remote.catalogRevision,
               'nome': remote.name,
               'descricao': remote.description,
               'categoria_id': mappedCategoryId,
@@ -593,7 +602,9 @@ class SqliteProductRepository implements ProductRepository {
               'unidade_medida': remote.unitMeasure,
               ..._resolveRemoteCostColumns(remote),
               'preco_venda_centavos': remote.salePriceCents,
-              'estoque_mil': _resolveRemoteStockMil(remote),
+              'estoque_mil': preservePendingStock
+                  ? existing['estoque_mil']
+                  : _resolveRemoteStockMil(remote),
               'ativo': remote.isActive ? 1 : 0,
               'atualizado_em': remote.updatedAt.toIso8601String(),
               'deletado_em': remote.deletedAt?.toIso8601String(),
@@ -606,6 +617,7 @@ class SqliteProductRepository implements ProductRepository {
           createdAt = remote.createdAt;
           localId = await txn.insert(TableNames.produtos, {
             'uuid': localUuid,
+            'catalog_revision': remote.catalogRevision,
             'nome': remote.name,
             'descricao': remote.description,
             'categoria_id': mappedCategoryId,
@@ -643,6 +655,7 @@ class SqliteProductRepository implements ProductRepository {
           txn: txn,
           productId: localId,
           variants: remoteInput.variants,
+          preserveStock: preservePendingStock && existing != null,
         );
         await _refreshRecipeSnapshotIfPresent(
           txn,
@@ -695,9 +708,15 @@ class SqliteProductRepository implements ProductRepository {
     final mappedCategoryId = await _resolveLocalCategoryId(remote);
 
     await database.transaction((txn) async {
+      final pendingRows = await txn.rawQuery(
+        "SELECT 1 FROM ${TableNames.operationalSyncEvents} WHERE status IN ('pending', 'pushing', 'failed', 'rejected', 'conflict') LIMIT 1",
+      );
+      final preservePendingStock = pendingRows.isNotEmpty;
+      final currentProduct = await _findRowById(txn, product.id);
       await txn.update(
         TableNames.produtos,
         {
+          'catalog_revision': remote.catalogRevision,
           'nome': remote.name,
           'descricao': remote.description,
           'categoria_id': mappedCategoryId,
@@ -710,7 +729,9 @@ class SqliteProductRepository implements ProductRepository {
           'unidade_medida': remote.unitMeasure,
           ..._resolveRemoteCostColumns(remote),
           'preco_venda_centavos': remote.salePriceCents,
-          'estoque_mil': _resolveRemoteStockMil(remote),
+          'estoque_mil': preservePendingStock
+              ? (currentProduct?['estoque_mil'] ?? product.stockMil)
+              : _resolveRemoteStockMil(remote),
           'ativo': remote.isActive ? 1 : 0,
           'atualizado_em': remote.updatedAt.toIso8601String(),
           'deletado_em': remote.deletedAt?.toIso8601String(),
@@ -735,6 +756,7 @@ class SqliteProductRepository implements ProductRepository {
         txn: txn,
         productId: product.id,
         variants: remoteInput.variants,
+        preserveStock: preservePendingStock,
       );
       await _refreshRecipeSnapshotIfPresent(
         txn,
@@ -1828,6 +1850,7 @@ class SqliteProductRepository implements ProductRepository {
     final variants = await _loadProductVariants(db, row['id'] as int);
 
     final product = Product(
+      catalogRevision: row['catalog_revision'] as int?,
       id: row['id'] as int,
       uuid: row['uuid'] as String,
       name: row['nome'] as String,
@@ -1999,6 +2022,7 @@ class SqliteProductRepository implements ProductRepository {
       for (final variant in activeVariants) {
         sellable.add(
           Product(
+            catalogRevision: product.catalogRevision,
             id: product.id,
             uuid: product.uuid,
             name: product.name,
@@ -2256,77 +2280,77 @@ class SqliteProductRepository implements ProductRepository {
     required DatabaseExecutor txn,
     required int productId,
     required List<ProductVariantInput> variants,
+    bool preserveStock = false,
   }) async {
     final existingRows = await txn.query(
       TableNames.produtoVariantes,
       where: 'produto_id = ?',
       whereArgs: [productId],
     );
-    final existingByRemoteId = <String, Map<String, Object?>>{
-      for (final row in existingRows)
-        if (_cleanNullable(row['remote_id'] as String?) != null)
-          _cleanNullable(row['remote_id'] as String?)!: row,
-    };
-    final incomingRemoteIds = variants
-        .map((variant) => _cleanNullable(variant.remoteId))
-        .whereType<String>()
-        .toSet();
-    if (incomingRemoteIds.isEmpty) {
-      await txn.delete(
-        TableNames.produtoVariantes,
-        where: 'produto_id = ?',
-        whereArgs: [productId],
-      );
-    } else {
-      final placeholders = List.filled(
-        incomingRemoteIds.length,
-        '?',
-      ).join(', ');
-      await txn.delete(
-        TableNames.produtoVariantes,
-        where:
-            'produto_id = ? AND (remote_id IS NULL OR remote_id NOT IN ($placeholders))',
-        whereArgs: [productId, ...incomingRemoteIds],
-      );
-    }
-
+    final retained = <int>{};
     for (var index = 0; index < variants.length; index++) {
       final variant = variants[index];
-      final sizeLabel = _cleanNullable(variant.sizeLabel);
-      final colorLabel = _cleanNullable(variant.colorLabel);
       final sku = _cleanNullable(variant.sku);
+      final color = _cleanNullable(variant.colorLabel);
+      final size = _cleanNullable(variant.sizeLabel);
+      if (sku == null || color == null || size == null) continue;
       final remoteId = _cleanNullable(variant.remoteId);
-      if (sizeLabel == null || colorLabel == null || sku == null) {
-        continue;
-      }
+      final candidates = existingRows
+          .where((row) => remoteId != null && row['remote_id'] == remoteId)
+          .toList();
+      final skuMatches = existingRows
+          .where(
+            (row) =>
+                (row['sku'] as String?)?.toUpperCase() == sku.toUpperCase(),
+          )
+          .toList();
+      final existing = candidates.length == 1
+          ? candidates.single
+          : skuMatches.length == 1
+          ? skuMatches.single
+          : null;
       final now = DateTime.now().toIso8601String();
-      final existing = remoteId == null ? null : existingByRemoteId[remoteId];
       final values = <String, Object?>{
-        'uuid': IdGenerator.next(),
-        'remote_id': remoteId,
-        'produto_id': productId,
+        'remote_id': remoteId ?? existing?['remote_id'],
         'sku': sku.toUpperCase(),
-        'cor': colorLabel,
-        'tamanho': sizeLabel,
+        'cor': color,
+        'tamanho': size,
         'preco_adicional_centavos': variant.priceAdditionalCents,
-        'estoque_mil': variant.stockMil,
+        'estoque_mil': preserveStock && existing != null
+            ? existing['estoque_mil']
+            : preserveStock
+            ? 0
+            : variant.stockMil,
         'ordem': variant.sortOrder == 0 ? index : variant.sortOrder,
         'ativo': variant.isActive ? 1 : 0,
-        'criado_em': now,
         'atualizado_em': now,
       };
       if (existing == null) {
-        await txn.insert(TableNames.produtoVariantes, values);
+        final id = await txn.insert(TableNames.produtoVariantes, {
+          ...values,
+          'uuid': IdGenerator.next(),
+          'produto_id': productId,
+          'criado_em': now,
+        });
+        retained.add(id);
       } else {
-        values
-          ..remove('uuid')
-          ..remove('produto_id')
-          ..remove('criado_em');
+        final id = existing['id'] as int;
+        retained.add(id);
         await txn.update(
           TableNames.produtoVariantes,
           values,
           where: 'id = ?',
-          whereArgs: [existing['id']],
+          whereArgs: [id],
+        );
+      }
+    }
+    for (final row in existingRows) {
+      if (!retained.contains(row['id'])) {
+        await txn.update(
+          TableNames.produtoVariantes,
+          {'ativo': 0},
+          where: 'id = ?',
+          whereArgs: [row['id']],
         );
       }
     }

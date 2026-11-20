@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../../app/core/formatters/app_formatters.dart';
+import '../../../../app/core/telemetry/product_journey.dart';
 import '../../../../app/core/errors/app_exceptions.dart';
+import '../../../../app/core/session/session_provider.dart';
+import '../../../../app/core/session/company_context.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/providers/app_data_refresh_provider.dart';
 import '../../../../app/core/utils/money_parser.dart';
-import '../../../../app/core/utils/quantity_parser.dart';
 import '../../../../app/core/theme/app_design_tokens.dart';
 import '../../../categorias/domain/entities/category.dart';
 import '../../../categorias/presentation/providers/category_providers.dart';
@@ -84,8 +86,16 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   bool get _isEditing => widget.initialProduct != null;
 
   // ── Inferred niche and catalog type ──
-  String get _selectedNiche =>
-      _showGrid ? ProductNiches.fashion : ProductNiches.food;
+  String get _selectedNiche {
+    if (_showGrid) return ProductNiches.fashion;
+    final existing = widget.initialProduct;
+    if (existing != null) return existing.niche;
+    return ref.read(currentCompanyContextProvider).experienceProfile ==
+            CompanyExperienceProfile.fashion
+        ? ProductNiches.fashion
+        : ProductNiches.food;
+  }
+
   String get _selectedCatalogType =>
       _showGrid ? ProductCatalogTypes.variant : ProductCatalogTypes.simple;
 
@@ -93,7 +103,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   bool get _isFashionNiche => _selectedNiche == ProductNiches.fashion;
   bool get _isVariantCatalog =>
       _selectedCatalogType == ProductCatalogTypes.variant;
-  bool get _usesVariantStock => _isFashionNiche;
+  bool get _usesVariantStock => _isFashionNiche && _showGrid;
 
   ProductCostSummary get _recipeCostSummary => ProductCostCalculator.calculate(
     salePriceCents: MoneyParser.parseToCents(_priceController.text),
@@ -189,8 +199,9 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     // ── Auto-open sections based on existing data when editing ──
     if (product != null) {
       final normalizedNiche = ProductNiches.normalize(product.niche);
-      if (normalizedNiche == ProductNiches.fashion ||
-          _fashionGridDraft.hasDimensions) {
+      if (_fashionGridDraft.hasDimensions ||
+          (normalizedNiche == ProductNiches.fashion &&
+              product.isVariantCatalog)) {
         _showGrid = true;
       }
       if (_foodModifierGroups.isNotEmpty) {
@@ -511,18 +522,20 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
             }
           }),
         ),
-        _ToggleActionChip(
-          label: 'Ficha tecnica',
-          icon: Icons.receipt_long_rounded,
-          isActive: _showRecipe,
-          onToggle: () => setState(() => _showRecipe = !_showRecipe),
-        ),
-        _ToggleActionChip(
-          label: 'Adicionais',
-          icon: Icons.playlist_add_rounded,
-          isActive: _showModifiers,
-          onToggle: () => setState(() => _showModifiers = !_showModifiers),
-        ),
+        if (_isFoodNiche || _showRecipe)
+          _ToggleActionChip(
+            label: 'Ficha tecnica',
+            icon: Icons.receipt_long_rounded,
+            isActive: _showRecipe,
+            onToggle: () => setState(() => _showRecipe = !_showRecipe),
+          ),
+        if (_isFoodNiche || _showModifiers)
+          _ToggleActionChip(
+            label: 'Adicionais',
+            icon: Icons.playlist_add_rounded,
+            isActive: _showModifiers,
+            onToggle: () => setState(() => _showModifiers = !_showModifiers),
+          ),
         _ToggleActionChip(
           label: 'Informacoes extras',
           icon: Icons.tune_rounded,
@@ -759,6 +772,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
           : null;
 
       final input = ProductInput(
+        expectedCatalogRevision: widget.initialProduct?.catalogRevision,
         name: resolvedName,
         description: _cleanNullable(_descriptionController.text),
         categoryId: _selectedCategoryId,
@@ -778,9 +792,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         unitMeasure: _selectedUnitMeasure,
         costCents: MoneyParser.parseToCents(_costController.text),
         salePriceCents: MoneyParser.parseToCents(_priceController.text),
-        stockMil: _usesVariantStock
-            ? _fashionGridDraft.totalStockMil
-            : QuantityParser.parseToMil(_stockController.text),
+        stockMil: widget.initialProduct?.stockMil ?? 0,
         isActive: _isActive,
       );
 
@@ -788,6 +800,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         await repository.update(widget.initialProduct!.id, input);
       } else {
         await repository.create(input);
+        ref.read(productJourneyProvider).record(JourneyEvent.productCreated);
       }
 
       ref.invalidate(productListProvider);

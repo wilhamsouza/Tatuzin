@@ -43,6 +43,7 @@ _device_recovery/
 *.db
 
 # Local sensitive artifacts
+.release-backups/
 *.db
 *.db-journal
 *.db-shm

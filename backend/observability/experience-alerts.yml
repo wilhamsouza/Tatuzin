@@ -1,0 +1,27 @@
+groups:
+  - name: tatuzin-experience-pilot
+    rules:
+      - alert: TatuzinExperienceApiUnavailable
+        expr: tatuzin_experience_api_ready{job="node"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: API do piloto Tatuzin indisponível
+          description: A readiness HTTPS falhou por dois minutos.
+      - alert: TatuzinExperienceCollectorStale
+        expr: (time() - tatuzin_experience_collector_timestamp_seconds{job="node"} > 180) or absent(tatuzin_experience_collector_timestamp_seconds{job="node"})
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Coleta do piloto Tatuzin desatualizada
+          description: A coleta de jornada está sem atualização; não interpretar ausência de eventos como ausência de erros.
+      - alert: TatuzinExperienceCheckoutSlow
+        expr: (tatuzin_experience_checkout_median_seconds_24h{job="node"} >= 15) and on(job, instance) (tatuzin_experience_events_24h{job="node",event="checkout_completed"} >= 5)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Mediana de checkout do piloto acima da meta
+          description: Mediana geral declarada pelo app acima de 15 segundos, com ao menos cinco conclusões; investigar vendas simples nas sessões observadas.

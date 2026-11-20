@@ -8,6 +8,7 @@ import { tenantAnalyticsReportsRouter } from './modules/analytics/reports/tenant
 import { analyticsSnapshotsRouter } from './modules/analytics/snapshots/analytics-snapshots.routes';
 import { adminRouter } from './modules/admin/admin.routes';
 import { appRouter } from './modules/app/app.routes';
+import { productJourneyRouter, productJourneyAdminRouter } from './modules/product-journey/product-journey.routes';
 import {
   billingRouter,
   mercadoPagoWebhookRouter,
@@ -124,6 +125,8 @@ export function createApp() {
   app.use('/api/auth', authRouter);
   app.use('/api/tenant-deletion', publicTenantDeletionRouter);
   app.use('/api/app', appRouter);
+  app.use('/api/product-journey', productJourneyRouter);
+  app.use('/api/admin/product-journey', productJourneyAdminRouter);
   app.use('/api/billing', billingRouter);
   app.use('/api/owner', ownerRouter);
   app.use('/api/webhooks', mercadoPagoWebhookRouter);

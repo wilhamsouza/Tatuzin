@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../app/core/telemetry/product_journey.dart';
 
 import '../../../../app/core/database/app_database.dart';
 import '../../../../app/core/network/network_providers.dart';
@@ -50,6 +51,11 @@ class BillingController extends AsyncNotifier<void> {
         () =>
             ref.read(billingRemoteDataSourceProvider).subscribe(plan: plan.key),
       );
+      if (result.checkoutUrl?.isNotEmpty ?? false) {
+        ref
+            .read(productJourneyProvider)
+            .record(JourneyEvent.subscriptionStarted);
+      }
       state = const AsyncData(null);
       return result;
     } catch (error, stackTrace) {

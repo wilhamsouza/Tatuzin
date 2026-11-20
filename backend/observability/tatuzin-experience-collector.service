@@ -1,0 +1,12 @@
+[Unit]
+Description=Collect Tatuzin pilot journey and API readiness metrics
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/tatuzinV2
+Environment=TATUZIN_EXPERIENCE_METRICS_DIR=/home/ubuntu/servers/observability/node-textfile
+ExecStart=/usr/bin/bash /home/ubuntu/tatuzinV2/backend/scripts/collect-experience-metrics.sh
+TimeoutStartSec=30
+NoNewPrivileges=true

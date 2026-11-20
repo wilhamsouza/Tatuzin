@@ -22,7 +22,7 @@ class SqliteOperationalDashboardRepository
 
     final salesRows = await database.rawQuery(
       '''
-      SELECT COALESCE(SUM(valor_final_centavos), 0) AS total
+      SELECT COALESCE(SUM(valor_final_centavos), 0) AS total, COUNT(*) AS quantidade
       FROM ${TableNames.vendas}
       WHERE status = 'ativa'
         AND data_venda >= ?
@@ -32,7 +32,7 @@ class SqliteOperationalDashboardRepository
     );
 
     final cashSessionRows = await database.rawQuery('''
-      SELECT id, saldo_final_centavos
+      SELECT id, saldo_final_centavos, aguardando_confirmacao_troco_inicial
       FROM ${TableNames.caixaSessoes}
       WHERE status = 'aberto'
       ORDER BY aberta_em DESC
@@ -70,6 +70,11 @@ class SqliteOperationalDashboardRepository
 
     return OperationalDashboardSnapshot(
       soldTodayCents: salesRows.first['total'] as int? ?? 0,
+      todaySalesCount: salesRows.first['quantidade'] as int? ?? 0,
+      hasOpenCashSession: cashSessionRows.isNotEmpty,
+      cashNeedsConfirmation:
+          cashSessionRows.isNotEmpty &&
+          cashSessionRows.first['aguardando_confirmacao_troco_inicial'] == 1,
       currentCashCents: cashSessionRows.isEmpty
           ? 0
           : cashSessionRows.first['saldo_final_centavos'] as int? ?? 0,

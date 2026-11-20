@@ -2,6 +2,7 @@ import { LicenseStatus } from '@prisma/client';
 
 import { env } from '../../config/env';
 import { prisma } from '../../database/prisma';
+import { purgeExpiredJourneyEvents } from '../../modules/product-journey/product-journey.service';
 import { logger } from '../observability/logger';
 
 type JobRunStatus = 'idle' | 'running' | 'ok' | 'error';
@@ -10,6 +11,7 @@ type MaintenanceJobSummary = {
   expiredLicensesUpdated: number;
   deletedSessions: number;
   deletedRateLimitBuckets: number;
+  deletedJourneyEvents: number;
 };
 
 type PlatformJobsSnapshot = {
@@ -84,7 +86,7 @@ export class PlatformJobsService {
           env.RATE_LIMIT_BUCKET_RETENTION_MINUTES * 60 * 1000,
       );
 
-      const [expiredLicenses, deletedSessions, deletedRateLimitBuckets] =
+      const [expiredLicenses, deletedSessions, deletedRateLimitBuckets, deletedJourneyEvents] =
         await Promise.all([
         prisma.license.updateMany({
           where: {
@@ -124,6 +126,7 @@ export class PlatformJobsService {
             },
           },
         }),
+        purgeExpiredJourneyEvents(prisma, now),
       ]);
 
       const finishedAt = new Date();
@@ -133,6 +136,7 @@ export class PlatformJobsService {
         expiredLicensesUpdated: expiredLicenses.count,
         deletedSessions: deletedSessions.count,
         deletedRateLimitBuckets: deletedRateLimitBuckets.count,
+        deletedJourneyEvents: deletedJourneyEvents.count,
       };
       this.lastError = null;
       this.status = 'ok';

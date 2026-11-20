@@ -1258,6 +1258,9 @@ export class SyncEventService {
         return this.operationalOrderItemProjection(context.company.id, event);
       case "sale":
         return this.saleProjection(context.company.id, event);
+      case "saleCustomerAssignment":
+      case "saleCustomerLock":
+        return this.saleCustomerProjection(context.company.id, event);
       case "saleItem":
         return this.saleItemProjection(context.company.id, event);
       case "payment":
@@ -1280,6 +1283,8 @@ export class SyncEventService {
       "operationalOrder",
       "operationalOrderItem",
       "sale",
+      "saleCustomerAssignment",
+      "saleCustomerLock",
       "saleItem",
       "payment",
       "receipt",
@@ -1466,6 +1471,9 @@ export class SyncEventService {
         cashSessionId: true,
         soldAt: true,
         createdAt: true,
+        customerId: true,
+        customerAssignmentRevision: true,
+        sellerUserId: true,
       },
     });
     if (sale == null) {
@@ -1485,7 +1493,21 @@ export class SyncEventService {
       cashSessionId: sale.cashSessionId,
       soldAt: sale.soldAt.toISOString(),
       createdAt: sale.createdAt.toISOString(),
+      customerId: sale.customerId,
+      customerAssignmentRevision: sale.customerAssignmentRevision,
+      sellerUserId: sale.sellerUserId,
     };
+  }
+
+  private async saleCustomerProjection(companyId: string, event: PullSyncEvent) {
+    const sale = await prisma.sale.findFirst({ where: { id: event.entityServerId!, companyId },
+      select: { id: true, localUuid: true, customerId: true, customerAssignmentRevision: true,
+        customerAssignmentLocked: true,
+        customer: { select: { id: true, localUuid: true } } } });
+    if (!sale) return null;
+    return { companyId, saleUuid: sale.localUuid, saleServerId: sale.id,
+      customerServerId: sale.customerId, customerUuid: sale.customer?.localUuid ?? null,
+      revision: sale.customerAssignmentRevision, locked: sale.customerAssignmentLocked };
   }
 
   private async saleItemProjection(companyId: string, event: PullSyncEvent) {

@@ -54,14 +54,6 @@ bool isPublicRoutePath(String path) {
 
 bool canAccessRoutePath(AppSession session, GoRouterState state) {
   final path = state.uri.path;
-  final required = requiredAnyPermissionForPath(path);
-  if (required.isEmpty) {
-    if (_isOwnerOnlyPath(path)) {
-      return session.isCompanyOwner || _effectiveRole(session) == 'ADMIN';
-    }
-    return true;
-  }
-
   if (path.startsWith('/funcionarios/') && path.endsWith('/atividade')) {
     final ownEmployeeId = session.employee?.id;
     final requestedEmployeeId = state.pathParameters['employeeId'];
@@ -72,10 +64,13 @@ bool canAccessRoutePath(AppSession session, GoRouterState state) {
     }
   }
 
-  return required.any(session.canAccessPermission);
+  return canAccessNavigationPath(session, path);
 }
 
 Set<String> requiredAnyPermissionForPath(String path) {
+  if (path == AppRoutePaths.activity) {
+    return const {'sales.create', 'reports.basic', 'reports.advanced'};
+  }
   if (path == AppRoutePaths.dashboard || path == AppRoutePaths.more) {
     return const <String>{};
   }
@@ -138,6 +133,15 @@ Set<String> requiredAnyPermissionForPath(String path) {
     return const {'employees.manage', 'reports.advanced'};
   }
   return const <String>{};
+}
+
+bool canAccessNavigationPath(AppSession session, String path) {
+  final required = requiredAnyPermissionForPath(path);
+  if (required.isNotEmpty) return required.any(session.canAccessPermission);
+  if (_isOwnerOnlyPath(path)) {
+    return session.isCompanyOwner || _effectiveRole(session) == 'ADMIN';
+  }
+  return true;
 }
 
 bool _isOwnerOnlyPath(String path) {

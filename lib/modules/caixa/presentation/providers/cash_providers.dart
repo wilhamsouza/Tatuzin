@@ -12,6 +12,7 @@ import '../../../../app/core/providers/provider_context_logger.dart';
 import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
+import '../../../../app/core/telemetry/product_journey.dart';
 import '../../data/cash_event_sync_processor.dart';
 import '../../data/datasources/cash_remote_datasource.dart';
 import '../../data/real/real_cash_remote_datasource.dart';
@@ -230,6 +231,7 @@ class CashActionController extends AsyncNotifier<void> {
       final session = await ref
           .read(openCashSessionUseCaseProvider)
           .call(initialFloatCents: initialFloatCents, notes: notes);
+      ref.read(productJourneyProvider).record(JourneyEvent.cashOpened);
       _notifyCashChanged();
       state = const AsyncData(null);
       return session;
@@ -251,6 +253,7 @@ class CashActionController extends AsyncNotifier<void> {
       final session = await ref
           .read(cashRepositoryProvider)
           .confirmAutoOpenedSession(initialFloatCents: initialFloatCents);
+      ref.read(productJourneyProvider).record(JourneyEvent.cashOpened);
       _notifyCashChanged();
       state = const AsyncData(null);
       return session;

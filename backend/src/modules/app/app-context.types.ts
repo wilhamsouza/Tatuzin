@@ -25,6 +25,9 @@ export type AppContextCompany = {
   showAddressOnReceipt: boolean;
   showFooterMessageOnReceipt: boolean;
   setupCompleted: boolean;
+  experienceProfile?: 'moda' | 'alimentacao' | 'misto';
+  onboardingEnabled?: boolean;
+  experienceRefreshEnabled?: boolean;
 };
 
 export type AppContextMembership = {

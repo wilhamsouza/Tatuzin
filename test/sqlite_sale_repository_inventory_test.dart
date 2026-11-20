@@ -1,3 +1,4 @@
+import 'package:tatuzin/modules/estoque/data/support/central_stock_refresh_support.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -25,6 +26,54 @@ void main() {
     tearDown(() async {
       await database.close();
     });
+
+    test(
+      'carrinho já aberto não conclui enquanto saldo central confirmado está pendente',
+      () async {
+        database = await openSaleInventoryTestDatabase();
+        await database.execute(
+          'CREATE TABLE IF NOT EXISTS ${TableNames.operationalSyncState} (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)',
+        );
+        await insertSimpleProduct(
+          database,
+          productId: 1,
+          name: 'Boné',
+          stockMil: 5000,
+          barcode: 'BON',
+          salePriceCents: 7500,
+        );
+        final alreadyOpenedCart = CheckoutInput(
+          items: [
+            buildSimpleCartItem(
+              productId: 1,
+              productName: 'Boné',
+              quantityMil: 1000,
+              availableStockMil: 5000,
+              unitPriceCents: 7500,
+              barcode: 'BON',
+            ),
+          ],
+          saleType: SaleType.cash,
+          paymentMethod: PaymentMethod.pix,
+        );
+        await CentralStockRefreshSupport.store(database, [
+          {'productId': 'remote-product', 'currentStockMil': 4000},
+        ]);
+        await expectLater(
+          createSaleRepository(
+            database,
+          ).completeCashSale(input: alreadyOpenedCart),
+          throwsA(isA<ValidationException>()),
+        );
+        expect(await loadProductStock(database, 1), 5000);
+        expect(await database.query(TableNames.vendas), isEmpty);
+        await CentralStockRefreshSupport.store(database, []);
+        await createSaleRepository(
+          database,
+        ).completeCashSale(input: alreadyOpenedCart);
+        expect(await loadProductStock(database, 1), 4000);
+      },
+    );
 
     test('venda simples baixa saldo e grava sale_out', () async {
       database = await openSaleInventoryTestDatabase();

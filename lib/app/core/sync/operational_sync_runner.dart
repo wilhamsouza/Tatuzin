@@ -137,6 +137,11 @@ class OperationalSyncRunner {
           );
           conflictCount++;
         }
+        if (pending.any(
+          (item) => item.event.entity == 'saleCustomerAssignment',
+        )) {
+          _onCacheSnapshotChanged();
+        }
       } catch (error, stackTrace) {
         failedCount += pending.length;
         await _queueRepository.markFailed(

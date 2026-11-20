@@ -16,10 +16,23 @@ export class CompanySettingsService {
     input: CompanyReceiptSettingsPatchInput,
   ) {
     this.assertCanUpdateCompanySettings(context);
+    if (
+      input.experienceProfile !== undefined &&
+      context.membership.role.trim().toUpperCase() !== 'OWNER'
+    ) {
+      throw new AppError(
+        'Somente o dono pode alterar o perfil da loja.',
+        403,
+        'COMPANY_SETTINGS_FORBIDDEN',
+      );
+    }
 
     const company = await prisma.company.update({
       where: { id: context.company.id },
       data: {
+        ...(input.experienceProfile === undefined
+          ? {}
+          : { experienceProfile: input.experienceProfile }),
         ...(input.receiptDisplayName === undefined
           ? {}
           : { receiptDisplayName: this.cleanOptionalText(input.receiptDisplayName) }),
@@ -60,6 +73,7 @@ export class CompanySettingsService {
   toCompanyReceiptSettingsDto(company: Pick<
     Company,
     | 'id'
+    | 'experienceProfile'
     | 'name'
     | 'legalName'
     | 'documentNumber'
@@ -75,6 +89,7 @@ export class CompanySettingsService {
   >) {
     return {
       id: company.id,
+      experienceProfile: company.experienceProfile,
       name: company.name,
       legalName: company.legalName,
       documentNumber: company.documentNumber,
