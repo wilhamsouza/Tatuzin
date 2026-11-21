@@ -14,10 +14,10 @@ export const adminLegacyActionGuard: RequestHandler = (request, _response, next)
     let key: string | undefined;
     if (/\/access\/[^/]+\/block/.test(path)) key = 'support.user.block';
     else if (/\/access\/[^/]+\/reactivate/.test(path)) key = 'support.user.unblock';
+    else if (/^\/licenses\/[^/]+$/.test(path)) { key = 'support.license.update'; companyId = path.split('/')[2]; }
     else if (/\/license/.test(path)) key = 'support.license.update';
     else if (/\/billing\/(force-plan|cancel-local|reconcile)(\/|$)/.test(path)) key = 'admin.billing.exception';
     else if (/\/billing\//.test(path)) key = 'admin.billing.manage';
-    else if (/^\/licenses\//.test(path)) { key = 'support.license.update'; companyId = path.split('/')[2]; }
     else if (/^\/sessions\/[^/]+\/revoke$/.test(path)) {
       key = 'support.session.revoke';
       const target = await prisma.deviceSession.findUnique({ where: { id: path.split('/')[2] }, select: { companyId: true } });
