@@ -1,3 +1,4 @@
+import { openingDetailsSchema, closingDetailsSchema, validateCashV2Count, cashMetadataEqual } from './cash-session-v2';
 import {
   asRecord,
   firstDate,
@@ -42,7 +43,7 @@ export class CashSessionMaterializer {
       };
     }
 
-    const existing = await input.tx.cashSession.findUnique({
+    let existing = await input.tx.cashSession.findUnique({
       where: {
         companyId_localUuid: {
           companyId: input.context.company.id,
@@ -50,6 +51,10 @@ export class CashSessionMaterializer {
         },
       },
     });
+    if (existing != null && asRecord(asRecord(existing.payload).openingDetails).version === 2) {
+      await input.tx.$queryRaw`SELECT "id" FROM "CashSession" WHERE "id" = ${existing.id} AND "companyId" = ${input.context.company.id} FOR UPDATE`;
+      existing = await input.tx.cashSession.findUnique({where:{companyId_localUuid:{companyId:input.context.company.id,localUuid}}});
+    }
     const localSequence = localSequenceFor(input.event, input.payload);
     const storedLocalSequence = persistableLocalSequence(localSequence);
 
@@ -103,6 +108,66 @@ export class CashSessionMaterializer {
       };
     }
     const normalizedStatus = requestedStatus as 'open' | 'closed';
+
+    const savedPayload = asRecord(existing?.payload);
+    const storedOpening = savedPayload.openingDetails;
+    const openingRaw = input.payload.openingDetails ?? storedOpening;
+    const closingRaw = input.payload.closingDetails ?? savedPayload.closingDetails;
+    const v2 = openingRaw != null || closingRaw != null;
+    const invalidV2 = (message: string): SyncMaterializerResult => ({ outcome: 'rejected', code: 'CASH_SESSION_INVALID_V2', message });
+    const conflictV2 = (code: string, message: string): SyncMaterializerResult => ({ outcome: 'conflict', code, message });
+    let opening: ReturnType<typeof openingDetailsSchema.parse> | undefined;
+    let closing: ReturnType<typeof closingDetailsSchema.parse> | undefined;
+    if (v2) {
+      const v2Authorization = this.authorizeCashSessionChange({ input, existing, requestedStatus: normalizedStatus });
+      if (v2Authorization != null) return v2Authorization;
+      const parsedOpening = openingDetailsSchema.safeParse(openingRaw);
+      if (!parsedOpening.success) return invalidV2('Contagem de abertura V2 invalida.');
+      opening = parsedOpening.data;
+      if (!validateCashV2Count(opening, opening.countedAmountCents)) return invalidV2('Total de cedulas/moedas de abertura invalido.');
+      if (input.payload.openingBalanceCents !== undefined && input.payload.openingBalanceCents !== opening.countedAmountCents) return invalidV2('Saldo de abertura diverge da contagem.');
+      if (existing != null && storedOpening == null) return conflictV2('CASH_SESSION_LEGACY_IMMUTABLE', 'Sessao legada nao pode receber politica retroativa.');
+      const pendingFlag = input.payload.awaitingInitialFloatConfirmation;
+      if (pendingFlag !== undefined && typeof pendingFlag !== 'boolean') return invalidV2('Confirmacao do fundo inicial deve ser booleana.');
+      const wasPending = savedPayload.awaitingInitialFloatConfirmation === true;
+      const pending = pendingFlag === undefined ? wasPending : pendingFlag;
+      if (existing == null && pending && (normalizedStatus !== 'open' || opening.countedAmountCents !== 0)) return invalidV2('Abertura provisoria deve estar aberta e aguardar contagem inicial.');
+      if (existing != null && !wasPending && pending) return conflictV2('CASH_SESSION_OPENING_IMMUTABLE', 'Fundo inicial confirmado nao pode voltar a provisório.');
+      const storedPolicy = asRecord(storedOpening);
+      const confirmsInitialFloat = existing?.status === 'open' && normalizedStatus === 'open' &&
+        input.event.operation !== 'create' && wasPending && pendingFlag === false &&
+        existing.deviceId === input.context.device.id && storedPolicy.version === opening.version &&
+        storedPolicy.blindClosureEnabled === opening.blindClosureEnabled && storedPolicy.policyRevision === opening.policyRevision;
+      if (wasPending && pendingFlag === false && !confirmsInitialFloat) return conflictV2('CASH_SESSION_OPENING_IMMUTABLE', 'Confirmacao exige sessao aberta no dispositivo e politica original.');
+      if (storedOpening != null && !cashMetadataEqual(storedOpening, opening) && !confirmsInitialFloat) return conflictV2('CASH_SESSION_OPENING_IMMUTABLE', 'Contagem/politica de abertura imutavel.');
+      if (confirmsInitialFloat) {
+        const confirmationPermission = requireSyncPermission(input, 'cash.open', 'Voce nao tem permissao para confirmar fundo inicial.');
+        if (confirmationPermission != null) return confirmationPermission;
+      }
+      if (normalizedStatus === 'closed' && pending) return invalidV2('Confirme o fundo inicial antes do fechamento.');
+      if (existing?.deviceId != null && existing.deviceId !== input.context.device.id) return conflictV2('CASH_SESSION_DEVICE_MISMATCH', 'Sessao vinculada a outro dispositivo.');
+      if (normalizedStatus === 'closed') {
+        const parsedClosing = closingDetailsSchema.safeParse(closingRaw);
+        if (!parsedClosing.success) return invalidV2('Contagem de fechamento V2 invalida.');
+        closing = parsedClosing.data;
+        if (closing.sessionUuid !== localUuid || closing.policyRevision !== opening.policyRevision || closing.blindClosureEnabled !== opening.blindClosureEnabled) return invalidV2('Fechamento diverge da sessao/politica de abertura.');
+        if (closing.differenceCents !== closing.countedBalanceCents - closing.expectedBalanceCents || !validateCashV2Count(closing, closing.countedBalanceCents)) return invalidV2('Diferenca ou total da contagem invalido.');
+        if ((closing.blindClosureEnabled || closing.differenceCents !== 0) && !closing.reason?.trim()) return invalidV2('Motivo de fechamento obrigatorio.');
+        for (const [key, value] of Object.entries({ expectedBalanceCents: closing.expectedBalanceCents, closingBalanceCents: closing.countedBalanceCents, countedBalanceCents: closing.countedBalanceCents })) {
+          if (input.payload[key] !== undefined && input.payload[key] !== value) return invalidV2('Saldo externo diverge do fechamento V2.');
+        }
+      } else if (closingRaw != null) return invalidV2('Sessao aberta nao pode conter fechamento.');
+      if (existing?.status === 'closed') {
+        if (!cashMetadataEqual(savedPayload.closingDetails, closing)) return conflictV2('CASH_SESSION_CLOSURE_IMMUTABLE', 'Fechamento original imutavel.');
+        return { outcome: 'duplicate', entityServerId: existing.id };
+      }
+      // Serialize opens on the physical device without a partial index affecting legacy rows.
+      if (existing == null && normalizedStatus === 'open') {
+        await input.tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.context.company.id}), hashtext(${input.context.device.id}))::text`;
+        const active = await input.tx.cashSession.findFirst({ where: { companyId: input.context.company.id, deviceId: input.context.device.id, status: 'open' } });
+        if (active != null) return conflictV2('CASH_SESSION_DEVICE_ALREADY_OPEN', 'Dispositivo ja possui caixa aberto.');
+      }
+    }
 
     if (input.event.operation === 'create' && existing != null) {
       await this.backfillDuplicateCreate(input, existing);
@@ -169,23 +234,29 @@ export class CashSessionMaterializer {
         )
       : null;
     const mergedPayload = this.mergePayload(existing?.payload, input.payload);
+    if (v2) {
+      mergedPayload.openingDetails = opening;
+      if (closing != null) mergedPayload.closingDetails = closing;
+      mergedPayload.cashMetadataVersion = 2;
+      mergedPayload.awaitingInitialFloatConfirmation = input.payload.awaitingInitialFloatConfirmation ?? savedPayload.awaitingInitialFloatConfirmation ?? false;
+    } else mergedPayload.cashMetadataVersion = 1;
 
     const data = {
-      deviceId: input.context.device.id,
+      deviceId: existing?.deviceId ?? input.context.device.id,
       userId: existing?.userId ?? input.context.user.id,
       localId: firstIdentity(input.payload, ['localId', 'id']),
       status: normalizedStatus,
       openedAt,
       closedAt,
       openingBalanceCents:
-        firstInt(input.payload, ['openingBalanceCents', 'initialFloatCents']) ??
+        opening?.countedAmountCents ?? firstInt(input.payload, ['openingBalanceCents', 'initialFloatCents']) ??
         existing?.openingBalanceCents ??
         0,
       closingBalanceCents:
-        firstInt(input.payload, ['closingBalanceCents', 'countedBalanceCents']) ??
+        closing?.countedBalanceCents ?? firstInt(input.payload, ['closingBalanceCents', 'countedBalanceCents']) ??
         existing?.closingBalanceCents,
       expectedBalanceCents:
-        firstInt(input.payload, ['expectedBalanceCents']) ??
+        closing?.expectedBalanceCents ?? firstInt(input.payload, ['expectedBalanceCents']) ??
         existing?.expectedBalanceCents,
       notes:
         firstString(input.payload, ['notes', 'description']) ??

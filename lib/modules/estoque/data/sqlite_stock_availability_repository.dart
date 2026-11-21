@@ -2,6 +2,7 @@ import '../../../app/core/database/app_database.dart';
 import '../../../app/core/database/table_names.dart';
 import '../../../app/core/errors/app_exceptions.dart';
 import '../domain/entities/stock_availability.dart';
+import 'support/central_stock_refresh_support.dart';
 import '../domain/entities/stock_reservation.dart';
 import '../domain/repositories/stock_availability_repository.dart';
 
@@ -15,6 +16,7 @@ class SqliteStockAvailabilityRepository implements StockAvailabilityRepository {
     required int productId,
     required int? productVariantId,
   }) async {
+    await CentralStockRefreshSupport.assertReady(await _appDatabase.database);
     final physicalQuantityMil = productVariantId == null
         ? await _loadProductPhysicalQuantityMil(productId)
         : await _loadVariantPhysicalQuantityMil(

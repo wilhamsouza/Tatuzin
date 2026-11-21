@@ -19,7 +19,7 @@ class OwnerProductsPage extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const OwnerPageIntro(
-          title: 'Produtos e estoque',
+          title: 'Análise de produtos',
           subtitle:
               'Monitore produtos mais vendidos, estoque baixo, itens zerados e categorias.',
           icon: Icons.inventory_2_outlined,

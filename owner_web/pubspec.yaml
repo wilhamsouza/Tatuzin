@@ -1,5 +1,5 @@
 name: tatuzin_owner_web
-description: Painel web read-only do dono da empresa Tatuzin.
+description: Painel de gestão e operação do dono da empresa Tatuzin.
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -25,3 +25,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: NotoSans
+      fonts:
+        - asset: assets/fonts/NotoSans-Regular.ttf
+        - asset: assets/fonts/NotoSans-Bold.ttf
+          weight: 700

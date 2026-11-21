@@ -5,6 +5,8 @@ abstract final class AppRouteNames {
   static const resetPassword = 'reset-password';
   static const changeInitialPassword = 'change-initial-password';
   static const dashboard = 'dashboard';
+  static const activity = 'activity';
+  static const profile = 'profile';
   static const permissionDenied = 'permission-denied';
   static const more = 'more';
   static const accountCloud = 'account-cloud';
@@ -45,6 +47,8 @@ abstract final class AppRouteNames {
   static const fiadoDetail = 'fiado-detail';
   static const cash = 'cash';
   static const cashCount = 'cash-count';
+  static const cashClose = 'cash-close';
+  static const cashOpen = 'cash-open';
   static const salesHistory = 'sales-history';
   static const saleDetail = 'sale-detail';
   static const saleReceipt = 'sale-receipt';
@@ -75,6 +79,8 @@ abstract final class AppRoutePaths {
   static const resetPassword = '/redefinir-senha';
   static const changeInitialPassword = '/criar-nova-senha';
   static const dashboard = '/';
+  static const activity = '/atividade';
+  static const profile = '/perfil';
   static const permissionDenied = '/sem-permissao';
   static const more = '/mais';
   static const accountCloud = '/conta';
@@ -115,6 +121,8 @@ abstract final class AppRoutePaths {
   static const fiadoDetail = '/fiado/:fiadoId';
   static const cash = '/caixa';
   static const cashCount = '/caixa/contagem';
+  static const cashClose = '/caixa/fechar';
+  static const cashOpen = '/caixa/abrir';
   static const salesHistory = '/historico-vendas';
   static const saleDetail = '/historico-vendas/:saleId';
   static const saleReceipt = '/comprovantes/vendas/:saleId';

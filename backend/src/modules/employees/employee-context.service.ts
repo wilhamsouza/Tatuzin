@@ -129,7 +129,20 @@ export class EmployeeContextService {
       });
     }
 
-    return prisma.employeeProfile.create({ data });
+    try {
+      return await prisma.employeeProfile.create({ data });
+    } catch (error) {
+      // Parallel initial reads can discover the same missing owner profile.
+      // Reuse only the identical tenant/membership profile; never overwrite a
+      // conflicting identity or grant permissions while recovering a race.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const concurrent = await this.findProfile(input.companyId, input.membershipId, input.userId, email);
+        if (concurrent != null && this.isOwnerProfileConsistent(concurrent, data)) {
+          return concurrent;
+        }
+      }
+      throw error;
+    }
   }
 
   private async findProfile(

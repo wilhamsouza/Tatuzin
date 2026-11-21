@@ -1,8 +1,13 @@
+import 'fixtures/cash_workspace_fixture.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:tatuzin_owner_web/src/theme/owner_theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
@@ -39,6 +44,339 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
 
+  for (final variant in [
+    (size: const Size(1440, 1000), scale: 1.0, dark: false),
+    (size: const Size(1280, 800), scale: 1.0, dark: true),
+    (size: const Size(360, 800), scale: 1.0, dark: false),
+    (size: const Size(390, 844), scale: 2.0, dark: true),
+  ]) {
+    testWidgets(
+      'owner responsivo ${variant.size} fonte ${variant.scale} escuro ${variant.dark}',
+      (tester) async {
+        tester.view.physicalSize = variant.size;
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = variant.scale;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final fonts = FontLoader('NotoSans')
+          ..addFont(rootBundle.load('assets/fonts/NotoSans-Regular.ttf'))
+          ..addFont(rootBundle.load('assets/fonts/NotoSans-Bold.ttf'));
+        await fonts.load();
+        final icons = FontLoader('MaterialIcons')
+          ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+        await icons.load();
+        final container = ProviderContainer(
+          overrides: [
+            ownerAuthControllerProvider.overrideWith(
+              (ref) => _ReadyOwnerAuthController(),
+            ),
+            ownerDashboardProvider.overrideWith(
+              (ref) async =>
+                  OwnerBusinessDashboard.fromMap(_businessDashboardPayload()),
+            ),
+            ownerDashboardSalesProvider.overrideWith(
+              (ref) async => OwnerSalesSummary.fromMap({
+                ..._salesSummaryPayload(),
+                'series': [
+                  for (var i = 0; i < 7; i++)
+                    {
+                      'date': '2026-05-${10 + i}',
+                      'totalAmountCents': [
+                        12000,
+                        18000,
+                        14000,
+                        24000,
+                        21000,
+                        32000,
+                        35000,
+                      ][i],
+                      'totalCount': i + 1,
+                    },
+                ],
+              }),
+            ),
+            ownerDashboardReceivablesProvider.overrideWith(
+              (ref) async =>
+                  OwnerReceivablesReport.fromMap(_receivablesPayload()),
+            ),
+            ownerEmployeesProvider.overrideWith(
+              (ref) async =>
+                  OwnerEmployeesOverview.fromMap(_employeesPayload()),
+            ),
+            ownerCommissionsProvider.overrideWith(
+              (ref) async =>
+                  OwnerCommissionsSummary.fromMap(_commissionsPayload()),
+            ),
+            ownerEmployeeReportsProvider.overrideWith(
+              (ref) async =>
+                  OwnerEmployeeReports.fromMap(_employeeReportsPayload()),
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+        final key = GlobalKey();
+        Future<void> pump(Widget page, String route) async {
+          await tester.pumpWidget(
+            UncontrolledProviderScope(
+              container: container,
+              child: MaterialApp(
+                theme: OwnerTheme.light(),
+                darkTheme: OwnerTheme.dark(),
+                themeMode: variant.dark ? ThemeMode.dark : ThemeMode.light,
+                home: RepaintBoundary(
+                  key: key,
+                  child: OwnerShellScaffold(
+                    currentLocation: route,
+                    title: 'Painel',
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: page,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+        }
+
+        await pump(const OwnerDashboardPage(), '/dashboard');
+        final name =
+            '${variant.size.width.toInt()}x${variant.size.height.toInt()}-${variant.dark ? 'dark' : 'light'}-${variant.scale}';
+        await _ownerCapture(tester, key, '$name-dashboard');
+        for (final title in [
+          'Resumo de vendas',
+          'Funcionários',
+          'Atalhos rápidos',
+          'Últimas atividades',
+          'Top produtos',
+        ]) {
+          final target = find
+              .descendant(
+                of: find.byType(OwnerDashboardPage),
+                matching: find.text(title),
+              )
+              .first;
+          await tester.ensureVisible(target);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: title);
+          if (title == 'Atalhos rápidos') {
+            await _ownerCapture(tester, key, '$name-detail');
+          }
+        }
+        if (variant.size.width < 1100 || variant.scale > 1.5) {
+          await tester.tap(find.byTooltip('Open navigation menu'));
+          await tester.pumpAndSettle();
+          await _ownerCapture(tester, key, '$name-drawer');
+          expect(tester.takeException(), isNull);
+          tester.state<ScaffoldState>(find.byType(Scaffold).last).closeDrawer();
+          await tester.pumpAndSettle();
+        }
+        await pump(const OwnerEmployeesPage(), '/employees');
+        await _ownerCapture(tester, key, '$name-employees');
+        for (final title in ['Equipe', 'Comissoes', 'Vendas por funcionario']) {
+          await tester.ensureVisible(find.text(title));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: title);
+        }
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
+  testWidgets('senha temporaria preserva a rota real de funcionarios', (
+    tester,
+  ) async {
+    final service = _EmployeeAccessService();
+    final container = _employeeAccessContainer(service);
+    addTearDown(container.dispose);
+    final router = container.read(ownerRouterProvider);
+    router.go('/employees');
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const OwnerWebApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byTooltip('Ações de Gabriel'));
+    await tester.tap(find.byTooltip('Ações de Gabriel'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gerar senha temporaria'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gerar senha'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(tester.takeException(), isNull);
+    expect(find.text('Senha temporaria gerada'), findsOneWidget);
+    expect(service.passwordCalls, 1);
+    await tester.tap(find.text('Fechar'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(OwnerEmployeesPage), findsOneWidget);
+    expect(router.routeInformationProvider.value.uri.path, '/employees');
+    expect(container.read(ownerEmployeeBusyProvider), isFalse);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final scenario in ['cancelar', 'copiar', 'falhar']) {
+    testWidgets('acesso no ShellRoute: $scenario preserva funcionarios', (
+      tester,
+    ) async {
+      final service = _EmployeeAccessService()
+        ..failPassword = scenario == 'falhar';
+      final container = _employeeAccessContainer(service);
+      addTearDown(container.dispose);
+      final router = container.read(ownerRouterProvider)..go('/employees');
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const OwnerWebApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byTooltip('Ações de Gabriel'));
+      await tester.tap(find.byTooltip('Ações de Gabriel'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Gerar senha temporaria'));
+      await tester.pumpAndSettle();
+      if (scenario == 'cancelar') {
+        await tester.tap(find.text('Cancelar'));
+        await tester.pumpAndSettle();
+        expect(service.passwordCalls, 0);
+      } else {
+        await tester.tap(find.text('Gerar senha'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        if (scenario == 'copiar') {
+          String? copied;
+          tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            SystemChannels.platform,
+            (call) async {
+              if (call.method == 'Clipboard.setData') {
+                copied = (call.arguments as Map)['text'] as String;
+              }
+              return null;
+            },
+          );
+          addTearDown(
+            () => tester.binding.defaultBinaryMessenger
+                .setMockMethodCallHandler(SystemChannels.platform, null),
+          );
+          await tester.tap(find.text('Copiar dados'));
+          await tester.pump();
+          expect(copied, contains('Only-Test-Password-42'));
+          expect(find.text('Senha temporaria gerada'), findsOneWidget);
+          await tester.tap(find.text('Fechar'));
+        } else {
+          expect(
+            find.textContaining('Falha simulada de acesso.'),
+            findsOneWidget,
+          );
+        }
+        await tester.pumpAndSettle();
+        expect(service.passwordCalls, 1);
+      }
+      expect(tester.takeException(), isNull);
+      expect(find.byType(OwnerEmployeesPage), findsOneWidget);
+      expect(router.routeInformationProvider.value.uri.path, '/employees');
+      expect(container.read(ownerEmployeeBusyProvider), isFalse);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  for (final scenario in [
+    'gerar',
+    'sem acesso',
+    'falha parcial',
+    'personalizar',
+    'inativo',
+  ]) {
+    testWidgets('cadastro de funcionario: $scenario', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final service = _EmployeeAccessService()
+        ..failPassword = scenario == 'falha parcial';
+      final container = _employeeAccessContainer(service);
+      addTearDown(container.dispose);
+      final router = container.read(ownerRouterProvider)..go('/employees');
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const OwnerWebApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Novo funcionario'));
+      await tester.tap(find.text('Novo funcionario'));
+      await tester.pumpAndSettle();
+      final fields = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(fields.at(0), 'Gabriel');
+      await tester.enterText(fields.at(1), 'gabriel@teste.com');
+      if (scenario == 'inativo') {
+        final status = find.byType(DropdownButtonFormField<String>).last;
+        await tester.ensureVisible(status);
+        await tester.tap(status);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Desativado').last);
+        await tester.pumpAndSettle();
+      }
+      if (scenario == 'sem acesso' || scenario == 'personalizar') {
+        final toggle = find.text('Gerar acesso ao app ao salvar');
+        await tester.ensureVisible(toggle);
+        await tester.tap(toggle);
+        await tester.pumpAndSettle();
+      }
+      if (scenario == 'personalizar') {
+        final toggle = find.text('Usar permissões padrão do cargo');
+        await tester.ensureVisible(toggle);
+        await tester.tap(toggle);
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.text('Salvar'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(service.createdBody?['name'], 'Gabriel');
+      expect(service.createdBody?['email'], 'gabriel@teste.com');
+      expect(
+        service.createdBody!.containsKey('permissions'),
+        scenario == 'personalizar',
+      );
+      final shouldGenerate = scenario == 'gerar' || scenario == 'falha parcial';
+      expect(service.passwordCalls, shouldGenerate ? 1 : 0);
+      expect(
+        service.calls,
+        shouldGenerate ? ['create', 'password:employee-1'] : ['create'],
+      );
+      if (scenario == 'gerar') {
+        expect(find.textContaining('Login: gabriel@teste.com'), findsOneWidget);
+        await tester.tap(find.text('Fechar'));
+      } else if (scenario == 'falha parcial') {
+        expect(
+          find.textContaining(
+            'Funcionário cadastrado, mas não foi possível gerar o acesso.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Senha temporaria gerada'), findsNothing);
+      }
+      await tester.pumpAndSettle();
+      expect(container.read(ownerEmployeeBusyProvider), isFalse);
+      expect(find.byType(OwnerEmployeesPage), findsOneWidget);
+      expect(router.routeInformationProvider.value.uri.path, '/employees');
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   test('routes include owner pages and no /admin frontend route', () {
     expect(ownerRoutePaths, contains('/dashboard'));
     expect(ownerRoutePaths, contains('/sales'));
@@ -54,6 +392,207 @@ void main() {
     expect(ownerRoutePaths, contains('/exclusao-de-dados'));
     expect(ownerRoutePaths, isNot(contains('/admin')));
   });
+
+  test(
+    'disabled legacy payload requires an explicit complete permission list',
+    () {
+      final payload =
+          (_employeesPayload()['items'] as List).first as Map<String, dynamic>;
+      final legacy = OwnerEmployeeItem.fromMap({
+        ...payload,
+        'status': 'DISABLED',
+        'permissions': [],
+        'permissionsCount': 0,
+      });
+      expect(legacy.permissionsComplete, isFalse);
+      final updated = OwnerEmployeeItem.fromMap({
+        ...payload,
+        'status': 'DISABLED',
+        'permissionsAreComplete': true,
+      });
+      expect(updated.permissionsComplete, isTrue);
+    },
+  );
+
+  testWidgets(
+    'dashboard loading, permission failure and retry are recoverable',
+    (tester) async {
+      final pending = Completer<OwnerBusinessDashboard>();
+      var calls = 0;
+      await tester.pumpWidget(
+        _withProviders(
+          overrides: [
+            ownerDashboardProvider.overrideWith((ref) {
+              calls++;
+              return calls == 1
+                  ? pending.future
+                  : Future.value(
+                      OwnerBusinessDashboard.fromMap(
+                        _businessDashboardPayload(),
+                      ),
+                    );
+            }),
+          ],
+          child: const OwnerDashboardPage(),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Carregando dados…'), findsOneWidget);
+      pending.completeError(
+        const OwnerApiException(message: 'private-data', statusCode: 403),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Você não tem permissão para acessar este painel.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('private-data'), findsNothing);
+      await tester.tap(find.text('Tentar novamente'));
+      await tester.pumpAndSettle();
+      expect(find.text('Visão geral da empresa'), findsOneWidget);
+      expect(calls, 2);
+    },
+  );
+
+  test(
+    'dashboard range is independent and tenant changes invalidate cached results',
+    () async {
+      final scope = StateProvider<String>((ref) => 'company-a');
+      final service = _DashboardRecordingService();
+      final container = ProviderContainer(
+        overrides: [
+          ownerDataScopeProvider.overrideWith(
+            (ref) => (ref.watch(scope), 'user', 'OWNER'),
+          ),
+          ownerApiServiceProvider.overrideWithValue(service),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(ownerReportStartDateProvider.notifier).state =
+          '2025-01-01';
+      container.read(ownerReportEndDateProvider.notifier).state = '2025-01-31';
+      container.read(ownerDashboardDaysProvider.notifier).state = 7;
+      await container.read(ownerDashboardSalesProvider.future);
+      expect(
+        DateTime.parse(
+          service.query!.endDate!,
+        ).difference(DateTime.parse(service.query!.startDate!)).inDays,
+        6,
+      );
+      expect(container.read(ownerReportStartDateProvider), '2025-01-01');
+      expect(container.read(ownerReportEndDateProvider), '2025-01-31');
+      await container.read(ownerDashboardProvider.future);
+      expect(service.dashboardReads, 1);
+      container.read(scope.notifier).state = 'company-b';
+      await container.read(ownerDashboardProvider.future);
+      expect(service.dashboardReads, 2);
+    },
+  );
+
+  test('dashboard 7/30 days sends valid sales API queries over HTTP', () async {
+    final queries = <Map<String, String>>[];
+    final client = _FakeHttpClient((request) {
+      expect(request.url.path, '/api/owner/reports/sales-summary');
+      queries.add(request.url.queryParameters);
+      return _jsonResponse(_salesSummaryPayload());
+    });
+    final storage = OwnerAuthStorage();
+    await storage.saveTokens(
+      accessToken: 'contract-test-token',
+      refreshToken: 'contract-test-refresh-token',
+    );
+    final service = OwnerApiService(
+      apiClient: OwnerApiClient(
+        baseUrl: 'https://api.tatuzin.test/api',
+        authStorage: storage,
+        httpClient: client,
+      ),
+      authStorage: storage,
+    );
+    final container = ProviderContainer(
+      overrides: [
+        ownerDataScopeProvider.overrideWith(
+          (ref) => ('company-test', 'user-test', 'OWNER'),
+        ),
+        ownerApiServiceProvider.overrideWithValue(service),
+      ],
+    );
+    addTearDown(container.dispose);
+    addTearDown(storage.dispose);
+    addTearDown(client.close);
+    for (final days in [7, 30]) {
+      container.read(ownerDashboardDaysProvider.notifier).state = days;
+      final result = await container.read(ownerDashboardSalesProvider.future);
+      final query = queries.last;
+      expect(
+        DateTime.parse(
+          query['endDate']!,
+        ).difference(DateTime.parse(query['startDate']!)).inDays,
+        days - 1,
+      );
+      expect(
+        int.parse(query['limit']!),
+        inInclusiveRange(1, 25),
+        reason: 'API limit is not the number of days',
+      );
+      expect(query['pageSize'], '5');
+      expect(query['groupBy'], 'day');
+      expect(result.series, isNotEmpty);
+      expect(result.recentSales.items, isNotEmpty);
+    }
+    expect(queries, hasLength(2));
+    final directory = Directory('build/phase2-owner');
+    await directory.create(recursive: true);
+    await File(
+      '${directory.path}/dashboard-request-contract.json',
+    ).writeAsString(jsonEncode(queries));
+  });
+
+  testWidgets(
+    'old truncated permission payload cannot overwrite employee access',
+    (tester) async {
+      await tester.pumpWidget(
+        _withProviders(
+          overrides: [
+            ownerEmployeesProvider.overrideWith(
+              (ref) async => OwnerEmployeesOverview.fromMap({
+                ..._employeesPayload(),
+                'items': [
+                  {
+                    ...(_employeesPayload()['items'] as List).first
+                        as Map<String, dynamic>,
+                    'permissionsCount': 12,
+                  },
+                ],
+              }),
+            ),
+            ownerCommissionsProvider.overrideWith(
+              (ref) async =>
+                  OwnerCommissionsSummary.fromMap(_commissionsPayload()),
+            ),
+            ownerEmployeeReportsProvider.overrideWith(
+              (ref) async =>
+                  OwnerEmployeeReports.fromMap(_employeeReportsPayload()),
+            ),
+          ],
+          child: const OwnerEmployeesPage(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byTooltip('Ações de Gabriel'));
+      await tester.tap(find.byTooltip('Ações de Gabriel'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Editar funcionario'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Salvar'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('A lista de permissões está incompleta'),
+        findsOneWidget,
+      );
+      expect(find.byType(AlertDialog), findsOneWidget);
+    },
+  );
 
   test('legal routes are public and do not require authentication', () {
     expect(isPublicOwnerRoute('/privacidade'), isTrue);
@@ -254,7 +793,8 @@ void main() {
       'Vendas',
       'Clientes / CRM',
       'Fiado',
-      'Produtos e estoque',
+      'Produtos',
+      'Estoque',
       'Funcionários',
       'Relatórios',
       'Assinatura',
@@ -264,13 +804,21 @@ void main() {
     }
     expect(find.text('Painel da empresa'), findsOneWidget);
     expect(find.text('Painel do dono'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Consulta gerencial'),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(OwnerShellScaffold),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     expect(find.text('Consulta gerencial'), findsOneWidget);
     expect(find.text('Modo consulta nesta fase'), findsNothing);
     expect(find.text('Assinatura e cobranças'), findsNothing);
-    expect(
-      find.textContaining(RegExp('owner', caseSensitive: false)),
-      findsNothing,
-    );
+    expect(find.textContaining('Painel Owner'), findsNothing);
+    expect(find.textContaining('Owner • Painel da empresa'), findsOneWidget);
   });
 
   test('debug sanitizer does not expose tokens or passwords', () {
@@ -648,16 +1196,14 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Dashboard da empresa'), findsOneWidget);
+    expect(find.text('Visão geral da empresa'), findsOneWidget);
     expect(find.text('Vendas hoje'), findsOneWidget);
     expect(find.text('Faturamento do mês'), findsOneWidget);
     expect(find.text('Ticket médio'), findsOneWidget);
     expect(find.text('R\$ 250,00'), findsOneWidget);
     expect(find.text('R\$ 4250,00'), findsOneWidget);
-    expect(find.text('Contas a receber'), findsOneWidget);
-    expect(find.text('Clientes ativos'), findsOneWidget);
+    expect(find.text('Contas a receber'), findsAtLeastNWidgets(1));
     expect(find.text('Estoque baixo'), findsOneWidget);
-    expect(find.text('Produtos zerados'), findsOneWidget);
     expect(find.text('Top produtos'), findsOneWidget);
     expect(find.text('Vendas por funcionário'), findsOneWidget);
     expect(find.text('Alertas da empresa'), findsOneWidget);
@@ -750,7 +1296,7 @@ void main() {
     expect(find.text('Vendas'), findsWidgets);
     expect(find.text('Clientes / CRM'), findsOneWidget);
     expect(find.text('Fiado e financeiro'), findsOneWidget);
-    expect(find.text('Produtos e estoque'), findsOneWidget);
+    expect(find.text('Análise de produtos'), findsOneWidget);
     expect(find.text('Relatórios'), findsOneWidget);
     expect(find.text('Lucratividade'), findsOneWidget);
     expect(find.text('R\$ 198,50'), findsWidgets);
@@ -834,6 +1380,196 @@ void main() {
     expect(find.text('Fiados'), findsNothing);
   });
 
+  for (final cashSize in [
+    const Size(360, 844),
+    const Size(390, 844),
+    const Size(768, 1000),
+    const Size(1280, 900),
+    const Size(1440, 1000),
+  ]) {
+    for (final cashScale in [1.0, 2.0]) {
+      testWidgets('real owner cash route ${cashSize.width} text $cashScale', (
+        tester,
+      ) async {
+        tester.view.physicalSize = cashSize;
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = cashScale;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await (FontLoader('NotoSans')
+              ..addFont(rootBundle.load('assets/fonts/NotoSans-Regular.ttf'))
+              ..addFont(rootBundle.load('assets/fonts/NotoSans-Bold.ttf')))
+            .load();
+        await (FontLoader(
+          'MaterialIcons',
+        )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+        final capture = GlobalKey();
+        final container = ProviderContainer(
+          overrides: [
+            ownerAuthControllerProvider.overrideWith(
+              (ref) => _ReadyOwnerAuthController(),
+            ),
+            ownerCashWorkspaceProvider.overrideWith(
+              (ref) async => OwnerCashWorkspace.fromMap(cashWorkspacePayload()),
+            ),
+            ownerCashSessionsProvider.overrideWith(
+              (ref) async =>
+                  OwnerCashSessionsReport.fromMap(_cashSessionsPayload()),
+            ),
+            ownerCashSessionDetailProvider.overrideWith(
+              (ref, id) async => OwnerCashSessionDetail.fromMap({
+                ..._cashSessionDetailPayload(),
+                'values': {
+                  'openingBalanceCents': 10000,
+                  'closingBalanceCents': 29350,
+                  'expectedBalanceCents': 29850,
+                  'differenceCents': -500,
+                },
+                'closingDetails': {
+                  'version': 2,
+                  'sessionUuid': 'cash-session-1',
+                  'expectedBalanceCents': 29850,
+                  'countedBalanceCents': 29350,
+                  'differenceCents': -500,
+                  'blindClosureEnabled': true,
+                  'policyRevision': 3,
+                  'reason': 'Contagem reconferida pelo operador',
+                },
+                'canReview': true,
+                'divergenceReview': {'revision': 0, 'status': 'PENDING'},
+              }),
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+        final router = container.read(ownerRouterProvider)
+          ..go(
+            '/reports/cash?status=closed&search=Ana&page=1&session=cash-session-1',
+          );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: RepaintBoundary(
+              key: capture,
+              child: MaterialApp.router(
+                theme: OwnerTheme.light(),
+                routerConfig: router,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(container.read(ownerCashSessionsSearchProvider), 'Ana');
+        expect(container.read(ownerCashSessionsStatusProvider), 'closed');
+        expect(find.textContaining('Detalhe do caixa'), findsOneWidget);
+        await _ownerCapture(
+          tester,
+          capture,
+          'cash-route-${cashSize.width.toInt()}-scale-${cashScale.toInt()}-top',
+        );
+        await tester.ensureVisible(find.text('Caixas por funcionário'));
+        await tester.pumpAndSettle();
+        await _ownerCapture(
+          tester,
+          capture,
+          'cash-workspace-${cashSize.width.toInt()}-scale-${cashScale.toInt()}-employees',
+        );
+        if (find.text('2 aparelhos • Consultar').evaluate().isNotEmpty) {
+          await tester.ensureVisible(find.text('2 aparelhos • Consultar').last);
+          await tester.tap(find.text('2 aparelhos • Consultar').last);
+          await tester.pumpAndSettle();
+          await _ownerCapture(
+            tester,
+            capture,
+            'cash-workspace-${cashSize.width.toInt()}-scale-${cashScale.toInt()}-participants',
+          );
+          await tester.tap(find.text('Fechar'));
+        } else {
+          await tester.ensureVisible(find.text('Bia Atendimento'));
+          await tester.tap(find.text('Bia Atendimento'));
+          await tester.pumpAndSettle();
+          await tester.ensureVisible(
+            find.text('Aparelhos participantes').first,
+          );
+          await tester.pumpAndSettle();
+          await _ownerCapture(
+            tester,
+            capture,
+            'cash-workspace-${cashSize.width.toInt()}-scale-${cashScale.toInt()}-participants',
+          );
+          await tester.ensureVisible(find.text('Bia Atendimento'));
+          await tester.tap(find.text('Bia Atendimento'));
+        }
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await tester.ensureVisible(find.text('Sessões de caixa'));
+        await tester.pumpAndSettle();
+        await _ownerCapture(
+          tester,
+          capture,
+          'cash-route-${cashSize.width.toInt()}-scale-${cashScale.toInt()}-list',
+        );
+        await tester.ensureVisible(find.text('Fechamento original'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await _ownerCapture(
+          tester,
+          capture,
+          'cash-route-${cashSize.width.toInt()}-scale-${cashScale.toInt()}-detail',
+        );
+        await tester.ensureVisible(find.text('Conferir divergência'));
+        await tester.tap(find.text('Conferir divergência'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await _ownerCapture(
+          tester,
+          capture,
+          'cash-route-${cashSize.width.toInt()}-scale-${cashScale.toInt()}-audit',
+        );
+        await tester.tap(find.text('Voltar'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byTooltip('Fechar detalhe'));
+        await tester.tap(find.byTooltip('Fechar detalhe'));
+        await tester.pumpAndSettle();
+        expect(
+          router.routeInformationProvider.value.uri.queryParameters['session'],
+          isNull,
+        );
+        expect(
+          router.routeInformationProvider.value.uri.queryParameters['search'],
+          'Ana',
+        );
+        if (find.text('2 aparelhos • Consultar').evaluate().isNotEmpty) {
+          await tester.ensureVisible(find.text('2 aparelhos • Consultar').last);
+          await tester.tap(find.text('2 aparelhos • Consultar').last);
+          await tester.pumpAndSettle();
+        } else {
+          await tester.ensureVisible(find.text('Bia Atendimento'));
+          await tester.tap(find.text('Bia Atendimento'));
+          await tester.pumpAndSettle();
+        }
+        await tester.ensureVisible(
+          find.text('Consultar sessão e histórico').first,
+        );
+        await tester.tap(find.text('Consultar sessão e histórico').first);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(
+          router.routeInformationProvider.value.uri.queryParameters['session'],
+          'cash-pending',
+        );
+        expect(
+          find.textContaining('O fechamento não está confirmado.'),
+          findsOneWidget,
+        );
+        expect(find.text('Conferir divergência'), findsNothing);
+      });
+    }
+  }
+
   testWidgets('cash report page renders filters, sessions and sale actions', (
     tester,
   ) async {
@@ -845,6 +1581,9 @@ void main() {
     await tester.pumpWidget(
       _withProviders(
         overrides: [
+          ownerCashWorkspaceProvider.overrideWith(
+            (ref) async => OwnerCashWorkspace.fromMap(cashWorkspacePayload()),
+          ),
           ownerCashSessionsProvider.overrideWith((ref) async {
             return OwnerCashSessionsReport.fromMap(_cashSessionsPayload());
           }),
@@ -857,16 +1596,20 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Relatorios de caixa'), findsOneWidget);
-    expect(find.text('Filtros'), findsOneWidget);
-    expect(find.text('CX-001 - Ana Caixa'), findsOneWidget);
+    expect(find.text('Caixa'), findsOneWidget);
+    expect(find.text('Período e filtros'), findsOneWidget);
+    expect(find.textContaining('CX-001'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('Ver detalhes'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Ver detalhes'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Detalhe do caixa'), findsOneWidget);
     expect(find.text('Vendas do caixa'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('Venda F-100'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Venda F-100'));
     await tester.pumpAndSettle();
 
@@ -1056,11 +1799,21 @@ void main() {
       ),
     );
     await tester.pump();
-    final commissionButton = find.byTooltip('Configurar comissao');
+    final commissionButton = find.byTooltip('Ações de Gabriel');
     await tester.ensureVisible(commissionButton);
     await tester.tap(commissionButton);
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, '0');
+    await tester.tap(find.text('Configurar comissao'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find
+          .descendant(
+            of: find.byType(AlertDialog),
+            matching: find.byType(TextField),
+          )
+          .first,
+      '0',
+    );
     await tester.tap(find.text('Salvar'));
     await tester.pump();
 
@@ -1138,7 +1891,18 @@ Widget _withProviders({
   required Widget child,
 }) {
   return ProviderScope(
-    overrides: overrides,
+    overrides: [
+      ownerDashboardSalesProvider.overrideWith(
+        (ref) async => OwnerSalesSummary.fromMap({}),
+      ),
+      ownerDashboardReceivablesProvider.overrideWith(
+        (ref) async => OwnerReceivablesReport.fromMap({}),
+      ),
+      ownerEmployeesProvider.overrideWith(
+        (ref) async => OwnerEmployeesOverview.fromMap({}),
+      ),
+      ...overrides,
+    ],
     child: MaterialApp(
       home: Scaffold(
         body: SingleChildScrollView(
@@ -1148,6 +1912,25 @@ Widget _withProviders({
       ),
     ),
   );
+}
+
+Future<void> _ownerCapture(
+  WidgetTester tester,
+  GlobalKey key,
+  String name,
+) async {
+  final boundary =
+      key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+  await tester.runAsync(() async {
+    final image = await boundary.toImage(pixelRatio: 1);
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    final directory = Directory('build/phase2-owner');
+    await directory.create(recursive: true);
+    await File(
+      '${directory.path}/$name.png',
+    ).writeAsBytes(data!.buffer.asUint8List());
+    image.dispose();
+  });
 }
 
 class _FakeHttpClient extends http.BaseClient {
@@ -1166,6 +1949,32 @@ class _FakeHttpClient extends http.BaseClient {
       headers: response.headers,
       request: request,
     );
+  }
+}
+
+class _DashboardRecordingService extends OwnerApiService {
+  _DashboardRecordingService()
+    : super(
+        apiClient: OwnerApiClient(
+          baseUrl: 'http://localhost',
+          authStorage: OwnerAuthStorage(),
+        ),
+        authStorage: OwnerAuthStorage(),
+      );
+  OwnerSalesSummaryQuery? query;
+  int dashboardReads = 0;
+  @override
+  Future<OwnerSalesSummary> getSalesSummary({
+    OwnerSalesSummaryQuery query = const OwnerSalesSummaryQuery(),
+  }) async {
+    this.query = query;
+    return OwnerSalesSummary.fromMap(_salesSummaryPayload());
+  }
+
+  @override
+  Future<OwnerBusinessDashboard> getBusinessDashboard() async {
+    dashboardReads++;
+    return OwnerBusinessDashboard.fromMap(_businessDashboardPayload());
   }
 }
 
@@ -1732,6 +2541,10 @@ Map<String, dynamic> _cashSessionsPayload() {
       'timezone': 'UTC',
     },
     'summary': {
+      'openSessions': 0,
+      'closedSessions': 1,
+      'totalDifferenceCents': 0,
+      'receiptBreakdownAvailable': false,
       'totalSoldCents': 19850,
       'totalSessions': 1,
       'sessionsWithDifference': 0,
@@ -1976,4 +2789,66 @@ Map<String, dynamic> _dashboardPayload() {
     'sync': {'lastSyncAt': null, 'pendingEvents': 0, 'openConflicts': 0},
     'reports': null,
   };
+}
+
+ProviderContainer _employeeAccessContainer(_EmployeeAccessService service) =>
+    ProviderContainer(
+      overrides: [
+        ownerAuthControllerProvider.overrideWith(
+          (ref) => _ReadyOwnerAuthController(),
+        ),
+        ownerApiServiceProvider.overrideWithValue(service),
+        ownerEmployeesProvider.overrideWith(
+          (ref) async => OwnerEmployeesOverview.fromMap(_employeesPayload()),
+        ),
+        ownerCommissionsProvider.overrideWith(
+          (ref) async => OwnerCommissionsSummary.fromMap(_commissionsPayload()),
+        ),
+        ownerEmployeeReportsProvider.overrideWith(
+          (ref) async =>
+              OwnerEmployeeReports.fromMap(_employeeReportsPayload()),
+        ),
+      ],
+    );
+
+class _EmployeeAccessService extends OwnerApiService {
+  _EmployeeAccessService()
+    : super(
+        apiClient: OwnerApiClient(
+          baseUrl: 'https://test.invalid/api',
+          authStorage: OwnerAuthStorage(),
+        ),
+        authStorage: OwnerAuthStorage(),
+      );
+  int passwordCalls = 0;
+  Map<String, dynamic>? createdBody;
+  bool failPassword = false;
+  final calls = <String>[];
+  @override
+  Future<OwnerEmployeeMutationResult> createEmployee({
+    required Map<String, dynamic> body,
+  }) async {
+    createdBody = body;
+    calls.add('create');
+    return OwnerEmployeeMutationResult(
+      employee: OwnerEmployeesOverview.fromMap(_employeesPayload()).items.first,
+    );
+  }
+
+  @override
+  Future<OwnerTemporaryPasswordResult> generateTemporaryPassword({
+    required String employeeId,
+  }) async {
+    passwordCalls++;
+    calls.add('password:$employeeId');
+    if (failPassword) {
+      throw const OwnerApiException(message: 'Falha simulada de acesso.');
+    }
+    return OwnerTemporaryPasswordResult(
+      employee: OwnerEmployeesOverview.fromMap(_employeesPayload()).items.first,
+      login: 'gabriel@teste.com',
+      temporaryPassword: 'Only-Test-Password-42',
+      temporaryPasswordExpiresAt: '2026-12-01T00:00:00Z',
+    );
+  }
 }

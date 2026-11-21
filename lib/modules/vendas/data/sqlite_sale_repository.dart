@@ -306,23 +306,59 @@ class SqliteSaleRepository implements SaleRepository {
         int? cashMovementId;
 
         if (totalPaidCents > 0) {
-          final cashMovement =
-              await SaleCashEffectsSupport.registerFiadoReceiptRefund(
-                txn,
-                timestamp: now,
-                userId: _operationalContext.currentLocalUserId,
-                fiadoId: fiadoId,
-                amountCents: totalPaidCents,
-                receiptNumber: receiptNumber,
-                reason: reason,
-              );
-          cashMovementId = cashMovement.id;
-          await _registerCashMovementForSync(
-            txn,
-            movementId: cashMovement.id,
-            movementUuid: cashMovement.uuid,
-            createdAt: now,
+          final receipts = await txn.rawQuery(
+            'SELECT l.valor_centavos, l.observacao, m.descricao AS movement_description '
+            'FROM ${TableNames.fiadoLancamentos} l '
+            'LEFT JOIN ${TableNames.caixaMovimentos} m ON m.id = l.caixa_movimento_id '
+            "WHERE l.fiado_id = ? AND l.tipo_lancamento = 'pagamento'",
+            [fiadoId],
           );
+          final byMethod = <PaymentMethod, int>{};
+          for (final receipt in receipts) {
+            final method =
+                PaymentMethodNoteCodec.parse(
+                  receipt['observacao'] as String?,
+                ) ??
+                PaymentMethodNoteCodec.parse(
+                  receipt['movement_description'] as String?,
+                );
+            if (method == null || !method.isImmediateReceipt) {
+              throw const ValidationException(
+                'Um recebimento antigo não informa a forma de pagamento. Confira os recebimentos antes de estornar esta venda.',
+              );
+            }
+            byMethod.update(
+              method,
+              (value) => value + (receipt['valor_centavos'] as int),
+              ifAbsent: () => receipt['valor_centavos'] as int,
+            );
+          }
+          if (byMethod.values.fold<int>(0, (sum, value) => sum + value) !=
+              totalPaidCents) {
+            throw const ValidationException(
+              'Os recebimentos desta venda precisam de conferência antes do estorno.',
+            );
+          }
+          for (final receipt in byMethod.entries) {
+            final cashMovement =
+                await SaleCashEffectsSupport.registerFiadoReceiptRefund(
+                  txn,
+                  timestamp: now,
+                  userId: _operationalContext.currentLocalUserId,
+                  fiadoId: fiadoId,
+                  amountCents: receipt.value,
+                  receiptNumber: receiptNumber,
+                  reason: reason,
+                  paymentMethod: receipt.key,
+                );
+            cashMovementId ??= cashMovement.id;
+            await _registerCashMovementForSync(
+              txn,
+              movementId: cashMovement.id,
+              movementUuid: cashMovement.uuid,
+              createdAt: now,
+            );
+          }
         }
 
         if (fiadoId != null) {
@@ -466,6 +502,7 @@ class SqliteSaleRepository implements SaleRepository {
       'numero_cupom': receiptNumber,
       'data_venda': nowIso,
       'usuario_id': _operationalContext.currentLocalUserId,
+      'seller_remote_user_id': _operationalContext.currentRemoteUserId,
       'observacao': SaleValidationSupport.cleanNullable(input.notes),
       'cancelada_em': null,
       'venda_origem_id': null,
@@ -674,6 +711,13 @@ class SqliteSaleRepository implements SaleRepository {
             ),
         };
 
+    final customerRows = input.clientId == null
+        ? <Map<String, Object?>>[]
+        : await txn.rawQuery(
+            'SELECT c.*, s.remote_id FROM ${TableNames.clientes} c LEFT JOIN ${TableNames.syncRegistros} s ON s.feature_key = ? AND s.local_id = c.id WHERE c.id = ? LIMIT 1',
+            [SyncFeatureKeys.customers, input.clientId],
+          );
+    final customer = customerRows.isEmpty ? null : customerRows.first;
     await queue.enqueue(
       txn,
       event: OperationalSyncEvent(
@@ -700,6 +744,8 @@ class SqliteSaleRepository implements SaleRepository {
           'saleType': saleType.dbValue,
           'paymentMethod': input.paymentMethod.dbValue,
           'clientId': input.clientId,
+          'customerServerId': customer?['remote_id'],
+          'customerUuid': customer?['uuid'],
           'operationalOrderId': input.operationalOrderId,
           'subtotalCents': input.itemsTotalCents,
           'itemsTotalCents': input.itemsTotalCents,

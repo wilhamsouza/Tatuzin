@@ -1,4 +1,7 @@
+import '../../../app/core/sync/operational_sync_event.dart';
+import '../../../app/core/sync/sqlite_operational_sync_queue_repository.dart';
 import 'package:sqflite/sqflite.dart';
+import 'cash_workspace_store.dart';
 
 import '../../../app/core/database/table_names.dart';
 import '../../../app/core/errors/app_exceptions.dart';
@@ -11,21 +14,64 @@ abstract final class CashDatabaseSupport {
   static const String cashEventFeatureKey = 'cash_events';
 
   static Future<Map<String, Object?>?> getOpenSessionRow(
+    DatabaseExecutor db, {
+    bool includeUnjoined = false,
+  }) async {
+    final context = await CashWorkspaceStore.read(db, 'cash.employee.context');
+    final rows = await db.query(
+      TableNames.caixaSessoes,
+      where:
+          "status = ? AND NOT EXISTS (SELECT 1 FROM configuracoes WHERE chave = 'cash.remote:' || caixa_sessoes.uuid)",
+      whereArgs: [CashSessionStatus.open.dbValue],
+      orderBy: 'aberta_em DESC',
+    );
+    if (context['employeeId'] is String && context['version'] == 3) {
+      for (final row in rows) {
+        final owner = await CashWorkspaceStore.read(
+          db,
+          'cash.owner:${row['uuid']}',
+        );
+        if (owner['employeeId'] == context['employeeId'] &&
+            owner['version'] == 3 &&
+            (includeUnjoined ||
+                (owner['joined'] == true &&
+                    owner['joinedClientInstanceId'] ==
+                        context['clientInstanceId']))) {
+          return row;
+        }
+      }
+      return null;
+    }
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<void> ensureMovementAllowed(
     DatabaseExecutor db,
+    int sessionId,
   ) async {
     final rows = await db.query(
       TableNames.caixaSessoes,
-      where: 'status = ?',
-      whereArgs: [CashSessionStatus.open.dbValue],
-      orderBy: 'aberta_em DESC',
+      columns: ['uuid'],
+      where: 'id = ?',
+      whereArgs: [sessionId],
       limit: 1,
     );
-
-    if (rows.isEmpty) {
-      return null;
+    if (rows.isEmpty) throw const ValidationException('Caixa não encontrado.');
+    final uuid = rows.first['uuid'] as String;
+    final context = await CashWorkspaceStore.read(db, 'cash.employee.context');
+    final owner = await CashWorkspaceStore.read(db, 'cash.owner:$uuid');
+    if (owner['version'] == 3 && owner['employeeId'] != context['employeeId']) {
+      throw const ValidationException(
+        'Este caixa pertence a outro funcionário.',
+      );
     }
-
-    return rows.first;
+    final workspace = await CashWorkspaceStore.read(db, 'cash.workspace:$uuid');
+    if (workspace['status'] == 'PENDING_SYNC' ||
+        workspace['status'] == 'REVIEW_REQUIRED') {
+      throw const ValidationException(
+        'A conferência está pendente. Sincronize e conclua ou revise o fechamento antes de movimentar este caixa.',
+      );
+    }
   }
 
   static Future<int> requireOpenSessionId(DatabaseExecutor db) async {
@@ -44,7 +90,9 @@ abstract final class CashDatabaseSupport {
       throw ValidationException(message);
     }
 
-    return row['id'] as int;
+    final id = row['id'] as int;
+    await ensureMovementAllowed(db, id);
+    return id;
   }
 
   static Future<int> ensureOpenSession(
@@ -55,12 +103,21 @@ abstract final class CashDatabaseSupport {
   }) async {
     final existingRow = await getOpenSessionRow(db);
     if (existingRow != null) {
-      return existingRow['id'] as int;
+      final id = existingRow['id'] as int;
+      await ensureMovementAllowed(db, id);
+      return id;
+    }
+    final context = await CashWorkspaceStore.read(db, 'cash.employee.context');
+    if (context['employeeId'] is String && context['version'] == 3) {
+      throw const ValidationException(
+        'Conecte-se e abra o caixa do funcionário antes de registrar a movimentação. Um aparelho novo precisa associar o caixa na nuvem.',
+      );
     }
 
     final openedAtIso = timestamp.toIso8601String();
-    return db.insert(TableNames.caixaSessoes, {
-      'uuid': IdGenerator.next(),
+    final uuid = IdGenerator.next();
+    final id = await db.insert(TableNames.caixaSessoes, {
+      'uuid': uuid,
       'usuario_id': userId,
       'aberta_em': openedAtIso,
       'fechada_em': null,
@@ -83,6 +140,37 @@ abstract final class CashDatabaseSupport {
           notes ??
           'Sessão aberta automaticamente para registrar movimento financeiro.',
     });
+    final opening = await CashWorkspaceStore.openingPolicy(db, 0);
+    await CashWorkspaceStore.write(db, 'cash.opening:$uuid', opening);
+    await SqliteOperationalSyncQueueRepository.enqueueInTransaction(
+      db,
+      event: OperationalSyncEvent(
+        eventId: OperationalSyncEvent.buildEventId(
+          entity: 'cashSession',
+          operation: 'create',
+          localIdentity: uuid,
+        ),
+        feature: 'pdv',
+        entity: 'cashSession',
+        operation: 'create',
+        entityLocalId: uuid,
+        occurredAt: timestamp,
+        payload: {
+          'localId': id,
+          'uuid': uuid,
+          'openedAt': openedAtIso,
+          'closedAt': null,
+          'initialFloatCents': 0,
+          'expectedBalanceCents': 0,
+          'countedBalanceCents': null,
+          'differenceCents': null,
+          'status': 'aberto',
+          'awaitingInitialFloatConfirmation': true,
+          'openingDetails': opening,
+        },
+      ),
+    );
+    return id;
   }
 
   static Future<InsertedCashMovement> insertMovement(
@@ -96,6 +184,7 @@ abstract final class CashDatabaseSupport {
     String? description,
     PaymentMethod? paymentMethod,
   }) async {
+    await ensureMovementAllowed(db, sessionId);
     final sessionRows = await db.query(
       TableNames.caixaSessoes,
       columns: const ['uuid'],
@@ -333,12 +422,21 @@ abstract final class CashSessionMathSupport {
           }
           break;
         case 'suprimento':
+          if (paymentMethod != null && paymentMethod != PaymentMethod.cash) {
+            break;
+          }
           suppliesCents += amountCents;
           break;
         case 'sangria':
+          if (paymentMethod != null && paymentMethod != PaymentMethod.cash) {
+            break;
+          }
           withdrawalsCents += amountCents.abs();
           break;
         case 'ajuste':
+          if (paymentMethod != null && paymentMethod != PaymentMethod.cash) {
+            break;
+          }
           if (amountCents >= 0) {
             suppliesCents += amountCents;
           } else {

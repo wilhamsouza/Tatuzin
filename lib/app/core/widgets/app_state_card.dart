@@ -35,58 +35,65 @@ class AppStateCard extends StatelessWidget {
     return AppCard(
       tone: _cardTone(),
       padding: EdgeInsets.all(compact ? layout.cardPadding : layout.space10),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            child: tone == AppStateTone.loading
-                ? SizedBox(
-                    key: const ValueKey('loading'),
-                    width: compact ? 28 : 32,
-                    height: compact ? 28 : 32,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.4,
-                      valueColor: AlwaysStoppedAnimation<Color>(colors.base),
-                    ),
-                  )
-                : DecoratedBox(
-                    key: ValueKey(resolvedIcon),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.86),
-                      borderRadius: BorderRadius.circular(layout.radiusMd),
-                    ),
-                    child: Padding(
-                      padding: EdgeInsets.all(
-                        compact ? layout.space4 : layout.space5,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: tone == AppStateTone.loading
+                  ? SizedBox(
+                      key: const ValueKey('loading'),
+                      width: compact ? 28 : 32,
+                      height: compact ? 28 : 32,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        valueColor: AlwaysStoppedAnimation<Color>(colors.base),
                       ),
-                      child: Icon(
-                        resolvedIcon,
-                        size: compact ? 18 : 20,
-                        color: colors.onSurface,
+                    )
+                  : DecoratedBox(
+                      key: ValueKey(resolvedIcon),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.86),
+                        borderRadius: BorderRadius.circular(layout.radiusMd),
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.all(
+                          compact ? layout.space4 : layout.space5,
+                        ),
+                        child: Icon(
+                          resolvedIcon,
+                          size: compact ? 18 : 20,
+                          color: colors.onSurface,
+                        ),
                       ),
                     ),
-                  ),
-          ),
-          SizedBox(height: compact ? layout.blockGap : layout.sectionGap),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
             ),
-          ),
-          SizedBox(height: layout.space2),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(color: colors.onSurface),
-          ),
-          if (actionLabel != null && onAction != null) ...[
             SizedBox(height: compact ? layout.blockGap : layout.sectionGap),
-            FilledButton.tonal(onPressed: onAction, child: Text(actionLabel!)),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            SizedBox(height: layout.space2),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colors.onSurface,
+              ),
+            ),
+            if (actionLabel != null && onAction != null) ...[
+              SizedBox(height: compact ? layout.blockGap : layout.sectionGap),
+              FilledButton.tonal(
+                onPressed: onAction,
+                child: Text(actionLabel!),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

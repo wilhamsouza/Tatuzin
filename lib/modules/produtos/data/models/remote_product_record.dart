@@ -2,6 +2,7 @@ import '../../domain/entities/product.dart';
 
 class RemoteProductRecord {
   const RemoteProductRecord({
+    this.catalogRevision,
     required this.remoteId,
     required this.localUuid,
     required this.remoteCategoryId,
@@ -34,6 +35,7 @@ class RemoteProductRecord {
   factory RemoteProductRecord.fromJson(Map<String, dynamic> json) {
     final remoteId = json['id'] as String;
     return RemoteProductRecord(
+      catalogRevision: json['catalogRevision'] as int?,
       remoteId: remoteId,
       localUuid: (json['localUuid'] as String?)?.trim().isNotEmpty == true
           ? json['localUuid'] as String
@@ -88,6 +90,7 @@ class RemoteProductRecord {
     String? remoteCategoryId,
   }) {
     return RemoteProductRecord(
+      catalogRevision: product.catalogRevision,
       remoteId: product.remoteId ?? '',
       localUuid: product.uuid,
       remoteCategoryId: remoteCategoryId,
@@ -127,6 +130,7 @@ class RemoteProductRecord {
     );
   }
 
+  final int? catalogRevision;
   final String remoteId;
   final String localUuid;
   final String? remoteCategoryId;
@@ -157,6 +161,7 @@ class RemoteProductRecord {
 
   RemoteProductRecord copyWith({List<RemoteProductVariantRecord>? variants}) {
     return RemoteProductRecord(
+      catalogRevision: catalogRevision,
       remoteId: remoteId,
       localUuid: localUuid,
       remoteCategoryId: remoteCategoryId,
@@ -191,6 +196,7 @@ class RemoteProductRecord {
   RemoteProductRecord copyWithInactive() {
     final now = DateTime.now();
     return RemoteProductRecord(
+      catalogRevision: catalogRevision,
       remoteId: remoteId,
       localUuid: localUuid,
       remoteCategoryId: remoteCategoryId,
@@ -237,6 +243,8 @@ class RemoteProductRecord {
 
   Map<String, dynamic> toUpsertBody() {
     return <String, dynamic>{
+      'metadataOnly': true,
+      if (catalogRevision != null) 'expectedCatalogRevision': catalogRevision,
       'localUuid': localUuid,
       'name': name,
       'categoryId': remoteCategoryId,
@@ -340,6 +348,7 @@ class RemoteProductVariantRecord {
 
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
+      if (remoteId != null) 'id': remoteId,
       'sku': sku,
       'colorLabel': colorLabel,
       'sizeLabel': sizeLabel,

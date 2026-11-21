@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../../../app/core/app_context/app_operational_context.dart';
 import '../../../app/core/app_context/data_access_policy.dart';
+import '../../../app/core/errors/app_exceptions.dart';
 import '../../../app/core/utils/app_logger.dart';
 import '../../produtos/data/datasources/products_remote_datasource.dart';
 import '../../produtos/data/sqlite_product_repository.dart';
@@ -37,7 +38,9 @@ class InventoryRepositoryImpl implements InventoryRepository {
   @override
   Future<void> adjustStock(InventoryAdjustmentInput input) {
     _operationalContext?.ensureOperationalWriteAllowed();
-    return _localRepository.adjustStock(input);
+    throw const ValidationException(
+      'Use Estoque → Saldos → Movimentar estoque. A confirmação é online e gera histórico compartilhado.',
+    );
   }
 
   @override

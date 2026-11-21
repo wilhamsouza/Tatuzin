@@ -5,6 +5,9 @@ import '../core/database/app_database.dart';
 import '../core/errors/app_exceptions.dart';
 import '../core/session/auth_provider.dart';
 import '../core/session/session_provider.dart';
+import '../core/widgets/app_navigation_shell.dart';
+import '../../modules/activity/presentation/activity_page.dart';
+import '../../modules/more/presentation/pages/more_page.dart';
 import 'modules/account_routes.dart';
 import 'modules/admin_routes.dart';
 import 'modules/auth_routes.dart';
@@ -43,20 +46,91 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ),
     routes: <RouteBase>[
       ...buildAuthRoutes(),
-      ...buildHomeRoutes(),
-      ...buildAccountRoutes(),
-      ...buildProductsRoutes(),
-      ...buildInventoryRoutes(),
-      ...buildCustomersRoutes(),
-      ...buildPurchasesRoutes(),
-      ...buildPdvRoutes(),
-      ...buildOrdersRoutes(),
-      ...buildSalesRoutes(),
-      ...buildCashRoutes(),
-      ...buildReportsRoutes(),
-      ...buildEmployeesRoutes(),
-      ...buildSystemRoutes(readAuthStatus: readAuthStatus),
-      ...buildAdminRoutes(readAuthStatus: readAuthStatus),
+      ...buildReceiptRoutes(),
+      if (!session.company.experienceRefreshEnabled) ...[
+        ...buildHomeRoutes(),
+        ...buildAccountRoutes(),
+        ...buildProductsRoutes(),
+        ...buildInventoryRoutes(),
+        ...buildCustomersRoutes(),
+        ...buildPurchasesRoutes(),
+        ...buildPdvRoutes(),
+        ...buildOrdersRoutes(),
+        ...buildSalesRoutes(),
+        ...buildCashRoutes(),
+        ...buildReportsRoutes(),
+        ...buildEmployeesRoutes(),
+        ...buildSystemRoutes(readAuthStatus: readAuthStatus),
+        ...buildAdminRoutes(readAuthStatus: readAuthStatus),
+        GoRoute(
+          path: AppRoutePaths.more,
+          name: AppRouteNames.more,
+          builder: (context, state) => const MorePage(),
+        ),
+        GoRoute(
+          path: AppRoutePaths.profile,
+          name: AppRouteNames.profile,
+          builder: (context, state) => const MorePage(title: 'Perfil'),
+        ),
+        GoRoute(
+          path: AppRoutePaths.activity,
+          name: AppRouteNames.activity,
+          builder: (context, state) => const ActivityPage(),
+        ),
+      ] else
+        StatefulShellRoute.indexedStack(
+          builder: (context, state, shell) =>
+              AppNavigationShell(shell: shell, path: state.uri.path),
+          branches: [
+            StatefulShellBranch(
+              routes: [
+                ...buildHomeRoutes(),
+                ...buildInventoryRoutes(),
+                ...buildCustomersRoutes(),
+                ...buildPurchasesRoutes(),
+                ...buildCashRoutes(),
+                ...buildReportsRoutes(),
+                ...buildEmployeesRoutes(),
+                ...buildSystemRoutes(readAuthStatus: readAuthStatus),
+                ...buildAdminRoutes(readAuthStatus: readAuthStatus),
+              ],
+            ),
+            StatefulShellBranch(
+              initialLocation: AppRoutePaths.products,
+              routes: buildProductsRoutes(),
+            ),
+            StatefulShellBranch(
+              initialLocation: AppRoutePaths.sales,
+              routes: buildPdvRoutes(),
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: AppRoutePaths.activity,
+                  name: AppRouteNames.activity,
+                  builder: (context, state) => const ActivityPage(),
+                ),
+                ...buildOrdersRoutes(),
+                ...buildSalesRoutes(),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: AppRoutePaths.profile,
+                  name: AppRouteNames.profile,
+                  builder: (context, state) => const MorePage(title: 'Perfil'),
+                ),
+                GoRoute(
+                  path: AppRoutePaths.more,
+                  name: AppRouteNames.more,
+                  builder: (context, state) => const MorePage(),
+                ),
+                ...buildAccountRoutes(),
+              ],
+            ),
+          ],
+        ),
     ],
     errorBuilder: (context, state) {
       return invalidRoutePage(

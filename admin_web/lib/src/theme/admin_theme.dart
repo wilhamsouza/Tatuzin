@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 abstract final class AdminTheme {
   static const primary = Color(0xFF6C4CF1);
   static const secondary = Color(0xFF8B5CF6);
-  static const background = Color(0xFFF5F4FF);
+  static const background = Color(0xFFF5F6FA);
   static const surface = Color(0xFFFFFFFF);
-  static const surfaceAlt = Color(0xFFF8F7FF);
+  static const surfaceAlt = Color(0xFFF8F9FC);
   static const ink = Color(0xFF1F2937);
   static const success = Color(0xFF22C55E);
   static const warning = Color(0xFFF59E0B);
@@ -36,6 +36,7 @@ abstract final class AdminTheme {
 
     final base = ThemeData(
       useMaterial3: true,
+      fontFamily: 'NotoSans',
       colorScheme: scheme,
       scaffoldBackgroundColor: background,
     );
@@ -66,7 +67,7 @@ abstract final class AdminTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(16),
           side: BorderSide(color: scheme.outlineVariant),
         ),
       ),
@@ -92,7 +93,7 @@ abstract final class AdminTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size(0, 50),
+          minimumSize: const Size(0, 44),
           backgroundColor: scheme.primary,
           foregroundColor: scheme.onPrimary,
           shape: RoundedRectangleBorder(
@@ -105,7 +106,7 @@ abstract final class AdminTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          minimumSize: const Size(0, 50),
+          minimumSize: const Size(0, 44),
           foregroundColor: scheme.primary,
           side: BorderSide(color: scheme.outlineVariant),
           shape: RoundedRectangleBorder(
@@ -133,7 +134,7 @@ abstract final class AdminTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: surface,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,

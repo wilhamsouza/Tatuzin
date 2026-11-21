@@ -1,3 +1,5 @@
+import { CashWorkspaceService } from "../cash/cash-workspace.service";
+import { CashDivergenceReviewService, divergenceReviewSchema } from "../cash/cash-divergence-review.service";
 import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
 
@@ -54,6 +56,7 @@ import {
 } from "./owner.schemas";
 import { OwnerService } from "./owner.service";
 
+const cashReviewService = new CashDivergenceReviewService();
 const ownerService = new OwnerService();
 const employeesService = new EmployeesService();
 const employeeCommissionService = new EmployeeCommissionService();
@@ -418,6 +421,25 @@ ownerRouter.get(
 );
 
 ownerRouter.get(
+  "/reports/cash-sessions/:id/divergence-review",
+  requireAnyEmployeePermission(["reports.advanced"]),
+  asyncHandler(async (request, response) => {
+    const { id } = ownerIdParamSchema.parse(request.params);
+    response.json({ divergenceReview: await cashReviewService.get(request.appContext!, id) });
+  }),
+);
+ownerRouter.post(
+  "/reports/cash-sessions/:id/divergence-review",
+  requireAnyEmployeePermission(["reports.advanced"]),
+  requireAnyEmployeePermission(["employees.manage"]),
+  validateBody(divergenceReviewSchema),
+  asyncHandler(async (request, response) => {
+    const { id } = ownerIdParamSchema.parse(request.params);
+    response.json(await cashReviewService.append(request.appContext!, id, request.body));
+  }),
+);
+
+ownerRouter.get(
   "/reports/cash-sessions/:id/sales",
   requireAnyEmployeePermission(["reports.advanced"]),
   asyncHandler(async (request, response) => {
@@ -592,3 +614,5 @@ function ownerPeriodToEmployeePeriod(query: {
 function dateOnly(value: Date) {
   return value.toISOString().slice(0, 10);
 }
+
+ownerRouter.get('/reports/cash-workspace',requireAnyEmployeePermission(['reports.advanced']),asyncHandler(async(request,response)=>{response.json(await new CashWorkspaceService().ownerWorkspace(request.appContext!));}));

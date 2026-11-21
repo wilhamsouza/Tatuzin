@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/owner_providers.dart';
+import '../../../core/auth/owner_return_location.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -27,6 +28,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
+    final destination =
+        ownerReturnLocation(
+          GoRouterState.of(context).uri.queryParameters['from'],
+        ) ??
+        '/dashboard';
     final success = await ref
         .read(ownerAuthControllerProvider)
         .login(
@@ -37,7 +43,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       return;
     }
     if (success) {
-      context.go('/dashboard');
+      context.go(destination);
     }
   }
 
@@ -144,8 +150,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                             child: const Text('Política de Privacidade'),
                           ),
                           TextButton(
-                            onPressed: () =>
-                                context.go('/exclusao-de-dados'),
+                            onPressed: () => context.go('/exclusao-de-dados'),
                             child: const Text('Exclusão de Dados'),
                           ),
                         ],

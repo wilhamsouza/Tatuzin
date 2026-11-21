@@ -16,10 +16,30 @@ export class CompanySettingsService {
     input: CompanyReceiptSettingsPatchInput,
   ) {
     this.assertCanUpdateCompanySettings(context);
+    if (
+      input.experienceProfile !== undefined &&
+      context.membership.role.trim().toUpperCase() !== 'OWNER'
+    ) {
+      throw new AppError(
+        'Somente o dono pode alterar o perfil da loja.',
+        403,
+        'COMPANY_SETTINGS_FORBIDDEN',
+      );
+    }
 
-    const company = await prisma.company.update({
+    const company = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT "id" FROM "Company" WHERE "id" = ${context.company.id} FOR UPDATE`;
+      const current = await tx.company.findUniqueOrThrow({where:{id:context.company.id}});
+      return tx.company.update({
       where: { id: context.company.id },
       data: {
+        ...(input.cashBlindClosureEnabled === undefined || input.cashBlindClosureEnabled === current.cashBlindClosureEnabled ? {} : {
+          cashBlindClosureEnabled: input.cashBlindClosureEnabled,
+          cashPolicyRevision: { increment: 1 },
+        }),
+        ...(input.experienceProfile === undefined
+          ? {}
+          : { experienceProfile: input.experienceProfile }),
         ...(input.receiptDisplayName === undefined
           ? {}
           : { receiptDisplayName: this.cleanOptionalText(input.receiptDisplayName) }),
@@ -52,6 +72,7 @@ export class CompanySettingsService {
           ? {}
           : { showFooterMessageOnReceipt: input.showFooterMessageOnReceipt }),
       },
+      });
     });
 
     return { company: this.toCompanyReceiptSettingsDto(company) };
@@ -59,7 +80,10 @@ export class CompanySettingsService {
 
   toCompanyReceiptSettingsDto(company: Pick<
     Company,
+    | 'cashBlindClosureEnabled'
+    | 'cashPolicyRevision'
     | 'id'
+    | 'experienceProfile'
     | 'name'
     | 'legalName'
     | 'documentNumber'
@@ -74,7 +98,10 @@ export class CompanySettingsService {
     | 'showFooterMessageOnReceipt'
   >) {
     return {
+      cashBlindClosureEnabled: company.cashBlindClosureEnabled,
+      cashPolicyRevision: company.cashPolicyRevision,
       id: company.id,
+      experienceProfile: company.experienceProfile,
       name: company.name,
       legalName: company.legalName,
       documentNumber: company.documentNumber,

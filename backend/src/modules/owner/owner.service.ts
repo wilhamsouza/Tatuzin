@@ -43,6 +43,10 @@ export class OwnerService {
     const entitlements = getPlanEntitlements(company.license?.plan);
 
     return {
+      cashBlindClosureEnabled: company.cashBlindClosureEnabled,
+      cashPolicyRevision: company.cashPolicyRevision,
+      canManageCashPolicy: ["OWNER", "ADMIN"].includes(context.membership.role),
+      canUpdateCashPolicy: ["OWNER", "ADMIN"].includes(context.membership.role),
       companyId: company.id,
       name: company.name,
       legalName: company.legalName,
@@ -160,7 +164,9 @@ export class OwnerService {
       lastSessions.map((row) => [row.userId, row._max.lastSeenAt]),
     );
     const items = employees.map((employee) => {
-      const permissions = effectivePermissionsForEmployee(employee);
+      // The editor needs configured permissions even while access is disabled.
+      // Authentication still resolves the actual disabled status separately.
+      const permissions = effectivePermissionsForEmployee({ ...employee, status: "ACTIVE" });
       const accessStatus = resolveEmployeeAccessStatus(employee);
       return {
         id: employee.id,
@@ -170,7 +176,8 @@ export class OwnerService {
         role: employee.role,
         status: employee.status,
         accessStatus,
-        permissions: permissions.slice(0, 8),
+        permissions,
+        permissionsAreComplete: true,
         permissionsCount: permissions.length,
         commissionEnabled: employee.commissionEnabled,
         commissionType: employee.commissionEnabled

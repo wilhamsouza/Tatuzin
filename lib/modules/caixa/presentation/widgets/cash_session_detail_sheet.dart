@@ -1,3 +1,4 @@
+import '../../data/sqlite_cash_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -47,7 +48,16 @@ class CashSessionDetailSheet extends ConsumerWidget {
             ),
             Expanded(
               child: detailAsync.when(
-                data: (detail) => _CashSessionDetailBody(detail: detail),
+                data: (detail) =>
+                    !detail.session.isClosed &&
+                        detail.session.blindClosureEnabled
+                    ? const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text(
+                          'Conferência cega em andamento. O resultado estará disponível após fechar o caixa.',
+                        ),
+                      )
+                    : _CashSessionDetailBody(detail: detail),
                 loading: () => const Padding(
                   padding: EdgeInsets.all(20),
                   child: AppStateCard(
@@ -95,6 +105,32 @@ class _CashSessionDetailBody extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
       children: [
+        if (session.closingDetails != null)
+          AppSectionCard(
+            title: 'Conferência final',
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (session.closingDetails!['reason'] != null)
+                  Text('Motivo: ${session.closingDetails!['reason']}'),
+                if (session.closingDetails!['notes'] != null)
+                  Text('Observações: ${session.closingDetails!['notes']}'),
+                for (final item
+                    in (session.closingDetails!['denominations'] as List? ??
+                        []))
+                  Text(
+                    '${(item as Map)['quantity']} × ${AppFormatters.currencyFromCents(item['valueCents'] as int)}',
+                  ),
+                if (session.closingDetails!['coinsCents'] != null)
+                  Text(
+                    'Moedas: ${AppFormatters.currencyFromCents(session.closingDetails!['coinsCents'] as int)}',
+                  ),
+              ],
+            ),
+          ),
+        if (session.workspaceVersion == 3)
+          _CashClosureArchiveNotice(uuid: session.uuid),
         Row(
           children: [
             Expanded(
@@ -660,4 +696,46 @@ class _SaleSummaryTile extends StatelessWidget {
       ),
     );
   }
+}
+
+final _cashClosureArchivesProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, String>(
+      (ref, uuid) =>
+          ref.watch(localCashRepositoryProvider).employeeClosureArchives(uuid),
+    );
+
+class _CashClosureArchiveNotice extends ConsumerWidget {
+  const _CashClosureArchiveNotice({required this.uuid});
+  final String uuid;
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => ref
+      .watch(_cashClosureArchivesProvider(uuid))
+      .when(
+        data: (archives) => Column(
+          children: [
+            for (final archive in archives)
+              ExpansionTile(
+                title: const Text('Conferência local preservada, não aplicada'),
+                subtitle: const Text(
+                  'Outro fechamento foi concluído na nuvem.',
+                ),
+                childrenPadding: const EdgeInsets.all(16),
+                children: [
+                  if (archive['countedBalanceCents'] is int)
+                    Text(
+                      'Contado localmente: ${AppFormatters.currencyFromCents(archive['countedBalanceCents'] as int)}',
+                    ),
+                  if (archive['reason'] != null)
+                    Text('Motivo: ${archive['reason']}'),
+                  if (archive['notes'] != null)
+                    Text('Observações: ${archive['notes']}'),
+                ],
+              ),
+          ],
+        ),
+        loading: () => const SizedBox.shrink(),
+        error: (_, __) => const Text(
+          'Não foi possível recuperar as conferências locais preservadas. Abra os detalhes novamente.',
+        ),
+      );
 }

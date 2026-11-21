@@ -6,6 +6,10 @@ import '../../../../app/core/widgets/app_main_drawer.dart';
 import '../../../../app/core/widgets/app_page_header.dart';
 import '../../../../app/core/widgets/app_section_card.dart';
 import '../../../../app/core/theme/app_theme_mode_controller.dart';
+import '../../../../app/core/session/company_context.dart';
+import '../../../../app/core/session/session_provider.dart';
+import '../../domain/company_receipt_settings.dart';
+import '../providers/company_receipt_settings_providers.dart';
 import '../../../../app/routes/route_names.dart';
 import '../providers/account_cloud_providers.dart';
 
@@ -17,6 +21,10 @@ class SettingsPage extends ConsumerWidget {
     final internalAccess = ref.watch(internalMobileSurfaceAccessProvider);
     final themeModeAsync = ref.watch(appThemeModeControllerProvider);
     final selectedThemeMode = themeModeAsync.valueOrNull ?? AppThemeMode.system;
+    final session = ref.watch(appSessionProvider);
+    final profileSaving = ref
+        .watch(companyReceiptSettingsControllerProvider)
+        .isLoading;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Configurações')),
@@ -32,6 +40,62 @@ class SettingsPage extends ConsumerWidget {
             emphasized: true,
           ),
           const SizedBox(height: 18),
+          if (session.isCompanyOwner) ...[
+            AppSectionCard(
+              title: 'Perfil da loja',
+              subtitle:
+                  'Escolha a experiência da sua loja. Seus produtos e históricos são preservados.',
+              child: DropdownButton<CompanyExperienceProfile>(
+                isExpanded: true,
+                value: session.company.experienceProfile,
+                items: CompanyExperienceProfile.values
+                    .map(
+                      (profile) => DropdownMenuItem(
+                        value: profile,
+                        child: Text(profile.label),
+                      ),
+                    )
+                    .toList(),
+                onChanged: profileSaving || session.isOfflineFallback
+                    ? null
+                    : (profile) async {
+                        if (profile == null ||
+                            profile == session.company.experienceProfile) {
+                          return;
+                        }
+                        try {
+                          await ref
+                              .read(
+                                companyReceiptSettingsControllerProvider
+                                    .notifier,
+                              )
+                              .save(
+                                CompanyReceiptSettingsDraft.fromCompany(
+                                  session.company,
+                                  experienceProfile: profile,
+                                ),
+                              );
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Perfil da loja atualizado.'),
+                            ),
+                          );
+                        } catch (_) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Não foi possível atualizar o perfil. Confira sua conexão e tente novamente.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+              ),
+            ),
+            const SizedBox(height: 18),
+          ],
           AppSectionCard(
             title: 'Apar\u00eancia',
             subtitle: 'Escolha como o Tatuzin aparece neste dispositivo.',

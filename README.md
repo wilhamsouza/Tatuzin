@@ -4,6 +4,10 @@ Tatuzin ERP e um app/SaaS para gestao de lojas de vestuario e moda. O produto co
 
 Este README descreve o estado real deste repositorio. Ele e do Tatuzin ERP, nao do TatuLog.
 
+Implementação e publicação do centro administrativo: [Admin da plataforma](docs/admin-platform-implementation.md).
+
+Organização operacional no app e painel: [Produtos e Estoque](docs/products-stock-implementation.md).
+
 ## Arquitetura
 
 A arquitetura oficial do Tatuzin separa a operacao em tres blocos:

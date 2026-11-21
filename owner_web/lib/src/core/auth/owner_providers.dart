@@ -46,7 +46,62 @@ final ownerAuthControllerProvider = ChangeNotifierProvider<OwnerAuthController>(
 
 final ownerRefreshTickProvider = StateProvider<int>((ref) => 0);
 
+// A new login/company must not reuse results from a previous tenant.
+final ownerDataScopeProvider = Provider(
+  (ref) => ref.watch(
+    ownerAuthControllerProvider.select(
+      (auth) => (
+        auth.session?.company.id,
+        auth.session?.user.id,
+        auth.session?.membership.role,
+      ),
+    ),
+  ),
+);
+
+final ownerDashboardDaysProvider = StateProvider<int>((ref) => 30);
+final ownerEmployeeBusyProvider = StateProvider<bool>((ref) {
+  ref.watch(ownerDataScopeProvider);
+  return false;
+});
+final ownerEmployeeSearchProvider = StateProvider<String>((ref) {
+  ref.watch(ownerDataScopeProvider);
+  return '';
+});
+
+final ownerDashboardSalesProvider = FutureProvider<OwnerSalesSummary>((
+  ref,
+) async {
+  ref.watch(ownerDataScopeProvider);
+  ref.watch(ownerRefreshTickProvider);
+  final days = ref.watch(ownerDashboardDaysProvider);
+  final now = DateTime.now().toUtc();
+  return ref
+      .watch(ownerApiServiceProvider)
+      .getSalesSummary(
+        query: OwnerSalesSummaryQuery(
+          startDate: now
+              .subtract(Duration(days: days - 1))
+              .toIso8601String()
+              .substring(0, 10),
+          endDate: now.toIso8601String().substring(0, 10),
+          pageSize: 5,
+          groupBy: 'day',
+        ),
+      );
+});
+
+final ownerDashboardReceivablesProvider =
+    FutureProvider<OwnerReceivablesReport>((ref) async {
+      ref.watch(ownerDataScopeProvider);
+      ref.watch(ownerRefreshTickProvider);
+      return ref
+          .watch(ownerApiServiceProvider)
+          .getReceivables(query: const OwnerReceivablesQuery(pageSize: 5));
+    });
+
 final ownerCompanyProvider = FutureProvider<OwnerCompanySummary>((ref) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   return ref.watch(ownerApiServiceProvider).getCompany();
 });
@@ -54,6 +109,7 @@ final ownerCompanyProvider = FutureProvider<OwnerCompanySummary>((ref) async {
 final ownerDashboardProvider = FutureProvider<OwnerBusinessDashboard>((
   ref,
 ) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   return ref.watch(ownerApiServiceProvider).getBusinessDashboard();
 });
@@ -71,6 +127,7 @@ final ownerSalesGroupByProvider = StateProvider<String>((ref) => 'day');
 final ownerSalesSummaryProvider = FutureProvider<OwnerSalesSummary>((
   ref,
 ) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   final startDate = ref.watch(ownerReportStartDateProvider);
   final endDate = ref.watch(ownerReportEndDateProvider);
@@ -92,6 +149,7 @@ final ownerSalesSummaryProvider = FutureProvider<OwnerSalesSummary>((
 final ownerProductsReportProvider = FutureProvider<OwnerProductsReport>((
   ref,
 ) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   final startDate = ref.watch(ownerReportStartDateProvider);
   final endDate = ref.watch(ownerReportEndDateProvider);
@@ -109,6 +167,7 @@ final ownerProductsReportProvider = FutureProvider<OwnerProductsReport>((
 final ownerStockSummaryProvider = FutureProvider<OwnerStockSummary>((
   ref,
 ) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   return ref
       .watch(ownerApiServiceProvider)
@@ -116,6 +175,7 @@ final ownerStockSummaryProvider = FutureProvider<OwnerStockSummary>((
 });
 
 final ownerCrmSummaryProvider = FutureProvider<OwnerCrmSummary>((ref) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   return ref.watch(ownerApiServiceProvider).getCrmSummary();
 });
@@ -127,6 +187,7 @@ final ownerCrmPageProvider = StateProvider<int>((ref) => 1);
 final ownerCrmCustomersProvider = FutureProvider<OwnerCrmCustomerPage>((
   ref,
 ) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   final search = ref.watch(ownerCrmSearchProvider);
   final status = ref.watch(ownerCrmStatusProvider);
@@ -149,6 +210,7 @@ final ownerReceivablesPageProvider = StateProvider<int>((ref) => 1);
 final ownerReceivablesProvider = FutureProvider<OwnerReceivablesReport>((
   ref,
 ) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   final status = ref.watch(ownerReceivablesStatusProvider);
   final page = ref.watch(ownerReceivablesPageProvider);
@@ -162,6 +224,7 @@ final ownerReceivablesProvider = FutureProvider<OwnerReceivablesReport>((
 final ownerEmployeeReportsProvider = FutureProvider<OwnerEmployeeReports>((
   ref,
 ) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   final startDate = ref.watch(ownerReportStartDateProvider);
   final endDate = ref.watch(ownerReportEndDateProvider);
@@ -179,6 +242,7 @@ final ownerEmployeeReportsProvider = FutureProvider<OwnerEmployeeReports>((
 final ownerCommissionsProvider = FutureProvider<OwnerCommissionsSummary>((
   ref,
 ) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   final startDate = ref.watch(ownerReportStartDateProvider);
   final endDate = ref.watch(ownerReportEndDateProvider);
@@ -192,6 +256,7 @@ final ownerCommissionsProvider = FutureProvider<OwnerCommissionsSummary>((
 final ownerReportsCatalogProvider = FutureProvider<OwnerReportsCatalog>((
   ref,
 ) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   return ref.watch(ownerApiServiceProvider).getReportsCatalog();
 });
@@ -203,9 +268,18 @@ final ownerSelectedCashSessionIdProvider = StateProvider<String?>(
   (ref) => null,
 );
 
+final ownerCashWorkspaceProvider = FutureProvider<OwnerCashWorkspace>((
+  ref,
+) async {
+  ref.watch(ownerDataScopeProvider);
+  ref.watch(ownerRefreshTickProvider);
+  return ref.watch(ownerApiServiceProvider).getCashWorkspace();
+});
+
 final ownerCashSessionsProvider = FutureProvider<OwnerCashSessionsReport>((
   ref,
 ) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   final startDate = ref.watch(ownerReportStartDateProvider);
   final endDate = ref.watch(ownerReportEndDateProvider);
@@ -228,6 +302,7 @@ final ownerCashSessionsProvider = FutureProvider<OwnerCashSessionsReport>((
 
 final ownerCashSessionDetailProvider =
     FutureProvider.family<OwnerCashSessionDetail, String>((ref, id) async {
+      ref.watch(ownerDataScopeProvider);
       ref.watch(ownerRefreshTickProvider);
       return ref.watch(ownerApiServiceProvider).getCashSessionDetail(id);
     });
@@ -235,6 +310,7 @@ final ownerCashSessionDetailProvider =
 final ownerBillingStatusProvider = FutureProvider<OwnerBillingStatus>((
   ref,
 ) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   return ref.watch(ownerApiServiceProvider).getBillingStatus();
 });
@@ -245,6 +321,7 @@ final ownerInvoicePageProvider = StateProvider<int>((ref) => 1);
 final ownerBillingInvoicesProvider = FutureProvider<OwnerInvoicesPage>((
   ref,
 ) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   final status = ref.watch(ownerInvoiceStatusFilterProvider);
   final page = ref.watch(ownerInvoicePageProvider);
@@ -258,6 +335,7 @@ final ownerBillingInvoicesProvider = FutureProvider<OwnerInvoicesPage>((
 final ownerEmployeesProvider = FutureProvider<OwnerEmployeesOverview>((
   ref,
 ) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   return ref.watch(ownerApiServiceProvider).getEmployees();
 });
@@ -265,16 +343,19 @@ final ownerEmployeesProvider = FutureProvider<OwnerEmployeesOverview>((
 final ownerReceiptSettingsProvider = FutureProvider<OwnerReceiptSettings>((
   ref,
 ) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   return ref.watch(ownerApiServiceProvider).getReceiptSettings();
 });
 
 final ownerDevicesProvider = FutureProvider<OwnerDevicesResult>((ref) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   return ref.watch(ownerApiServiceProvider).getDevices();
 });
 
 final ownerSyncStatusProvider = FutureProvider<OwnerSyncStatus>((ref) async {
+  ref.watch(ownerDataScopeProvider);
   ref.watch(ownerRefreshTickProvider);
   return ref.watch(ownerApiServiceProvider).getSyncStatus();
 });

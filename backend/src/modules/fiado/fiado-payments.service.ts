@@ -33,6 +33,7 @@ export class FiadoPaymentsService {
       );
     }
 
+
     const payment = await prisma.fiadoPayment.create({
       data: {
         companyId,

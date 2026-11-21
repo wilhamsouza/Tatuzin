@@ -909,6 +909,14 @@ async function createFixture() {
       isPlatformAdmin: true,
     },
   });
+  // This legacy fixture represents an explicitly authorized internal operator.
+  await prisma.adminUserPermission.createMany({ data: [
+    'admin.overview.read','admin.companies.read','admin.support.read','admin.sync.read',
+    'admin.billing.read','admin.devices.read','admin.usage.read','admin.audit.read',
+    'admin.billing.manage','support.user.block','support.user.unblock',
+    'support.license.update','support.session.revoke','support.sync.force','support.sync.conflict.resolve',
+  ].map(permissionKey => ({ actorUserId: adminUser.id, permissionKey, scope: 'platform', scopeId: '*', isActive: true })) });
+
   const operatorUser = await prisma.user.create({
     data: {
       email: `${runId}-operator-${Date.now()}@tatuzin.test`,

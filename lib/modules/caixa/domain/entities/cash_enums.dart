@@ -1,15 +1,19 @@
-enum CashSessionStatus { open, closed }
+enum CashSessionStatus { open, pendingSync, reviewRequired, closed }
 
 extension CashSessionStatusX on CashSessionStatus {
-  String get dbValue => this == CashSessionStatus.open ? 'aberto' : 'fechado';
-
-  String get label => this == CashSessionStatus.open ? 'Aberto' : 'Fechado';
-
-  static CashSessionStatus fromDb(String value) {
-    return value == 'fechado'
-        ? CashSessionStatus.closed
-        : CashSessionStatus.open;
-  }
+  String get dbValue => this == CashSessionStatus.closed ? 'fechado' : 'aberto';
+  String get label => switch (this) {
+    CashSessionStatus.open => 'Aberto',
+    CashSessionStatus.pendingSync => 'Fechamento pendente',
+    CashSessionStatus.reviewRequired => 'Revisão necessária',
+    CashSessionStatus.closed => 'Fechado',
+  };
+  static CashSessionStatus fromDb(String value) => switch (value) {
+    'fechado' || 'CLOSED' => CashSessionStatus.closed,
+    'PENDING_SYNC' => CashSessionStatus.pendingSync,
+    'REVIEW_REQUIRED' => CashSessionStatus.reviewRequired,
+    _ => CashSessionStatus.open,
+  };
 }
 
 enum CashMovementType {

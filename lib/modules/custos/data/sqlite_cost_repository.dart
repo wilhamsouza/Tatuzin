@@ -417,7 +417,9 @@ class SqliteCostRepository implements CostRepository {
         await CashSessionMathSupport.applySessionDeltas(
           txn,
           sessionId: sessionId,
-          withdrawalsDeltaCents: amountCents,
+          withdrawalsDeltaCents: input.paymentMethod == PaymentMethod.cash
+              ? amountCents
+              : 0,
         );
         final movement = await CashDatabaseSupport.insertMovement(
           txn,

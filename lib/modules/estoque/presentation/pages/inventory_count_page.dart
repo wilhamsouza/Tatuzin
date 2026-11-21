@@ -16,7 +16,9 @@ import '../../domain/entities/inventory_count_session.dart';
 import '../providers/inventory_providers.dart';
 
 class InventoryCountPage extends ConsumerStatefulWidget {
-  const InventoryCountPage({super.key});
+  const InventoryCountPage({super.key, this.readOnlyHistory = true});
+
+  final bool readOnlyHistory;
 
   @override
   ConsumerState<InventoryCountPage> createState() => _InventoryCountPageState();
@@ -32,13 +34,17 @@ class _InventoryCountPageState extends ConsumerState<InventoryCountPage> {
     final actionState = ref.watch(inventoryCountActionControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Inventário físico')),
+      appBar: AppBar(title: const Text('Histórico de contagens do aparelho')),
       drawer: const AppMainDrawer(),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: actionState.isLoading ? null : _createSession,
-        icon: const Icon(Icons.add_task_rounded),
-        label: const Text('Nova sessão'),
-      ),
+      floatingActionButton: widget.readOnlyHistory
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: widget.readOnlyHistory || actionState.isLoading
+                  ? null
+                  : _createSession,
+              icon: const Icon(Icons.add_task_rounded),
+              label: const Text('Nova sessão'),
+            ),
       body: Column(
         children: [
           Padding(
@@ -49,9 +55,9 @@ class _InventoryCountPageState extends ConsumerState<InventoryCountPage> {
               layout.space3,
             ),
             child: const AppPageHeader(
-              title: 'Inventário físico',
+              title: 'Contagens antigas',
               subtitle:
-                  'Conte produtos, revise divergências e aplique ajustes com auditoria.',
+                  'Histórico preservado deste aparelho. Novas contagens ficam em Estoque → Contagens.',
               badgeLabel: 'Contagem',
               badgeIcon: Icons.fact_check_rounded,
               emphasized: true,
@@ -76,7 +82,9 @@ class _InventoryCountPageState extends ConsumerState<InventoryCountPage> {
                 SizedBox(width: layout.space4),
                 Expanded(
                   child: FilledButton.tonalIcon(
-                    onPressed: actionState.isLoading ? null : _createSession,
+                    onPressed: widget.readOnlyHistory || actionState.isLoading
+                        ? null
+                        : _createSession,
                     icon: const Icon(Icons.add_task_rounded),
                     label: const Text('Nova sessão'),
                   ),

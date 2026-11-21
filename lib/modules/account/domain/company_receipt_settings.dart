@@ -11,11 +11,16 @@ class CompanyReceiptSettingsDraft {
     required this.showPhoneOnReceipt,
     required this.showAddressOnReceipt,
     required this.showFooterMessageOnReceipt,
+    this.experienceProfile,
   });
 
-  factory CompanyReceiptSettingsDraft.fromCompany(CompanyContext company) {
+  factory CompanyReceiptSettingsDraft.fromCompany(
+    CompanyContext company, {
+    CompanyExperienceProfile? experienceProfile,
+  }) {
     final settings = company.receiptSettings;
     return CompanyReceiptSettingsDraft(
+      experienceProfile: experienceProfile,
       receiptDisplayName: settings.receiptDisplayName,
       receiptDocument: settings.receiptDocument ?? company.documentNumber,
       receiptPhone: settings.receiptPhone,
@@ -37,8 +42,13 @@ class CompanyReceiptSettingsDraft {
   final bool showPhoneOnReceipt;
   final bool showAddressOnReceipt;
   final bool showFooterMessageOnReceipt;
+  final CompanyExperienceProfile? experienceProfile;
 
   Map<String, dynamic> toJson() {
+    // Profile changes are partial updates; never resend cached receipt data.
+    if (experienceProfile != null) {
+      return <String, dynamic>{'experienceProfile': experienceProfile!.key};
+    }
     return <String, dynamic>{
       'receiptDisplayName': receiptDisplayName,
       'receiptDocument': receiptDocument,
@@ -60,6 +70,9 @@ class CompanyReceiptSettingsSnapshot {
     required this.legalName,
     required this.documentNumber,
     required this.settings,
+    this.experienceProfile,
+    this.cashBlindClosureEnabled,
+    this.cashPolicyRevision,
   });
 
   factory CompanyReceiptSettingsSnapshot.fromJson(Map<String, dynamic> json) {
@@ -84,6 +97,17 @@ class CompanyReceiptSettingsSnapshot {
         showFooterMessageOnReceipt:
             company['showFooterMessageOnReceipt'] != false,
       ),
+      cashBlindClosureEnabled: company.containsKey('cashBlindClosureEnabled')
+          ? company['cashBlindClosureEnabled'] == true
+          : null,
+      cashPolicyRevision:
+          company['cashPolicyRevision'] is int &&
+              (company['cashPolicyRevision'] as int) >= 0
+          ? company['cashPolicyRevision'] as int
+          : null,
+      experienceProfile: company.containsKey('experienceProfile')
+          ? CompanyExperienceProfile.fromValue(company['experienceProfile'])
+          : null,
     );
   }
 
@@ -92,9 +116,15 @@ class CompanyReceiptSettingsSnapshot {
   final String legalName;
   final String? documentNumber;
   final CompanyReceiptSettings settings;
+  final CompanyExperienceProfile? experienceProfile;
+  final bool? cashBlindClosureEnabled;
+  final int? cashPolicyRevision;
 
   CompanyContext mergeInto(CompanyContext company) {
     return company.copyWith(
+      experienceProfile: experienceProfile,
+      cashBlindClosureEnabled: cashBlindClosureEnabled,
+      cashPolicyRevision: cashPolicyRevision,
       displayName: displayName,
       legalName: legalName,
       documentNumber: documentNumber,

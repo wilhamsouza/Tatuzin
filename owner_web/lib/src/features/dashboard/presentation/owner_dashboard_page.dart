@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/owner_providers.dart';
 import '../../../core/models/owner_models.dart';
 import '../../../core/widgets/owner_async_view.dart';
 import '../../../core/widgets/owner_formatters.dart';
 import '../../../core/widgets/owner_management_widgets.dart';
+import '../../../core/widgets/owner_responsive_layout.dart';
+import '../../../core/widgets/owner_sales_chart.dart';
+import '../../employees/presentation/owner_employees_page.dart';
 
 class OwnerDashboardPage extends ConsumerWidget {
   const OwnerDashboardPage({super.key});
@@ -13,113 +17,326 @@ class OwnerDashboardPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final dashboard = ref.watch(ownerDashboardProvider);
+    final employees = ref.watch(ownerEmployeesProvider);
+    final sales = ref.watch(ownerDashboardSalesProvider);
+    final receivables = ref.watch(ownerDashboardReceivablesProvider);
+    final busy = ref.watch(ownerEmployeeBusyProvider);
     return OwnerAsyncView(
       value: dashboard,
       onRetry: () => ref.invalidate(ownerDashboardProvider),
       builder: (data) {
         return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (dashboard.isRefreshing)
+              const LinearProgressIndicator(
+                semanticsLabel: 'Atualizando painel',
+              ),
             OwnerPageIntro(
-              title: 'Dashboard da empresa',
+              title: 'Visão geral da empresa',
               subtitle:
-                  'Visão gerencial de vendas, clientes, estoque, equipe e alertas do negócio.',
-              icon: Icons.space_dashboard_rounded,
-              trailing: Chip(label: Text(_periodLabel(data.period))),
+                  'Vendas, equipe, estoque e contas a receber. Dados sincronizados da sua empresa.',
+              icon: Icons.space_dashboard_outlined,
+              trailing: OutlinedButton.icon(
+                onPressed: () =>
+                    ref.read(ownerRefreshTickProvider.notifier).state++,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Atualizar painel'),
+              ),
             ),
             const SizedBox(height: 18),
-            Wrap(
-              spacing: 16,
-              runSpacing: 16,
+            Text(
+              'Mês atual • ${_periodLabel(data.period)} • ${data.period.timezone}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            OwnerGrid(
+              minWidth: 180,
               children: [
                 OwnerMetricCard(
+                  width: null,
                   title: 'Vendas hoje',
                   value: _moneyOrUnavailable(data.sales.todayAmountCents),
                   detail: _salesDetail(data.sales.todayCount, 'hoje'),
-                  icon: Icons.point_of_sale_rounded,
+                  icon: Icons.shopping_cart_outlined,
+                  accent: const Color(0xFF167440),
                   isAvailable: data.sales.todayAmountCents != null,
+                  onTap: () => context.go('/sales'),
                 ),
                 OwnerMetricCard(
+                  width: null,
                   title: 'Faturamento do mês',
                   value: _moneyOrUnavailable(data.sales.monthAmountCents),
                   detail: _salesDetail(data.sales.monthCount, 'no mês'),
                   icon: Icons.payments_outlined,
+                  accent: const Color(0xFF2563C9),
                   isAvailable: data.sales.monthAmountCents != null,
+                  onTap: () => context.go('/sales'),
                 ),
                 OwnerMetricCard(
+                  width: null,
+                  title: 'Contas a receber',
+                  value: _moneyOrUnavailable(data.receivables.openAmountCents),
+                  detail: data.receivables.openCount == null
+                      ? 'Consulta indisponível'
+                      : '${data.receivables.openCount} contas em aberto.',
+                  icon: Icons.request_quote_outlined,
+                  accent: const Color(0xFFA85B00),
+                  isAvailable: data.receivables.openAmountCents != null,
+                  onTap: () => context.go('/finance'),
+                ),
+                OwnerMetricCard(
+                  width: null,
                   title: 'Ticket médio',
                   value: _moneyOrUnavailable(data.sales.averageTicketCents),
                   detail: 'Valor médio por venda no mês.',
-                  icon: Icons.trending_up_rounded,
+                  icon: Icons.insights_outlined,
                   isAvailable: data.sales.averageTicketCents != null,
+                  onTap: () => context.go('/reports'),
                 ),
                 OwnerMetricCard(
-                  title: 'Contas a receber',
-                  value: _moneyOrUnavailable(data.receivables.openAmountCents),
-                  detail:
-                      '${data.receivables.openCount ?? 0} contas em aberto.',
-                  icon: Icons.request_quote_outlined,
-                  isAvailable: data.receivables.openAmountCents != null,
-                ),
-                OwnerMetricCard(
-                  title: 'Clientes ativos',
-                  value: _numberOrUnavailable(data.customers.active),
-                  detail: '${data.customers.total ?? 0} clientes no cadastro.',
-                  icon: Icons.people_alt_outlined,
-                  isAvailable: data.customers.active != null,
-                ),
-                OwnerMetricCard(
+                  width: null,
                   title: 'Estoque baixo',
                   value: _numberOrUnavailable(data.products.lowStock),
-                  detail: '${data.products.outOfStock ?? 0} produtos zerados.',
-                  icon: Icons.inventory_outlined,
+                  detail: data.products.outOfStock == null
+                      ? 'Consulta indisponível'
+                      : '${data.products.outOfStock} produtos zerados.',
+                  icon: Icons.inventory_2_outlined,
+                  accent: const Color(0xFFB43D4D),
                   isAvailable: data.products.lowStock != null,
-                ),
-                OwnerMetricCard(
-                  title: 'Produtos zerados',
-                  value: _numberOrUnavailable(data.products.outOfStock),
-                  detail: '${data.products.total ?? 0} produtos monitorados.',
-                  icon: Icons.remove_shopping_cart_outlined,
-                  isAvailable: data.products.outOfStock != null,
+                  onTap: () => context.go('/products'),
                 ),
               ],
             ),
             const SizedBox(height: 18),
-            Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: [
-                SizedBox(
-                  width: 420,
-                  child: OwnerSectionCard(
-                    title: 'Top produtos',
-                    subtitle: 'Produtos com maior venda no período.',
-                    child: _ProductRanking(items: data.products.topSelling),
-                  ),
+            OwnerSplitLayout(
+              primary: OwnerSectionCard(
+                title: 'Resumo de vendas',
+                subtitle: 'Evolução das vendas sincronizadas no período.',
+                trailing: DropdownButton<int>(
+                  value: ref.watch(ownerDashboardDaysProvider),
+                  onChanged: (value) {
+                    if (value != null) {
+                      ref.read(ownerDashboardDaysProvider.notifier).state =
+                          value;
+                    }
+                  },
+                  items: const [
+                    DropdownMenuItem(value: 7, child: Text('Últimos 7 dias')),
+                    DropdownMenuItem(value: 30, child: Text('Últimos 30 dias')),
+                  ],
                 ),
-                SizedBox(
-                  width: 420,
-                  child: OwnerSectionCard(
-                    title: 'Top clientes',
-                    subtitle: 'Clientes com maior valor comprado.',
-                    child: _CustomerRanking(items: data.customers.topCustomers),
-                  ),
+                child: OwnerAsyncView(
+                  value: sales,
+                  onRetry: () => ref.invalidate(ownerDashboardSalesProvider),
+                  builder: (value) => OwnerSalesChart(points: value.series),
                 ),
-                SizedBox(
-                  width: 420,
-                  child: OwnerSectionCard(
-                    title: 'Vendas por funcionário',
-                    subtitle: 'Desempenho de atendimento e operação.',
-                    child: _EmployeeRanking(employees: data.employees),
-                  ),
+              ),
+              secondary: OwnerSectionCard(
+                title: 'Funcionários',
+                subtitle: 'Equipe e situação dos acessos.',
+                trailing: TextButton(
+                  onPressed: () => context.go('/employees'),
+                  child: const Text('Ver todos'),
                 ),
-                SizedBox(
-                  width: 420,
-                  child: OwnerSectionCard(
+                child: OwnerAsyncView(
+                  value: employees,
+                  onRetry: () => ref.invalidate(ownerEmployeesProvider),
+                  builder: (team) => !team.available
+                      ? const OwnerEmptyState(
+                          title: 'Equipe indisponível',
+                          message:
+                              'Atualize os dados ou consulte a página de funcionários.',
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (team.items.isEmpty)
+                              const OwnerEmptyState(
+                                title: 'Nenhum funcionário cadastrado',
+                                message:
+                                    'Cadastre sua equipe para gerenciar os acessos.',
+                              ),
+                            for (final person in team.items.take(4))
+                              OwnerInfoRow(
+                                title: person.name,
+                                subtitle:
+                                    '${ownerEmployeeRoleLabel(person.role)} • ${ownerEmployeeAccessLabel(person.accessStatus)}',
+                                leading: CircleAvatar(
+                                  child: Text(
+                                    person.name.isEmpty
+                                        ? '?'
+                                        : person.name
+                                              .substring(0, 1)
+                                              .toUpperCase(),
+                                  ),
+                                ),
+                                trailing: Chip(
+                                  label: Text(
+                                    person.status == 'DISABLED'
+                                        ? 'Inativo'
+                                        : person.status == 'INVITED'
+                                        ? 'Convidado'
+                                        : 'Ativo',
+                                  ),
+                                ),
+                              ),
+                            if (team.canManage)
+                              FilledButton.icon(
+                                onPressed: busy
+                                    ? null
+                                    : () => openOwnerEmployeeCreation(
+                                        context,
+                                        ref,
+                                      ),
+                                icon: busy
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(),
+                                      )
+                                    : const Icon(Icons.add),
+                                label: const Text('Adicionar funcionário'),
+                              ),
+                          ],
+                        ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            OwnerSplitLayout(
+              primary: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  OwnerSectionCard(
+                    title: 'Atalhos rápidos',
+                    subtitle: 'Acesse a operação e os cadastros existentes.',
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => context.go('/sales'),
+                          icon: const Icon(Icons.shopping_cart_outlined),
+                          label: const Text('Consultar vendas'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => context.go('/reports/cash'),
+                          icon: const Icon(Icons.point_of_sale_outlined),
+                          label: const Text('Conferir caixas'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => context.go('/products'),
+                          icon: const Icon(Icons.inventory_2_outlined),
+                          label: const Text('Produtos e estoque'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => context.go('/employees'),
+                          icon: const Icon(Icons.manage_accounts_outlined),
+                          label: const Text('Gerenciar acessos'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  OwnerSectionCard(
+                    title: 'Contas a receber',
+                    subtitle: 'Até cinco contas em aberto.',
+                    trailing: TextButton(
+                      onPressed: () => context.go('/finance'),
+                      child: const Text('Ver todas'),
+                    ),
+                    child: OwnerAsyncView(
+                      value: receivables,
+                      onRetry: () =>
+                          ref.invalidate(ownerDashboardReceivablesProvider),
+                      builder: (value) => value.items.items.isEmpty
+                          ? const OwnerEmptyState(
+                              title: 'Nenhuma conta em aberto',
+                              message:
+                                  'As pendências de fiado aparecerão aqui.',
+                            )
+                          : Column(
+                              children: [
+                                for (final item in value.items.items)
+                                  OwnerInfoRow(
+                                    title: item.customerName,
+                                    subtitle:
+                                        '${item.dueDate == null ? 'Sem vencimento informado' : 'Vencimento: ${item.dueDate}'} • ${item.overdueAmountCents > 0 ? 'Em atraso' : 'Em aberto'}',
+                                    trailing: Text(
+                                      OwnerFormatters.moneyFromCents(
+                                        item.openAmountCents,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+              secondary: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  OwnerSectionCard(
                     title: 'Alertas da empresa',
-                    subtitle: 'Pontos que merecem atenção do gestor.',
                     child: _BusinessAlerts(alerts: data.alerts),
                   ),
+                  const SizedBox(height: 16),
+                  OwnerSectionCard(
+                    title: 'Últimas atividades',
+                    subtitle: 'Vendas registradas no período selecionado.',
+                    trailing: TextButton(
+                      onPressed: () => context.go('/sales'),
+                      child: const Text('Ver vendas'),
+                    ),
+                    child: OwnerAsyncView(
+                      value: sales,
+                      onRetry: () =>
+                          ref.invalidate(ownerDashboardSalesProvider),
+                      builder: (value) => value.recentSales.items.isEmpty
+                          ? const OwnerEmptyState(
+                              title: 'Nenhuma venda no período',
+                              message:
+                                  'As vendas sincronizadas aparecerão aqui.',
+                            )
+                          : Column(
+                              children: [
+                                for (final sale in value.recentSales.items.take(
+                                  5,
+                                ))
+                                  OwnerInfoRow(
+                                    title: sale.title,
+                                    subtitle:
+                                        '${sale.customerName ?? 'Sem cliente vinculado'} • ${sale.status == 'cancelled' || sale.status == 'canceled' ? 'Cancelada' : 'Registrada'}\n${sale.soldAt ?? 'Data não informada'}',
+                                    trailing: Text(
+                                      OwnerFormatters.moneyFromCents(
+                                        sale.totalAmountCents,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            OwnerGrid(
+              minWidth: 300,
+              children: [
+                OwnerSectionCard(
+                  title: 'Top produtos',
+                  child: _ProductRanking(items: data.products.topSelling),
+                ),
+                OwnerSectionCard(
+                  title: 'Top clientes',
+                  child: _CustomerRanking(items: data.customers.topCustomers),
+                ),
+                OwnerSectionCard(
+                  title: 'Vendas por funcionário',
+                  child: _EmployeeRanking(employees: data.employees),
                 ),
               ],
             ),
@@ -147,12 +364,10 @@ class _ProductRanking extends StatelessWidget {
     return Column(
       children: [
         for (final item in items)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(item.productName),
-            subtitle: Text(
-              '${item.salesCount} vendas - ${OwnerFormatters.quantityFromMil(item.quantityMil)} un.',
-            ),
+          OwnerInfoRow(
+            title: item.productName,
+            subtitle:
+                '${item.salesCount} vendas - ${OwnerFormatters.quantityFromMil(item.quantityMil)} un.',
             trailing: Text(OwnerFormatters.moneyFromCents(item.amountCents)),
           ),
       ],
@@ -177,10 +392,9 @@ class _CustomerRanking extends StatelessWidget {
     return Column(
       children: [
         for (final item in items)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(item.name),
-            subtitle: Text('${item.purchasesCount} compras'),
+          OwnerInfoRow(
+            title: item.name,
+            subtitle: '${item.purchasesCount} compras',
             trailing: Text(
               OwnerFormatters.moneyFromCents(item.totalPurchasedCents),
             ),
@@ -216,10 +430,9 @@ class _EmployeeRanking extends StatelessWidget {
     return Column(
       children: [
         for (final item in employees.topPerformers)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(item.name),
-            subtitle: Text('${item.salesCount} vendas'),
+          OwnerInfoRow(
+            title: item.name,
+            subtitle: '${item.salesCount} vendas',
             trailing: Text(
               OwnerFormatters.moneyFromCents(item.salesAmountCents),
             ),

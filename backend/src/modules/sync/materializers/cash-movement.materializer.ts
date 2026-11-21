@@ -1,4 +1,5 @@
 import {
+  asRecord,
   firstDate,
   domainIdentityFor,
   firstIdentity,
@@ -76,7 +77,12 @@ export class CashMovementMaterializer {
       return authorization;
     }
 
-    if (cashSession != null && isClosedStatus(cashSession.status)) {
+    const occurredAt = new Date(input.event.occurredAt);
+    const lateV2Movement = cashSession != null &&
+      asRecord(asRecord(cashSession.payload).openingDetails).version === 2 &&
+      cashSession.closedAt != null && cashSession.openedAt != null &&
+      occurredAt >= cashSession.openedAt && occurredAt <= cashSession.closedAt;
+    if (cashSession != null && isClosedStatus(cashSession.status) && !lateV2Movement) {
       return {
         outcome: 'conflict',
         code: 'CASH_SESSION_CLOSED',

@@ -8,6 +8,7 @@ import '../../../core/models/owner_models.dart';
 import '../../../core/widgets/owner_async_view.dart';
 import '../../../core/widgets/owner_formatters.dart';
 import '../../../core/widgets/owner_management_widgets.dart';
+import '../../../core/widgets/owner_responsive_layout.dart';
 
 const _roles = <String>[
   'MANAGER',
@@ -46,12 +47,20 @@ class OwnerEmployeesPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final employees = ref.watch(ownerEmployeesProvider);
+    final busy = ref.watch(ownerEmployeeBusyProvider);
     final commissions = ref.watch(ownerCommissionsProvider);
     final performance = ref.watch(ownerEmployeeReportsProvider);
     return OwnerAsyncView(
       value: employees,
       onRetry: () => _refresh(ref),
       builder: (data) {
+        if (!data.available) {
+          return const OwnerEmptyState(
+            title: 'Equipe indisponível',
+            message:
+                'Não foi possível consultar a equipe agora. Atualize os dados para tentar novamente.',
+          );
+        }
         final commissionData = commissions.valueOrNull;
         final summary = data.summary;
         return Column(
@@ -64,19 +73,24 @@ class OwnerEmployeesPage extends ConsumerWidget {
               icon: Icons.badge_outlined,
               trailing: data.canManage
                   ? FilledButton.icon(
-                      onPressed: () => _openEmployeeDialog(context, ref),
+                      onPressed: busy
+                          ? null
+                          : () => _openEmployeeDialog(context, ref),
                       icon: const Icon(Icons.person_add_alt_1_rounded),
                       label: const Text('Novo funcionario'),
                     )
                   : null,
             ),
             const SizedBox(height: 18),
-            Wrap(
-              spacing: 16,
-              runSpacing: 16,
+            if (busy)
+              const LinearProgressIndicator(
+                semanticsLabel: 'Salvando alteração de funcionário',
+              ),
+            OwnerGrid(
               children: [
                 OwnerMetricCard(
                   title: 'Funcionarios',
+                  width: null,
                   value: '${summary.total}',
                   detail:
                       '${summary.active} ativos, ${summary.disabled} desativados.',
@@ -85,6 +99,7 @@ class OwnerEmployeesPage extends ConsumerWidget {
                 ),
                 OwnerMetricCard(
                   title: 'Acesso ativo',
+                  width: null,
                   value: '${summary.withActiveAccess}',
                   detail:
                       '${summary.temporaryPasswordPending} com senha temporaria pendente.',
@@ -93,6 +108,7 @@ class OwnerEmployeesPage extends ConsumerWidget {
                 ),
                 OwnerMetricCard(
                   title: 'Comissao ativa',
+                  width: null,
                   value: '${summary.commissionEnabled}',
                   detail: 'Funcionarios com regra de comissao habilitada.',
                   icon: Icons.payments_outlined,
@@ -100,11 +116,15 @@ class OwnerEmployeesPage extends ConsumerWidget {
                 ),
                 OwnerMetricCard(
                   title: 'Comissao estimada',
-                  value: OwnerFormatters.moneyFromCents(
-                    commissionData?.totals.totalCommissionCents ?? 0,
-                  ),
-                  detail:
-                      '${commissionData?.totals.totalSalesCount ?? 0} vendas no periodo.',
+                  width: null,
+                  value: commissionData == null
+                      ? 'Sem dados'
+                      : OwnerFormatters.moneyFromCents(
+                          commissionData.totals.totalCommissionCents,
+                        ),
+                  detail: commissionData == null
+                      ? 'Consulta indisponível.'
+                      : '${commissionData.totals.totalSalesCount} vendas no periodo.',
                   icon: Icons.price_check_rounded,
                   isAvailable: commissionData != null,
                 ),
@@ -116,7 +136,21 @@ class OwnerEmployeesPage extends ConsumerWidget {
               subtitle: data.canManage
                   ? 'Acoes de acesso, cadastro e permissao.'
                   : 'Consulta da equipe. Voce nao tem permissao para alterar.',
-              child: _EmployeesList(employees: data),
+              child: Column(
+                children: [
+                  TextField(
+                    decoration: const InputDecoration(
+                      labelText: 'Buscar funcionário',
+                      prefixIcon: Icon(Icons.search),
+                    ),
+                    onChanged: (value) =>
+                        ref.read(ownerEmployeeSearchProvider.notifier).state =
+                            value,
+                  ),
+                  const SizedBox(height: 12),
+                  _EmployeesList(employees: data),
+                ],
+              ),
             ),
             const SizedBox(height: 18),
             OwnerSectionCard(
@@ -149,15 +183,26 @@ class OwnerEmployeesPage extends ConsumerWidget {
 
 class _EmployeesList extends ConsumerWidget {
   const _EmployeesList({required this.employees});
-
   final OwnerEmployeesOverview employees;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (employees.items.isEmpty) {
+    final busy = ref.watch(ownerEmployeeBusyProvider);
+    final search = ref.watch(ownerEmployeeSearchProvider).trim().toLowerCase();
+    final items = employees.items
+        .where(
+          (item) =>
+              '${item.name} ${item.email ?? ''}'.toLowerCase().contains(search),
+        )
+        .toList();
+    if (items.isEmpty) {
       return OwnerEmptyState(
-        title: 'Nenhum funcionario cadastrado',
-        message: employees.canManage
+        title: search.isNotEmpty
+            ? 'Nenhum funcionário encontrado'
+            : 'Nenhum funcionario cadastrado',
+        message: search.isNotEmpty
+            ? 'Tente outro nome ou e-mail.'
+            : employees.canManage
             ? 'Use Novo funcionario para liberar acesso a equipe.'
             : 'Nenhum cadastro apareceu para consulta.',
         icon: Icons.badge_outlined,
@@ -165,59 +210,64 @@ class _EmployeesList extends ConsumerWidget {
     }
     return Column(
       children: [
-        for (final item in employees.items)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(_statusIcon(item.accessStatus)),
-            title: Text(item.name),
-            subtitle: Text(
-              '${_roleLabel(item.role)} - ${_statusLabel(item.status)} - ${_accessLabel(item.accessStatus)}\n'
-              '${item.email ?? 'Sem e-mail'} - Permissoes: ${item.permissionsCount}',
+        for (final item in items) ...[
+          OwnerInfoRow(
+            title: item.name,
+            leading: CircleAvatar(
+              child: Text(
+                item.name.isEmpty
+                    ? '?'
+                    : item.name.substring(0, 1).toUpperCase(),
+              ),
             ),
-            isThreeLine: true,
-            trailing: employees.canManage
-                ? Wrap(
-                    spacing: 8,
-                    children: [
-                      IconButton(
-                        tooltip: 'Editar funcionario',
-                        onPressed: item.role == 'OWNER'
-                            ? null
-                            : () =>
-                                  _openEmployeeDialog(context, ref, item: item),
-                        icon: const Icon(Icons.edit_outlined),
+            subtitle:
+                '${_roleLabel(item.role)} • ${_statusLabel(item.status)} • ${_accessLabel(item.accessStatus)}\n'
+                '${item.email ?? 'Sem e-mail'} • Permissoes: ${item.permissionsCount}',
+            trailing: !employees.canManage
+                ? const Chip(label: Text('Somente leitura'))
+                : item.role == 'OWNER'
+                ? const Chip(label: Text('Proprietário'))
+                : PopupMenuButton<String>(
+                    enabled: !busy,
+                    tooltip: 'Ações de ${item.name}',
+                    onSelected: (action) {
+                      switch (action) {
+                        case 'edit':
+                          _openEmployeeDialog(context, ref, item: item);
+                        case 'password':
+                          _generatePassword(context, ref, item);
+                        case 'commission':
+                          _openCommissionDialog(context, ref, item);
+                        case 'status':
+                          _toggleEmployee(context, ref, item);
+                      }
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Text('Editar funcionario'),
                       ),
-                      IconButton(
-                        tooltip: 'Gerar senha temporaria',
-                        onPressed: item.role == 'OWNER'
-                            ? null
-                            : () => _generatePassword(context, ref, item),
-                        icon: const Icon(Icons.password_rounded),
+                      const PopupMenuItem(
+                        value: 'password',
+                        child: Text('Gerar senha temporaria'),
                       ),
-                      IconButton(
-                        tooltip: 'Configurar comissao',
-                        onPressed: item.role == 'OWNER'
-                            ? null
-                            : () => _openCommissionDialog(context, ref, item),
-                        icon: const Icon(Icons.price_check_rounded),
+                      const PopupMenuItem(
+                        value: 'commission',
+                        child: Text('Configurar comissao'),
                       ),
-                      IconButton(
-                        tooltip: item.status == 'DISABLED'
-                            ? 'Reativar funcionario'
-                            : 'Desativar funcionario',
-                        onPressed: item.role == 'OWNER'
-                            ? null
-                            : () => _toggleEmployee(context, ref, item),
-                        icon: Icon(
+                      PopupMenuItem(
+                        value: 'status',
+                        child: Text(
                           item.status == 'DISABLED'
-                              ? Icons.check_circle_outline_rounded
-                              : Icons.block_outlined,
+                              ? 'Reativar funcionario'
+                              : 'Desativar funcionario',
                         ),
                       ),
                     ],
-                  )
-                : const Chip(label: Text('Somente leitura')),
+                  ),
           ),
+          if (item != items.last) const Divider(height: 1),
+        ],
       ],
     );
   }
@@ -241,13 +291,11 @@ class _CommissionList extends StatelessWidget {
     return Column(
       children: [
         for (final row in rows)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
+          OwnerInfoRow(
             leading: const Icon(Icons.price_check_rounded),
-            title: Text(row.employeeName),
-            subtitle: Text(
-              '${row.eligibleSalesCount} vendas elegiveis - ${_baseLabel(row.commissionBase)}',
-            ),
+            title: row.employeeName,
+            subtitle:
+                '${row.eligibleSalesCount} vendas elegiveis - ${_baseLabel(row.commissionBase)}',
             trailing: Text(
               OwnerFormatters.moneyFromCents(row.commissionAmountCents),
             ),
@@ -275,13 +323,11 @@ class _PerformanceList extends StatelessWidget {
     return Column(
       children: [
         for (final item in report.topEmployees)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
+          OwnerInfoRow(
             leading: const Icon(Icons.point_of_sale_rounded),
-            title: Text(item.name),
-            subtitle: Text(
-              '${item.salesCount} vendas - Ultima venda ${OwnerFormatters.date(item.lastSaleAt)}',
-            ),
+            title: item.name,
+            subtitle:
+                '${item.salesCount} vendas - Ultima venda ${OwnerFormatters.date(item.lastSaleAt)}',
             trailing: Text(
               OwnerFormatters.moneyFromCents(item.salesAmountCents),
             ),
@@ -296,7 +342,7 @@ Future<void> _openEmployeeDialog(
   WidgetRef ref, {
   OwnerEmployeeItem? item,
 }) async {
-  final result = await showDialog<Map<String, dynamic>>(
+  final result = await showDialog<_EmployeeFormResult>(
     context: context,
     builder: (_) => _EmployeeDialog(item: item),
   );
@@ -307,12 +353,35 @@ Future<void> _openEmployeeDialog(
     return;
   }
   await _runAction(context, ref, () async {
+    final api = ref.read(ownerApiServiceProvider);
+    final scope = ref.read(ownerDataScopeProvider);
     if (item == null) {
-      await ref.read(ownerApiServiceProvider).createEmployee(body: result);
+      final created = await api.createEmployee(body: result.body);
+      if (!context.mounted || ref.read(ownerDataScopeProvider) != scope) return;
+      if (result.generateAccess) {
+        OwnerTemporaryPasswordResult credentials;
+        try {
+          credentials = await api.generateTemporaryPassword(
+            employeeId: created.employee.id,
+          );
+        } catch (error) {
+          if (!context.mounted || ref.read(ownerDataScopeProvider) != scope) {
+            return;
+          }
+          _refresh(ref);
+          throw OwnerApiException(
+            message:
+                'Funcionário cadastrado, mas não foi possível gerar o acesso. '
+                'Use Gerar senha temporaria no menu desse funcionário. ${describeOwnerError(error)}',
+          );
+        }
+        if (!context.mounted || ref.read(ownerDataScopeProvider) != scope) {
+          return;
+        }
+        await _showEmployeeCredentials(context, credentials);
+      }
     } else {
-      await ref
-          .read(ownerApiServiceProvider)
-          .updateEmployee(employeeId: item.id, body: result);
+      await api.updateEmployee(employeeId: item.id, body: result.body);
     }
   });
 }
@@ -355,41 +424,85 @@ Future<void> _generatePassword(
     return;
   }
   await _runAction(context, ref, () async {
+    final scope = ref.read(ownerDataScopeProvider);
     final result = await ref
         .read(ownerApiServiceProvider)
         .generateTemporaryPassword(employeeId: item.id);
-    if (!context.mounted) {
-      return;
-    }
-    await showDialog<void>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Senha temporaria gerada'),
-        content: SelectableText(
-          'Login: ${result.login}\nSenha temporaria: ${result.temporaryPassword}\n\nEssa senha aparece apenas agora.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Clipboard.setData(
-                ClipboardData(
-                  text:
-                      'Login: ${result.login}\nSenha temporaria: ${result.temporaryPassword}',
-                ),
-              );
-              Navigator.of(context).pop();
-            },
-            child: const Text('Copiar dados'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Fechar'),
-          ),
-        ],
-      ),
-    );
+    if (!context.mounted || ref.read(ownerDataScopeProvider) != scope) return;
+    await _showEmployeeCredentials(context, result);
   });
 }
+
+Future<void> _showEmployeeCredentials(
+  BuildContext context,
+  OwnerTemporaryPasswordResult result,
+) => showDialog<void>(
+  context: context,
+  barrierDismissible: false,
+  builder: (dialogContext) => AlertDialog(
+    title: const Text('Senha temporaria gerada'),
+    content: SizedBox(
+      width: 440,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SelectableText(
+              'Login: ${result.login}\nSenha temporaria: ${result.temporaryPassword}',
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Entre no app com esse e-mail e a senha temporária. '
+              'No primeiro acesso, o funcionário deverá criar a própria senha. '
+              'Copie os dados antes de fechar: a senha aparece apenas agora.',
+            ),
+            if (result.temporaryPasswordExpiresAt != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Válida até ${OwnerFormatters.date(result.temporaryPasswordExpiresAt)}.',
+              ),
+            ],
+          ],
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () async {
+          try {
+            await Clipboard.setData(
+              ClipboardData(
+                text:
+                    'Login: ${result.login}\nSenha temporaria: ${result.temporaryPassword}',
+              ),
+            );
+            if (dialogContext.mounted) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(content: Text('Dados de acesso copiados.')),
+              );
+            }
+          } catch (_) {
+            if (dialogContext.mounted) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Não foi possível copiar. Selecione os dados de acesso.',
+                  ),
+                ),
+              );
+            }
+          }
+        },
+        child: const Text('Copiar dados'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.of(dialogContext).pop(),
+        child: const Text('Fechar'),
+      ),
+    ],
+  ),
+);
 
 Future<void> _toggleEmployee(
   BuildContext context,
@@ -426,16 +539,16 @@ Future<bool> _confirmAction(
 }) async {
   final result = await showDialog<bool>(
     context: context,
-    builder: (_) => AlertDialog(
+    builder: (dialogContext) => AlertDialog(
       title: Text(title),
       content: Text(message),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
+          onPressed: () => Navigator.of(dialogContext).pop(false),
           child: const Text('Cancelar'),
         ),
         FilledButton(
-          onPressed: () => Navigator.of(context).pop(true),
+          onPressed: () => Navigator.of(dialogContext).pop(true),
           child: Text(confirmLabel),
         ),
       ],
@@ -449,8 +562,13 @@ Future<void> _runAction(
   WidgetRef ref,
   Future<void> Function() action,
 ) async {
+  if (ref.read(ownerEmployeeBusyProvider)) return;
+  final busy = ref.read(ownerEmployeeBusyProvider.notifier);
+  final scope = ref.read(ownerDataScopeProvider);
+  busy.state = true;
   try {
     await action();
+    if (!context.mounted || ref.read(ownerDataScopeProvider) != scope) return;
     _refresh(ref);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -463,14 +581,26 @@ Future<void> _runAction(
         context,
       ).showSnackBar(SnackBar(content: Text(describeOwnerError(error))));
     }
+  } finally {
+    if (busy.mounted) busy.state = false;
   }
 }
+
+/// Reuses the existing validated creation flow from the dashboard shortcut.
+Future<void> openOwnerEmployeeCreation(BuildContext context, WidgetRef ref) =>
+    _openEmployeeDialog(context, ref);
 
 void _refresh(WidgetRef ref) {
   ref.invalidate(ownerEmployeesProvider);
   ref.invalidate(ownerCommissionsProvider);
   ref.invalidate(ownerEmployeeReportsProvider);
   ref.read(ownerRefreshTickProvider.notifier).state++;
+}
+
+class _EmployeeFormResult {
+  const _EmployeeFormResult({required this.body, required this.generateAccess});
+  final Map<String, dynamic> body;
+  final bool generateAccess;
 }
 
 class _EmployeeDialog extends StatefulWidget {
@@ -490,6 +620,8 @@ class _EmployeeDialogState extends State<_EmployeeDialog> {
   late String _status;
   late final Set<String> _selectedPermissions;
   String? _error;
+  bool _generateAccess = true;
+  bool _useRoleDefaults = true;
 
   @override
   void initState() {
@@ -574,30 +706,59 @@ class _EmployeeDialogState extends State<_EmployeeDialog> {
                 onChanged: (value) =>
                     setState(() => _status = value ?? _status),
               ),
-              const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Permissoes basicas',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-              ),
-              for (final permission in _permissions)
+              if (widget.item == null) ...[
+                const SizedBox(height: 16),
                 CheckboxListTile(
-                  dense: true,
                   contentPadding: EdgeInsets.zero,
-                  title: Text(_permissionLabel(permission)),
-                  value: _selectedPermissions.contains(permission),
-                  onChanged: (checked) {
-                    setState(() {
-                      if (checked == true) {
-                        _selectedPermissions.add(permission);
-                      } else {
-                        _selectedPermissions.remove(permission);
-                      }
-                    });
-                  },
+                  title: const Text('Gerar acesso ao app ao salvar'),
+                  subtitle: Text(
+                    _status == 'ACTIVE'
+                        ? 'O e-mail será o login. Uma senha temporária será exibida ao salvar, com troca obrigatória no primeiro acesso.'
+                        : 'Para gerar acesso agora, selecione o status Ativo. Nos demais casos, gere a senha depois pelo menu do funcionário.',
+                  ),
+                  value: _generateAccess && _status == 'ACTIVE',
+                  onChanged: _status == 'ACTIVE'
+                      ? (value) =>
+                            setState(() => _generateAccess = value ?? false)
+                      : null,
                 ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Usar permissões padrão do cargo'),
+                  subtitle: const Text(
+                    'Os acessos seguem as regras do cargo escolhido. Desmarque para personalizar.',
+                  ),
+                  value: _useRoleDefaults,
+                  onChanged: (value) =>
+                      setState(() => _useRoleDefaults = value ?? true),
+                ),
+              ],
+              if (widget.item != null || !_useRoleDefaults) ...[
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Permissoes basicas',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                for (final permission in _permissions)
+                  CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(_permissionLabel(permission)),
+                    value: _selectedPermissions.contains(permission),
+                    onChanged: (checked) {
+                      setState(() {
+                        if (checked == true) {
+                          _selectedPermissions.add(permission);
+                        } else {
+                          _selectedPermissions.remove(permission);
+                        }
+                      });
+                    },
+                  ),
+              ],
             ],
           ),
         ),
@@ -614,14 +775,27 @@ class _EmployeeDialogState extends State<_EmployeeDialog> {
               setState(() => _error = validationError);
               return;
             }
-            Navigator.of(context).pop(<String, dynamic>{
-              'name': _name.text.trim(),
-              'email': _email.text.trim().isEmpty ? null : _email.text.trim(),
-              'phone': _phone.text.trim().isEmpty ? null : _phone.text.trim(),
-              'role': _role,
-              'status': _status,
-              'permissions': _selectedPermissions.toList()..sort(),
-            });
+            Navigator.of(context).pop(
+              _EmployeeFormResult(
+                generateAccess:
+                    widget.item == null &&
+                    _generateAccess &&
+                    _status == 'ACTIVE',
+                body: <String, dynamic>{
+                  'name': _name.text.trim(),
+                  'email': _email.text.trim().isEmpty
+                      ? null
+                      : _email.text.trim(),
+                  'phone': _phone.text.trim().isEmpty
+                      ? null
+                      : _phone.text.trim(),
+                  'role': _role,
+                  'status': _status,
+                  if (widget.item != null || !_useRoleDefaults)
+                    'permissions': _selectedPermissions.toList()..sort(),
+                },
+              ),
+            );
           },
           child: const Text('Salvar'),
         ),
@@ -630,6 +804,11 @@ class _EmployeeDialogState extends State<_EmployeeDialog> {
   }
 
   String? _validateEmployeeForm() {
+    if (widget.item != null &&
+        (!widget.item!.permissionsComplete ||
+            widget.item!.permissionsCount > widget.item!.permissions.length)) {
+      return 'A lista de permissões está incompleta. Atualize os dados antes de salvar para preservar os acessos.';
+    }
     final name = _name.text.trim();
     final email = _email.text.trim();
     if (name.isEmpty) {
@@ -820,19 +999,6 @@ class _CommissionDialogState extends State<_CommissionDialog> {
   }
 }
 
-IconData _statusIcon(String accessStatus) {
-  switch (accessStatus) {
-    case 'ACTIVE':
-      return Icons.verified_user_outlined;
-    case 'TEMPORARY_PASSWORD_PENDING':
-      return Icons.lock_clock_outlined;
-    case 'DISABLED':
-      return Icons.block_outlined;
-    default:
-      return Icons.person_off_outlined;
-  }
-}
-
 String _roleLabel(String role) {
   switch (role) {
     case 'OWNER':
@@ -901,3 +1067,6 @@ String _permissionLabel(String permission) {
       return permission;
   }
 }
+
+String ownerEmployeeRoleLabel(String role) => _roleLabel(role);
+String ownerEmployeeAccessLabel(String status) => _accessLabel(status);

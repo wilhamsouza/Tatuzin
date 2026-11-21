@@ -1,3 +1,4 @@
+import '../../../modules/caixa/data/cash_workspace_store.dart';
 import 'dart:convert';
 import 'dart:math';
 
@@ -38,6 +39,12 @@ class SqliteOperationalSyncQueueRepository
   Future<bool> enqueue(
     DatabaseExecutor db, {
     required OperationalSyncEvent event,
+  }) => enqueueInTransaction(db, event: event);
+
+  /// Allows local domain writers to append an event to their existing transaction.
+  static Future<bool> enqueueInTransaction(
+    DatabaseExecutor db, {
+    required OperationalSyncEvent event,
   }) async {
     if (!OperationalSyncPolicy.isLocalFirstEntity(event.entity)) {
       AppLogger.warn(
@@ -55,6 +62,20 @@ class SqliteOperationalSyncQueueRepository
       return false;
     }
 
+    final payload = Map<String, dynamic>.from(event.payload);
+    final sessionUuid =
+        payload['cashSessionUuid'] ?? payload['cashSessionLocalId'];
+    if (sessionUuid is String) {
+      final owner = await CashWorkspaceStore.read(
+        db,
+        'cash.owner:$sessionUuid',
+      );
+      if (owner['version'] == 3) {
+        payload['cashWorkspaceVersion'] = 3;
+        payload['cashSessionUuid'] = sessionUuid;
+        payload['cashEmployeeId'] = owner['employeeId'];
+      }
+    }
     final now = DateTime.now().toIso8601String();
     final id = await db.insert(
       TableNames.operationalSyncEvents,
@@ -66,7 +87,7 @@ class SqliteOperationalSyncQueueRepository
         'entity_local_id': event.entityLocalId,
         'entity_server_id': event.entityServerId,
         'occurred_at': event.occurredAt.toUtc().toIso8601String(),
-        'payload_json': event.encodePayload(),
+        'payload_json': jsonEncode(payload),
         'status': OperationalSyncQueueStatus.pending.storageValue,
         'attempt_count': 0,
         'next_retry_at': null,
@@ -94,6 +115,20 @@ class SqliteOperationalSyncQueueRepository
       'entity=${event.entity} operation=${event.operation}',
     );
     return true;
+  }
+
+  Future<List<Map<String, Object?>>> _employeeRows(
+    DatabaseExecutor db,
+    List<Map<String, Object?>> rows,
+  ) async {
+    final context = await CashWorkspaceStore.read(db, 'cash.employee.context');
+    if (context['version'] != 3) return rows;
+    return rows.where((row) {
+      final payload =
+          jsonDecode(row['payload_json'] as String) as Map<String, dynamic>;
+      return payload['cashWorkspaceVersion'] != 3 ||
+          payload['cashEmployeeId'] == context['employeeId'];
+    }).toList();
   }
 
   @override
@@ -134,10 +169,12 @@ class SqliteOperationalSyncQueueRepository
       where: where,
       whereArgs: whereArgs,
       orderBy: 'created_at ASC, id ASC',
-      limit: limit,
     );
 
-    return rows.map(_mapRow).toList(growable: false);
+    return (await _employeeRows(
+      database,
+      rows,
+    )).take(limit).map(_mapRow).toList(growable: false);
   }
 
   @override
@@ -280,6 +317,18 @@ class SqliteOperationalSyncQueueRepository
     final database = await _appDatabase.database;
     final currentTime = now ?? DateTime.now();
     final cutoff = currentTime.subtract(staleAfter).toIso8601String();
+    final eligible = await _employeeRows(
+      database,
+      await database.query(
+        TableNames.operationalSyncEvents,
+        where:
+            'status = ? AND pushing_started_at IS NOT NULL AND pushing_started_at <= ?',
+        whereArgs: [OperationalSyncQueueStatus.pushing.storageValue, cutoff],
+      ),
+    );
+    if (eligible.isEmpty) return 0;
+    final ids = eligible.map((row) => row['id']).toList();
+    final placeholders = List.filled(ids.length, '?').join(',');
     final recovered = await database.rawUpdate(
       '''
       UPDATE ${TableNames.operationalSyncEvents}
@@ -293,7 +342,7 @@ class SqliteOperationalSyncQueueRepository
         pushing_started_at = NULL
       WHERE status = ?
         AND pushing_started_at IS NOT NULL
-        AND pushing_started_at <= ?
+        AND pushing_started_at <= ? AND id IN ($placeholders)
       ''',
       <Object?>[
         OperationalSyncQueueStatus.pending.storageValue,
@@ -302,6 +351,7 @@ class SqliteOperationalSyncQueueRepository
         currentTime.toIso8601String(),
         OperationalSyncQueueStatus.pushing.storageValue,
         cutoff,
+        ...ids,
       ],
     );
 
@@ -394,9 +444,12 @@ class SqliteOperationalSyncQueueRepository
     final lastSnapshotErrorAt = _parseDateTime(
       await _readState(_lastSnapshotErrorAtKey),
     );
-    final rows = await database.query(
-      TableNames.operationalSyncEvents,
-      orderBy: 'updated_at DESC, id DESC',
+    final rows = await _employeeRows(
+      database,
+      await database.query(
+        TableNames.operationalSyncEvents,
+        orderBy: 'updated_at DESC, id DESC',
+      ),
     );
     if (rows.isEmpty &&
         partialStatus == null &&

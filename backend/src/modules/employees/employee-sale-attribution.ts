@@ -1,4 +1,5 @@
 export type SaleAttributionInput = {
+  sellerUserId?: string | null;
   convertedOperationalOrder?: { sellerUserId: string | null } | null;
   cashSession?: { userId: string | null } | null;
 };
@@ -14,6 +15,7 @@ export function resolveSaleActorUserId(
 ) {
   return (
     sale.convertedOperationalOrder?.sellerUserId ??
+    sale.sellerUserId ??
     event?.userId ??
     sale.cashSession?.userId ??
     null

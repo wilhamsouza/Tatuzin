@@ -559,6 +559,9 @@ class RemoteAuthGateway implements AuthGateway {
         isPlatformAdmin: payload.isPlatformAdmin,
       ),
       company: CompanyContext(
+        experienceProfile: payload.experienceProfile,
+        onboardingEnabled: payload.onboardingEnabled,
+        experienceRefreshEnabled: payload.experienceRefreshEnabled,
         localId: null,
         remoteId: payload.companyId,
         displayName: payload.companyName,
@@ -571,6 +574,8 @@ class RemoteAuthGateway implements AuthGateway {
         maxDevices: payload.maxDevices,
         syncEnabled: payload.syncEnabled,
         receiptSettings: payload.receiptSettings,
+        cashBlindClosureEnabled: payload.cashBlindClosureEnabled,
+        cashPolicyRevision: payload.cashPolicyRevision,
         entitlements: payload.entitlements,
       ),
       startedAt: DateTime.now(),
@@ -757,6 +762,11 @@ class _AuthIdentityPayload {
     required this.maxDevices,
     required this.syncEnabled,
     required this.receiptSettings,
+    required this.cashBlindClosureEnabled,
+    required this.cashPolicyRevision,
+    required this.experienceProfile,
+    required this.onboardingEnabled,
+    required this.experienceRefreshEnabled,
     required this.entitlements,
   });
 
@@ -778,6 +788,11 @@ class _AuthIdentityPayload {
   final int? maxDevices;
   final bool syncEnabled;
   final CompanyReceiptSettings receiptSettings;
+  final bool cashBlindClosureEnabled;
+  final int cashPolicyRevision;
+  final CompanyExperienceProfile experienceProfile;
+  final bool onboardingEnabled;
+  final bool experienceRefreshEnabled;
   final PlanEntitlements entitlements;
 
   factory _AuthIdentityPayload.fromBootstrap(
@@ -838,6 +853,17 @@ class _AuthIdentityPayload {
           : companyName,
       companyDocumentNumber: (company['documentNumber'] as String?)?.trim(),
       receiptSettings: _readReceiptSettings(company),
+      cashBlindClosureEnabled: company['cashBlindClosureEnabled'] == true,
+      cashPolicyRevision:
+          company['cashPolicyRevision'] is int &&
+              (company['cashPolicyRevision'] as int) >= 0
+          ? company['cashPolicyRevision'] as int
+          : 0,
+      onboardingEnabled: company['onboardingEnabled'] == true,
+      experienceRefreshEnabled: company['experienceRefreshEnabled'] == true,
+      experienceProfile: CompanyExperienceProfile.fromValue(
+        company['experienceProfile'],
+      ),
       membershipRole: RemoteAuthGateway._readString(
         membership,
         'role',

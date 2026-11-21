@@ -8,6 +8,8 @@ class SyncBatchResult {
     required this.reprocessedOnly,
     required this.startedAt,
     required this.finishedAt,
+    this.cashWorkspaceFailed = false,
+    this.cashWorkspaceError,
     this.pullFailed = false,
     this.snapshotFailed = false,
     this.lastPullError,
@@ -22,6 +24,8 @@ class SyncBatchResult {
   final bool reprocessedOnly;
   final DateTime startedAt;
   final DateTime finishedAt;
+  final bool cashWorkspaceFailed;
+  final String? cashWorkspaceError;
   final bool pullFailed;
   final bool snapshotFailed;
   final String? lastPullError;
@@ -32,12 +36,18 @@ class SyncBatchResult {
   bool get hasServerDataStale => pullFailed || snapshotFailed;
 
   bool get hasAttention =>
-      failedCount > 0 || blockedCount > 0 || conflictCount > 0;
+      failedCount > 0 ||
+      blockedCount > 0 ||
+      conflictCount > 0 ||
+      cashWorkspaceFailed;
 
   bool get isClean => !hasAttention && !hasServerDataStale;
 
   String get message {
     final scope = reprocessedOnly ? 'pendências' : 'fila';
+    if (cashWorkspaceFailed) {
+      return 'Os envios foram preservados. A conferência do caixa continua pendente e será tentada novamente quando houver conexão.';
+    }
     if (hasServerDataStale) {
       return 'Sincronização concluída, mas os dados do servidor ficaram desatualizados.';
     }

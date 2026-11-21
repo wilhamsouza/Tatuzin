@@ -10,17 +10,29 @@ abstract final class OwnerTheme {
   }
 
   static ThemeData _build(Brightness brightness) {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF2F6F5E),
-      brightness: brightness,
+    final scheme =
+        ColorScheme.fromSeed(
+          seedColor: const Color(0xFF7025C9),
+          brightness: brightness,
+        ).copyWith(
+          primary: brightness == Brightness.dark
+              ? const Color(0xFFD1B6FF)
+              : const Color(0xFF6526C7),
+          onPrimary: brightness == Brightness.dark
+              ? const Color(0xFF321451)
+              : Colors.white,
+        );
+    final base = ThemeData(
+      useMaterial3: true,
+      colorScheme: scheme,
+      fontFamily: 'NotoSans',
     );
-    final base = ThemeData(useMaterial3: true, colorScheme: scheme);
     final isDark = brightness == Brightness.dark;
 
     return base.copyWith(
       scaffoldBackgroundColor: isDark
-          ? const Color(0xFF101412)
-          : const Color(0xFFF7F8F6),
+          ? const Color(0xFF17131E)
+          : const Color(0xFFF7F5FC),
       textTheme: base.textTheme.apply(
         bodyColor: scheme.onSurface,
         displayColor: scheme.onSurface,
@@ -29,7 +41,7 @@ abstract final class OwnerTheme {
         elevation: 0,
         color: isDark ? scheme.surfaceContainerLow : scheme.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(18),
           side: BorderSide(color: scheme.outlineVariant),
         ),
       ),

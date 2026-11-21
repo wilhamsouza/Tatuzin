@@ -126,6 +126,7 @@ export class SalesService {
       throw new AppError('Venda nao encontrada.', 404, 'SALE_NOT_FOUND');
     }
 
+
     if (sale.localUuid !== input.localUuid) {
       throw new AppError(
         'O localUuid informado nao corresponde a venda remota.',

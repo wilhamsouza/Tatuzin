@@ -1,3 +1,5 @@
+import { cashReceiptSummary } from "../cash/cash-receipt-summary";
+import { CashDivergenceReviewService, canReviewCash } from "../cash/cash-divergence-review.service";
 import type { Prisma } from '@prisma/client';
 
 import { prisma } from '../../database/prisma';
@@ -5,6 +7,8 @@ import { buildPaginatedResponse } from '../../shared/http/api-response';
 import { AppError } from '../../shared/http/app-error';
 import { toPaginationParams } from '../../shared/http/pagination';
 import type { AppContext } from '../app/app-context.types';
+import { resolveSaleActorUserId } from '../employees/employee-sale-attribution';
+import { inventoryItemsSql, type WorkspaceItem } from '../inventory/inventory-items';
 import type {
   OwnerCrmCustomersQueryInput,
   OwnerCrmSummaryQueryInput,
@@ -81,6 +85,9 @@ type StockReportItem = {
   costPriceCents: number;
   salePriceCents: number;
   estimatedCostCents: number;
+  minimumStockMil?: number;
+  unitMeasure?: string;
+  stockStatus?: WorkspaceItem['status'];
 };
 
 export class OwnerReportingService {
@@ -333,35 +340,32 @@ export class OwnerReportingService {
     context: AppContext,
     query: OwnerStockSummaryQueryInput,
   ) {
-    const items = await this.loadStockItems(context.company.id);
+    // Rollout follows the same company allowlist as the inventory workspace.
+    // Keep the previous report definition for companies outside the pilot.
+    const configuredMinimums = ownerUsesInventoryWorkspace(context.company.id);
+    const items = await this.loadStockItems(context.company.id, configuredMinimums);
     const outOfStockItems = items
       .filter((item) => item.currentStockMil <= 0)
-      .sort(compareStockItems)
-      .slice(0, query.limit);
+      .sort(compareStockItems);
     const lowStockItems = items
-      .filter(
-        (item) =>
-          item.currentStockMil > 0 &&
-          item.currentStockMil <= LOW_STOCK_THRESHOLD_MIL,
-      )
-      .sort(compareStockItems)
-      .slice(0, query.limit);
+      .filter((item) => configuredMinimums
+        ? item.stockStatus === 'belowMinimum'
+        : item.currentStockMil > 0 && item.currentStockMil <= LOW_STOCK_THRESHOLD_MIL)
+      .sort(compareStockItems);
 
     return {
       totalProducts: items.length,
-      lowStockCount: items.filter(
-        (item) =>
-          item.currentStockMil > 0 &&
-          item.currentStockMil <= LOW_STOCK_THRESHOLD_MIL,
-      ).length,
-      outOfStockCount: items.filter((item) => item.currentStockMil <= 0).length,
+      lowStockCount: lowStockItems.length,
+      outOfStockCount: outOfStockItems.length,
       totalEstimatedCostCents: items.reduce(
         (total, item) => total + item.estimatedCostCents,
         0,
       ),
-      lowStockThresholdMil: LOW_STOCK_THRESHOLD_MIL,
-      itemsLowStock: lowStockItems,
-      itemsOutOfStock: outOfStockItems,
+      // There is no company-wide cutoff when each SKU has its own minimum.
+      lowStockThresholdMil: configuredMinimums ? null : LOW_STOCK_THRESHOLD_MIL,
+      ...(configuredMinimums ? { lowStockRule: 'per_item_minimum' as const } : {}),
+      itemsLowStock: lowStockItems.slice(0, query.limit),
+      itemsOutOfStock: outOfStockItems.slice(0, query.limit),
     };
   }
 
@@ -561,94 +565,55 @@ export class OwnerReportingService {
     query: OwnerEmployeesReportQueryInput,
   ) {
     const period = this.resolveDateRange(query);
-    const sessionRows = await prisma.sale.groupBy({
-      by: ['cashSessionId'],
+    const sales = await prisma.sale.findMany({
       where: {
         companyId: context.company.id,
         status: 'active',
-        soldAt: {
-          gte: period.start,
-          lt: period.endExclusive,
-        },
-        cashSession: {
-          is: {
-            userId: {
-              not: null,
-            },
-          },
-        },
-      },
-      _sum: {
-        totalAmountCents: true,
-      },
-      _count: {
-        id: true,
-      },
-      _max: {
-        soldAt: true,
-      },
-      orderBy: { _sum: { totalAmountCents: 'desc' } },
-      take: Math.max(query.limit, 25),
-    });
-    const cashSessionIds = sessionRows
-      .map((row) => row.cashSessionId)
-      .filter((value): value is string => value != null);
-
-    if (cashSessionIds.length === 0) {
-      return {
-        available: false,
-        reason: 'EMPLOYEE_REPORTS_NOT_AVAILABLE',
-        period: this.serializePeriod(period),
-        topEmployees: [],
-      };
-    }
-
-    const sessions = await prisma.cashSession.findMany({
-      where: {
-        companyId: context.company.id,
-        id: {
-          in: cashSessionIds,
-        },
-        userId: {
-          not: null,
-        },
-        user: {
-          memberships: {
-            some: {
-              companyId: context.company.id,
-            },
-          },
-        },
+        soldAt: { gte: period.start, lt: period.endExclusive },
       },
       select: {
         id: true,
-        userId: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        sellerUserId: true,
+        totalAmountCents: true,
+        soldAt: true,
+        cashSession: { select: { userId: true } },
+        convertedOperationalOrder: { select: { sellerUserId: true } },
       },
     });
-    const sessionById = new Map(sessions.map((session) => [session.id, session]));
-    const userIds = Array.from(
-      new Set(
-        sessions
-          .map((session) => session.userId)
-          .filter((value): value is string => value != null),
-      ),
-    );
-
-    if (userIds.length === 0) {
-      return {
-        available: false,
-        reason: 'EMPLOYEE_REPORTS_NOT_AVAILABLE',
-        period: this.serializePeriod(period),
-        topEmployees: [],
-      };
+    // Older clients may only have an authenticated sync event or a cash session.
+    // Explicit sellers take precedence; sharing a cash session does not change them.
+    const events = sales.length === 0 ? [] : await prisma.syncEvent.findMany({
+      where: {
+        companyId: context.company.id,
+        entity: 'sale',
+        status: 'ACCEPTED',
+        entityServerId: { in: sales.map(sale => sale.id) },
+      },
+      select: { entityServerId: true, userId: true, occurredAt: true },
+      orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+    });
+    const eventsBySaleId = new Map<string, { userId: string; occurredAt: Date }>();
+    for (const event of events) {
+      if (event.entityServerId != null && !eventsBySaleId.has(event.entityServerId)) {
+        eventsBySaleId.set(event.entityServerId, event);
+      }
     }
+    const attributedSales = sales.map(sale => ({
+      sale,
+      userId: resolveSaleActorUserId(sale, eventsBySaleId.get(sale.id)),
+    }));
+    const candidateIds = [...new Set(attributedSales.map(row => row.userId)
+      .filter((id): id is string => id != null))];
+    // Never resolve a supplied/stored identity from another company's membership.
+    const users = candidateIds.length === 0 ? [] : await prisma.user.findMany({
+      where: {
+        id: { in: candidateIds },
+        memberships: { some: { companyId: context.company.id } },
+      },
+      select: { id: true, name: true, email: true },
+    });
+    const usersById = new Map(users.map(user => [user.id, user]));
+    const userIds = users.map(user => user.id);
 
     const profiles = await prisma.employeeProfile.findMany({
       where: {
@@ -684,32 +649,25 @@ export class OwnerReportingService {
       }
     >();
 
-    for (const row of sessionRows) {
-      const session =
-        row.cashSessionId == null ? null : sessionById.get(row.cashSessionId);
-      const userId = session?.userId;
-      if (userId == null) {
-        continue;
-      }
+    for (const { sale, userId } of attributedSales) {
+      if (userId == null) continue;
+      const user = usersById.get(userId);
+      if (user == null) continue;
       const profile = profilesByUserId.get(userId);
-      const user = session?.user;
       const current = aggregates.get(userId) ?? {
         employeeId: profile?.id ?? userId,
         userId,
-        name: safeName(profile?.name) ?? safeName(user?.name) ?? user?.email ?? 'Funcionario',
+        name: safeName(profile?.name) ?? safeName(user.name) ?? user.email ?? 'Funcionario',
         role: profile?.role ?? null,
         status: profile?.status ?? null,
         salesAmountCents: 0,
         salesCount: 0,
         lastSaleAt: null,
       };
-      current.salesAmountCents += row._sum.totalAmountCents ?? 0;
-      current.salesCount += readGroupedCount(row._count);
-      if (
-        row._max.soldAt != null &&
-        (current.lastSaleAt == null || row._max.soldAt > current.lastSaleAt)
-      ) {
-        current.lastSaleAt = row._max.soldAt;
+      current.salesAmountCents += sale.totalAmountCents;
+      current.salesCount += 1;
+      if (current.lastSaleAt == null || sale.soldAt > current.lastSaleAt) {
+        current.lastSaleAt = sale.soldAt;
       }
       aggregates.set(userId, current);
     }
@@ -791,7 +749,18 @@ export class OwnerReportingService {
             orderBy: [{ createdAt: 'desc' }, { updatedAt: 'desc' }],
           });
 
+    const metadata = session.payload != null && typeof session.payload === 'object' && !Array.isArray(session.payload) ? session.payload : {};
+    const divergenceReview = await new CashDivergenceReviewService().get(context, cashSessionId);
     return {
+      cashWorkspaceVersion: session.workspaceVersion,
+      device: serializeCashSessionDevice(session.device),
+      hasLateMovements: cashSessionLateMovements(session),
+      openingAwaitingConfirmation: metadata.openingDetails == null ? null : metadata.awaitingInitialFloatConfirmation === true,
+      openingDetails: metadata.openingDetails ?? null,
+      closingDetails: metadata.closingDetails ?? null,
+      divergenceReview,
+      divergenceReviewHistory: divergenceReview?.comments ?? [],
+      canReview: session.status === 'closed' && divergenceReview != null && canReviewCash(context),
       session: serializeCashSessionRow(session),
       employee: serializeCashSessionEmployee(session.user),
       values: serializeCashSessionValues(session),
@@ -827,6 +796,8 @@ export class OwnerReportingService {
   ) {
     const now = new Date();
     const result = await prisma.$transaction(async (tx) => {
+      const workspaceSession=await tx.cashSession.findFirst({where:{id:cashSessionId,companyId:context.company.id},select:{workspaceVersion:true}});
+      if(workspaceSession?.workspaceVersion===3)throw new AppError('Realize a operacao no app com o funcionario autorizado e seu caixa atual.',409,'CASH_V3_REFUND_REQUIRES_OPERATOR_APP');
       const sale = await tx.sale.findFirst({
         where: {
           id: saleId,
@@ -939,6 +910,8 @@ export class OwnerReportingService {
   ) {
     const now = new Date();
     const result = await prisma.$transaction(async (tx) => {
+      const workspaceSession=await tx.cashSession.findFirst({where:{id:cashSessionId,companyId:context.company.id},select:{workspaceVersion:true}});
+      if(workspaceSession?.workspaceVersion===3)throw new AppError('Realize a operacao no app com o funcionario autorizado e seu caixa atual.',409,'CASH_V3_REFUND_REQUIRES_OPERATOR_APP');
       const sale = await tx.sale.findFirst({
         where: {
           id: saleId,
@@ -1274,7 +1247,28 @@ export class OwnerReportingService {
       .slice(0, limit);
   }
 
-  private async loadStockItems(companyId: string): Promise<StockReportItem[]> {
+  private async loadStockItems(companyId: string, configuredMinimums: boolean): Promise<StockReportItem[]> {
+    if (configuredMinimums) {
+      // The owner report intentionally monitors active operational SKUs only.
+      // Read their quantities, minimums and statuses from the same source as
+      // Estoque; do not also count a variant product's aggregate parent row.
+      const rows = await prisma.$queryRaw<WorkspaceItem[]>`${inventoryItemsSql(companyId)} SELECT * FROM items WHERE "isActive" ORDER BY name,"productId","productVariantId" NULLS FIRST`;
+      return rows.map((item) => ({
+        id: item.id,
+        productId: item.productId,
+        productVariantId: item.productVariantId,
+        name: item.name,
+        variantName: item.variantName,
+        sku: item.sku,
+        currentStockMil: item.currentStockMil,
+        costPriceCents: item.costPriceCents,
+        salePriceCents: item.salePriceCents,
+        estimatedCostCents: stockValueCents(item.currentStockMil, item.costPriceCents),
+        minimumStockMil: item.minimumStockMil,
+        unitMeasure: item.unitMeasure,
+        stockStatus: item.status,
+      }));
+    }
     const products = await prisma.product.findMany({
       where: {
         companyId,
@@ -1383,7 +1377,6 @@ export class OwnerReportingService {
       },
       include: cashSessionDetailInclude,
       orderBy: [{ openedAt: 'desc' }, { createdAt: 'desc' }],
-      take: 250,
     });
 
     if (search.length === 0) {
@@ -1408,6 +1401,7 @@ export class OwnerReportingService {
     return prisma.sale.findMany({
       where: { companyId, cashSessionId },
       include: {
+        cashSession: {select:{workspaceVersion:true}},
         customer: { select: { id: true, name: true } },
         items: { orderBy: { createdAt: 'asc' } },
         financialEvents: {
@@ -1719,6 +1713,7 @@ const customerSummarySelect = {
 } satisfies Prisma.CustomerSelect;
 
 const cashSessionDetailInclude = {
+  device: { select: { id: true, deviceLabel: true, platform: true } },
   user: {
     select: {
       id: true,
@@ -1734,11 +1729,12 @@ const cashSessionDetailInclude = {
       paymentType: true,
       totalAmountCents: true,
       soldAt: true,
+      createdAt: true,
+      financialEvents: { select: { eventType: true } },
     },
   },
   cashEvents: {
     orderBy: { createdAt: 'desc' },
-    take: 50,
   },
 } satisfies Prisma.CashSessionInclude;
 
@@ -1749,6 +1745,7 @@ type OwnerCashSessionRow = Prisma.CashSessionGetPayload<{
 type OwnerCashSessionSale = Prisma.SaleGetPayload<{
   include: {
     customer: { select: { id: true; name: true } };
+    cashSession: { select: { workspaceVersion: true } };
     items: true;
     financialEvents: true;
   };
@@ -1846,7 +1843,6 @@ function filterCashSessionsByStatus(
 }
 
 function buildCashSessionsSummary(sessions: OwnerCashSessionRow[]) {
-  const paymentTotals = new Map<string, { label: string; amountCents: number; count: number }>();
   let totalSoldCents = 0;
   let salesCount = 0;
   let cashInflowCents = 0;
@@ -1859,15 +1855,7 @@ function buildCashSessionsSummary(sessions: OwnerCashSessionRow[]) {
       }
       totalSoldCents += sale.totalAmountCents;
       salesCount += 1;
-      const key = normalizePaymentKey(sale.paymentMethod);
-      const current = paymentTotals.get(key) ?? {
-        label: friendlyPaymentMethod(sale.paymentMethod),
-        amountCents: 0,
-        count: 0,
-      };
-      current.amountCents += sale.totalAmountCents;
-      current.count += 1;
-      paymentTotals.set(key, current);
+
     }
     for (const event of session.cashEvents) {
       if (event.amountCents >= 0) {
@@ -1878,18 +1866,20 @@ function buildCashSessionsSummary(sessions: OwnerCashSessionRow[]) {
     }
   }
 
+  const receipts = cashReceiptSummary(sessions);
   return {
     totalSoldCents,
     totalSessions: sessions.length,
+    openSessions: sessions.filter(session => normalizeCashSessionStatus(session) === 'open').length,
+    closedSessions: sessions.filter(session => normalizeCashSessionStatus(session) === 'closed').length,
+    totalDifferenceCents: sessions.filter(session => normalizeCashSessionStatus(session) === 'closed').reduce((total, session) => total + cashDifferenceCents(session), 0),
     sessionsWithDifference: sessions.filter((session) => cashDifferenceCents(session) !== 0).length,
     totalCashInflowCents: cashInflowCents,
     totalCashOutflowCents: cashOutflowCents,
     averageTicketCents: averageCents(totalSoldCents, salesCount),
     salesCount,
-    byPaymentMethod: [...paymentTotals.entries()].map(([key, value]) => ({
-      key,
-      ...value,
-    })),
+    ...receipts,
+    byPaymentMethod: receipts.byPaymentMethod.map(item => ({...item,label:friendlyPaymentMethod(item.key)})),
   };
 }
 
@@ -1897,6 +1887,8 @@ function serializeCashSessionRow(session: OwnerCashSessionRow) {
   const totals = buildCashSessionsSummary([session]);
   return {
     id: session.id,
+    device: serializeCashSessionDevice(session.device),
+    hasLateMovements: cashSessionLateMovements(session),
     shortId: shortIdentifier(session.localId ?? session.localUuid ?? session.id),
     localId: safeName(session.localId),
     openedAt: session.openedAt?.toISOString() ?? session.createdAt.toISOString(),
@@ -1904,6 +1896,8 @@ function serializeCashSessionRow(session: OwnerCashSessionRow) {
     employee: serializeCashSessionEmployee(session.user),
     status: normalizeCashSessionStatus(session),
     statusLabel: cashStatusLabel(session),
+    receiptBreakdownAvailable: totals.receiptBreakdownAvailable,
+    receiptBreakdownUnavailableReason: totals.receiptBreakdownUnavailableReason,
     totalSoldCents: totals.totalSoldCents,
     totalCashCents: totals.byPaymentMethod.find((item) => item.key === 'dinheiro')?.amountCents ?? 0,
     totalCardCents: totals.byPaymentMethod
@@ -1919,6 +1913,17 @@ function serializeCashSessionRow(session: OwnerCashSessionRow) {
     salesCount: totals.salesCount,
     notes: safeName(session.notes),
   };
+}
+
+function serializeCashSessionDevice(device: OwnerCashSessionRow['device']) {
+  return device == null ? null : {id:device.id,name:device.deviceLabel,platform:device.platform};
+}
+function cashSessionLateMovements(session: OwnerCashSessionRow) {
+  const payload = session.payload != null && typeof session.payload === 'object' && !Array.isArray(session.payload) ? session.payload : {};
+  if (session.status !== 'closed' || payload.closingDetails == null) return null;
+  // Session updatedAt is frozen by the V2 materializer after first closure.
+  // Sale.createdAt and CashEvent.updatedAt are server ingestion timestamps.
+  return session.sales.some(sale => sale.createdAt > session.updatedAt) || session.cashEvents.some(event => event.updatedAt > session.updatedAt);
 }
 
 function serializeCashSessionEmployee(
@@ -1984,8 +1989,9 @@ function serializeCashSessionSale(sale: OwnerCashSessionSale, context: AppContex
     paymentMethod: friendlyPaymentMethod(sale.paymentMethod),
     soldAt: sale.soldAt.toISOString(),
     canceledAt: sale.canceledAt?.toISOString() ?? null,
-    canCancel: canPerformPostSaleAction(context, sale.status),
-    canReturn: canPerformPostSaleAction(context, sale.status),
+    canCancel: sale.cashSession?.workspaceVersion !== 3 && canPerformPostSaleAction(context, sale.status),
+    canReturn: sale.cashSession?.workspaceVersion !== 3 && canPerformPostSaleAction(context, sale.status),
+    actionUnavailableReason: sale.cashSession?.workspaceVersion === 3 ? 'CASH_V3_REFUND_REQUIRES_OPERATOR_APP' : null,
     actions: sale.financialEvents.map(serializePostSaleFinancialEvent),
     items: sale.items.map((item) => ({
       id: item.id,
@@ -2256,4 +2262,11 @@ function compareStockItems(left: StockReportItem, right: StockReportItem) {
 
 function isString(value: string | null): value is string {
   return value != null;
+}
+
+// Kept local to avoid importing an Express router into reporting services.
+function ownerUsesInventoryWorkspace(companyId: string) {
+  const companies = (process.env.INVENTORY_WORKSPACE_PILOT_COMPANY_IDS ?? '')
+    .split(',').map((value) => value.trim()).filter(Boolean);
+  return companies.includes('*') || companies.includes(companyId);
 }

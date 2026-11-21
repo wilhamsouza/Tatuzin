@@ -1,0 +1,50 @@
+{
+  "uid": "tatuzin-experience-pilot",
+  "title": "Tatuzin ERP — piloto de experiência",
+  "tags": ["tatuzin", "erp", "pilot"],
+  "timezone": "America/Sao_Paulo",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "refresh": "1m",
+  "time": {"from": "now-24h", "to": "now"},
+  "panels": [
+    {
+      "id": 1, "type": "text", "title": "Como interpretar",
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+      "options": {"mode": "markdown", "content": "Versão **1.0.2-pilot**, janela móvel de 24h por recebimento no servidor. Eventos declarados pelo app; etapas não são uma coorte sequencial. Mediana inclui todos os checkouts. Sem amostra não significa meta atingida. **Avaliação com cinco operadores: pendente de sessões reais.** Alertas ficam no Alertmanager local; nenhum envio externo foi configurado."}
+    },
+    {
+      "id": 2, "type": "stat", "title": "API HTTPS pronta",
+      "gridPos": {"h": 5, "w": 8, "x": 0, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "tatuzin_experience_api_ready{job=\"node\"}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "Indisponível", "color": "red"}, "1": {"text": "Disponível", "color": "green"}}}], "noValue": "Sem coleta"}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none"}
+    },
+    {
+      "id": 3, "type": "stat", "title": "Checkouts concluídos recebidos em 24h",
+      "gridPos": {"h": 5, "w": 8, "x": 8, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "tatuzin_experience_events_24h{job=\"node\",event=\"checkout_completed\"}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "short", "noValue": "Sem coleta"}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "graphMode": "none"}
+    },
+    {
+      "id": 4, "type": "stat", "title": "Mediana geral de checkout (24h)",
+      "gridPos": {"h": 5, "w": 8, "x": 16, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "tatuzin_experience_checkout_median_seconds_24h{job=\"node\"}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "s", "noValue": "Sem dados", "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}, {"color": "orange", "value": 15}]}}, "overrides": []},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "value", "graphMode": "none"}
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Etapas recebidas — contagem móvel de 24h",
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 9},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "tatuzin_experience_events_24h{job=\"node\"}", "legendFormat": "{{event}}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi"}}
+    }
+  ]
+}

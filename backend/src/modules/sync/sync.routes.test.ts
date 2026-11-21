@@ -151,6 +151,30 @@ describe("operational local-first sync routes", () => {
     assert.equal(cashSessionsCount, 1);
   });
 
+  it("keeps an employee as the sale seller through offline replay and ignores client-supplied sellers", async () => {
+    const fixture = await createFixture();
+    await prisma.employeeProfile.create({ data: {
+      companyId: fixture.companyId, userId: fixture.userId, membershipId: fixture.membershipId,
+      name: "Authenticated seller", email: fixture.email, role: "SELLER", status: "ACTIVE",
+    } });
+    const event = buildEvent("employee-offline-sale", "sale", {
+      entityLocalId: `${runId}-employee-offline-sale`,
+      // The sale date is older than its upload; the original occurrence must survive.
+      payload: { totalCents: 4500, soldAt: "2026-05-20T10:00:00.000Z", sellerUserId: "untrusted-client-seller", employeeId: "untrusted-client-employee" },
+    });
+    event.occurredAt = "2026-05-20T10:00:00.000Z";
+    const first = await push(fixture, [event]);
+    assert.equal(first.status, 202);
+    assert.equal((first.data as { summary: { accepted: number } }).summary.accepted, 1);
+    const second = await push(fixture, [event]);
+    assert.equal((second.data as { summary: { duplicates: number } }).summary.duplicates, 1);
+    const sales = await prisma.sale.findMany({ where: { companyId: fixture.companyId } });
+    assert.equal(sales.length, 1);
+    assert.equal(sales[0]!.sellerUserId, fixture.userId);
+    assert.equal(sales[0]!.soldAt.toISOString(), "2026-05-20T10:00:00.000Z");
+    assert.equal((await prisma.syncEvent.findFirstOrThrow({ where: { companyId: fixture.companyId, eventId: event.eventId } })).userId, fixture.userId);
+  });
+
   it("returns duplicates without processing the same event twice", async () => {
     const fixture = await createFixture();
     const event = buildEvent("sale-duplicate", "sale");

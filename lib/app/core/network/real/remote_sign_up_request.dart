@@ -18,7 +18,8 @@ class RemoteSignUpRequest {
   Map<String, dynamic> toApiPayload(AuthClientContext clientContext) {
     return <String, dynamic>{
       'companyName': companyName.trim(),
-      'companySlug': companySlug.trim().toLowerCase(),
+      if (companySlug.trim().isNotEmpty)
+        'companySlug': companySlug.trim().toLowerCase(),
       'userName': userName.trim(),
       'email': email.trim(),
       'password': password,
