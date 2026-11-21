@@ -37,6 +37,8 @@ class _InventoryCountSessionDetailPageState
     extends ConsumerState<InventoryCountSessionDetailPage> {
   _InventoryCountItemFilter _selectedFilter = _InventoryCountItemFilter.all;
 
+  bool get _legacyEditable => false;
+
   @override
   Widget build(BuildContext context) {
     final layout = context.appLayout;
@@ -48,10 +50,9 @@ class _InventoryCountSessionDetailPageState
     final itemOptions = itemOptionsAsync.valueOrNull ?? const <InventoryItem>[];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Sessao de inventario')),
+      appBar: AppBar(title: const Text('Contagem antiga · somente leitura')),
       drawer: const AppMainDrawer(),
-      floatingActionButton:
-          detailAsync.valueOrNull?.session.status.canEdit == true
+      floatingActionButton: _legacyEditable
           ? FloatingActionButton.extended(
               onPressed: actionState.isLoading
                   ? null
@@ -120,9 +121,7 @@ class _InventoryCountSessionDetailPageState
                     SizedBox(width: layout.space4),
                     Expanded(
                       child: FilledButton.tonalIcon(
-                        onPressed:
-                            detail.session.status.canEdit &&
-                                !actionState.isLoading
+                        onPressed: _legacyEditable && !actionState.isLoading
                             ? () => _addItem(itemOptions)
                             : null,
                         icon: const Icon(Icons.add_rounded),
@@ -175,9 +174,7 @@ class _InventoryCountSessionDetailPageState
                               tone: AppStatusTone.success,
                             ),
                           FilledButton.tonalIcon(
-                            onPressed:
-                                detail.session.status.canEdit &&
-                                    !actionState.isLoading
+                            onPressed: _legacyEditable && !actionState.isLoading
                                 ? () => _markReviewed(detail)
                                 : null,
                             icon: const Icon(Icons.rule_folder_outlined),
@@ -185,7 +182,7 @@ class _InventoryCountSessionDetailPageState
                           ),
                           FilledButton.icon(
                             onPressed:
-                                detail.session.status.canApply &&
+                                _legacyEditable &&
                                     pendingReviewCount == 0 &&
                                     !actionState.isLoading
                                 ? () => _applySession(detail)
@@ -233,19 +230,14 @@ class _InventoryCountSessionDetailPageState
                   for (final item in filteredItems) ...[
                     _InventoryCountItemTile(
                       item: item,
-                      editable: detail.session.status.canEdit,
+                      editable: _legacyEditable,
                       actionInProgress: actionState.isLoading,
-                      onTap: detail.session.status.canEdit
-                          ? () => _editItem(item)
-                          : null,
-                      onRecalculate:
-                          detail.session.status.canEdit &&
-                              !actionState.isLoading
+                      onTap: _legacyEditable ? () => _editItem(item) : null,
+                      onRecalculate: _legacyEditable && !actionState.isLoading
                           ? () => _recalculateStaleItem(item)
                           : null,
                       onKeepDifference:
-                          detail.session.status.canEdit &&
-                              !actionState.isLoading
+                          _legacyEditable && !actionState.isLoading
                           ? () => _keepRecordedDifference(item)
                           : null,
                     ),

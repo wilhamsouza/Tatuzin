@@ -309,6 +309,7 @@ export class EmployeeCommissionService {
       },
       select: {
         id: true,
+        sellerUserId: true,
         receiptNumber: true,
         status: true,
         totalAmountCents: true,

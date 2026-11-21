@@ -67,29 +67,29 @@ class _DashboardContent extends ConsumerWidget {
             _KpiGrid(
               items: [
                 _KpiData(
-                  label: 'Empresas ativas',
+                  label: 'Empresas ativas nesta seleção',
                   value: '$activeCompanies',
                   helper: '${companies.length} empresas no total',
                   icon: Icons.apartment_rounded,
                 ),
                 _KpiData(
-                  label: 'Sync com atencao',
+                  label: 'Empresas com sync desabilitado',
                   value: '$syncAttention',
-                  helper: 'falhas, conflitos ou pendencias',
+                  helper: 'Não representa falhas observadas',
                   icon: Icons.sync_problem_rounded,
                   tone: _KpiTone.warning,
                 ),
                 _KpiData(
-                  label: 'Licencas vencendo',
+                  label: 'Licenças vencendo nesta seleção',
                   value: '$expiringLicenses',
                   helper: 'proximos 7 dias',
                   icon: Icons.workspace_premium_rounded,
                   tone: _KpiTone.danger,
                 ),
                 _KpiData(
-                  label: 'Dispositivos online',
+                  label: 'Empresas com sync habilitado',
                   value: '$devicesOnline',
-                  helper: 'sessoes ativas registradas',
+                  helper: 'Permissão de sync; não indica conexão',
                   icon: Icons.devices_rounded,
                 ),
               ],

@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 
 import '../../core/entitlements/feature_gate.dart';
+import '../../core/widgets/product_stock_surface.dart';
 import '../../core/entitlements/plan_entitlements.dart';
 import '../../../modules/categorias/domain/entities/category.dart';
 import '../../../modules/categorias/presentation/pages/categories_page.dart';
@@ -33,20 +34,22 @@ List<RouteBase> buildProductsRoutes() {
     GoRoute(
       path: AppRoutePaths.products,
       name: AppRouteNames.products,
-      builder: (context, state) => const ProductsPage(),
+      builder: (context, state) =>
+          const ProductStockSurface(child: ProductsPage()),
     ),
     GoRoute(
       path: AppRoutePaths.productForm,
       name: AppRouteNames.productForm,
-      builder: (context, state) =>
-          ProductFormPage(initialProduct: routeExtraAs<Product>(state)),
+      builder: (context, state) => ProductStockSurface(
+        child: ProductFormPage(initialProduct: routeExtraAs<Product>(state)),
+      ),
     ),
     GoRoute(
       path: AppRoutePaths.productProfitability,
       name: AppRouteNames.productProfitability,
       builder: (context, state) => const FeatureGate(
         feature: FeatureKey.reportsAdvanced,
-        child: ProductProfitabilityPage(),
+        child: ProductStockSurface(child: ProductProfitabilityPage()),
       ),
     ),
     GoRoute(

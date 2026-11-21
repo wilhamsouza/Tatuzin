@@ -2,11 +2,9 @@ import { Prisma, type Product } from '@prisma/client';
 
 import { prisma } from '../../database/prisma';
 import { AppError } from '../../shared/http/app-error';
+import { setInventoryContext } from '../inventory/inventory-context';
 import { toPaginationParams } from '../../shared/http/pagination';
-import type {
-  ProductListQueryInput,
-  ProductUpsertInput,
-} from './products.schemas';
+import { productUpsertSchema, type ProductListQueryInput, type ProductUpsertInput, type ProductUpdateInput } from './products.schemas';
 
 const productInclude = {
   variants: {
@@ -41,9 +39,17 @@ export class ProductsService {
     query: ProductListQueryInput,
     options: ProductDtoOptions = {},
   ) {
-    const where = {
+    const where: Prisma.ProductWhereInput = {
       companyId,
       ...(query.includeDeleted ? {} : { deletedAt: null }),
+      ...(query.categoryId ? { categoryId: query.categoryId } : {}),
+      ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
+      ...(query.search ? { OR: [
+        { name: { contains: query.search, mode: 'insensitive' } },
+        { barcode: { contains: query.search, mode: 'insensitive' } },
+        { modelName: { contains: query.search, mode: 'insensitive' } },
+        { variants: { some: { sku: { contains: query.search, mode: 'insensitive' } } } },
+      ] } : {}),
     };
     const { skip, take } = toPaginationParams({
       page: query.page,
@@ -87,140 +93,94 @@ export class ProductsService {
     return this.toProductDto(product, options);
   }
 
-  async create(companyId: string, input: ProductUpsertInput) {
+  async create(companyId: string, input: ProductUpsertInput, actorUserId?: string) {
     return prisma.$transaction(async (tx) => {
-      const categoryId = await this.resolveCategoryId(
-        tx,
-        companyId,
-        input.categoryId,
-      );
-      const normalizedCollections = this.normalizeCollections(input);
-
-      await this.ensureVariantSkusAvailable(
-        tx,
-        companyId,
-        normalizedCollections.variants,
-      );
-      await this.ensureLinkedProductsBelongToCompany(
-        tx,
-        companyId,
-        normalizedCollections.modifierGroups,
-      );
-
-      const product = await tx.product.upsert({
-        where: {
-          companyId_localUuid: {
-            companyId,
-            localUuid: input.localUuid,
-          },
-        },
-        update: this.toCreateOrUpdateData(
-          companyId,
-          input,
-          categoryId,
-          normalizedCollections,
-        ),
-        create: this.toCreateOrUpdateData(
-          companyId,
-          input,
-          categoryId,
-          normalizedCollections,
-        ),
-      });
-
-      await this.replaceProductCollections(
-        tx,
-        product.id,
-        normalizedCollections,
-      );
-
-      const persisted = await tx.product.findUnique({
-        where: { id: product.id },
+      // A retry after a lost response must never reset stock or recreate SKUs.
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${companyId + ':' + input.localUuid}, 0))`;
+      const existing = await tx.product.findUnique({
+        where: { companyId_localUuid: { companyId, localUuid: input.localUuid } },
         include: productInclude,
       });
-
-      if (!persisted) {
-        throw new AppError(
-          'Produto nao encontrado apos criacao.',
-          500,
-          'PRODUCT_CREATE_INCONSISTENT',
-        );
+      if (existing) return this.toProductDto(existing, { includeSensitiveData: true });
+      const categoryId = await this.resolveCategoryId(tx, companyId, input.categoryId);
+      const collections = this.normalizeCollections(input);
+      await this.ensureVariantSkusAvailable(tx, companyId, collections.variants);
+      await this.ensureLinkedProductsBelongToCompany(tx, companyId, collections.modifierGroups);
+      if (collections.variants.some(v => v.id)) {
+        throw new AppError('Novas variações não podem reutilizar uma identidade existente.', 422, 'PRODUCT_VARIANT_ID_INVALID');
       }
-
-      return this.toProductDto(persisted);
+      if (input.metadataOnly) {
+        input = { ...input, stockMil: 0 };
+        collections.variants = collections.variants.map(v => ({ ...v, stockMil: 0 }));
+      }
+      await setInventoryContext(tx, {
+        actorUserId, type: 'INITIAL', origin: 'product_creation',
+        referenceId: input.localUuid, skipParent: collections.variants.length > 0,
+      });
+      const product = await tx.product.create({
+        data: this.toCreateOrUpdateData(companyId, input, categoryId, collections),
+      });
+      await this.replaceProductCollections(tx, product.id, collections);
+      const persisted = await tx.product.findUniqueOrThrow({ where: { id: product.id }, include: productInclude });
+      return this.toProductDto(persisted, { includeSensitiveData: true });
     });
   }
 
-  async update(companyId: string, productId: string, input: ProductUpsertInput) {
+  async update(companyId: string, productId: string, patch: ProductUpdateInput) {
     return prisma.$transaction(async (tx) => {
-      const existing = await tx.product.findFirst({
-        where: {
-          id: productId,
-          companyId,
-        },
-        select: { id: true },
-      });
-
-      if (!existing) {
-        throw new AppError('Produto nao encontrado.', 404, 'PRODUCT_NOT_FOUND');
+      await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${productId} AND "companyId" = ${companyId} FOR UPDATE`;
+      const existing = await tx.product.findFirst({ where: { id: productId, companyId }, include: productInclude });
+      if (!existing) throw new AppError('Produto não encontrado.', 404, 'PRODUCT_NOT_FOUND');
+      if (patch.expectedCatalogRevision !== undefined && patch.expectedCatalogRevision !== existing.catalogRevision) {
+        throw new AppError('O cadastro foi alterado em outro acesso. Atualize antes de salvar.', 409, 'PRODUCT_CATALOG_REVISION_CONFLICT');
       }
-
-      await this.ensureLocalUuidAvailable(
-        tx,
-        companyId,
-        input.localUuid,
-        productId,
-      );
-
-      const categoryId = await this.resolveCategoryId(
-        tx,
-        companyId,
-        input.categoryId,
-      );
-      const normalizedCollections = this.normalizeCollections(input);
-
-      await this.ensureVariantSkusAvailable(
-        tx,
-        companyId,
-        normalizedCollections.variants,
-        productId,
-      );
-      await this.ensureLinkedProductsBelongToCompany(
-        tx,
-        companyId,
-        normalizedCollections.modifierGroups,
-      );
-
-      await tx.product.update({
-        where: { id: productId },
-        data: this.toCreateOrUpdateData(
-          companyId,
-          input,
-          categoryId,
-          normalizedCollections,
-        ),
-      });
-
-      await this.replaceProductCollections(
-        tx,
-        productId,
-        normalizedCollections,
-      );
-
-      const persisted = await tx.product.findUnique({
-        where: { id: productId },
-        include: productInclude,
-      });
-
-      if (!persisted) {
-        throw new AppError(
-          'Produto nao encontrado apos atualizacao.',
-          500,
-          'PRODUCT_UPDATE_INCONSISTENT',
-        );
+      const merged = { ...this.toProductDto(existing, { includeSensitiveData: true }), ...patch };
+      // Existing operational debt may make stock negative. Metadata does not
+      // validate, clear or change that debt; inventory owns these quantities.
+      const input = productUpsertSchema.parse(patch.metadataOnly ? {
+        ...merged, stockMil: 0, variants: merged.variants.map(v => ({ ...v, stockMil: 0 })),
+      } : merged);
+      await this.ensureLocalUuidAvailable(tx, companyId, input.localUuid, productId);
+      const categoryId = await this.resolveCategoryId(tx, companyId, input.categoryId);
+      const collections = this.normalizeCollections(input);
+      await this.ensureVariantSkusAvailable(tx, companyId, collections.variants, productId);
+      await this.ensureLinkedProductsBelongToCompany(tx, companyId, collections.modifierGroups);
+      if (!input.metadataOnly && input.stockMil !== existing.stockMil) {
+        throw new AppError('O saldo mudou ou foi editado no cadastro. Atualize e use Movimentar estoque.', 409, 'PRODUCT_STOCK_CONFLICT');
       }
-
-      return this.toProductDto(persisted);
+      const seen = new Set<string>();
+      for (const variant of collections.variants) {
+        const match = variant.id ? existing.variants.find(v => v.id === variant.id) : existing.variants.find(v => this.normalizeSku(v.sku) === variant.sku);
+        if (variant.id && !match) throw new AppError('Variação inválida para este produto.', 422, 'PRODUCT_VARIANT_ID_INVALID');
+        if (existing.variants.some(v => this.normalizeSku(v.sku) === variant.sku && v.id !== match?.id)) {
+          throw new AppError('Este SKU pertence a outra variação, inclusive se estiver inativa.', 409, 'PRODUCT_VARIANT_SKU_CONFLICT');
+        }
+        if (match && seen.has(match.id)) throw new AppError('Variação repetida.', 422, 'PRODUCT_VARIANT_ID_DUPLICATE');
+        if (!input.metadataOnly && variant.stockMil !== (match?.stockMil ?? 0)) {
+          throw new AppError('O saldo da variação mudou. Atualize e use Movimentar estoque.', 409, 'PRODUCT_STOCK_CONFLICT');
+        }
+        if (match) seen.add(match.id);
+        variant.id = match?.id;
+        variant.stockMil = match?.stockMil ?? 0;
+      }
+      // A stocked simple SKU cannot silently become a parent of new SKUs.
+      if (existing.variants.length === 0 && collections.variants.length > 0 && existing.stockMil !== 0) {
+        throw new AppError('Confira e zere o saldo por movimentação antes de converter o produto em grade.', 409, 'PRODUCT_VARIANT_CONVERSION_STOCK');
+      }
+      if (existing.variants.length > 0 && input.catalogType === 'simple' && collections.variants.length === 0) {
+        throw new AppError('Uma grade existente deve ser preservada. Inative as variações sem removê-las.', 409, 'PRODUCT_VARIANT_IDENTITY_REQUIRED');
+      }
+      const data = this.toCreateOrUpdateData(companyId, input, categoryId, collections);
+      // Quantity belongs to inventory; metadata requests never write stock.
+      const { stockMil: _ignoredStock, ...metadata } = data;
+      await tx.product.update({ where: { id: productId }, data: { ...metadata, catalogRevision: { increment: 1 } } });
+      await this.replaceProductCollections(tx, productId, collections);
+      if (existing.variants.length > 0 || collections.variants.length > 0) {
+        const variants = await tx.productVariant.findMany({ where: { productId, isActive: true }, select: { stockMil: true } });
+        await tx.product.update({ where: { id: productId }, data: { stockMil: variants.reduce((sum, v) => sum + v.stockMil, 0) } });
+      }
+      const persisted = await tx.product.findUniqueOrThrow({ where: { id: productId }, include: productInclude });
+      return this.toProductDto(persisted, { includeSensitiveData: true });
     });
   }
 
@@ -242,6 +202,7 @@ export class ProductsService {
       data: {
         isActive: false,
         deletedAt: new Date(),
+        catalogRevision: { increment: 1 },
       },
       include: productInclude,
     });
@@ -325,6 +286,11 @@ export class ProductsService {
       payloadSkus.add(normalizedSku);
     }
 
+    // Serialize SKU claims across different product transactions in this tenant.
+    for (const sku of [...payloadSkus].sort()) {
+      await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${companyId + ':sku:' + sku}, 0))`;
+    }
+
     const conflicting = await tx.productVariant.findMany({
       where: {
         sku: { in: Array.from(payloadSkus) },
@@ -382,24 +348,22 @@ export class ProductsService {
     productId: string,
     collections: ProductCollectionsPayload,
   ) {
-    await tx.productVariant.deleteMany({
-      where: { productId },
-    });
-
-    if (collections.variants.length > 0) {
-      await tx.productVariant.createMany({
-        data: collections.variants.map((variant, index) => ({
-          productId,
-          sku: this.normalizeSku(variant.sku),
-          colorLabel: variant.colorLabel.trim(),
-          sizeLabel: variant.sizeLabel.trim(),
-          priceAdditionalCents: variant.priceAdditionalCents,
-          stockMil: variant.stockMil,
-          sortOrder: variant.sortOrder ?? index,
-          isActive: variant.isActive,
-        })),
-      });
+    const retained: string[] = [];
+    for (const [index, variant] of collections.variants.entries()) {
+      const data = {
+        sku: this.normalizeSku(variant.sku), colorLabel: variant.colorLabel.trim(),
+        sizeLabel: variant.sizeLabel.trim(), priceAdditionalCents: variant.priceAdditionalCents,
+        sortOrder: variant.sortOrder ?? index, isActive: variant.isActive,
+      };
+      if (variant.id) {
+        await tx.productVariant.update({ where: { id: variant.id }, data });
+        retained.push(variant.id);
+      } else {
+        const created = await tx.productVariant.create({ data: { productId, ...data, stockMil: variant.stockMil } });
+        retained.push(created.id);
+      }
     }
+    await tx.productVariant.updateMany({ where: { productId, id: { notIn: retained } }, data: { isActive: false } });
 
     await tx.productModifierGroup.deleteMany({
       where: { productId },
@@ -474,6 +438,7 @@ export class ProductsService {
   ) {
     const dto = {
       id: product.id,
+      catalogRevision: product.catalogRevision,
       companyId: product.companyId,
       localUuid: product.localUuid,
       categoryId: product.categoryId,
@@ -496,12 +461,18 @@ export class ProductsService {
       lastCostUpdatedAt: product.lastCostUpdatedAt?.toISOString() ?? null,
       salePriceCents: product.salePriceCents,
       stockMil: product.stockMil,
+      stockRevision: product.stockRevision,
+      minimumStockMil: product.minimumStockMil,
+      reorderPointMil: product.reorderPointMil,
       isActive: product.isActive,
       deletedAt: product.deletedAt?.toISOString() ?? null,
       createdAt: product.createdAt.toISOString(),
       updatedAt: product.updatedAt.toISOString(),
       variants: product.variants.map((variant) => ({
         id: variant.id,
+        stockRevision: variant.stockRevision,
+        minimumStockMil: variant.minimumStockMil,
+        reorderPointMil: variant.reorderPointMil,
         sku: variant.sku,
         colorLabel: variant.colorLabel,
         sizeLabel: variant.sizeLabel,

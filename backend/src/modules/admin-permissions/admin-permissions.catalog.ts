@@ -3,6 +3,7 @@ import {
 } from "../support-actions/support-actions.permissions";
 import {
   adminPermissionManagementKey,
+  adminPlatformPermissionKeys,
   type AdminPermissionDefinition,
   type AdminPermissionKey,
   tenantDeletionPermissionKeys,
@@ -97,7 +98,28 @@ const tenantDeletionPermissionDefinitions: AdminPermissionDefinition[] = [
   },
 ];
 
+const platformLabels: Record<typeof adminPlatformPermissionKeys[number], string> = {
+  "admin.overview.read": "Consultar visão geral da plataforma",
+  "admin.companies.read": "Consultar empresas e pessoas no escopo autorizado",
+  "admin.support.read": "Consultar suporte e chamados internos",
+  "admin.support.manage": "Gerenciar chamados internos de suporte",
+  "admin.sync.read": "Consultar eventos e conflitos de sincronização",
+  "admin.billing.read": "Consultar assinaturas e cobranças",
+  "admin.billing.manage": "Atualizar a situação de cobrança sem alterar o plano",
+  "admin.devices.read": "Consultar dispositivos e sessões",
+  "admin.usage.read": "Consultar eventos de uso da plataforma",
+  "admin.audit.read": "Consultar auditoria administrativa",
+};
+const platformDefinitions: AdminPermissionDefinition[] = adminPlatformPermissionKeys.map(permissionKey => ({
+  permissionKey, description: platformLabels[permissionKey],
+  riskLevel: permissionKey.endsWith('.manage') ? 'critical' : 'high',
+  scopes: ['platform', 'company'], category: 'platform',
+  requiresDryRun: false, requiresReason: permissionKey.endsWith('.manage'),
+  requiresPersistentAudit: true, requiresExplicitConfirmation: permissionKey.endsWith('.manage'),
+}));
+
 export const adminPermissionDefinitions: AdminPermissionDefinition[] = [
+  ...platformDefinitions,
   {
     permissionKey: adminPermissionManagementKey,
     description:

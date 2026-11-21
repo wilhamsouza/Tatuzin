@@ -34,6 +34,7 @@ class CashPage extends ConsumerStatefulWidget {
 
 class _CashPageState extends ConsumerState<CashPage> {
   int? _autoDialogSessionId;
+  int _tab = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -121,37 +122,56 @@ class _CashPageState extends ConsumerState<CashPage> {
               badgeIcon: Icons.account_balance_wallet_rounded,
             ),
             const SizedBox(height: 14),
-            currentSessionAsync.when(
-              data: (session) => _CurrentSessionSection(
-                session: session,
-                updatedAt: _resolveUpdatedAt(session, movementsAsync.value),
-                isBusy: actionState.isLoading,
-                onOpen: _openSession,
-                onConfirmAutomaticOpen: session == null
-                    ? null
-                    : () => _showAutoOpenConfirmationDialog(session),
-                onClose: session == null
-                    ? null
-                    : () => _startCloseFlow(session),
-                onSupply: () => _registerMovement(CashMovementType.supply),
-                onWithdraw: () => _registerMovement(CashMovementType.sangria),
-                onCount: () => context.pushNamed(AppRouteNames.cashCount),
-                onSelectFilter: _selectFilter,
-              ),
-              loading: () => const Padding(
-                padding: EdgeInsets.symmetric(vertical: 32),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-              error: (error, _) => AppSectionCard(
-                title: 'Falha ao carregar caixa',
-                subtitle: error.toString(),
-                child: FilledButton.tonal(
-                  onPressed: () =>
-                      ref.read(appDataRefreshProvider.notifier).state++,
-                  child: const Text('Tentar novamente'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final entry in [
+                  'Caixa atual',
+                  'Movimentações',
+                  'Histórico',
+                ].asMap().entries)
+                  ChoiceChip(
+                    label: Text(entry.value),
+                    selected: _tab == entry.key,
+                    materialTapTargetSize: MaterialTapTargetSize.padded,
+                    onSelected: (_) => setState(() => _tab = entry.key),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (_tab == 0)
+              currentSessionAsync.when(
+                data: (session) => _CurrentSessionSection(
+                  session: session,
+                  updatedAt: _resolveUpdatedAt(session, movementsAsync.value),
+                  isBusy: actionState.isLoading,
+                  onOpen: _openSession,
+                  onConfirmAutomaticOpen: session == null
+                      ? null
+                      : () => _showAutoOpenConfirmationDialog(session),
+                  onClose: session == null
+                      ? null
+                      : () => _startCloseFlow(session),
+                  onSupply: () => _registerMovement(CashMovementType.supply),
+                  onWithdraw: () => _registerMovement(CashMovementType.sangria),
+                  onCount: () => context.pushNamed(AppRouteNames.cashCount),
+                  onSelectFilter: _selectFilter,
+                ),
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 32),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (error, _) => AppSectionCard(
+                  title: 'Falha ao carregar caixa',
+                  subtitle: error.toString(),
+                  child: FilledButton.tonal(
+                    onPressed: () =>
+                        ref.read(appDataRefreshProvider.notifier).state++,
+                    child: const Text('Tentar novamente'),
+                  ),
                 ),
               ),
-            ),
             if (actionState.hasError) ...[
               SizedBox(height: layout.sectionGap),
               AppStateCard(
@@ -162,91 +182,96 @@ class _CashPageState extends ConsumerState<CashPage> {
               ),
             ],
             SizedBox(height: layout.sectionGap),
-            AppSectionCard(
-              title: 'Movimentações',
-              subtitle:
-                  'Mostrando ${visibleMovements.length} movimentações${filteredMovements.length != visibleMovements.length ? ' de ${filteredMovements.length}' : ''}.',
-              padding: const EdgeInsets.all(16),
-              child: movementsAsync.when(
-                data: (_) {
-                  if (filteredMovements.isEmpty) {
-                    return const Text('Nenhuma movimentação encontrada.');
-                  }
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        height: layout.quickActionHeight + 2,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: CashMovementFilter.values.length,
-                          separatorBuilder: (_, __) =>
-                              SizedBox(width: layout.space3),
-                          itemBuilder: (context, index) {
-                            final item = CashMovementFilter.values[index];
-                            return AppSelectorChip(
-                              label: item.label,
-                              count: movementCounts[item] ?? 0,
-                              selected: filter == item,
-                              tone: AppSelectorChipTone.info,
-                              onSelected: (_) => _selectFilter(item),
-                            );
-                          },
+            if (_tab == 1)
+              AppSectionCard(
+                title: 'Movimentações',
+                subtitle:
+                    'Mostrando ${visibleMovements.length} movimentações${filteredMovements.length != visibleMovements.length ? ' de ${filteredMovements.length}' : ''}.',
+                padding: const EdgeInsets.all(16),
+                child: movementsAsync.when(
+                  data: (_) {
+                    if (filteredMovements.isEmpty) {
+                      return const Text('Nenhuma movimentação encontrada.');
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          height: layout.quickActionHeight + 2,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: CashMovementFilter.values.length,
+                            separatorBuilder: (_, __) =>
+                                SizedBox(width: layout.space3),
+                            itemBuilder: (context, index) {
+                              final item = CashMovementFilter.values[index];
+                              return AppSelectorChip(
+                                label: item.label,
+                                count: movementCounts[item] ?? 0,
+                                selected: filter == item,
+                                tone: AppSelectorChipTone.info,
+                                onSelected: (_) => _selectFilter(item),
+                              );
+                            },
+                          ),
                         ),
-                      ),
-                      SizedBox(height: layout.blockGap),
-                      for (final movement in visibleMovements) ...[
-                        _MovementTile(movement: movement),
-                        const SizedBox(height: 8),
+                        SizedBox(height: layout.blockGap),
+                        for (final movement in visibleMovements) ...[
+                          _MovementTile(movement: movement),
+                          const SizedBox(height: 8),
+                        ],
+                        if (filteredMovements.length > visibleMovements.length)
+                          OutlinedButton.icon(
+                            onPressed: () =>
+                                ref
+                                        .read(
+                                          cashMovementVisibleCountProvider
+                                              .notifier,
+                                        )
+                                        .state +=
+                                    10,
+                            icon: const Icon(Icons.expand_more_rounded),
+                            label: const Text('Carregar mais'),
+                          ),
                       ],
-                      if (filteredMovements.length > visibleMovements.length)
-                        OutlinedButton.icon(
-                          onPressed: () =>
-                              ref
-                                      .read(
-                                        cashMovementVisibleCountProvider
-                                            .notifier,
-                                      )
-                                      .state +=
-                                  10,
-                          icon: const Icon(Icons.expand_more_rounded),
-                          label: const Text('Carregar mais'),
-                        ),
-                    ],
-                  );
-                },
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) =>
-                    Text('Falha ao carregar movimentações: $error'),
+                    );
+                  },
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (error, _) =>
+                      Text('Falha ao carregar movimentações: $error'),
+                ),
               ),
-            ),
             SizedBox(height: layout.sectionGap),
-            AppSectionCard(
-              title: 'Histórico de sessões',
-              subtitle: 'Fechamentos recentes e divergências de caixa.',
-              padding: const EdgeInsets.all(16),
-              child: sessionsAsync.when(
-                data: (sessions) {
-                  if (sessions.isEmpty) {
-                    return const Text('Nenhuma sessão registrada ainda.');
-                  }
-                  return Column(
-                    children: [
-                      for (final session in sessions.take(6)) ...[
-                        _SessionHistoryTile(
-                          session: session,
-                          onTap: () => _showSessionDetail(session),
-                        ),
-                        const SizedBox(height: 8),
+            if (_tab == 2)
+              AppSectionCard(
+                title: 'Histórico de sessões',
+                subtitle: 'Fechamentos recentes e divergências de caixa.',
+                padding: const EdgeInsets.all(16),
+                child: sessionsAsync.when(
+                  data: (sessions) {
+                    if (sessions.isEmpty) {
+                      return const Text('Nenhuma sessão registrada ainda.');
+                    }
+                    return Column(
+                      children: [
+                        for (final session
+                            in sessions.where((s) => s.isClosed).take(6)) ...[
+                          _SessionHistoryTile(
+                            session: session,
+                            onTap: () => _showSessionDetail(session),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
                       ],
-                    ],
-                  );
-                },
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) =>
-                    Text('Falha ao carregar histórico: $error'),
+                    );
+                  },
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (error, _) =>
+                      Text('Falha ao carregar histórico: $error'),
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -273,355 +298,21 @@ class _CashPageState extends ConsumerState<CashPage> {
   }
 
   Future<void> _openSession() async {
-    final amountController = TextEditingController();
-    final notesController = TextEditingController();
-    final submitted = await showDialog<Map<String, String>>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Abrir caixa'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: amountController,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Troco inicial (R\$)',
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: notesController,
-                decoration: const InputDecoration(
-                  labelText: 'Observação',
-                  hintText: 'Opcional',
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop({
-              'amount': amountController.text,
-              'notes': notesController.text,
-            }),
-            child: const Text('Abrir caixa'),
-          ),
-        ],
-      ),
-    );
-    amountController.dispose();
-    notesController.dispose();
-    if (submitted == null) return;
-    try {
-      await ref
-          .read(cashActionControllerProvider.notifier)
-          .openSession(
-            initialFloatCents: MoneyParser.parseToCents(
-              submitted['amount'] ?? '',
-            ),
-            notes: submitted['notes'],
-          );
-      if (!mounted) return;
-      AppFeedback.success(context, 'Caixa aberto com sucesso.');
-    } catch (_) {}
+    await context.pushNamed<bool>(AppRouteNames.cashOpen);
   }
 
   Future<void> _showAutoOpenConfirmationDialog(CashSession session) async {
-    final amountController = TextEditingController();
-    final result = await showDialog<_AutoOpenResolution>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Abertura automática do caixa'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Informe o troco inicial para iniciar a sessão.'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: amountController,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'Troco inicial (R\$)',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(
-              context,
-            ).pop(const _AutoOpenResolution.closeCash()),
-            child: const Text('Fechar caixa'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(
-              _AutoOpenResolution.confirm(
-                MoneyParser.parseToCents(amountController.text),
-              ),
-            ),
-            child: const Text('Confirmar abertura'),
-          ),
-        ],
-      ),
-    );
-    amountController.dispose();
-    if (result == null || !mounted) {
-      _autoDialogSessionId = null;
-      return;
-    }
-    try {
-      if (result.shouldCloseCash) {
-        await ref
-            .read(cashActionControllerProvider.notifier)
-            .closeSession(
-              countedBalanceCents: session.expectedBalanceCents,
-              notes: 'Sessão encerrada sem confirmação do troco inicial.',
-            );
-        if (!mounted) return;
-        AppFeedback.success(context, 'Caixa fechado.');
-      } else {
-        await ref
-            .read(cashActionControllerProvider.notifier)
-            .confirmAutoOpenedSession(
-              initialFloatCents: result.initialFloatCents,
-            );
-        if (!mounted) return;
-        AppFeedback.success(context, 'Abertura do caixa confirmada.');
-      }
-    } catch (_) {
-      _autoDialogSessionId = null;
-      rethrow;
-    } finally {
-      _autoDialogSessionId = null;
-    }
+    await context.pushNamed<bool>(AppRouteNames.cashOpen, extra: session);
+    _autoDialogSessionId = null;
   }
 
   Future<void> _startCloseFlow(CashSession session) async {
-    final countedController = TextEditingController(
-      text: AppFormatters.currencyFromCents(session.expectedBalanceCents),
+    await context.pushNamed<bool>(
+      session.awaitingInitialFloatConfirmation
+          ? AppRouteNames.cashOpen
+          : AppRouteNames.cashClose,
+      extra: session,
     );
-    final notesController = TextEditingController();
-    final shouldClose = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (context) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          8,
-          20,
-          MediaQuery.of(context).viewInsets.bottom + 20,
-        ),
-        child: StatefulBuilder(
-          builder: (context, setModalState) {
-            final countedCents = MoneyParser.parseToCents(
-              countedController.text,
-            );
-            final differenceCents = countedCents - session.expectedBalanceCents;
-            final colorScheme = Theme.of(context).colorScheme;
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Fechamento do caixa',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Confira o saldo esperado, informe o valor contado e conclua o fechamento.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: colorScheme.outlineVariant),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Saldo esperado',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
-                                fontWeight: FontWeight.w700,
-                              ),
-                        ),
-                      ),
-                      Text(
-                        AppFormatters.currencyFromCents(
-                          session.expectedBalanceCents,
-                        ),
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: colorScheme.primary,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _SummaryLine(
-                  label: 'Período',
-                  value:
-                      '${AppFormatters.shortDateTime(session.openedAt)} - agora',
-                ),
-                _SummaryLine(label: 'Operador', value: session.operatorName),
-                _SummaryLine(
-                  label: 'Troco inicial',
-                  value: AppFormatters.currencyFromCents(
-                    session.initialFloatCents,
-                  ),
-                ),
-                _SummaryLine(
-                  label: 'Vendas em dinheiro',
-                  value: AppFormatters.currencyFromCents(
-                    session.cashEntriesCents,
-                  ),
-                ),
-                _SummaryLine(
-                  label: 'Fiado recebido em dinheiro',
-                  value: AppFormatters.currencyFromCents(
-                    session.fiadoReceiptsCashCents,
-                  ),
-                ),
-                _SummaryLine(
-                  label: 'Fiado recebido por Pix',
-                  value: AppFormatters.currencyFromCents(
-                    session.fiadoReceiptsPixCents,
-                  ),
-                ),
-                _SummaryLine(
-                  label: 'Fiado recebido por cartão',
-                  value: AppFormatters.currencyFromCents(
-                    session.fiadoReceiptsCardCents,
-                  ),
-                ),
-                _SummaryLine(
-                  label: 'Suprimentos',
-                  value: AppFormatters.currencyFromCents(session.suppliesCents),
-                ),
-                _SummaryLine(
-                  label: 'Sangrias',
-                  value: AppFormatters.currencyFromCents(
-                    session.withdrawalsCents,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: countedController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  onChanged: (_) => setModalState(() {}),
-                  decoration: const InputDecoration(
-                    labelText: 'Saldo contado em caixa',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: notesController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Observação de fechamento',
-                    hintText: 'Opcional',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _DifferenceBanner(differenceCents: differenceCents),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(context).pop(false),
-                        child: const Text('Cancelar'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () async {
-                          final confirmed = await showDialog<bool>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Confirmar fechamento'),
-                              content: Text(
-                                'Confirma o fechamento do caixa com saldo contado de ${AppFormatters.currencyFromCents(countedCents)}?',
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () =>
-                                      Navigator.of(context).pop(false),
-                                  child: const Text('Voltar'),
-                                ),
-                                FilledButton(
-                                  onPressed: () =>
-                                      Navigator.of(context).pop(true),
-                                  child: const Text('Confirmar fechamento'),
-                                ),
-                              ],
-                            ),
-                          );
-                          if (confirmed == true && context.mounted) {
-                            Navigator.of(context).pop(true);
-                          }
-                        },
-                        child: const Text('Confirmar fechamento'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-    if (shouldClose != true) {
-      countedController.dispose();
-      notesController.dispose();
-      return;
-    }
-    try {
-      await ref
-          .read(cashActionControllerProvider.notifier)
-          .closeSession(
-            countedBalanceCents: MoneyParser.parseToCents(
-              countedController.text,
-            ),
-            notes: notesController.text,
-          );
-      if (!mounted) return;
-      AppFeedback.success(context, 'Caixa fechado com sucesso.');
-    } catch (_) {
-    } finally {
-      countedController.dispose();
-      notesController.dispose();
-    }
   }
 
   Future<void> _registerMovement(CashMovementType type) async {
@@ -727,7 +418,7 @@ class _CurrentSessionSection extends StatelessWidget {
 
     if (session == null) {
       return AppSectionCard(
-        title: 'Sessão atual',
+        title: 'Caixa atual',
         subtitle: 'Nenhum caixa aberto no momento.',
         padding: const EdgeInsets.all(16),
         trailing: const AppStatusBadge(
@@ -744,16 +435,15 @@ class _CurrentSessionSection extends StatelessWidget {
     }
 
     final current = session!;
-    final dinheiroFisicoCents =
-        current.physicalBalanceCents - current.totalFiadoReceiptsCents;
+    final dinheiroFisicoCents = current.physicalBalanceCents;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AppSectionCard(
-          title: 'Sessão atual',
+          title: 'Caixa atual',
           subtitle: current.awaitingInitialFloatConfirmation
               ? 'Abertura pendente de confirmação do troco inicial.'
-              : 'Caixa ${current.isOpen ? 'aberto' : 'fechado'} desde ${AppFormatters.shortDateTime(current.openedAt)}.',
+              : '${current.status.label} desde ${AppFormatters.shortDateTime(current.openedAt)}.',
           padding: const EdgeInsets.all(16),
           trailing: current.awaitingInitialFloatConfirmation
               ? const AppStatusBadge(
@@ -775,11 +465,7 @@ class _CurrentSessionSection extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF0F7B5C), Color(0xFF17A878)],
-                  ),
+                  color: Theme.of(context).colorScheme.primary,
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Column(
@@ -818,9 +504,11 @@ class _CurrentSessionSection extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      AppFormatters.currencyFromCents(
-                        current.expectedBalanceCents,
-                      ),
+                      current.blindClosureEnabled && !current.isClosed
+                          ? 'Conferência cega'
+                          : AppFormatters.currencyFromCents(
+                              current.expectedBalanceCents,
+                            ),
                       style: Theme.of(context).textTheme.headlineSmall
                           ?.copyWith(
                             color: Colors.white,
@@ -977,6 +665,16 @@ class _CurrentSessionSection extends StatelessWidget {
                         onPressed: isBusy ? null : onConfirmAutomaticOpen,
                       ),
                   ]
+                : !current.isClosed
+                ? [
+                    _ActionButton(
+                      label: current.needsReview
+                          ? 'Revisar conferência'
+                          : 'Ver fechamento pendente',
+                      icon: Icons.fact_check_outlined,
+                      onPressed: onClose,
+                    ),
+                  ]
                 : [
                     _ActionButton(
                       label: 'Abrir caixa',
@@ -987,68 +685,69 @@ class _CurrentSessionSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        AppSectionCard(
-          title: 'Resumo financeiro',
-          subtitle: 'Toque em um bloco para filtrar as movimentações abaixo.',
-          padding: const EdgeInsets.all(16),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth < 340 ? 1 : 2;
-              return GridView.count(
-                crossAxisCount: columns,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-                mainAxisExtent: 154,
-                children: [
-                  _CashMetricCard(
-                    label: 'Fundo abertura',
-                    valueCents: current.initialFloatCents,
-                    caption: 'Troco inicial',
-                    icon: Icons.arrow_downward_rounded,
-                    accentColor: AppTheme.success,
-                    semanticLabel:
-                        'Fundo de abertura ${AppFormatters.currencyFromCents(current.initialFloatCents)}',
-                    onTap: () => onSelectFilter(CashMovementFilter.all),
-                  ),
-                  _CashMetricCard(
-                    label: 'Dinheiro fisico',
-                    valueCents: dinheiroFisicoCents,
-                    caption: 'Sem fiado recebido',
-                    icon: Icons.account_balance_wallet_rounded,
-                    accentColor: Theme.of(context).colorScheme.primary,
-                    semanticLabel:
-                        'Dinheiro fisico ${AppFormatters.currencyFromCents(dinheiroFisicoCents)}',
-                    onTap: () => onSelectFilter(CashMovementFilter.all),
-                    infoMessage:
-                        'Exibicao visual separada: fiado recebido aparece em KPI proprio.',
-                  ),
-                  _CashMetricCard(
-                    label: 'Fiado recebido',
-                    valueCents: current.totalFiadoReceiptsCents,
-                    caption: 'Dinheiro, Pix e cartao',
-                    icon: Icons.receipt_long_rounded,
-                    accentColor: AppTheme.secondary,
-                    semanticLabel:
-                        'Fiado recebido ${AppFormatters.currencyFromCents(current.totalFiadoReceiptsCents)}',
-                    onTap: () => onSelectFilter(CashMovementFilter.fiado),
-                  ),
-                  _CashMetricCard(
-                    label: 'Total vendas',
-                    valueCents: current.totalSalesCents,
-                    caption: 'Vendas em dinheiro',
-                    icon: Icons.point_of_sale_rounded,
-                    accentColor: AppTheme.success,
-                    semanticLabel:
-                        'Total de vendas ${AppFormatters.currencyFromCents(current.totalSalesCents)}',
-                    onTap: () => onSelectFilter(CashMovementFilter.sales),
-                  ),
-                ],
-              );
-            },
+        if (!current.blindClosureEnabled || current.isClosed)
+          AppSectionCard(
+            title: 'Resumo financeiro',
+            subtitle: 'Toque em um bloco para filtrar as movimentações abaixo.',
+            padding: const EdgeInsets.all(16),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth < 340 ? 1 : 2;
+                return GridView.count(
+                  crossAxisCount: columns,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  mainAxisExtent: 154,
+                  children: [
+                    _CashMetricCard(
+                      label: 'Fundo abertura',
+                      valueCents: current.initialFloatCents,
+                      caption: 'Troco inicial',
+                      icon: Icons.arrow_downward_rounded,
+                      accentColor: AppTheme.success,
+                      semanticLabel:
+                          'Fundo de abertura ${AppFormatters.currencyFromCents(current.initialFloatCents)}',
+                      onTap: () => onSelectFilter(CashMovementFilter.all),
+                    ),
+                    _CashMetricCard(
+                      label: 'Dinheiro fisico',
+                      valueCents: dinheiroFisicoCents,
+                      caption: 'Sem fiado recebido',
+                      icon: Icons.account_balance_wallet_rounded,
+                      accentColor: Theme.of(context).colorScheme.primary,
+                      semanticLabel:
+                          'Dinheiro fisico ${AppFormatters.currencyFromCents(dinheiroFisicoCents)}',
+                      onTap: () => onSelectFilter(CashMovementFilter.all),
+                      infoMessage:
+                          'Exibicao visual separada: fiado recebido aparece em KPI proprio.',
+                    ),
+                    _CashMetricCard(
+                      label: 'Fiado recebido',
+                      valueCents: current.totalFiadoReceiptsCents,
+                      caption: 'Dinheiro, Pix e cartao',
+                      icon: Icons.receipt_long_rounded,
+                      accentColor: AppTheme.secondary,
+                      semanticLabel:
+                          'Fiado recebido ${AppFormatters.currencyFromCents(current.totalFiadoReceiptsCents)}',
+                      onTap: () => onSelectFilter(CashMovementFilter.fiado),
+                    ),
+                    _CashMetricCard(
+                      label: 'Total vendas',
+                      valueCents: current.totalSalesCents,
+                      caption: 'Vendas em dinheiro',
+                      icon: Icons.point_of_sale_rounded,
+                      accentColor: AppTheme.success,
+                      semanticLabel:
+                          'Total de vendas ${AppFormatters.currencyFromCents(current.totalSalesCents)}',
+                      onTap: () => onSelectFilter(CashMovementFilter.sales),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
-        ),
       ],
     );
   }
@@ -1401,79 +1100,4 @@ class _InfoLine extends StatelessWidget {
       ),
     );
   }
-}
-
-class _SummaryLine extends StatelessWidget {
-  const _SummaryLine({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Expanded(child: Text(label)),
-          const SizedBox(width: 12),
-          Text(
-            value,
-            style: Theme.of(
-              context,
-            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DifferenceBanner extends StatelessWidget {
-  const _DifferenceBanner({required this.differenceCents});
-
-  final int differenceCents;
-
-  @override
-  Widget build(BuildContext context) {
-    final isNegative = differenceCents < 0;
-    final isPositive = differenceCents > 0;
-    final negativePalette = context.appColors.cashflowNegative;
-    final positivePalette = context.appColors.cashflowPositive;
-    final color = isNegative
-        ? negativePalette.onSurface
-        : isPositive
-        ? positivePalette.onSurface
-        : Theme.of(context).colorScheme.onSurfaceVariant;
-    final background = isNegative
-        ? negativePalette.surface
-        : isPositive
-        ? positivePalette.surface
-        : Theme.of(context).colorScheme.surfaceContainerHigh;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        'Diferença calculada: ${differenceCents > 0 ? '+' : ''}${AppFormatters.currencyFromCents(differenceCents)}',
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(color: color),
-      ),
-    );
-  }
-}
-
-class _AutoOpenResolution {
-  const _AutoOpenResolution._({
-    required this.shouldCloseCash,
-    this.initialFloatCents = 0,
-  });
-  const _AutoOpenResolution.confirm(int initialFloatCents)
-    : this._(shouldCloseCash: false, initialFloatCents: initialFloatCents);
-  const _AutoOpenResolution.closeCash() : this._(shouldCloseCash: true);
-
-  final bool shouldCloseCash;
-  final int initialFloatCents;
 }

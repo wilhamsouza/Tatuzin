@@ -29,6 +29,11 @@ class OwnerShellScaffold extends ConsumerWidget {
       label: 'Vendas',
     ),
     _OwnerNavItem(
+      route: '/reports/cash',
+      icon: Icons.point_of_sale_outlined,
+      label: 'Caixa',
+    ),
+    _OwnerNavItem(
       route: '/clients',
       icon: Icons.people_alt_rounded,
       label: 'Clientes / CRM',
@@ -41,7 +46,12 @@ class OwnerShellScaffold extends ConsumerWidget {
     _OwnerNavItem(
       route: '/products',
       icon: Icons.inventory_2_rounded,
-      label: 'Produtos e estoque',
+      label: 'Produtos',
+    ),
+    _OwnerNavItem(
+      route: '/inventory',
+      icon: Icons.warehouse_outlined,
+      label: 'Estoque',
     ),
     _OwnerNavItem(
       route: '/employees',
@@ -81,13 +91,34 @@ class OwnerShellScaffold extends ConsumerWidget {
     final session = auth.session;
     final companyName = session?.company.name ?? 'Tatuzin';
     final plan = session?.company.license?.plan ?? 'Plano';
-    final isCompact = MediaQuery.sizeOf(context).width < 980;
+    final isCompact =
+        MediaQuery.sizeOf(context).width < 1100 ||
+        MediaQuery.textScalerOf(context).scale(14) > 21;
+    final userName = session?.user.name ?? 'Minha conta';
+    final profile = Tooltip(
+      message: '$userName • $companyName',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: CircleAvatar(
+          child: Text(
+            userName.trim().isEmpty
+                ? 'T'
+                : userName.trim().substring(0, 1).toUpperCase(),
+          ),
+        ),
+      ),
+    );
 
     if (isCompact) {
       return Scaffold(
         appBar: AppBar(
-          title: Text(title),
+          title: Text(
+            companyName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           actions: [
+            profile,
             IconButton(
               tooltip: 'Sair',
               onPressed: () => ref.read(ownerAuthControllerProvider).logout(),
@@ -102,10 +133,7 @@ class OwnerShellScaffold extends ConsumerWidget {
             plan: plan,
           ),
         ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: child,
-        ),
+        body: child,
       );
     }
 
@@ -121,7 +149,7 @@ class OwnerShellScaffold extends ConsumerWidget {
             child: Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.fromLTRB(32, 24, 32, 20),
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.surface,
                     border: Border(
@@ -137,13 +165,13 @@ class OwnerShellScaffold extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              title,
+                              companyName,
                               style: Theme.of(context).textTheme.headlineSmall
                                   ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Consulta gerencial de indicadores, relatórios e operação da empresa.',
+                              '$userName • Painel da empresa',
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     color: Theme.of(
@@ -155,7 +183,8 @@ class OwnerShellScaffold extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(width: 16),
-                      _CompanyPill(companyName: companyName, plan: plan),
+                      profile,
+                      Text('Plano ${ownerPlanLabel(plan)}'),
                       const SizedBox(width: 12),
                       FilledButton.tonalIcon(
                         onPressed: () =>
@@ -166,12 +195,7 @@ class OwnerShellScaffold extends ConsumerWidget {
                     ],
                   ),
                 ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(24),
-                    child: child,
-                  ),
-                ),
+                Expanded(child: child),
               ],
             ),
           ),
@@ -195,48 +219,45 @@ class _Sidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 280,
+      width: 244,
       color: Theme.of(context).colorScheme.surface,
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Tatuzin',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text(
+              'Tatuzin',
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Painel da empresa',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Painel da empresa',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+            ),
+            const SizedBox(height: 20),
+            _CompanyPill(companyName: companyName, plan: plan),
+            const SizedBox(height: 24),
+            for (final item in OwnerShellScaffold._items) ...[
+              _NavButton(
+                item: item,
+                selected:
+                    currentLocation == item.route ||
+                    (item.route != '/reports' &&
+                        currentLocation.startsWith('${item.route}/')),
               ),
-              const SizedBox(height: 20),
-              _CompanyPill(companyName: companyName, plan: plan),
-              const SizedBox(height: 24),
-              for (final item in OwnerShellScaffold._items) ...[
-                _NavButton(
-                  item: item,
-                  selected:
-                      currentLocation == item.route ||
-                      currentLocation.startsWith('${item.route}/'),
-                ),
-                const SizedBox(height: 6),
-              ],
-              const Spacer(),
-              Text(
-                'Consulta gerencial',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
+              const SizedBox(height: 6),
             ],
-          ),
+            Text(
+              'Consulta gerencial',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -289,7 +310,10 @@ class _NavButton extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
-        onTap: () => context.go(item.route),
+        onTap: () {
+          Scaffold.maybeOf(context)?.closeDrawer();
+          context.go(item.route);
+        },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           child: Row(

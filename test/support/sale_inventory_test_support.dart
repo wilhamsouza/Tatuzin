@@ -516,6 +516,9 @@ Future<void> _createSchema(
   Database db, {
   required bool includeInventoryMovements,
 }) async {
+  await db.execute(
+    'CREATE TABLE IF NOT EXISTS configuracoes (id INTEGER PRIMARY KEY AUTOINCREMENT, chave TEXT NOT NULL UNIQUE, valor_json TEXT NOT NULL, atualizado_em TEXT NOT NULL)',
+  );
   await db.execute('''
     CREATE TABLE ${TableNames.produtos} (
       id INTEGER PRIMARY KEY,
@@ -585,6 +588,9 @@ Future<void> _createSchema(
       numero_cupom TEXT,
       data_venda TEXT,
       usuario_id INTEGER,
+      seller_remote_user_id TEXT,
+      customer_assignment_revision INTEGER NOT NULL DEFAULT 0,
+      customer_assignment_locked INTEGER NOT NULL DEFAULT 0,
       observacao TEXT,
       cancelada_em TEXT,
       venda_origem_id INTEGER

@@ -1,3 +1,4 @@
+import '../../../app/core/errors/app_exceptions.dart';
 import '../domain/entities/inventory_count_item.dart';
 import '../domain/entities/inventory_count_item_input.dart';
 import '../domain/entities/inventory_count_session.dart';
@@ -14,7 +15,9 @@ class InventoryCountRepositoryImpl implements InventoryCountRepository {
 
   @override
   Future<InventoryCountSession> createSession({required String name}) {
-    return _localRepository.createSession(name: name);
+    throw const ValidationException(
+      'Use Estoque → Contagens. Sessões antigas são somente leitura.',
+    );
   }
 
   @override
@@ -29,26 +32,36 @@ class InventoryCountRepositoryImpl implements InventoryCountRepository {
 
   @override
   Future<void> applySession(int sessionId) {
-    return _localRepository.applySession(sessionId);
+    throw const ValidationException(
+      'Uma contagem antiga não pode ser reaplicada. Use Estoque → Contagens.',
+    );
   }
 
   @override
   Future<InventoryCountItem> keepRecordedDifference(int countItemId) {
-    return _localRepository.keepRecordedDifference(countItemId);
+    throw const ValidationException(
+      'O histórico de contagens antigas é somente leitura.',
+    );
   }
 
   @override
   Future<void> markSessionReviewed(int sessionId) {
-    return _localRepository.markSessionReviewed(sessionId);
+    throw const ValidationException(
+      'O histórico de contagens antigas é somente leitura.',
+    );
   }
 
   @override
   Future<InventoryCountItem> recalculateItemFromCurrentStock(int countItemId) {
-    return _localRepository.recalculateItemFromCurrentStock(countItemId);
+    throw const ValidationException(
+      'O histórico de contagens antigas é somente leitura.',
+    );
   }
 
   @override
   Future<InventoryCountItem> upsertItem(InventoryCountItemInput input) {
-    return _localRepository.upsertItem(input);
+    throw const ValidationException(
+      'O histórico de contagens antigas é somente leitura.',
+    );
   }
 }

@@ -35,7 +35,9 @@ class PurchasePaymentWriter {
     await CashSessionMathSupport.applySessionDeltas(
       db,
       sessionId: sessionId,
-      withdrawalsDeltaCents: amountCents,
+      withdrawalsDeltaCents: paymentMethod == PaymentMethod.cash
+          ? amountCents
+          : 0,
     );
     final movement = await CashDatabaseSupport.insertMovement(
       db,

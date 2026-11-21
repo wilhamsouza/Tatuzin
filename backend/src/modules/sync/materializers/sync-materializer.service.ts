@@ -1,3 +1,4 @@
+import { guardCashWorkspaceWrite, recordCashWorkspaceWrite } from "../../cash/cash-workspace-sync";
 import { CashMovementMaterializer } from './cash-movement.materializer';
 import { CashSessionMaterializer } from './cash-session.materializer';
 import type {
@@ -9,6 +10,7 @@ import { PaymentMaterializer } from './payment.materializer';
 import { ReceiptMaterializer } from './receipt.materializer';
 import { SaleMaterializer } from './sale.materializer';
 import { StockMaterializer } from './stock.materializer';
+import { SaleCustomerAssignmentMaterializer } from './sale-customer-assignment.materializer';
 
 export class SyncMaterializerService {
   constructor(
@@ -31,7 +33,18 @@ export class SyncMaterializerService {
   async materialize(
     input: SyncMaterializerInput,
   ): Promise<SyncMaterializerResult> {
+    const guarded = await guardCashWorkspaceWrite(input);
+    if (guarded.result != null) return guarded.result;
+    const result = await this.materializeDomain(input);
+    if (guarded.session != null) await recordCashWorkspaceWrite(input,guarded.session,result);
+    return result;
+  }
+
+  private async materializeDomain(input: SyncMaterializerInput): Promise<SyncMaterializerResult> {
     switch (input.event.entity) {
+      case 'saleCustomerAssignment':
+      case 'saleCustomerLock':
+        return new SaleCustomerAssignmentMaterializer().materialize(input);
       case 'cashSession':
         return this.cashSessionMaterializer.materialize(input);
       case 'cashMovement':

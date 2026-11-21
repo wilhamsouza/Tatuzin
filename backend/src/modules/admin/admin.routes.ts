@@ -1,3 +1,8 @@
+import { adminPlatformRouter } from '../admin-platform/admin-platform.routes';
+import { getAdminPlatformAccess, adminPlatformReadGuard } from '../admin-platform/admin-platform.access';
+import { adminSupportCasesRouter } from '../admin-support-cases/admin-support-cases.routes';
+import { adminPlatformActionsRouter } from '../admin-platform-actions/admin-platform-actions.routes';
+import { adminLegacyActionGuard } from '../admin-platform-actions/legacy-action-guard';
 import { Router } from "express";
 
 import { requirePlatformAdmin } from "../../shared/http/auth-middleware";
@@ -101,6 +106,12 @@ adminRouter.use(
   }),
 );
 
+adminRouter.use(adminPlatformRouter);
+adminRouter.use('/support/cases', adminSupportCasesRouter);
+adminRouter.use('/operations', adminPlatformActionsRouter);
+adminRouter.use(adminPlatformReadGuard);
+adminRouter.use(adminLegacyActionGuard);
+
 adminRouter.use("/support-actions", supportActionsRouter);
 adminRouter.use("/permissions", adminPermissionsRouter);
 adminRouter.use("/tenant-deletion", tenantDeletionRouter);
@@ -142,7 +153,8 @@ adminRouter.get(
       ? request.params.id[0]
       : request.params.id;
     const payload = await adminService.getCompany(companyId);
-    response.json(payload);
+    const access = await getAdminPlatformAccess(request.auth!.userId);
+    response.json({ ...payload, sessions: access.has('admin.devices.read', companyId) ? payload.sessions : [] });
   }),
 );
 
@@ -151,7 +163,8 @@ adminRouter.get(
   asyncHandler(async (request, response) => {
     const companyId = readParam(request.params.companyId);
     const payload = await adminService.getCompanyAccessSummary(companyId);
-    response.json(payload);
+    const access = await getAdminPlatformAccess(request.auth!.userId);
+    response.json({ ...payload, devices: access.has('admin.devices.read', companyId) ? payload.devices : [], audit: access.has('admin.audit.read', companyId) ? payload.audit : [] });
   }),
 );
 

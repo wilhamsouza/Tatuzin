@@ -21,7 +21,16 @@ export const tenantDeletionPermissionKeys = [
 export type TenantDeletionPermissionKey =
   (typeof tenantDeletionPermissionKeys)[number];
 
+export const adminPlatformPermissionKeys = [
+  "admin.overview.read", "admin.companies.read", "admin.support.read",
+  "admin.support.manage", "admin.sync.read", "admin.billing.read", "admin.billing.manage",
+  "admin.devices.read", "admin.usage.read", "admin.audit.read",
+] as const;
+
+export type AdminPlatformPermissionKey = typeof adminPlatformPermissionKeys[number];
+
 export type AdminPermissionKey =
+  | AdminPlatformPermissionKey
   | SupportActionPermissionKey
   | TenantDeletionPermissionKey
   | AdminPermissionManagementKey;
@@ -31,7 +40,7 @@ export type AdminPermissionDefinition = {
   description: string;
   riskLevel: SupportActionRiskLevel;
   scopes: SupportActionScope[];
-  category: "support-action" | "admin-permissions" | "tenant-deletion";
+  category: "support-action" | "admin-permissions" | "tenant-deletion" | "platform";
   actionType?: OperationalActionType;
   requiresDryRun: boolean;
   requiresReason: boolean;

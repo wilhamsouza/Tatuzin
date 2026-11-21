@@ -1,5 +1,7 @@
 class RemoteCashSessionRecord {
   const RemoteCashSessionRecord({
+    this.openingDetails,
+    this.closingDetails,
     required this.remoteId,
     required this.localUuid,
     required this.operatorName,
@@ -17,6 +19,12 @@ class RemoteCashSessionRecord {
   factory RemoteCashSessionRecord.fromJson(Map<String, dynamic> json) {
     final remoteId = json['id'] as String;
     return RemoteCashSessionRecord(
+      openingDetails: json['openingDetails'] is Map
+          ? Map<String, dynamic>.from(json['openingDetails'] as Map)
+          : null,
+      closingDetails: json['closingDetails'] is Map
+          ? Map<String, dynamic>.from(json['closingDetails'] as Map)
+          : null,
       remoteId: remoteId,
       localUuid: (json['localUuid'] as String?)?.trim().isNotEmpty == true
           ? json['localUuid'] as String
@@ -38,6 +46,8 @@ class RemoteCashSessionRecord {
     );
   }
 
+  final Map<String, dynamic>? openingDetails;
+  final Map<String, dynamic>? closingDetails;
   final String remoteId;
   final String localUuid;
   final String? operatorName;

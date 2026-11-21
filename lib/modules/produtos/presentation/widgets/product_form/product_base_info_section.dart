@@ -72,7 +72,7 @@ class ProductBaseInfoSection extends StatelessWidget {
     final layout = context.appLayout;
 
     return AppSectionCard(
-      title: 'Informacoes do produto',
+      title: 'Informações básicas e preços',
       subtitle: 'Preencha o essencial para cadastrar seu produto.',
       tone: AppCardTone.standard,
       child: Column(
@@ -81,9 +81,11 @@ class ProductBaseInfoSection extends StatelessWidget {
           // ── Always show simple name field ──
           TextFormField(
             controller: nameController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Nome do produto',
-              hintText: 'Ex.: Coxinha de frango',
+              hintText: selectedNiche == 'moda'
+                  ? 'Ex.: Camiseta básica'
+                  : 'Ex.: Coxinha de frango',
             ),
             textCapitalization: TextCapitalization.sentences,
             validator: (value) {
@@ -94,95 +96,107 @@ class ProductBaseInfoSection extends StatelessWidget {
             },
           ),
           SizedBox(height: layout.sectionGap),
-          TextFormField(
-            controller: descriptionController,
-            decoration: const InputDecoration(
-              labelText: 'Descricao',
-              hintText: 'Opcional',
+          ExpansionTile(
+            initiallyExpanded: isEditing,
+            tilePadding: EdgeInsets.zero,
+            title: const Text('Mais informações'),
+            subtitle: const Text(
+              'Descrição, categoria, código e preferências.',
             ),
-            minLines: 2,
-            maxLines: 4,
-            textCapitalization: TextCapitalization.sentences,
-          ),
-          SizedBox(height: layout.sectionGap),
-          _ResponsiveFieldRow(
             children: [
-              DropdownButtonFormField<int?>(
-                initialValue: categoryId,
-                decoration: const InputDecoration(labelText: 'Categoria'),
-                items: [
-                  const DropdownMenuItem<int?>(
-                    value: null,
-                    child: Text('Sem categoria'),
-                  ),
-                  for (final category in categories)
-                    DropdownMenuItem<int?>(
-                      value: category.id,
-                      child: Text(category.name),
-                    ),
-                ],
-                onChanged: isCategoryLoading ? null : onCategoryChanged,
-                validator: (value) {
-                  if (value == null) {
-                    return 'Informe a categoria do produto';
-                  }
-                  return null;
-                },
-              ),
               TextFormField(
-                controller: barcodeController,
+                controller: descriptionController,
                 decoration: const InputDecoration(
-                  labelText: 'Codigo do produto',
+                  labelText: 'Descricao',
                   hintText: 'Opcional',
                 ),
+                minLines: 2,
+                maxLines: 4,
+                textCapitalization: TextCapitalization.sentences,
               ),
-            ],
-          ),
-          SizedBox(height: layout.sectionGap),
-          _ResponsiveFieldRow(
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: unitMeasure,
-                decoration: const InputDecoration(
-                  labelText: 'Unidade de medida',
-                ),
-                items: const [
-                  DropdownMenuItem(value: 'un', child: Text('Unidade (un)')),
-                  DropdownMenuItem(value: 'kg', child: Text('Quilograma (kg)')),
-                  DropdownMenuItem(value: 'g', child: Text('Grama (g)')),
-                  DropdownMenuItem(value: 'l', child: Text('Litro (l)')),
-                  DropdownMenuItem(value: 'ml', child: Text('Mililitro (ml)')),
-                  DropdownMenuItem(value: 'cx', child: Text('Caixa (cx)')),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    onUnitMeasureChanged(value);
-                  }
-                },
-              ),
-              SwitchListTile.adaptive(
-                value: isActive,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                title: const Text('Disponivel para venda'),
-                subtitle: Text(
-                  isActive
-                      ? 'Produto visivel na operacao.'
-                      : 'Oculto da operacao.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
+              SizedBox(height: layout.sectionGap),
+              _ResponsiveFieldRow(
+                children: [
+                  DropdownButtonFormField<int?>(
+                    initialValue: categoryId,
+                    decoration: const InputDecoration(labelText: 'Categoria'),
+                    items: [
+                      const DropdownMenuItem<int?>(
+                        value: null,
+                        child: Text('Sem categoria'),
+                      ),
+                      for (final category in categories)
+                        DropdownMenuItem<int?>(
+                          value: category.id,
+                          child: Text(category.name),
+                        ),
+                    ],
+                    onChanged: isCategoryLoading ? null : onCategoryChanged,
                   ),
-                ),
-                onChanged: onActiveChanged,
+                  TextFormField(
+                    controller: barcodeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Codigo do produto',
+                      hintText: 'Opcional',
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: layout.sectionGap),
+              _ResponsiveFieldRow(
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: unitMeasure,
+                    decoration: const InputDecoration(
+                      labelText: 'Unidade de medida',
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'un',
+                        child: Text('Unidade (un)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'kg',
+                        child: Text('Quilograma (kg)'),
+                      ),
+                      DropdownMenuItem(value: 'g', child: Text('Grama (g)')),
+                      DropdownMenuItem(value: 'l', child: Text('Litro (l)')),
+                      DropdownMenuItem(
+                        value: 'ml',
+                        child: Text('Mililitro (ml)'),
+                      ),
+                      DropdownMenuItem(value: 'cx', child: Text('Caixa (cx)')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        onUnitMeasureChanged(value);
+                      }
+                    },
+                  ),
+                  SwitchListTile.adaptive(
+                    value: isActive,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    title: const Text('Disponivel para venda'),
+                    subtitle: Text(
+                      isActive
+                          ? 'Produto visivel na operacao.'
+                          : 'Oculto da operacao.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    onChanged: onActiveChanged,
+                  ),
+                ],
               ),
             ],
           ),
-
           // ── Visual divider: Preço e estoque ──
           SizedBox(height: layout.sectionGap),
           Divider(color: colorScheme.outlineVariant),
           SizedBox(height: layout.sectionGap),
           Text(
-            'Preco e estoque',
+            'Preços',
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
             ),
@@ -245,13 +259,15 @@ class ProductBaseInfoSection extends StatelessWidget {
           else
             TextFormField(
               controller: stockController,
+              readOnly: true,
+              enableInteractiveSelection: false,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: InputDecoration(
-                labelText: isEditing ? 'Estoque atual' : 'Estoque inicial',
+              decoration: const InputDecoration(
+                labelText: 'Saldo de referência',
                 helperText:
-                    'Informe a quantidade conforme a unidade de medida.',
+                    'Para registrar entradas ou saídas, use Estoque após salvar.',
               ),
               validator: (value) {
                 final raw = (value ?? '').trim();

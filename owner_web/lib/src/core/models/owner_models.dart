@@ -263,6 +263,9 @@ class OwnerLicenseSnapshot {
 
 class OwnerCompanySummary {
   const OwnerCompanySummary({
+    this.cashBlindClosureEnabled = false,
+    this.cashPolicyRevision = 0,
+    this.canManageCashPolicy = false,
     required this.companyId,
     required this.name,
     required this.legalName,
@@ -277,6 +280,9 @@ class OwnerCompanySummary {
     required this.features,
   });
 
+  final bool cashBlindClosureEnabled;
+  final int cashPolicyRevision;
+  final bool canManageCashPolicy;
   final String companyId;
   final String name;
   final String legalName;
@@ -292,6 +298,9 @@ class OwnerCompanySummary {
 
   factory OwnerCompanySummary.fromMap(Map<String, dynamic> map) {
     return OwnerCompanySummary(
+      cashBlindClosureEnabled: map['cashBlindClosureEnabled'] == true,
+      cashPolicyRevision: _readOptionalInt(map, 'cashPolicyRevision') ?? 0,
+      canManageCashPolicy: map['canManageCashPolicy'] == true,
       companyId: _readString(map, 'companyId'),
       name: _readString(map, 'name', fallback: 'Empresa'),
       legalName: _readString(map, 'legalName', fallback: 'Empresa'),
@@ -681,6 +690,7 @@ class OwnerEmployeeItem {
     required this.accessStatus,
     required this.permissions,
     required this.permissionsCount,
+    this.permissionsComplete = false,
     required this.commissionEnabled,
     required this.commissionType,
     required this.commissionBase,
@@ -700,6 +710,7 @@ class OwnerEmployeeItem {
   final String accessStatus;
   final List<String> permissions;
   final int permissionsCount;
+  final bool permissionsComplete;
   final bool commissionEnabled;
   final String commissionType;
   final String commissionBase;
@@ -720,6 +731,12 @@ class OwnerEmployeeItem {
       accessStatus: _readString(map, 'accessStatus', fallback: 'NO_ACCESS'),
       permissions: _readStringList(map['permissions']),
       permissionsCount: _readOptionalInt(map, 'permissionsCount') ?? 0,
+      permissionsComplete:
+          map['permissionsAreComplete'] == true ||
+          (map['status'] != 'DISABLED' &&
+              map['permissionsCount'] != null &&
+              _readStringList(map['permissions']).length ==
+                  _readOptionalInt(map, 'permissionsCount')),
       commissionEnabled: map['commissionEnabled'] == true,
       commissionType: _readString(map, 'commissionType', fallback: 'NONE'),
       commissionBase: _readString(map, 'commissionBase', fallback: 'NET_SALES'),
@@ -1622,6 +1639,10 @@ class OwnerCashSessionsReport {
 
 class OwnerCashSessionsSummary {
   const OwnerCashSessionsSummary({
+    this.receiptBreakdownAvailable,
+    this.openSessions,
+    this.closedSessions,
+    this.totalDifferenceCents,
     required this.totalSoldCents,
     required this.totalSessions,
     required this.sessionsWithDifference,
@@ -1632,6 +1653,10 @@ class OwnerCashSessionsSummary {
     required this.byPaymentMethod,
   });
 
+  final int? openSessions;
+  final int? closedSessions;
+  final int? totalDifferenceCents;
+  final bool? receiptBreakdownAvailable;
   final int totalSoldCents;
   final int totalSessions;
   final int sessionsWithDifference;
@@ -1643,6 +1668,12 @@ class OwnerCashSessionsSummary {
 
   factory OwnerCashSessionsSummary.fromMap(Map<String, dynamic> map) {
     return OwnerCashSessionsSummary(
+      receiptBreakdownAvailable: map['receiptBreakdownAvailable'] is bool
+          ? map['receiptBreakdownAvailable'] as bool
+          : null,
+      openSessions: _readOptionalInt(map, 'openSessions'),
+      closedSessions: _readOptionalInt(map, 'closedSessions'),
+      totalDifferenceCents: _readOptionalInt(map, 'totalDifferenceCents'),
       totalSoldCents: _readOptionalInt(map, 'totalSoldCents') ?? 0,
       totalSessions: _readOptionalInt(map, 'totalSessions') ?? 0,
       sessionsWithDifference:
@@ -1652,9 +1683,14 @@ class OwnerCashSessionsSummary {
           _readOptionalInt(map, 'totalCashOutflowCents') ?? 0,
       averageTicketCents: _readOptionalInt(map, 'averageTicketCents') ?? 0,
       salesCount: _readOptionalInt(map, 'salesCount') ?? 0,
-      byPaymentMethod: _readMapList(
-        map['byPaymentMethod'],
-      ).map(OwnerPaymentMethodSummary.fromMap).toList(growable: false),
+      byPaymentMethod: _readMapList(map['byPaymentMethod'])
+          .map(
+            (row) => OwnerPaymentMethodSummary.fromMap({
+              ...row,
+              'totalAmountCents': row['amountCents'] ?? row['totalAmountCents'],
+            }),
+          )
+          .toList(growable: false),
     );
   }
 }
@@ -1689,6 +1725,7 @@ class OwnerCashSessionsPage {
 
 class OwnerCashSessionItem {
   const OwnerCashSessionItem({
+    this.receiptBreakdownAvailable,
     required this.id,
     required this.shortId,
     required this.openedAt,
@@ -1715,6 +1752,7 @@ class OwnerCashSessionItem {
   final OwnerCashSessionEmployee employee;
   final String status;
   final String statusLabel;
+  final bool? receiptBreakdownAvailable;
   final int totalSoldCents;
   final int totalCashCents;
   final int totalCardCents;
@@ -1728,6 +1766,9 @@ class OwnerCashSessionItem {
 
   factory OwnerCashSessionItem.fromMap(Map<String, dynamic> map) {
     return OwnerCashSessionItem(
+      receiptBreakdownAvailable: map['receiptBreakdownAvailable'] is bool
+          ? map['receiptBreakdownAvailable'] as bool
+          : null,
       id: _readString(map, 'id'),
       shortId: _readString(map, 'shortId', fallback: 'Caixa'),
       openedAt: _readOptionalString(map, 'openedAt'),
@@ -1771,6 +1812,14 @@ class OwnerCashSessionEmployee {
 
 class OwnerCashSessionDetail {
   const OwnerCashSessionDetail({
+    this.openingDetails = const {},
+    this.openingAwaitingConfirmation,
+    this.closingDetails = const {},
+    this.divergenceReview = const {},
+    this.divergenceReviewHistory = const [],
+    this.canReview = false,
+    this.hasLateMovements = false,
+    this.deviceName,
     required this.session,
     required this.employee,
     required this.values,
@@ -1778,6 +1827,14 @@ class OwnerCashSessionDetail {
     required this.sales,
   });
 
+  final Map<String, dynamic> openingDetails;
+  final bool? openingAwaitingConfirmation;
+  final Map<String, dynamic> closingDetails;
+  final Map<String, dynamic> divergenceReview;
+  final List<Map<String, dynamic>> divergenceReviewHistory;
+  final bool canReview;
+  final bool hasLateMovements;
+  final String? deviceName;
   final OwnerCashSessionItem session;
   final OwnerCashSessionEmployee employee;
   final OwnerCashSessionValues values;
@@ -1786,6 +1843,18 @@ class OwnerCashSessionDetail {
 
   factory OwnerCashSessionDetail.fromMap(Map<String, dynamic> map) {
     return OwnerCashSessionDetail(
+      openingDetails: _readMap(map, 'openingDetails'),
+      openingAwaitingConfirmation: map['openingAwaitingConfirmation'] is bool
+          ? map['openingAwaitingConfirmation'] as bool
+          : null,
+      closingDetails: _readMap(map, 'closingDetails'),
+      divergenceReview: _readMap(map, 'divergenceReview'),
+      divergenceReviewHistory: _readMapList(map['divergenceReviewHistory']),
+      canReview: map['canReview'] == true,
+      hasLateMovements: map['hasLateMovements'] == true,
+      deviceName:
+          _readOptionalString(_readMap(map, 'device'), 'name') ??
+          _readOptionalString(map, 'deviceName'),
       session: OwnerCashSessionItem.fromMap(_readMap(map, 'session')),
       employee: OwnerCashSessionEmployee.fromMap(_readMap(map, 'employee')),
       values: OwnerCashSessionValues.fromMap(_readMap(map, 'values')),
@@ -1872,6 +1941,7 @@ class OwnerCashSessionSalesPage {
 
 class OwnerCashSessionSale {
   const OwnerCashSessionSale({
+    this.actionUnavailableReason,
     required this.id,
     required this.shortId,
     required this.receiptNumber,
@@ -1889,6 +1959,9 @@ class OwnerCashSessionSale {
     required this.actions,
   });
 
+  final String? actionUnavailableReason;
+  bool get requiresOperatorApp =>
+      actionUnavailableReason == 'CASH_V3_REFUND_REQUIRES_OPERATOR_APP';
   final String id;
   final String shortId;
   final String? receiptNumber;
@@ -1907,6 +1980,10 @@ class OwnerCashSessionSale {
 
   factory OwnerCashSessionSale.fromMap(Map<String, dynamic> map) {
     return OwnerCashSessionSale(
+      actionUnavailableReason: _readOptionalString(
+        map,
+        'actionUnavailableReason',
+      ),
       id: _readString(map, 'id'),
       shortId: _readString(map, 'shortId', fallback: 'Venda'),
       receiptNumber: _safeReceiptNumber(
@@ -2661,4 +2738,122 @@ String _friendlyPaymentMethodLabel(String value) {
       }
       return raw;
   }
+}
+
+class OwnerCashWorkspace {
+  const OwnerCashWorkspace({
+    required this.summary,
+    required this.employees,
+    required this.legacySessionsPresent,
+  });
+  final OwnerCashWorkspaceSummary summary;
+  final List<OwnerEmployeeCashWorkspace> employees;
+  final bool legacySessionsPresent;
+  factory OwnerCashWorkspace.fromMap(Map<String, dynamic> map) =>
+      OwnerCashWorkspace(
+        summary: OwnerCashWorkspaceSummary.fromMap(_readMap(map, 'summary')),
+        employees: _readMapList(
+          map['employees'],
+        ).map(OwnerEmployeeCashWorkspace.fromMap).toList(growable: false),
+        legacySessionsPresent: map['legacySessionsPresent'] == true,
+      );
+}
+
+class OwnerCashWorkspaceSummary {
+  const OwnerCashWorkspaceSummary({
+    this.openEmployees,
+    this.pendingEmployees,
+    this.totalExpectedBalanceCents,
+    this.confirmedCountedBalanceCents,
+    this.legacySessions,
+  });
+  final int? openEmployees;
+  final int? pendingEmployees;
+  final int? totalExpectedBalanceCents;
+  final int? confirmedCountedBalanceCents;
+  final int? legacySessions;
+  factory OwnerCashWorkspaceSummary.fromMap(Map<String, dynamic> map) =>
+      OwnerCashWorkspaceSummary(
+        openEmployees: _readOptionalInt(map, 'openEmployees'),
+        pendingEmployees: _readOptionalInt(map, 'pendingEmployees'),
+        totalExpectedBalanceCents: _readOptionalInt(
+          map,
+          'totalExpectedBalanceCents',
+        ),
+        confirmedCountedBalanceCents: _readOptionalInt(
+          map,
+          'confirmedCountedBalanceCents',
+        ),
+        legacySessions: _readOptionalInt(map, 'legacySessions'),
+      );
+}
+
+class OwnerEmployeeCashWorkspace {
+  const OwnerEmployeeCashWorkspace({
+    required this.employee,
+    required this.sessionIds,
+    required this.status,
+    required this.participants,
+    required this.pendingReasons,
+    required this.canReview,
+    required this.closureRequest,
+    this.activeSessionId,
+    this.expectedBalanceCents,
+    this.countedBalanceCents,
+    this.differenceCents,
+  });
+  final OwnerCashSessionEmployee employee;
+  final List<String> sessionIds;
+  final String? activeSessionId;
+  final String status;
+  final int? expectedBalanceCents;
+  final int? countedBalanceCents;
+  final int? differenceCents;
+  final List<OwnerCashParticipant> participants;
+  final List<String> pendingReasons;
+  final bool canReview;
+  final Map<String, dynamic> closureRequest;
+  bool get isPending => status == 'PENDING_SYNC' || status == 'REVIEW_REQUIRED';
+  String? get detailSessionId =>
+      activeSessionId ?? (sessionIds.isEmpty ? null : sessionIds.first);
+  String get statusLabel => switch (status) {
+    'OPEN' => 'Aberto',
+    'PENDING_SYNC' => 'Aguardando sincronização',
+    'REVIEW_REQUIRED' => 'Revisão necessária no aplicativo',
+    'CLOSED' => 'Fechamento confirmado',
+    _ => 'Situação indisponível',
+  };
+  factory OwnerEmployeeCashWorkspace.fromMap(Map<String, dynamic> map) =>
+      OwnerEmployeeCashWorkspace(
+        employee: OwnerCashSessionEmployee.fromMap(_readMap(map, 'employee')),
+        activeSessionId: _readOptionalString(map, 'activeSessionId'),
+        sessionIds: _readStringList(map['sessionIds']),
+        status: _readString(map, 'status'),
+        expectedBalanceCents: _readOptionalInt(map, 'expectedBalanceCents'),
+        countedBalanceCents: _readOptionalInt(map, 'countedBalanceCents'),
+        differenceCents: _readOptionalInt(map, 'differenceCents'),
+        participants: _readMapList(
+          map['participants'],
+        ).map(OwnerCashParticipant.fromMap).toList(growable: false),
+        pendingReasons: _readStringList(map['pendingReasons']),
+        canReview: map['canReview'] == true,
+        closureRequest: _readMap(map, 'closureRequest'),
+      );
+}
+
+class OwnerCashParticipant {
+  const OwnerCashParticipant({
+    required this.deviceId,
+    required this.name,
+    required this.lastAckGeneration,
+  });
+  final String deviceId;
+  final String name;
+  final int? lastAckGeneration;
+  factory OwnerCashParticipant.fromMap(Map<String, dynamic> map) =>
+      OwnerCashParticipant(
+        deviceId: _readString(map, 'deviceId'),
+        name: _readString(map, 'name', fallback: 'Dispositivo sem nome'),
+        lastAckGeneration: _readOptionalInt(map, 'lastAckGeneration'),
+      );
 }

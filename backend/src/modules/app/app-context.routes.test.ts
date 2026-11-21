@@ -41,6 +41,40 @@ describe('app context bootstrap and guards', () => {
     assert.equal((response.data as { code?: string }).code, 'AUTH_REQUIRED');
   });
 
+  it('updates cash policy through the real owner receipt-settings route and bootstrap', async () => {
+    const fixture = await createFixture({ role: 'OWNER', deviceStatus: 'ACTIVE' });
+    const initial = await requestJson('GET', '/app/bootstrap', { token: fixture.token });
+    assert.equal(initial.status, 200);
+    assert.equal((initial.data as {company: {cashBlindClosureEnabled: boolean}}).company.cashBlindClosureEnabled, false);
+    const updated = await requestJson('PATCH', '/owner/receipt-settings', {
+      token: fixture.token,
+      body: { cashBlindClosureEnabled: true },
+    });
+    assert.equal(updated.status, 200);
+    const refreshed = await requestJson('GET', '/app/bootstrap', { token: fixture.token });
+    assert.equal(refreshed.status, 200);
+    const company = (refreshed.data as {company: {cashBlindClosureEnabled: boolean; cashPolicyRevision: number}}).company;
+    assert.equal(company.cashBlindClosureEnabled, true);
+    assert.equal(company.cashPolicyRevision, 1);
+    const replay = await requestJson('PATCH', '/owner/receipt-settings', {
+      token: fixture.token,
+      body: { cashBlindClosureEnabled: true },
+    });
+    assert.equal(replay.status, 200);
+    assert.equal((await prisma.company.findUniqueOrThrow({where:{id:fixture.companyId}})).cashPolicyRevision, 1);
+  });
+
+  it('concurrent first owner requests reuse one identical profile', async () => {
+    const fixture = await createFixture({ role: 'OWNER', deviceStatus: 'ACTIVE' });
+    const responses = await Promise.all(Array.from({length: 5}, () =>
+      requestJson('GET', '/app/bootstrap', {token:fixture.token}),
+    ));
+    assert.ok(responses.every(response => response.status === 200));
+    const profiles = await prisma.employeeProfile.findMany({where:{companyId:fixture.companyId,membershipId:fixture.membershipId}});
+    assert.equal(profiles.length, 1);
+    assert.equal(profiles[0]?.role, 'OWNER');
+  });
+
   it('rejects app snapshot without token', async () => {
     const response = await requestJson('GET', '/app/snapshot');
 

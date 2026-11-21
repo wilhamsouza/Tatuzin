@@ -19,6 +19,48 @@ let apiBaseUrl = "";
 let originalFetch: typeof globalThis.fetch;
 
 describe("owner routes", () => {
+  it("accepts dashboard sales queries for 7 and 30 days without relaxing list limits", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
+    const end = new Date(`${todayDate()}T00:00:00.000Z`);
+    for (const days of [7, 30]) {
+      const start = new Date(end);
+      start.setUTCDate(start.getUTCDate() - days + 1);
+      const query = new URLSearchParams({
+        startDate: start.toISOString().slice(0, 10), endDate: todayDate(),
+        groupBy: "day", page: "1", pageSize: "5", limit: "10",
+      });
+      const response = await requestJson("GET", `/owner/reports/sales-summary?${query}`, { token: fixture.token });
+      assert.equal(response.status, 200);
+      const data = response.data as { series: unknown[]; recentSales: { items: unknown[] } };
+      assert.ok(Array.isArray(data.series));
+      assert.ok(Array.isArray(data.recentSales.items));
+      query.set("limit", "30");
+      assert.equal((await requestJson("GET", `/owner/reports/sales-summary?${query}`, { token: fixture.token })).status, 422);
+    }
+  });
+  it("preserves every configured permission through disabled employee editing", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
+    const permissions = ["sales.create", "sales.cancel", "sales.discount", "cash.open", "cash.close", "cash.withdraw", "products.read", "products.write", "stock.adjust", "customers.read", "reports.advanced", "employees.manage"];
+    const created = await requestJson("POST", "/owner/employees", { token: fixture.token, body: {
+      name: "Gerente de teste", email: `${runId}-permissions@tatuzin.test`, role: "MANAGER", status: "ACTIVE", permissions,
+    }});
+    assert.equal(created.status, 201);
+    const id = (created.data as { employee: { id: string } }).employee.id;
+    assert.equal((await requestJson("POST", `/owner/employees/${id}/disable`, { token: fixture.token })).status, 200);
+    const listed = await requestJson("GET", "/owner/employees", { token: fixture.token });
+    const item = (listed.data as { items: Array<{ id: string; permissions: string[]; permissionsCount: number; permissionsAreComplete: boolean; status: string }> }).items.find((row) => row.id === id)!;
+    assert.equal(item.status, "DISABLED");
+    assert.equal(item.permissionsAreComplete, true);
+    assert.equal(item.permissionsCount, permissions.length);
+    assert.deepEqual([...item.permissions].sort(), [...permissions].sort());
+    const updated = await requestJson("PATCH", `/owner/employees/${id}`, { token: fixture.token, body: {
+      name: "Gerente atualizado", permissions: item.permissions,
+    }});
+    assert.equal(updated.status, 200);
+    assert.equal((await requestJson("POST", `/owner/employees/${id}/enable`, { token: fixture.token })).status, 200);
+    const saved = await prisma.employeeProfile.findUniqueOrThrow({ where: { id } });
+    assert.deepEqual([...(saved.permissions as string[])].sort(), [...permissions].sort());
+  });
   before(async () => {
     await prisma.$connect();
     originalFetch = globalThis.fetch;
@@ -891,6 +933,56 @@ describe("owner routes", () => {
       (crossCompany.data as { code?: string }).code,
       "OWNER_CUSTOMER_NOT_FOUND",
     );
+  });
+
+  it("attributes shared-cash and cashless sales to their sellers across owner reports", async () => {
+    const fixture = await createFixture({ plan: "PRO", role: "OWNER" });
+    const foreign = await createFixture({ plan: "PRO", role: "OWNER" });
+    const sellers: Array<{ user: { id: string }; profile: { id: string } }> = [];
+    for (const name of ["Seller A", "Seller B"]) {
+      const user = await prisma.user.create({ data: { email: `${runId}-${name.replaceAll(" ", "-")}@tatuzin.test`, name, passwordHash: "test-only" } });
+      const membership = await prisma.membership.create({ data: { userId: user.id, companyId: fixture.companyId, role: "OPERATOR" } });
+      const profile = await prisma.employeeProfile.create({ data: { companyId: fixture.companyId, userId: user.id, membershipId: membership.id, name, email: user.email, role: "SELLER", status: "ACTIVE", commissionEnabled: true, commissionType: "PERCENTAGE", commissionBase: "NET_SALES", commissionRateBps: 1000 } });
+      sellers.push({ user, profile });
+    }
+    const device = await prisma.companyDevice.findFirstOrThrow({ where: { companyId: fixture.companyId } });
+    const cash = await prisma.cashSession.create({ data: { companyId: fixture.companyId, userId: fixture.userId, localUuid: `${runId}-shared-cash`, status: "open" } });
+    const day = new Date(`${todayDate()}T12:00:00.000Z`);
+    const sale = (suffix: string, amount: number, overrides: Record<string, unknown> = {}) => prisma.sale.create({ data: {
+      companyId: fixture.companyId, cashSessionId: cash.id, localUuid: `${runId}-${suffix}`, paymentType: "cash", paymentMethod: "pix", status: "active", totalAmountCents: amount, totalCostCents: 0, soldAt: day, ...overrides,
+    } });
+    await sale("seller-a-1", 1000, { sellerUserId: sellers[0]!.user.id });
+    const explicitSale = await sale("seller-a-2", 2000, { sellerUserId: sellers[0]!.user.id });
+    await sale("seller-b-cashless", 6000, { cashSessionId: null, sellerUserId: sellers[1]!.user.id });
+    await sale("seller-a-canceled", 99999, { sellerUserId: sellers[0]!.user.id, status: "canceled", canceledAt: day });
+    const eventOnly = await sale("seller-b-legacy-event", 4000);
+    await sale("legacy-cash-owner", 500);
+    await sale("foreign-user", 88888, { sellerUserId: foreign.userId });
+    await sale("foreign-company", 77777, { companyId: foreign.companyId, cashSessionId: null, sellerUserId: sellers[0]!.user.id });
+    // An explicit seller remains authoritative even if a later sender differs.
+    for (const item of [eventOnly, explicitSale]) {
+      await prisma.syncEvent.create({ data: { companyId: fixture.companyId, deviceId: device.id, userId: sellers[1]!.user.id, eventId: `${runId}-actor-${item.id}`, feature: "pdv", entity: "sale", operation: "create", entityServerId: item.id, occurredAt: day, payload: {}, status: "ACCEPTED" } });
+    }
+    const query = `startDate=${todayDate()}&endDate=${todayDate()}&limit=10`;
+    const report = await requestJson("GET", `/owner/reports/employees?${query}`, { token: fixture.token });
+    assert.equal(report.status, 200);
+    type Row = { userId: string; employeeId: string; salesAmountCents: number; salesCount: number; commissionAmountCents?: number };
+    const rows = (report.data as { topEmployees: Row[] }).topEmployees;
+    assert.deepEqual(rows.map(r => [r.userId, r.salesAmountCents, r.salesCount]), [
+      [sellers[1]!.user.id, 10000, 2], [sellers[0]!.user.id, 3000, 2], [fixture.userId, 500, 1],
+    ]);
+    for (const route of ["employee-activity", "commissions"]) {
+      const response = await requestJson("GET", `/owner/${route}?${query}`, { token: fixture.token });
+      assert.equal(response.status, 200);
+      const data = response.data as { rows: Row[]; items?: Row[] };
+      const a = data.rows.find(row => row.employeeId === sellers[0]!.profile.id)!;
+      const b = data.rows.find(row => row.employeeId === sellers[1]!.profile.id)!;
+      assert.equal(a.salesAmountCents, 3000, route);
+      assert.equal(a.salesCount, 2, route);
+      assert.equal(b.salesAmountCents, 10000, route);
+      assert.equal(b.salesCount, 2, route);
+      if (route === "commissions") { assert.equal(a.commissionAmountCents, 300); assert.equal(b.commissionAmountCents, 1000); }
+    }
   });
 
   it("returns receivables, report catalog and employee reports safely", async () => {

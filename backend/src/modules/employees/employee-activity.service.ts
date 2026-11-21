@@ -69,7 +69,7 @@ type ActivityBuildResult = {
 };
 
 const TRACKING_NOTES = [
-  "Vendas, caixa, descontos e ajustes feitos pelo aplicativo sincronizado usam o usuario do evento sincronizado.",
+  "Vendas usam o vendedor registrado ou da comanda convertida; registros legados recorrem ao evento sincronizado e ao caixa. Outros movimentos usam o usuario do evento sincronizado.",
   "Vendas ou movimentos legados sem usuario/cash session identificavel nao entram no ranking por funcionario.",
   "Ajustes de estoque contam apenas baixas sem venda vinculada para evitar duplicar baixa automatica de venda.",
 ];
@@ -267,6 +267,7 @@ export class EmployeeActivityService {
       },
       select: {
         id: true,
+        sellerUserId: true,
         receiptNumber: true,
         status: true,
         totalAmountCents: true,

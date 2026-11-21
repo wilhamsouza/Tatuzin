@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { productUpsertSchema } from './products.schemas';
+import { productUpsertSchema, productUpdateSchema } from './products.schemas';
 
 const basePayload = {
   localUuid: 'product-local-1',
@@ -10,6 +10,22 @@ const basePayload = {
 };
 
 describe('productUpsertSchema', () => {
+  it('partial edits preserve absence instead of applying creation defaults', () => {
+    assert.deepEqual(productUpdateSchema.parse({ metadataOnly: true, name: 'Novo nome' }), {
+      metadataOnly: true, name: 'Novo nome',
+    });
+  });
+
+  it('keeps stable variant identities and rejects invalid revisions', () => {
+    const id = 'e624d768-0ef3-4094-8a76-95a9f3c2ec48';
+    const parsed = productUpsertSchema.parse({ ...basePayload, metadataOnly: true,
+      expectedCatalogRevision: 0, catalogType: 'variant',
+      variants: [{ id, sku: 'CAM-P', colorLabel: 'Preto', sizeLabel: 'P' }],
+    });
+    assert.equal(parsed.variants[0]!.id, id);
+    assert.equal(parsed.metadataOnly, true);
+    assert.equal(productUpdateSchema.safeParse({ expectedCatalogRevision: -1 }).success, false);
+  });
   it('accepts matrix variants without manual modelName or variantLabel', () => {
     const parsed = productUpsertSchema.safeParse({
       ...basePayload,

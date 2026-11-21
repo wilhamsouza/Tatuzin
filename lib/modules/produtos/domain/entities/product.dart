@@ -49,6 +49,7 @@ abstract final class ProductNiches {
 
 class Product {
   const Product({
+    this.catalogRevision,
     required this.id,
     required this.uuid,
     required this.name,
@@ -92,6 +93,7 @@ class Product {
     this.lastSyncedAt,
   });
 
+  final int? catalogRevision;
   final int id;
   final String uuid;
   final String name;
@@ -257,6 +259,7 @@ class Product {
 
 class ProductInput {
   const ProductInput({
+    this.expectedCatalogRevision,
     required this.name,
     this.description,
     this.categoryId,
@@ -279,6 +282,7 @@ class ProductInput {
     this.isActive = true,
   });
 
+  final int? expectedCatalogRevision;
   final String name;
   final String? description;
   final int? categoryId;

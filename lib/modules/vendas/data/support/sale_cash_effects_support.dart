@@ -122,6 +122,7 @@ class SaleCashEffectsSupport {
     required int amountCents,
     required String receiptNumber,
     required String reason,
+    PaymentMethod paymentMethod = PaymentMethod.cash,
   }) async {
     final sessionId = await CashDatabaseSupport.requireOpenSessionIdWithMessage(
       txn,
@@ -130,7 +131,15 @@ class SaleCashEffectsSupport {
     await CashSessionMathSupport.applySessionDeltas(
       txn,
       sessionId: sessionId,
-      fiadoReceiptsCashDeltaCents: -amountCents,
+      fiadoReceiptsCashDeltaCents: paymentMethod == PaymentMethod.cash
+          ? -amountCents
+          : 0,
+      fiadoReceiptsPixDeltaCents: paymentMethod == PaymentMethod.pix
+          ? -amountCents
+          : 0,
+      fiadoReceiptsCardDeltaCents: paymentMethod == PaymentMethod.card
+          ? -amountCents
+          : 0,
     );
     return CashDatabaseSupport.insertMovement(
       txn,
@@ -139,6 +148,7 @@ class SaleCashEffectsSupport {
       amountCents: -amountCents,
       timestamp: timestamp,
       referenceType: 'fiado',
+      paymentMethod: paymentMethod,
       referenceId: fiadoId,
       description:
           'Estorno dos recebimentos do fiado da venda $receiptNumber. Motivo: ${reason.trim()}',

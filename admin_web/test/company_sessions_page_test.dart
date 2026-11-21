@@ -143,7 +143,9 @@ class _FakeSessionsApiService extends AdminApiService {
         createdAt: DateTime.utc(2026, 5, 31, 10),
         lastSeenAt: DateTime.utc(2026, 5, 31, 11),
         lastRefreshedAt: DateTime.utc(2026, 5, 31, 11, 5),
-        refreshTokenExpiresAt: DateTime.utc(2026, 7),
+        refreshTokenExpiresAt: DateTime.now().toUtc().add(
+          const Duration(days: 30),
+        ),
         revokedAt: null,
         revokedReason: null,
       ),

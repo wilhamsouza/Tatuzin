@@ -168,6 +168,7 @@ class EditableProductRecipeItemDraft {
 
 class FashionGridVariantDraft {
   const FashionGridVariantDraft({
+    this.remoteId,
     required this.sizeLabel,
     required this.colorLabel,
     required this.stockMil,
@@ -177,6 +178,7 @@ class FashionGridVariantDraft {
     this.isActive = true,
   });
 
+  final String? remoteId;
   final String sizeLabel;
   final String colorLabel;
   final int stockMil;
@@ -204,6 +206,7 @@ class FashionGridVariantDraft {
     bool? isActive,
   }) {
     return FashionGridVariantDraft(
+      remoteId: remoteId,
       sizeLabel: sizeLabel ?? this.sizeLabel,
       colorLabel: colorLabel ?? this.colorLabel,
       stockMil: stockMil ?? this.stockMil,
@@ -216,6 +219,7 @@ class FashionGridVariantDraft {
 
   factory FashionGridVariantDraft.fromProduct(ProductVariant variant) {
     return FashionGridVariantDraft(
+      remoteId: variant.remoteId,
       sizeLabel: variant.sizeLabel,
       colorLabel: variant.colorLabel,
       stockMil: variant.stockMil,
@@ -376,6 +380,7 @@ class FashionGridDraft {
         final cell = resolveCell(size, color, skuSeed: skuSeed);
         inputs.add(
           ProductVariantInput(
+            remoteId: cell.remoteId,
             sku:
                 _cleanNullable(cell.sku) ??
                 buildDefaultSku(skuSeed, size, color),

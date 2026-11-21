@@ -1,3 +1,6 @@
+import '../features/platform/presentation/platform_pages.dart';
+import '../core/widgets/admin_platform_shell_scaffold.dart'
+    show AdminPlatformExperience;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -112,64 +115,177 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
         },
         routes: <RouteBase>[
           GoRoute(
+            path: '/commercial',
+            builder: (context, state) => const PlatformCommercialPage(),
+          ),
+          GoRoute(
+            path: '/usage',
+            builder: (context, state) => const PlatformUsagePage(),
+          ),
+          GoRoute(
+            path: '/administration',
+            builder: (context, state) => const PlatformAdministrationPage(),
+          ),
+          GoRoute(
+            path: '/support/cases',
+            builder: (context, state) => const PlatformCasesPage(),
+          ),
+          GoRoute(
+            path: '/support/cases/:caseId',
+            builder: (context, state) =>
+                PlatformCaseDetailPage(caseId: state.pathParameters['caseId']!),
+          ),
+          GoRoute(
+            path: '/companies/:companyId/commercial',
+            builder: (context, state) => PlatformCompanyWorkspace(
+              companyId: state.pathParameters['companyId']!,
+              child: PlatformCommercialPage(
+                companyId: state.pathParameters['companyId']!,
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/companies/:companyId/operations',
+            builder: (context, state) => PlatformCompanyWorkspace(
+              companyId: state.pathParameters['companyId']!,
+              child: PlatformOperationsPage(
+                companyId: state.pathParameters['companyId']!,
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/companies/:companyId/diagnostics',
+            builder: (context, state) => PlatformCompanyWorkspace(
+              companyId: state.pathParameters['companyId']!,
+              child: CompanySupportPage(
+                companyId: state.pathParameters['companyId']!,
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/companies/:companyId/history',
+            builder: (context, state) => PlatformCompanyWorkspace(
+              companyId: state.pathParameters['companyId']!,
+              child: PlatformRegistryPage(
+                kind: 'audit',
+                companyId: state.pathParameters['companyId'],
+              ),
+            ),
+          ),
+
+          GoRoute(
             path: '/dashboard',
-            builder: (context, state) => const DashboardPage(),
+            builder: (context, state) => const AdminPlatformExperience(
+              modern: PlatformOverviewPage(),
+              legacy: DashboardPage(),
+            ),
           ),
           GoRoute(
             path: '/companies',
-            builder: (context, state) => const CompaniesPage(),
+            builder: (context, state) => const AdminPlatformExperience(
+              modern: PlatformCompaniesPage(),
+              legacy: CompaniesPage(),
+            ),
           ),
           GoRoute(
             path: '/support',
-            builder: (context, state) => const SupportTriagePage(),
+            builder: (context, state) => const AdminPlatformExperience(
+              modern: PlatformTriagePage(),
+              legacy: SupportTriagePage(),
+            ),
           ),
           GoRoute(
             path: '/companies/:companyId/sync',
             builder: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
-              return SyncCompanyPage(companyId: companyId);
+              return AdminPlatformExperience(
+                modern: PlatformCompanyWorkspace(
+                  companyId: companyId,
+                  child: PlatformCompanySync(companyId: companyId),
+                ),
+                legacy: SyncCompanyPage(companyId: companyId),
+              );
             },
           ),
           GoRoute(
             path: '/companies/:companyId/license',
             builder: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
-              return LicenseCompanyPage(companyId: companyId);
+              return AdminPlatformExperience(
+                modern: PlatformCompanyWorkspace(
+                  companyId: companyId,
+                  child: PlatformCommercialPage(companyId: companyId),
+                ),
+                legacy: LicenseCompanyPage(companyId: companyId),
+              );
             },
           ),
           GoRoute(
             path: '/companies/:companyId/support',
             builder: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
-              return CompanySupportPage(companyId: companyId);
+              return AdminPlatformExperience(
+                modern: PlatformCompanyWorkspace(
+                  companyId: companyId,
+                  child: PlatformCasesPage(companyId: companyId),
+                ),
+                legacy: CompanySupportPage(companyId: companyId),
+              );
             },
           ),
           GoRoute(
             path: '/companies/:companyId/users',
             builder: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
-              return CompanyUsersPage(companyId: companyId);
+              return AdminPlatformExperience(
+                modern: PlatformCompanyWorkspace(
+                  companyId: companyId,
+                  child: PlatformCompanyPeople(companyId: companyId),
+                ),
+                legacy: CompanyUsersPage(companyId: companyId),
+              );
             },
           ),
           GoRoute(
             path: '/companies/:companyId/devices',
             builder: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
-              return DevicesPage(companyId: companyId);
+              return AdminPlatformExperience(
+                modern: PlatformCompanyWorkspace(
+                  companyId: companyId,
+                  child: PlatformRegistryPage(
+                    kind: 'devices',
+                    companyId: companyId,
+                  ),
+                ),
+                legacy: DevicesPage(companyId: companyId),
+              );
             },
           ),
           GoRoute(
             path: '/companies/:companyId/sessions',
             builder: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
-              return CompanySessionsPage(companyId: companyId);
+              return AdminPlatformExperience(
+                modern: PlatformCompanyWorkspace(
+                  companyId: companyId,
+                  child: CompanySessionsPage(companyId: companyId),
+                ),
+                legacy: CompanySessionsPage(companyId: companyId),
+              );
             },
           ),
           GoRoute(
             path: '/companies/:companyId',
             builder: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
-              return CompanyDetailPage(companyId: companyId);
+              return AdminPlatformExperience(
+                modern: PlatformCompanyWorkspace(
+                  companyId: companyId,
+                  child: PlatformCompanyOverview(companyId: companyId),
+                ),
+                legacy: CompanyDetailPage(companyId: companyId),
+              );
             },
           ),
           GoRoute(
@@ -181,7 +297,10 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/sync',
-            builder: (context, state) => const SyncCenterPage(),
+            builder: (context, state) => const AdminPlatformExperience(
+              modern: PlatformRegistryPage(kind: 'sync'),
+              legacy: SyncCenterPage(),
+            ),
           ),
           GoRoute(
             path: '/sync/:companyId',
@@ -189,7 +308,13 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
               final companyId = state.pathParameters['companyId'] ?? '';
               // Alias operacional de /companies/:companyId/sync.
               // Mantido para deep links antigos do Sync Center.
-              return SyncCompanyPage(companyId: companyId);
+              return AdminPlatformExperience(
+                modern: PlatformCompanyWorkspace(
+                  companyId: companyId,
+                  child: PlatformCompanySync(companyId: companyId),
+                ),
+                legacy: SyncCompanyPage(companyId: companyId),
+              );
             },
           ),
           GoRoute(
@@ -216,7 +341,10 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/devices',
-            builder: (context, state) => const DevicesPage(),
+            builder: (context, state) => const AdminPlatformExperience(
+              modern: PlatformRegistryPage(kind: 'devices'),
+              legacy: DevicesPage(),
+            ),
           ),
           GoRoute(
             path: '/licenses',
@@ -226,7 +354,13 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
             path: '/licenses/:companyId',
             builder: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
-              return LicenseCompanyPage(companyId: companyId);
+              return AdminPlatformExperience(
+                modern: PlatformCompanyWorkspace(
+                  companyId: companyId,
+                  child: PlatformCommercialPage(companyId: companyId),
+                ),
+                legacy: LicenseCompanyPage(companyId: companyId),
+              );
             },
           ),
           GoRoute(
@@ -252,8 +386,12 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/audit',
-            builder: (context, state) =>
-                AuditPage(initialQueryParameters: state.uri.queryParameters),
+            builder: (context, state) => AdminPlatformExperience(
+              modern: const PlatformRegistryPage(kind: 'audit'),
+              legacy: AuditPage(
+                initialQueryParameters: state.uri.queryParameters,
+              ),
+            ),
           ),
 
           // Rotas legadas mantidas para compatibilidade interna, fora do menu.
@@ -289,13 +427,22 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/billing',
-            builder: (context, state) => const BillingAdminPage(),
+            builder: (context, state) => const AdminPlatformExperience(
+              modern: PlatformCommercialPage(),
+              legacy: BillingAdminPage(),
+            ),
           ),
           GoRoute(
             path: '/billing/:companyId',
             builder: (context, state) {
               final companyId = state.pathParameters['companyId'] ?? '';
-              return BillingCompanyDetailPage(companyId: companyId);
+              return AdminPlatformExperience(
+                modern: PlatformCompanyWorkspace(
+                  companyId: companyId,
+                  child: PlatformCommercialPage(companyId: companyId),
+                ),
+                legacy: BillingCompanyDetailPage(companyId: companyId),
+              );
             },
           ),
           GoRoute(
@@ -309,6 +456,11 @@ final adminRouterProvider = Provider<GoRouter>((ref) {
 });
 
 String _titleForLocation(String location) {
+  if (location.startsWith('/commercial')) return 'Assinaturas e cobranças';
+  if (location.startsWith('/usage')) return 'Uso da plataforma';
+  if (location.startsWith('/administration')) return 'Administração';
+  if (location.startsWith('/support/cases')) return 'Chamados internos';
+
   if (location.startsWith('/companies/') && location.endsWith('/sync')) {
     return 'Sync Center';
   }

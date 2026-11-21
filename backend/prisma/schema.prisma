@@ -154,6 +154,9 @@ enum TenantDeletionAuditEventType {
 }
 
 model User {
+  cashWorkspaceParticipants CashWorkspaceParticipant[]
+  cashClosureRequests CashClosureRequest[]
+
   id                               String                     @id @default(uuid())
   email                            String                     @unique
   passwordHash                     String
@@ -177,6 +180,7 @@ model User {
   syncIncidents                    SyncIncident[]
   syncSupportCommands              SyncSupportCommand[]       @relation("SyncSupportCommandActor")
   deviceSyncDiagnostics            DeviceSyncDiagnostic[]
+  cashDivergenceReviewEvents        CashDivergenceReviewEvent[]
   cashSessions                     CashSession[]
   operationalOrders                OperationalOrder[]
   passwordResetTokens              PasswordResetToken[]
@@ -196,6 +200,9 @@ model User {
   tenantDeletionRequestsCancelled  TenantDeletionRequest[]    @relation("TenantDeletionRequestCanceller")
   tenantDeletionRequestsRejected   TenantDeletionRequest[]    @relation("TenantDeletionRequestRejector")
   tenantDeletionAuditEvents        TenantDeletionAuditEvent[] @relation("TenantDeletionAuditActor")
+  adminSupportCasesCreated         AdminSupportCase[]          @relation("AdminSupportCaseCreator")
+  adminSupportCasesAssigned        AdminSupportCase[]          @relation("AdminSupportCaseAssignee")
+  adminSupportCaseEvents           AdminSupportCaseEvent[]     @relation("AdminSupportCaseEventAuthor")
 }
 
 model AdminUserPermission {
@@ -216,7 +223,17 @@ model AdminUserPermission {
 }
 
 model Company {
+  cashWorkspaceParticipants CashWorkspaceParticipant[]
+  cashClosureRequests CashClosureRequest[]
+
   id                                   String                                @id @default(uuid())
+  experienceProfile                    String                                @default("moda")
+  cashBlindClosureEnabled              Boolean                               @default(false)
+  cashPolicyRevision                   Int                                   @default(0)
+  onboardingProductAt                  DateTime?
+  onboardingCashAt                     DateTime?
+  onboardingCompletedAt                DateTime?
+  productJourneyEvents                 ProductJourneyEvent[]
   name                                 String
   legalName                            String
   documentNumber                       String?
@@ -262,6 +279,7 @@ model Company {
   costs                                Cost[]
   fiadoPayments                        FiadoPayment[]
   cashEvents                           CashEvent[]
+  cashDivergenceReviewEvents            CashDivergenceReviewEvent[]
   cashSessions                         CashSession[]
   operationalOrders                    OperationalOrder[]
   operationalOrderItems                OperationalOrderItem[]
@@ -281,6 +299,53 @@ model Company {
   tenantDeletionRequests               TenantDeletionRequest[]
   tenantDeletionAuditEvents            TenantDeletionAuditEvent[]
   tenantDeletionDeviceAcknowledgements TenantDeletionDeviceAcknowledgement[]
+  adminSupportCases                    AdminSupportCase[]
+}
+
+// Platform support work. This is intentionally separate from tenant CRM tasks.
+model AdminSupportCase {
+  id                String                  @id @default(uuid())
+  companyId         String
+  subject           String
+  description       String
+  priority          String                  @default("NORMAL")
+  status            String                  @default("OPEN")
+  assigneeId        String?
+  creatorId         String
+  revision          Int                     @default(0)
+  evidenceType      String?
+  evidenceId        String?
+  evidenceKey       String?
+  activeEvidenceKey String?                 @unique
+  requestKey        String
+  resolution        String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  company           Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  creator           User                    @relation("AdminSupportCaseCreator", fields: [creatorId], references: [id], onDelete: Restrict)
+  assignee          User?                   @relation("AdminSupportCaseAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  events            AdminSupportCaseEvent[]
+
+  @@unique([companyId, requestKey])
+  @@unique([id, companyId])
+  @@index([companyId, status, updatedAt])
+  @@index([assigneeId, status, updatedAt])
+  @@index([status, priority, createdAt])
+}
+
+model AdminSupportCaseEvent {
+  id        String           @id @default(uuid())
+  caseId    String
+  companyId String
+  authorId  String
+  type      String
+  body      String
+  details   Json?
+  createdAt DateTime         @default(now())
+  case      AdminSupportCase @relation(fields: [caseId, companyId], references: [id, companyId], onDelete: Cascade)
+  author    User             @relation("AdminSupportCaseEventAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, caseId, createdAt])
 }
 
 model Membership {
@@ -467,6 +532,9 @@ model BillingAdminAuditLog {
 }
 
 model CompanyDevice {
+  cashWorkspaceParticipants CashWorkspaceParticipant[]
+  cashClosureAcks CashClosureAck[]
+
   id                  String                @id @default(uuid())
   companyId           String
   userId              String
@@ -899,7 +967,31 @@ model Category {
   @@index([companyId, name])
 }
 
+model ProductJourneyEvent {
+  id                String   @id @default(uuid())
+  companyId         String
+  deviceId          String
+  eventId           String
+  name              String
+  attemptId         String?
+  durationMs        Int?
+  occurredAt        DateTime
+  receivedAt        DateTime @default(now())
+  appVersion        String
+  plan              String
+  experienceProfile String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, deviceId, eventId])
+  @@index([receivedAt])
+  @@index([companyId, name, receivedAt])
+}
+
 model Product {
+  catalogRevision Int @default(0)
+  stockRevision Int @default(0)
+  minimumStockMil Int @default(0)
+  reorderPointMil Int?
   id                                     String                  @id @default(uuid())
   companyId                              String
   localUuid                              String
@@ -949,6 +1041,9 @@ model Product {
 }
 
 model ProductVariant {
+  stockRevision Int @default(0)
+  minimumStockMil Int @default(0)
+  reorderPointMil Int?
   id                    String                 @id @default(uuid())
   productId             String
   sku                   String
@@ -1313,6 +1408,12 @@ model Sale {
   cashSessionId             String?
   localUuid                 String
   customerId                String?
+  sellerUserId              String?
+  customerAssignmentRevision Int               @default(0)
+  customerAssignmentLocked   Boolean           @default(false)
+  creditUsedCents            Int               @default(0)
+  creditGeneratedCents       Int               @default(0)
+  customerAssignments       SaleCustomerAssignment[]
   receiptNumber             String?
   paymentType               String
   paymentMethod             String
@@ -1339,6 +1440,23 @@ model Sale {
   @@index([companyId, soldAt])
   @@index([companyId, updatedAt])
   @@index([companyId, status])
+}
+
+model SaleCustomerAssignment {
+  id                 String   @id
+  companyId          String
+  saleId             String
+  previousCustomerId String?
+  customerId         String
+  revision           Int
+  actorUserId        String
+  deviceId           String
+  occurredAt         DateTime
+  createdAt          DateTime @default(now())
+  sale               Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@unique([saleId, revision])
+  @@index([companyId, saleId])
 }
 
 model SaleItem {
@@ -1451,6 +1569,11 @@ model CashEvent {
 }
 
 model CashSession {
+  workspaceVersion     Int                @default(1)
+  workspaceRevision    Int                @default(0)
+  workspaceClosureGeneration Int           @default(0)
+  participants         CashWorkspaceParticipant[]
+  closureRequests      CashClosureRequest[]
   id                   String             @id @default(uuid())
   companyId            String
   deviceId             String?
@@ -1474,6 +1597,7 @@ model CashSession {
   sales                Sale[]
   cashEvents           CashEvent[]
   operationalOrders    OperationalOrder[]
+  divergenceReviewEvents CashDivergenceReviewEvent[]
 
   @@unique([companyId, localUuid])
   @@index([companyId, localId])
@@ -1681,4 +1805,167 @@ model AnalyticsCustomerDailySnapshot {
   @@unique([companyId, snapshotDate, customerKey])
   @@index([companyId, snapshotDate])
   @@index([companyId, customerId])
+}
+
+// Central inventory workspace. Identity fields remain immutable snapshots, so
+// historical rows survive product inactivation and don't retarget another SKU.
+model InventoryMovement {
+  id String @id @default(uuid())
+  companyId String
+  productId String
+  productVariantId String?
+  productName String
+  sku String?
+  unitMeasure String
+  quantityDeltaMil Int
+  stockBeforeMil Int
+  stockAfterMil Int
+  stockRevision Int
+  type String
+  origin String
+  referenceId String?
+  actorUserId String?
+  actorName String?
+  reason String?
+  notes String?
+  operationId String?
+  createdAt DateTime @default(now())
+  @@index([companyId, createdAt, id])
+  @@index([companyId, productId, productVariantId, createdAt])
+  @@index([companyId, operationId])
+}
+
+model InventoryCount {
+  id String @id @default(uuid())
+  companyId String
+  name String
+  status String @default("OPEN")
+  revision Int @default(0)
+  assigneeUserId String
+  createdByUserId String
+  requestId String
+  appliedAt DateTime?
+  canceledAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  items InventoryCountItem[]
+  @@unique([companyId, requestId])
+  @@index([companyId, updatedAt, id])
+}
+
+model InventoryCountItem {
+  id String @id @default(uuid())
+  countId String
+  productId String
+  productVariantId String?
+  targetKey String
+  productName String
+  sku String?
+  unitMeasure String
+  countedStockMil Int?
+  referenceStockMil Int
+  expectedStockRevision Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  count InventoryCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  @@unique([countId, targetKey])
+}
+
+model InventoryOperation {
+  id String @id @default(uuid())
+  companyId String
+  requestId String
+  actorUserId String
+  type String
+  fingerprint String
+  response Json
+  createdAt DateTime @default(now())
+  @@unique([companyId, requestId])
+}
+
+model InventoryAuditEvent {
+  id String @id @default(uuid())
+  companyId String
+  actorUserId String
+  actorName String
+  operation String
+  entityId String
+  before Json?
+  after Json?
+  createdAt DateTime @default(now())
+  @@index([companyId, entityId, createdAt])
+}
+
+// Append-only review events; revision zero is the implicit pending case.
+model CashDivergenceReviewEvent {
+  id String @id @default(uuid())
+  companyId String
+  sessionId String
+  requestId String
+  revision Int
+  status String
+  justification String
+  authorId String
+  authorName String
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  session CashSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  @@unique([companyId, sessionId, revision])
+  @@unique([companyId, requestId])
+  @@index([companyId, sessionId, createdAt])
+}
+
+model CashWorkspaceParticipant {
+ id String @id @default(uuid())
+ companyId String
+ sessionId String
+ userId String
+ deviceId String
+ joinedAt DateTime @default(now())
+ lastAckGeneration Int?
+ company Company @relation(fields:[companyId],references:[id],onDelete:Cascade)
+ session CashSession @relation(fields:[sessionId],references:[id],onDelete:Cascade)
+ user User @relation(fields:[userId],references:[id],onDelete:Restrict)
+ device CompanyDevice @relation(fields:[deviceId],references:[id],onDelete:NoAction)
+ @@unique([sessionId,deviceId])
+ @@index([companyId,userId])
+}
+model CashClosureRequest {
+ id String @id @default(uuid())
+ companyId String
+ sessionId String
+ userId String
+ requestId String
+ generation Int
+ ledgerRevision Int
+ status String
+ countedBalanceCents Int
+ localExpectedBalanceCents Int?
+ expectedBalanceCents Int
+ differenceCents Int
+ reason String?
+ notes String?
+ originalCount Json
+ requestFingerprint String
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ company Company @relation(fields:[companyId],references:[id],onDelete:Cascade)
+ session CashSession @relation(fields:[sessionId],references:[id],onDelete:Cascade)
+ user User @relation(fields:[userId],references:[id],onDelete:Restrict)
+ acknowledgements CashClosureAck[]
+ @@unique([companyId,requestId])
+ @@unique([sessionId,generation])
+ @@index([companyId,status])
+}
+model CashClosureAck {
+ id String @id @default(uuid())
+ closureId String
+ deviceId String
+ generation Int
+ ledgerRevision Int
+ createdAt DateTime @default(now())
+ closure CashClosureRequest @relation(fields:[closureId],references:[id],onDelete:Cascade)
+ device CompanyDevice @relation(fields:[deviceId],references:[id],onDelete:NoAction)
+ @@unique([closureId,deviceId,generation])
 }

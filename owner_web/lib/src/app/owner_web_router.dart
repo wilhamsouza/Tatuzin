@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/auth/owner_providers.dart';
+import '../core/auth/owner_return_location.dart';
 import '../core/models/owner_models.dart';
 import '../core/widgets/owner_shell_scaffold.dart';
 import '../features/auth/presentation/login_page.dart';
@@ -16,6 +17,9 @@ import '../features/finance/presentation/owner_finance_page.dart';
 import '../features/legal/presentation/data_deletion_page.dart';
 import '../features/legal/presentation/privacy_policy_page.dart';
 import '../features/products/presentation/owner_products_page.dart';
+import '../features/products/presentation/owner_catalog_page.dart';
+import '../features/inventory/presentation/owner_inventory_page.dart';
+import '../features/inventory/presentation/owner_inventory_count_page.dart';
 import '../features/reports/presentation/owner_cash_report_page.dart';
 import '../features/reports/presentation/owner_reports_page.dart';
 import '../features/sales/presentation/owner_sales_page.dart';
@@ -31,6 +35,8 @@ const ownerRoutePaths = <String>[
   '/clients',
   '/finance',
   '/products',
+  '/products/analysis',
+  '/inventory',
   '/reports',
   '/reports/cash',
   '/company',
@@ -56,7 +62,8 @@ String? ownerRouteRedirect({
   final isLoginRoute = path == '/login';
   final isPublicRoute = isPublicOwnerRoute(path);
 
-  if (isRestoring || !isAuthenticated) {
+  if (isRestoring) return null;
+  if (!isAuthenticated) {
     return isPublicRoute ? null : '/login';
   }
   if (isLoginRoute) {
@@ -72,6 +79,20 @@ final ownerRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: '/login',
     refreshListenable: authController,
     redirect: (context, state) {
+      if (!authController.isRestoring &&
+          !authController.isAuthenticated &&
+          !isPublicOwnerRoute(state.uri.path)) {
+        return Uri(
+          path: '/login',
+          queryParameters: {'from': state.uri.toString()},
+        ).toString();
+      }
+      if (!authController.isRestoring &&
+          authController.isAuthenticated &&
+          state.uri.path == '/login') {
+        final target = ownerReturnLocation(state.uri.queryParameters['from']);
+        if (target != null) return target;
+      }
       return ownerRouteRedirect(
         path: state.uri.path,
         isRestoring: authController.isRestoring,
@@ -91,6 +112,22 @@ final ownerRouterProvider = Provider<GoRouter>((ref) {
       ),
       ShellRoute(
         builder: (context, state, child) {
+          if (authController.isRestoring || authController.session == null) {
+            return const Scaffold(
+              body: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(
+                      semanticsLabel: 'Restaurando acesso',
+                    ),
+                    SizedBox(height: 16),
+                    Text('Restaurando acesso…'),
+                  ],
+                ),
+              ),
+            );
+          }
           final session = authController.session;
           final license = session?.company.license;
           if (session != null && license?.isPro != true) {
@@ -103,51 +140,79 @@ final ownerRouterProvider = Provider<GoRouter>((ref) {
           );
         },
         routes: <RouteBase>[
-          GoRoute(
+          _ownerPageRoute(
             path: '/dashboard',
             builder: (context, state) => const OwnerDashboardPage(),
           ),
-          GoRoute(
+          _ownerPageRoute(
             path: '/sales',
             builder: (context, state) => const OwnerSalesPage(),
           ),
-          GoRoute(
+          _ownerPageRoute(
             path: '/clients',
             builder: (context, state) => const OwnerClientsPage(),
           ),
-          GoRoute(
+          _ownerPageRoute(
             path: '/finance',
             builder: (context, state) => const OwnerFinancePage(),
           ),
-          GoRoute(
+          _ownerPageRoute(
             path: '/products',
+            builder: (context, state) => const OwnerCatalogPage(),
+          ),
+          _ownerPageRoute(
+            path: '/products/analysis',
             builder: (context, state) => const OwnerProductsPage(),
           ),
-          GoRoute(
+          _ownerPageRoute(
+            path: '/products/:productId',
+            builder: (context, state) => OwnerProductDetailPage(
+              productId: state.pathParameters['productId']!,
+            ),
+          ),
+          _ownerPageRoute(
+            path: '/inventory',
+            builder: (context, state) => const OwnerInventoryPage(),
+          ),
+          _ownerPageRoute(
+            path: '/inventory/items/:productId',
+            builder: (context, state) => OwnerInventoryItemPage(
+              productId: state.pathParameters['productId']!,
+              variantId: state.uri.queryParameters['productVariantId'],
+            ),
+          ),
+          _ownerPageRoute(
+            path: '/inventory/counts/:sessionId',
+            builder: (context, state) => OwnerInventoryCountPage(
+              sessionId: state.pathParameters['sessionId']!,
+            ),
+          ),
+          _ownerPageRoute(
             path: '/reports',
             builder: (context, state) => const OwnerReportsPage(),
           ),
-          GoRoute(
+          _ownerPageRoute(
             path: '/reports/cash',
-            builder: (context, state) => const OwnerCashReportPage(),
+            builder: (context, state) =>
+                OwnerCashReportPage(query: state.uri.queryParameters),
           ),
-          GoRoute(
+          _ownerPageRoute(
             path: '/company',
             builder: (context, state) => const OwnerCompanyPage(),
           ),
-          GoRoute(
+          _ownerPageRoute(
             path: '/billing',
             builder: (context, state) => const OwnerBillingPage(),
           ),
-          GoRoute(
+          _ownerPageRoute(
             path: '/employees',
             builder: (context, state) => const OwnerEmployeesPage(),
           ),
-          GoRoute(
+          _ownerPageRoute(
             path: '/devices',
             builder: (context, state) => const OwnerDevicesPage(),
           ),
-          GoRoute(
+          _ownerPageRoute(
             path: '/settings',
             builder: (context, state) => const OwnerSettingsPage(),
           ),
@@ -156,6 +221,20 @@ final ownerRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+// Scroll belongs to the route page, inside the ShellRoute navigator. Wrapping
+// the navigator itself makes long pages overflow its bounded viewport.
+GoRoute _ownerPageRoute({
+  required String path,
+  required Widget Function(BuildContext, GoRouterState) builder,
+}) => GoRoute(
+  path: path,
+  builder: (context, state) => SingleChildScrollView(
+    key: PageStorageKey('owner-page-${state.uri.path}'),
+    padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 1100 ? 16 : 24),
+    child: builder(context, state),
+  ),
+);
 
 String _titleForLocation(String location) {
   if (location.startsWith('/sales')) {
@@ -168,7 +247,12 @@ String _titleForLocation(String location) {
     return 'Fiado e financeiro';
   }
   if (location.startsWith('/products')) {
-    return 'Produtos e estoque';
+    return location.startsWith('/products/analysis')
+        ? 'Análise de produtos'
+        : 'Produtos';
+  }
+  if (location.startsWith('/inventory')) {
+    return 'Estoque';
   }
   if (location.startsWith('/reports')) {
     return 'Relatórios';

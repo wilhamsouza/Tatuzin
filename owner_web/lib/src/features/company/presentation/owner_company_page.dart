@@ -7,6 +7,7 @@ import '../../../core/models/owner_models.dart';
 import '../../../core/widgets/owner_async_view.dart';
 import '../../../core/widgets/owner_formatters.dart';
 import '../../../core/widgets/owner_management_widgets.dart';
+import 'owner_cash_policy_card.dart';
 
 class OwnerCompanyPage extends ConsumerWidget {
   const OwnerCompanyPage({super.key});
@@ -63,6 +64,8 @@ class OwnerCompanyPage extends ConsumerWidget {
                 ],
               ),
             ),
+            const SizedBox(height: 18),
+            OwnerCashPolicyCard(company: data),
             const SizedBox(height: 18),
             Wrap(
               spacing: 16,

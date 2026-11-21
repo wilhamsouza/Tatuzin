@@ -10,6 +10,7 @@ import {
   productListQuerySchema,
   type ProductListQueryInput,
   productUpsertSchema,
+  productUpdateSchema,
 } from './products.schemas';
 import { ProductsService } from './products.service';
 
@@ -32,7 +33,7 @@ productsRouter.get(
   requireAnyEmployeePermission(['products.read', 'products.write']),
   validateQuery(productListQuerySchema),
   asyncHandler(async (request, response) => {
-    const query = request.query as ProductListQueryInput;
+    const query = request.query as unknown as ProductListQueryInput;
     const result = await productsService.listForCompany(
       request.auth!.companyId,
       query,
@@ -77,6 +78,7 @@ productsRouter.post(
     const product = await productsService.create(
       request.auth!.companyId,
       request.body,
+      request.auth!.userId,
     );
     response.status(201).json({ product });
   }),
@@ -85,7 +87,7 @@ productsRouter.post(
 productsRouter.put(
   '/:id',
   requireEmployeePermission('products.write'),
-  validateBody(productUpsertSchema),
+  validateBody(productUpdateSchema),
   asyncHandler(async (request, response) => {
     const productId = Array.isArray(request.params.id)
       ? request.params.id[0]

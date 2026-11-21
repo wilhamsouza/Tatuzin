@@ -7,6 +7,7 @@ import {
   type Membership,
 } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { generateCompanySlug } from './company-slug';
 
 import { env } from "../../config/env";
 import { prisma } from "../../database/prisma";
@@ -85,23 +86,11 @@ export class AuthService {
     private readonly sessionService = new AuthSessionService(),
     private readonly passwordResetDelivery: PasswordResetDeliveryService = new ResendPasswordResetDeliveryService(),
     private readonly db = prisma,
+    private readonly slugFactory = generateCompanySlug,
   ) {}
 
   async register(input: RegisterInput) {
-    await this.ensureRegistrationAvailable({
-      email: input.email,
-      companySlug: input.companySlug,
-    });
-
-    const passwordHash = await bcrypt.hash(input.password, 10);
-    const result = await this.createOwnerAccount({
-      companyName: input.companyName,
-      companySlug: input.companySlug,
-      userName: input.userName,
-      email: input.email,
-      passwordHash,
-      isPlatformAdmin: false,
-    });
+    const result = await this.registerOwner(input);
 
     const sessionTokens = await this.sessionService.createSession({
       userId: result.user.id,
@@ -121,6 +110,26 @@ export class AuthService {
     });
 
     return this.buildAuthPayload(result, sessionTokens);
+  }
+
+  private async registerOwner(input: RegisterInput): Promise<MembershipWithRelations> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const companySlug = input.companySlug ?? this.slugFactory(input.companyName);
+      try {
+        await this.ensureRegistrationAvailable({ email: input.email, companySlug });
+        return await this.createOwnerAccount({
+          companyName: input.companyName, companySlug,
+          userName: input.userName, email: input.email,
+          passwordHash: await bcrypt.hash(input.password, 10), isPlatformAdmin: false,
+        });
+      } catch (error) {
+        if (input.companySlug !== undefined || attempt === 2 ||
+            !(error instanceof AppError) || error.code !== 'COMPANY_SLUG_ALREADY_IN_USE') {
+          throw error;
+        }
+      }
+    }
+    throw new AppError('Não foi possível criar a loja agora.', 503, 'REGISTRATION_UNAVAILABLE');
   }
 
   async login(input: LoginInput) {

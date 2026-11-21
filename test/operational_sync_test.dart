@@ -162,7 +162,10 @@ void main() {
       final queueRepository = SqliteOperationalSyncQueueRepository(appDatabase);
 
       final opened = await repository.openSession(initialFloatCents: 5000);
-      final closed = await repository.closeSession(countedBalanceCents: 6200);
+      final closed = await repository.closeSession(
+        countedBalanceCents: 6200,
+        notes: 'Diferença conferida na contagem.',
+      );
       final items = await queueRepository.listPending(
         limit: 10,
         retryOnly: false,
@@ -1726,6 +1729,51 @@ void main() {
       );
       expect(queue.lastPullError, isNull);
     });
+
+    test(
+      'cash endpoint failure preserves accepted push and reports pending cash only',
+      () async {
+        final event = _event(entity: 'sale', id: 'sale-cash-endpoint-failed');
+        final queue = _MemoryOperationalSyncQueueRepository(events: [event]);
+        final remote = _FakeOperationalSyncRemoteDataSource(
+          pushResponse: OperationalSyncPushResponse(
+            currentServerVersion: '1',
+            accepted: [
+              OperationalSyncPushItemResult(
+                eventId: event.eventId,
+                entity: 'sale',
+                operation: 'create',
+                serverVersion: '1',
+              ),
+            ],
+            duplicates: const [],
+            rejected: const [],
+            conflicts: const [],
+          ),
+        );
+        final runner = OperationalSyncRunner(
+          queueRepository: queue,
+          remoteDataSource: remote,
+          snapshotRemoteDataSource: const _FakeAppSnapshotRemoteDataSource(
+            version: '0',
+          ),
+          shouldContinue: () => true,
+          onCacheSnapshotChanged: () {},
+          onCashWorkspaceDrained: () async {
+            throw const NetworkRequestException('cash temporarily offline');
+          },
+        );
+        final result = await runner.run(retryOnly: false);
+        expect(result.syncedCount, 1);
+        expect(result.failedCount, 0);
+        expect(queue.statusByEventId[event.eventId], 'accepted:1');
+        expect(result.cashWorkspaceFailed, isTrue);
+        expect(result.pullFailed, isFalse);
+        expect(result.snapshotFailed, isFalse);
+        expect(result.isClean, isFalse);
+        expect(result.message, contains('caixa continua pendente'));
+      },
+    );
 
     test('push ok com pull falhando registra estado parcial', () async {
       final event = _event(entity: 'sale', id: 'sale-pull-failed');

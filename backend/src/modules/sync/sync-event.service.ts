@@ -1,3 +1,4 @@
+import { setInventoryContext } from '../inventory/inventory-context';
 import { Prisma, SyncConflictStatus, SyncEventStatus } from "@prisma/client";
 import { ZodError } from "zod";
 
@@ -64,6 +65,7 @@ type PullSyncEvent = {
 };
 
 type StoredSyncEvent = {
+  userId: string;
   id: string;
   deviceId: string;
   eventId: string;
@@ -393,6 +395,7 @@ export class SyncEventService {
 
     try {
       return await prisma.$transaction(async (tx) => {
+        await setInventoryContext(tx, { actorUserId: context.user.id, actorName: context.user.name, type: event.entity === 'stockDeduction' ? 'SALE_OUT' : 'STOCK_CHANGE', origin: 'sync:' + event.entity, referenceId: event.entityLocalId ?? event.eventId, operationId: event.eventId });
         const materialized =
           (await this.detectStaleLocalSequence(tx, context, event)) ??
           (await this.materializer.materialize({
@@ -738,6 +741,8 @@ export class SyncEventService {
       occurredAt: stored.occurredAt.toISOString(),
       payload,
     };
+    const originalActor = await tx.user.findUnique({ where: { id: stored.userId }, select: { name: true } });
+    await setInventoryContext(tx, { actorUserId: stored.userId, actorName: originalActor?.name, type: stored.entity === 'stockDeduction' ? 'SALE_OUT' : 'STOCK_CHANGE', origin: 'sync:' + stored.entity, referenceId: stored.entityLocalId ?? stored.eventId, operationId: stored.eventId });
     const materialized = await this.materializer.materialize({
       tx,
       context,
@@ -1258,6 +1263,9 @@ export class SyncEventService {
         return this.operationalOrderItemProjection(context.company.id, event);
       case "sale":
         return this.saleProjection(context.company.id, event);
+      case "saleCustomerAssignment":
+      case "saleCustomerLock":
+        return this.saleCustomerProjection(context.company.id, event);
       case "saleItem":
         return this.saleItemProjection(context.company.id, event);
       case "payment":
@@ -1280,6 +1288,8 @@ export class SyncEventService {
       "operationalOrder",
       "operationalOrderItem",
       "sale",
+      "saleCustomerAssignment",
+      "saleCustomerLock",
       "saleItem",
       "payment",
       "receipt",
@@ -1466,6 +1476,9 @@ export class SyncEventService {
         cashSessionId: true,
         soldAt: true,
         createdAt: true,
+        customerId: true,
+        customerAssignmentRevision: true,
+        sellerUserId: true,
       },
     });
     if (sale == null) {
@@ -1485,7 +1498,21 @@ export class SyncEventService {
       cashSessionId: sale.cashSessionId,
       soldAt: sale.soldAt.toISOString(),
       createdAt: sale.createdAt.toISOString(),
+      customerId: sale.customerId,
+      customerAssignmentRevision: sale.customerAssignmentRevision,
+      sellerUserId: sale.sellerUserId,
     };
+  }
+
+  private async saleCustomerProjection(companyId: string, event: PullSyncEvent) {
+    const sale = await prisma.sale.findFirst({ where: { id: event.entityServerId!, companyId },
+      select: { id: true, localUuid: true, customerId: true, customerAssignmentRevision: true,
+        customerAssignmentLocked: true,
+        customer: { select: { id: true, localUuid: true } } } });
+    if (!sale) return null;
+    return { companyId, saleUuid: sale.localUuid, saleServerId: sale.id,
+      customerServerId: sale.customerId, customerUuid: sale.customer?.localUuid ?? null,
+      revision: sale.customerAssignmentRevision, locked: sale.customerAssignmentLocked };
   }
 
   private async saleItemProjection(companyId: string, event: PullSyncEvent) {

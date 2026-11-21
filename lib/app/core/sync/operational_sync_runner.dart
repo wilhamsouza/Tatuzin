@@ -19,13 +19,17 @@ class OperationalSyncRunner {
     required AppSnapshotRemoteDataSource snapshotRemoteDataSource,
     required bool Function() shouldContinue,
     required void Function() onCacheSnapshotChanged,
+    Future<void> Function()? onCashWorkspaceDrained,
+    Future<void> Function()? onCashWorkspaceSyncStarting,
   }) : _queueRepository = queueRepository,
        _remoteDataSource = remoteDataSource,
        _projectionApplier = projectionApplier,
        _snapshotHydrator = snapshotHydrator,
        _snapshotRemoteDataSource = snapshotRemoteDataSource,
        _shouldContinue = shouldContinue,
-       _onCacheSnapshotChanged = onCacheSnapshotChanged;
+       _onCacheSnapshotChanged = onCacheSnapshotChanged,
+       _onCashWorkspaceDrained = onCashWorkspaceDrained,
+       _onCashWorkspaceSyncStarting = onCashWorkspaceSyncStarting;
 
   static const int maxEventsPerBatch = 100;
   static const int pullLimitPerPage = 100;
@@ -52,6 +56,8 @@ class OperationalSyncRunner {
   final AppSnapshotRemoteDataSource _snapshotRemoteDataSource;
   final bool Function() _shouldContinue;
   final void Function() _onCacheSnapshotChanged;
+  final Future<void> Function()? _onCashWorkspaceDrained;
+  final Future<void> Function()? _onCashWorkspaceSyncStarting;
 
   Future<SyncBatchResult> run({
     required bool retryOnly,
@@ -74,6 +80,19 @@ class OperationalSyncRunner {
       );
     }
 
+    String? cashWorkspaceError;
+    if (_onCashWorkspaceSyncStarting != null) {
+      try {
+        await _onCashWorkspaceSyncStarting();
+      } catch (error, stackTrace) {
+        cashWorkspaceError = error.toString();
+        AppLogger.error(
+          '[OperationalSync] cash_workspace_preflight_pending',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
     await _queueRepository.recoverStalePushing(staleAfter: stalePushingAfter);
     await _reportDiagnosticsSafely();
     await _executeSupportCommands();
@@ -85,10 +104,16 @@ class OperationalSyncRunner {
     );
 
     if (pending.isNotEmpty) {
+      if (!_shouldContinue()) {
+        return _cancelled(retryOnly: retryOnly, startedAt: startedAt);
+      }
       await _queueRepository.markPushing(pending, startedAt: DateTime.now());
       processedCount += pending.length;
       try {
         final checkpoint = await _queueRepository.readCheckpoint();
+        if (!_shouldContinue()) {
+          return _cancelled(retryOnly: retryOnly, startedAt: startedAt);
+        }
         final response = await _remoteDataSource.pushEvents(
           pending.map((item) => item.event).toList(growable: false),
           lastKnownServerVersion: checkpoint,
@@ -137,6 +162,11 @@ class OperationalSyncRunner {
           );
           conflictCount++;
         }
+        if (pending.any(
+          (item) => item.event.entity == 'saleCustomerAssignment',
+        )) {
+          _onCacheSnapshotChanged();
+        }
       } catch (error, stackTrace) {
         failedCount += pending.length;
         await _queueRepository.markFailed(
@@ -168,6 +198,22 @@ class OperationalSyncRunner {
     final refreshOutcome = _shouldContinue()
         ? await _pullAndRefreshSnapshot()
         : const _RefreshOutcome();
+    if (_shouldContinue() &&
+        !refreshOutcome.pullFailed &&
+        !refreshOutcome.snapshotFailed &&
+        _onCashWorkspaceDrained != null) {
+      try {
+        await _onCashWorkspaceDrained();
+        _onCacheSnapshotChanged();
+      } catch (error, stackTrace) {
+        cashWorkspaceError = error.toString();
+        AppLogger.error(
+          '[OperationalSync] cash_workspace_pending_after_push',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }
     await _reportDiagnosticsSafely();
 
     return _result(
@@ -177,6 +223,8 @@ class OperationalSyncRunner {
       syncedCount: syncedCount,
       failedCount: failedCount,
       conflictCount: conflictCount,
+      cashWorkspaceFailed: cashWorkspaceError != null,
+      cashWorkspaceError: cashWorkspaceError,
       pullFailed: refreshOutcome.pullFailed,
       snapshotFailed: refreshOutcome.snapshotFailed,
       lastPullError: refreshOutcome.lastPullError,
@@ -731,6 +779,8 @@ class OperationalSyncRunner {
     int syncedCount = 0,
     int failedCount = 0,
     int conflictCount = 0,
+    bool cashWorkspaceFailed = false,
+    String? cashWorkspaceError,
     bool pullFailed = false,
     bool snapshotFailed = false,
     String? lastPullError,
@@ -745,6 +795,8 @@ class OperationalSyncRunner {
       reprocessedOnly: retryOnly,
       startedAt: startedAt,
       finishedAt: DateTime.now(),
+      cashWorkspaceFailed: cashWorkspaceFailed,
+      cashWorkspaceError: cashWorkspaceError,
       pullFailed: pullFailed,
       snapshotFailed: snapshotFailed,
       lastPullError: lastPullError,

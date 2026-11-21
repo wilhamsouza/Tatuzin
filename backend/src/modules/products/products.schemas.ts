@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { createListQuerySchema } from '../../shared/http/pagination';
+import { booleanQuerySchema, includeDeletedQuerySchema, paginationQuerySchema } from '../../shared/http/pagination';
 
 const nullableTrimmedString = (maxLength: number) =>
   z
@@ -19,6 +19,7 @@ const deletedAtField = z
   .transform((value) => (value == null ? null : new Date(value)));
 
 const productVariantSchema = z.object({
+  id: z.string().uuid().optional(),
   sku: z.string().trim().min(1).max(80),
   colorLabel: z.string().trim().min(1).max(80),
   sizeLabel: z.string().trim().min(1).max(80),
@@ -63,6 +64,8 @@ const productModifierGroupSchema = z
 
 export const productUpsertSchema = z
   .object({
+    metadataOnly: z.boolean().default(false),
+    expectedCatalogRevision: z.number().int().min(0).optional(),
     localUuid: z.string().trim().min(1).max(80),
     name: z.string().trim().min(1).max(120),
     categoryId: z.union([z.string().uuid(), z.null(), z.undefined()]).transform(
@@ -106,7 +109,7 @@ export const productUpsertSchema = z
     }
 
     if (hasVariants) {
-      if (!value.variants.some((variant) => variant.isActive)) {
+      if (value.isActive && value.deletedAt == null && !value.variants.some((variant) => variant.isActive)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['variants'],
@@ -133,9 +136,15 @@ export const productUpsertSchema = z
     }
   });
 
-export const productListQuerySchema = createListQuerySchema({
-  includeDeleted: true,
+export const productUpdateSchema = productUpsertSchema.innerType().partial();
+
+export const productListQuerySchema = paginationQuerySchema.extend({
+  includeDeleted: includeDeletedQuerySchema,
+  search: z.string().trim().max(120).optional(),
+  categoryId: z.string().uuid().optional(),
+  isActive: booleanQuerySchema.optional(),
 });
 
 export type ProductUpsertInput = z.infer<typeof productUpsertSchema>;
+export type ProductUpdateInput = z.infer<typeof productUpdateSchema>;
 export type ProductListQueryInput = z.infer<typeof productListQuerySchema>;

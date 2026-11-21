@@ -449,6 +449,19 @@ class OwnerApiService {
     return OwnerReportsCatalog.fromMap(response);
   }
 
+  Future<OwnerCashWorkspace> getCashWorkspace() async {
+    final response = await _apiClient.getJson(
+      '/owner/reports/cash-workspace',
+      accessToken: await _readRequiredToken(),
+    );
+    if (response is! Map<String, dynamic>) {
+      throw const OwnerApiException(
+        message: 'Não foi possível ler o caixa geral da empresa.',
+      );
+    }
+    return OwnerCashWorkspace.fromMap(response);
+  }
+
   Future<OwnerCashSessionsReport> getCashSessions({
     OwnerCashSessionsQuery query = const OwnerCashSessionsQuery(),
   }) async {
@@ -477,6 +490,22 @@ class OwnerApiService {
     }
     return OwnerCashSessionDetail.fromMap(response);
   }
+
+  Future<void> updateCashPolicy({required bool blindClosureEnabled}) async {
+    await _apiClient.patchJson(
+      '/owner/receipt-settings',
+      accessToken: await _readRequiredToken(),
+      body: {'cashBlindClosureEnabled': blindClosureEnabled},
+    );
+  }
+
+  Future<Map<String, dynamic>> reviewCashDivergence({
+    required String cashSessionId,
+    required Map<String, dynamic> body,
+  }) => _writeMap(
+    '/owner/reports/cash-sessions/${Uri.encodeComponent(cashSessionId)}/divergence-review',
+    body,
+  );
 
   Future<Map<String, dynamic>> registerSaleReturn({
     required String cashSessionId,

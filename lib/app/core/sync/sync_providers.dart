@@ -1,3 +1,4 @@
+import '../../../modules/caixa/data/sqlite_cash_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../app_context/app_operational_context.dart';
@@ -166,6 +167,19 @@ final operationalSyncRunnerProvider = Provider<OperationalSyncRunner>((ref) {
   });
 
   return OperationalSyncRunner(
+    onCashWorkspaceSyncStarting: () => ref
+        .read(localCashRepositoryProvider)
+        .prepareEmployeeWorkspaceSynchronization(),
+    onCashWorkspaceDrained: () async {
+      final repository = ref.read(localCashRepositoryProvider);
+      try {
+        await repository.synchronizeEmployeeWorkspaceAfterDrain();
+        await repository.recordEmployeeWorkspaceError(null);
+      } catch (error) {
+        await repository.recordEmployeeWorkspaceError(error.toString());
+        rethrow;
+      }
+    },
     queueRepository: ref.watch(operationalSyncQueueRepositoryProvider),
     remoteDataSource: ref.watch(operationalSyncRemoteDataSourceProvider),
     projectionApplier: ref.watch(operationalSyncProjectionApplierProvider),

@@ -1,3 +1,4 @@
+export 'admin_platform_shell_scaffold.dart' show AdminShellScaffold;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,8 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../auth/admin_providers.dart';
 import 'admin_breadcrumbs.dart';
 
-class AdminShellScaffold extends ConsumerWidget {
-  const AdminShellScaffold({
+class LegacyAdminShellScaffold extends ConsumerWidget {
+  const LegacyAdminShellScaffold({
     super.key,
     required this.currentLocation,
     required this.title,
@@ -288,10 +289,10 @@ class _Sidebar extends StatelessWidget {
               const SizedBox(height: 8),
               Expanded(
                 child: ListView.separated(
-                  itemCount: AdminShellScaffold._items.length,
+                  itemCount: LegacyAdminShellScaffold._items.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 4),
                   itemBuilder: (context, index) {
-                    final item = AdminShellScaffold._items[index];
+                    final item = LegacyAdminShellScaffold._items[index];
                     final selected = _isSelected(item.route, currentLocation);
                     return ListTile(
                       dense: true,

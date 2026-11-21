@@ -143,7 +143,7 @@ void main() {
     await tester.pumpWidget(
       const ProviderScope(
         child: MaterialApp(
-          home: AdminShellScaffold(
+          home: LegacyAdminShellScaffold(
             currentLocation: '/dashboard',
             title: 'Dashboard',
             child: SizedBox.shrink(),
@@ -170,7 +170,7 @@ void main() {
     await tester.pumpWidget(
       const ProviderScope(
         child: MaterialApp(
-          home: AdminShellScaffold(
+          home: LegacyAdminShellScaffold(
             currentLocation: '/companies/company-1/support',
             title: 'Central de suporte da empresa',
             child: SizedBox.shrink(),
@@ -205,7 +205,7 @@ void main() {
     await tester.pumpWidget(
       const ProviderScope(
         child: MaterialApp(
-          home: AdminShellScaffold(
+          home: LegacyAdminShellScaffold(
             currentLocation: '/companies/company-1/license',
             title: 'Licenca e billing da empresa',
             child: SizedBox.shrink(),
@@ -232,10 +232,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Empresas ativas'), findsOneWidget);
-    expect(find.text('Sync com atencao'), findsOneWidget);
-    expect(find.text('Licencas vencendo'), findsOneWidget);
-    expect(find.text('Dispositivos online'), findsOneWidget);
+    expect(find.text('Empresas ativas nesta seleção'), findsOneWidget);
+    expect(find.text('Empresas com sync desabilitado'), findsOneWidget);
+    expect(find.text('Licenças vencendo nesta seleção'), findsOneWidget);
+    expect(find.text('Empresas com sync habilitado'), findsOneWidget);
     expect(find.text('Empresas com problemas ativos'), findsOneWidget);
     expect(find.text('Abrir empresa'), findsOneWidget);
     expect(find.text('Abrir Sync Center'), findsWidgets);

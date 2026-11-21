@@ -2,6 +2,12 @@ import 'cash_enums.dart';
 
 class CashSession {
   const CashSession({
+    this.closingDetails,
+    this.workspaceVersion = 2,
+    this.employeeId,
+    this.revision = 0,
+    this.blindClosureEnabled = false,
+    this.policyRevision = 0,
     required this.id,
     required this.uuid,
     required this.userId,
@@ -23,6 +29,12 @@ class CashSession {
     required this.notes,
   });
 
+  final Map<String, dynamic>? closingDetails;
+  final int workspaceVersion;
+  final String? employeeId;
+  final int revision;
+  final bool blindClosureEnabled;
+  final int policyRevision;
   final int id;
   final String uuid;
   final int? userId;
@@ -44,6 +56,9 @@ class CashSession {
   final String? notes;
 
   bool get isOpen => status == CashSessionStatus.open;
+  bool get isClosed => status == CashSessionStatus.closed;
+  bool get isClosurePending => status == CashSessionStatus.pendingSync;
+  bool get needsReview => status == CashSessionStatus.reviewRequired;
 
   int get totalSuppliesCents => suppliesCents;
 

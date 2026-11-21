@@ -2,6 +2,12 @@ import 'package:tatuzin/app/core/theme/app_theme.dart';
 import 'package:tatuzin/app/routes/route_names.dart';
 import 'package:tatuzin/modules/more/presentation/pages/more_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:tatuzin/app/core/session/app_session.dart';
+import 'package:tatuzin/app/core/session/session_provider.dart';
+import 'package:tatuzin/app/core/entitlements/plan_entitlements.dart';
+import 'package:tatuzin/app/core/session/company_context.dart';
+import 'test_tenant_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
@@ -49,9 +55,38 @@ void main() {
         ),
       ],
     );
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    setTestTenantSession(container);
+    final session = container.read(appSessionProvider);
+    container
+        .read(appSessionProvider.notifier)
+        .setAuthenticatedSession(
+          scope: session.scope,
+          user: session.user,
+          company: const CompanyContext(
+            localId: 1,
+            remoteId: 'company-1',
+            displayName: 'Loja',
+            legalName: 'Loja',
+            documentNumber: null,
+            entitlements: PlanEntitlements.pro,
+          ),
+          clientInstanceId: session.clientInstanceId,
+          membership: const AppMembershipContext(
+            role: 'OWNER',
+            permissions: {},
+          ),
+        );
 
     await tester.pumpWidget(
-      MaterialApp.router(theme: AppTheme.light(), routerConfig: router),
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(
+          theme: AppTheme.light(),
+          routerConfig: router,
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 

@@ -1,4 +1,7 @@
 import 'dart:convert';
+import 'cash_workspace_store.dart';
+import 'cash_workspace_remote.dart';
+import '../domain/entities/cash_closure_preview.dart';
 
 import 'package:sqflite/sqflite.dart';
 
@@ -29,13 +32,19 @@ import 'models/cash_event_sync_payload.dart';
 import 'models/remote_cash_movement_record.dart';
 import 'models/remote_cash_session_record.dart';
 
+part 'cash_workspace_operations.dart';
+
 class SqliteCashRepository implements CashRepository {
-  SqliteCashRepository(this._appDatabase, this._operationalContext)
-    : _syncMetadataRepository = SqliteSyncMetadataRepository(_appDatabase),
-      _operationalSyncQueueRepository = SqliteOperationalSyncQueueRepository(
-        _appDatabase,
-      ),
-      _syncQueueRepository = SqliteSyncQueueRepository(_appDatabase);
+  SqliteCashRepository(
+    this._appDatabase,
+    this._operationalContext, {
+    CashWorkspaceRemote? workspaceRemote,
+  }) : _workspaceRemote = workspaceRemote,
+       _syncMetadataRepository = SqliteSyncMetadataRepository(_appDatabase),
+       _operationalSyncQueueRepository = SqliteOperationalSyncQueueRepository(
+         _appDatabase,
+       ),
+       _syncQueueRepository = SqliteSyncQueueRepository(_appDatabase);
 
   static const String cashEventFeatureKey = SyncFeatureKeys.cashEvents;
   static const String cashSessionFeatureKey = SyncFeatureKeys.cashSessions;
@@ -43,16 +52,48 @@ class SqliteCashRepository implements CashRepository {
   static const String _autoOpenedNote =
       'Sessão aberta automaticamente para registrar movimento financeiro.';
 
+  final CashWorkspaceRemote? _workspaceRemote;
+  Map<String, dynamic>? _workspaceSyncProof;
+  bool get _usesSharedWorkspace =>
+      _workspaceRemote != null &&
+      _operationalContext.currentRemoteUserId != null;
   final AppDatabase _appDatabase;
   final AppOperationalContext _operationalContext;
   final SqliteSyncMetadataRepository _syncMetadataRepository;
   final SqliteOperationalSyncQueueRepository _operationalSyncQueueRepository;
   final SqliteSyncQueueRepository _syncQueueRepository;
 
+  void _requireCashPermission(String permission) {
+    _operationalContext.ensureOperationalWriteAllowed();
+    if (!_operationalContext.isLocalOnly &&
+        !_operationalContext.session.canAccessPermission(permission)) {
+      throw const ValidationException(
+        'Você não tem permissão para esta ação no caixa.',
+      );
+    }
+  }
+
   @override
   Future<CashSession?> getCurrentSession() async {
     final database = await _appDatabase.database;
-    final row = await CashDatabaseSupport.getOpenSessionRow(database);
+    var row = await CashDatabaseSupport.getOpenSessionRow(
+      database,
+      includeUnjoined: true,
+    );
+    final owner = row == null
+        ? <String, dynamic>{}
+        : await CashWorkspaceStore.read(database, 'cash.owner:${row['uuid']}');
+    if (_usesSharedWorkspace &&
+        (row == null ||
+            owner['joined'] != true ||
+            owner['joinedClientInstanceId'] !=
+                _operationalContext.session.clientInstanceId)) {
+      await refreshEmployeeWorkspace(joinIfNeeded: true);
+      row = await CashDatabaseSupport.getOpenSessionRow(
+        database,
+        includeUnjoined: true,
+      );
+    }
     if (row == null) {
       return null;
     }
@@ -82,7 +123,14 @@ class SqliteCashRepository implements CashRepository {
   Future<List<CashSession>> listSessions() async {
     final database = await _appDatabase.database;
     final rows = await _loadSessionRows(database);
-    return rows.map(_mapSession).toList();
+    return rows
+        .map(_mapSession)
+        .where(
+          (session) =>
+              session.workspaceVersion != 3 ||
+              session.employeeId == _operationalContext.currentRemoteUserId,
+        )
+        .toList();
   }
 
   Future<void> upsertSessionFromRemote(RemoteCashSessionRecord remote) async {
@@ -142,15 +190,42 @@ class SqliteCashRepository implements CashRepository {
       };
 
       if (existing == null) {
+        await CashWorkspaceStore.write(txn, 'cash.remote:${remote.localUuid}', {
+          'remote': true,
+        });
+        if (remote.openingDetails != null) {
+          await CashWorkspaceStore.write(
+            txn,
+            'cash.opening:${remote.localUuid}',
+            remote.openingDetails!,
+          );
+        }
+        if (remote.closingDetails != null) {
+          await CashWorkspaceStore.write(
+            txn,
+            'cash.closing:${remote.localUuid}',
+            remote.closingDetails!,
+          );
+        }
         localId = await txn.insert(TableNames.caixaSessoes, values);
       } else {
         localId = existing['id'] as int;
-        await txn.update(
-          TableNames.caixaSessoes,
-          values,
-          where: 'id = ?',
-          whereArgs: [localId],
+        final locallyOwnedOpening = await CashWorkspaceStore.read(
+          txn,
+          'cash.opening:${remote.localUuid}',
         );
+        final remoteMarker = await CashWorkspaceStore.read(
+          txn,
+          'cash.remote:${remote.localUuid}',
+        );
+        if (locallyOwnedOpening['version'] != 2 || remoteMarker.isNotEmpty) {
+          await txn.update(
+            TableNames.caixaSessoes,
+            values,
+            where: 'id = ?',
+            whereArgs: [localId],
+          );
+        }
       }
 
       await _syncMetadataRepository.markSynced(
@@ -307,7 +382,29 @@ class SqliteCashRepository implements CashRepository {
   Future<CashSession> openSession({
     required int initialFloatCents,
     String? notes,
+    CashCountResult? count,
   }) async {
+    _requireCashPermission('cash.open');
+    if ((notes?.trim().length ?? 0) > 2000) {
+      throw const ValidationException(
+        'Use até 2000 caracteres nas observações.',
+      );
+    }
+    if (count != null &&
+        (!count.isValid || count.totalCents != initialFloatCents)) {
+      throw const ValidationException(
+        'A contagem não corresponde ao troco inicial.',
+      );
+    }
+    if (initialFloatCents < 0 || initialFloatCents > maxCashAmountCents) {
+      throw const ValidationException('Troco inicial inválido.');
+    }
+    if (_usesSharedWorkspace) {
+      return openEmployeeWorkspace(
+        initialFloatCents: initialFloatCents,
+        count: count,
+      );
+    }
     final database = await _appDatabase.database;
 
     return database.transaction<CashSession>((txn) async {
@@ -343,6 +440,11 @@ class SqliteCashRepository implements CashRepository {
         'observacao': _cleanNullable(notes),
       });
 
+      await CashWorkspaceStore.write(txn, 'cash.opening:$sessionUuid', {
+        ...await CashWorkspaceStore.openingPolicy(txn, initialFloatCents),
+        if (count != null) 'denominations': count.breakdown,
+        if (count != null) 'coinsCents': count.coinsCents,
+      });
       final session = _mapSession(await _loadSessionRow(txn, sessionId));
       await _enqueueCashSessionEvent(
         txn,
@@ -357,7 +459,18 @@ class SqliteCashRepository implements CashRepository {
   @override
   Future<CashSession> confirmAutoOpenedSession({
     required int initialFloatCents,
+    CashCountResult? count,
   }) async {
+    _requireCashPermission('cash.open');
+    if (initialFloatCents < 0 || initialFloatCents > maxCashAmountCents) {
+      throw const ValidationException('Troco inicial inválido.');
+    }
+    if (count != null &&
+        (!count.isValid || count.totalCents != initialFloatCents)) {
+      throw const ValidationException(
+        'A contagem não corresponde ao troco inicial.',
+      );
+    }
     final database = await _appDatabase.database;
 
     return database.transaction<CashSession>((txn) async {
@@ -368,6 +481,11 @@ class SqliteCashRepository implements CashRepository {
         );
       }
 
+      if ((row['aguardando_confirmacao_troco_inicial'] as int? ?? 0) != 1) {
+        throw const ValidationException(
+          'A abertura deste caixa já foi confirmada.',
+        );
+      }
       final sessionId = row['id'] as int;
       final updatedNotes = _removeAutomaticOpeningNote(
         row['observacao'] as String?,
@@ -394,6 +512,18 @@ class SqliteCashRepository implements CashRepository {
         whereArgs: [sessionId],
       );
 
+      final opening = await CashWorkspaceStore.read(
+        txn,
+        'cash.opening:${row['uuid']}',
+      );
+      if (opening.isNotEmpty) {
+        await CashWorkspaceStore.write(txn, 'cash.opening:${row['uuid']}', {
+          ...opening,
+          'countedAmountCents': initialFloatCents,
+          if (count != null) 'denominations': count.breakdown,
+          if (count != null) 'coinsCents': count.coinsCents,
+        });
+      }
       final session = _mapSession(await _loadSessionRow(txn, sessionId));
       await _enqueueCashSessionEvent(
         txn,
@@ -405,53 +535,211 @@ class SqliteCashRepository implements CashRepository {
     });
   }
 
+  String get _draftOwner =>
+      '${_operationalContext.currentRemoteCompanyId ?? 'local'}:${_operationalContext.currentRemoteUserId ?? _operationalContext.currentLocalUserId}';
+
+  Future<Map<String, dynamic>> loadDraft(String scope) async =>
+      CashWorkspaceStore.read(
+        await _appDatabase.database,
+        'cash.draft:$_draftOwner:$scope',
+      );
+
+  Future<void> saveDraft(String scope, Map<String, dynamic> value) async =>
+      CashWorkspaceStore.write(
+        await _appDatabase.database,
+        'cash.draft:$_draftOwner:$scope',
+        value,
+      );
+
+  Future<String> _snapshot(
+    DatabaseExecutor db,
+    Map<String, Object?> row,
+  ) async {
+    final movements = await db.query(
+      TableNames.caixaMovimentos,
+      where: 'sessao_id = ?',
+      whereArgs: [row['id']],
+      orderBy: 'id',
+    );
+    return jsonEncode({
+      'session': row,
+      'movements': movements,
+      'workspace': await CashWorkspaceStore.read(
+        db,
+        'cash.workspace:${row['uuid']}',
+      ),
+    });
+  }
+
+  Future<CashClosurePreview> prepareClosure(String uuid) async {
+    final db = await _appDatabase.database;
+    return db.transaction((txn) async {
+      if ((await CashWorkspaceStore.read(
+        txn,
+        'cash.remote:$uuid',
+      )).isNotEmpty) {
+        throw const ValidationException(
+          'Este caixa pertence a outro dispositivo.',
+        );
+      }
+      final owner = await CashWorkspaceStore.read(txn, 'cash.owner:$uuid');
+      if (owner['version'] == 3 &&
+          (owner['employeeId'] != _operationalContext.currentRemoteUserId ||
+              owner['joined'] != true ||
+              owner['joinedClientInstanceId'] !=
+                  _operationalContext.session.clientInstanceId)) {
+        throw const ValidationException(
+          'Conecte este aparelho e associe o caixa do funcionário antes de conferir.',
+        );
+      }
+      final row = await _findSessionRowByUuid(txn, uuid);
+      if (row == null || row['status'] != CashSessionStatus.open.dbValue) {
+        throw const ValidationException(
+          'Este caixa já foi fechado. Atualize a tela.',
+        );
+      }
+      return CashClosurePreview(
+        session: _mapSession(await _loadSessionRow(txn, row['id'] as int)),
+        snapshotToken: await _snapshot(txn, row),
+      );
+    });
+  }
+
+  Future<CashSession> commitClosure({
+    required CashClosurePreview preview,
+    required int countedBalanceCents,
+    String? reason,
+    String? notes,
+    CashCountResult? count,
+  }) async {
+    _requireCashPermission('cash.close');
+    if ((reason?.trim().length ?? 0) > 500) {
+      throw const ValidationException('Use até 500 caracteres no motivo.');
+    }
+    if ((notes?.trim().length ?? 0) > 2000) {
+      throw const ValidationException(
+        'Use até 2000 caracteres nas observações.',
+      );
+    }
+    if (countedBalanceCents < 0 || countedBalanceCents > maxCashAmountCents) {
+      throw const ValidationException('Informe um valor contado válido.');
+    }
+    if (count != null &&
+        (!count.isValid || count.totalCents != countedBalanceCents)) {
+      throw const ValidationException(
+        'A contagem não corresponde ao total informado.',
+      );
+    }
+    if (preview.session.workspaceVersion == 3) {
+      return saveEmployeeClosure(
+        preview: preview,
+        countedBalanceCents: countedBalanceCents,
+        reason: reason,
+        notes: notes,
+        count: count,
+      );
+    }
+    final database = await _appDatabase.database;
+    return database.transaction((txn) async {
+      final row = await _findSessionRowByUuid(txn, preview.session.uuid);
+      if (row == null) throw const ValidationException('Caixa não encontrado.');
+      final prior = await CashWorkspaceStore.read(
+        txn,
+        'cash.closing:${preview.session.uuid}',
+      );
+      final cleanReason = reason?.trim();
+      final request = {
+        'countedBalanceCents': countedBalanceCents,
+        'reason': cleanReason,
+        'notes': notes?.trim(),
+        'denominations': count?.breakdown,
+        'coinsCents': count?.coinsCents,
+      };
+      if (row['status'] == CashSessionStatus.closed.dbValue) {
+        if (jsonEncode(prior['request']) == jsonEncode(request) &&
+            prior['snapshotToken'] == preview.snapshotToken) {
+          return _mapSession(await _loadSessionRow(txn, row['id'] as int));
+        }
+        throw const ValidationException('Este caixa já foi fechado.');
+      }
+      if ((row['aguardando_confirmacao_troco_inicial'] as int? ?? 0) == 1) {
+        throw const ValidationException(
+          'Confirme o troco inicial antes de fechar o caixa.',
+        );
+      }
+      if (await _snapshot(txn, row) != preview.snapshotToken) {
+        throw const ValidationException(
+          'O caixa recebeu novas movimentações. Revise os valores novamente.',
+        );
+      }
+      final session = _mapSession(await _loadSessionRow(txn, row['id'] as int));
+      final difference = countedBalanceCents - session.expectedBalanceCents;
+      if (difference < -2147483648 || difference > maxCashAmountCents) {
+        throw const ValidationException('Diferença fora do limite permitido.');
+      }
+      if ((session.blindClosureEnabled || difference != 0) &&
+          (cleanReason == null || cleanReason.isEmpty)) {
+        throw const ValidationException('Informe o motivo da conferência.');
+      }
+      final details = <String, dynamic>{
+        'version': 2,
+        'sessionUuid': session.uuid,
+        'expectedBalanceCents': session.expectedBalanceCents,
+        ...request,
+        'differenceCents': difference,
+        'blindClosureEnabled': session.blindClosureEnabled,
+        'policyRevision': session.policyRevision,
+      };
+      final now = DateTime.now();
+      await txn.update(
+        TableNames.caixaSessoes,
+        {
+          'fechada_em': now.toIso8601String(),
+          'aguardando_confirmacao_troco_inicial': 0,
+          'saldo_contado_centavos': countedBalanceCents,
+          'diferenca_centavos': difference,
+          'status': CashSessionStatus.closed.dbValue,
+          'observacao': _mergeNotes(row['observacao'] as String?, notes),
+        },
+        where: 'id = ?',
+        whereArgs: [session.id],
+      );
+      await CashWorkspaceStore.write(txn, 'cash.closing:${session.uuid}', {
+        ...details,
+        'request': request,
+        'snapshotToken': preview.snapshotToken,
+      });
+      final closed = _mapSession(await _loadSessionRow(txn, session.id));
+      await _enqueueCashSessionEvent(
+        txn,
+        closed,
+        operation: 'update',
+        occurredAt: now,
+      );
+      await CashWorkspaceStore.write(
+        txn,
+        'cash.draft:$_draftOwner:close:${session.uuid}',
+        {},
+      );
+      return closed;
+    });
+  }
+
   @override
   Future<CashSession> closeSession({
     required int countedBalanceCents,
     String? notes,
   }) async {
-    final database = await _appDatabase.database;
-
-    return database.transaction<CashSession>((txn) async {
-      final row = await CashDatabaseSupport.getOpenSessionRow(txn);
-      if (row == null) {
-        throw const ValidationException(
-          'Nao existe um caixa aberto para fechar.',
-        );
-      }
-
-      final sessionId = row['id'] as int;
-      final expectedBalance =
-          row['saldo_esperado_centavos'] as int? ??
-          row['saldo_final_centavos'] as int? ??
-          0;
-      final differenceCents = countedBalanceCents - expectedBalance;
-      final closedAt = DateTime.now().toIso8601String();
-      final updatedNotes = _mergeNotes(row['observacao'] as String?, notes);
-
-      await txn.update(
-        TableNames.caixaSessoes,
-        {
-          'fechada_em': closedAt,
-          'aguardando_confirmacao_troco_inicial': 0,
-          'saldo_contado_centavos': countedBalanceCents,
-          'diferenca_centavos': differenceCents,
-          'status': CashSessionStatus.closed.dbValue,
-          'observacao': updatedNotes,
-        },
-        where: 'id = ?',
-        whereArgs: [sessionId],
-      );
-
-      final session = _mapSession(await _loadSessionRow(txn, sessionId));
-      await _enqueueCashSessionEvent(
-        txn,
-        session,
-        operation: 'update',
-        occurredAt: DateTime.parse(closedAt),
-      );
-      return session;
-    });
+    final current = await getCurrentSession();
+    if (current == null) {
+      throw const ValidationException('Não existe caixa aberto.');
+    }
+    return commitClosure(
+      preview: await prepareClosure(current.uuid),
+      countedBalanceCents: countedBalanceCents,
+      reason: notes,
+      notes: notes,
+    );
   }
 
   @override
@@ -639,6 +927,17 @@ class SqliteCashRepository implements CashRepository {
     required String operation,
     required DateTime occurredAt,
   }) async {
+    final openingDetails = await CashWorkspaceStore.read(
+      txn,
+      'cash.opening:${session.uuid}',
+    );
+    final closingDetails = await CashWorkspaceStore.read(
+      txn,
+      'cash.closing:${session.uuid}',
+    );
+    closingDetails.remove('request');
+    closingDetails.remove('snapshotToken');
+    closingDetails.removeWhere((key, value) => value == null);
     final eventIdentity = operation == 'create'
         ? session.uuid
         : '${session.uuid}:${occurredAt.microsecondsSinceEpoch}';
@@ -662,11 +961,18 @@ class SqliteCashRepository implements CashRepository {
           'openedAt': session.openedAt.toIso8601String(),
           'closedAt': session.closedAt?.toIso8601String(),
           'initialFloatCents': session.initialFloatCents,
+          'awaitingInitialFloatConfirmation':
+              session.awaitingInitialFloatConfirmation,
           'expectedBalanceCents': session.expectedBalanceCents,
           'countedBalanceCents': session.countedBalanceCents,
           'differenceCents': session.differenceCents,
           'status': session.status.dbValue,
           'notes': session.notes,
+          if (openingDetails.isNotEmpty) 'openingDetails': openingDetails,
+          if (!session.isOpen &&
+              openingDetails.isNotEmpty &&
+              closingDetails.isNotEmpty)
+            'closingDetails': closingDetails,
         },
       ),
     );
@@ -772,10 +1078,11 @@ class SqliteCashRepository implements CashRepository {
   Future<List<Map<String, Object?>>> _loadSessionRows(
     DatabaseExecutor db,
   ) async {
-    return db.rawQuery('''
+    final rows = await db.rawQuery('''
       ${_sessionSelectSql()}
       ORDER BY sess.aberta_em DESC, sess.id DESC
     ''');
+    return Future.wait(rows.map((row) => _withEmployeePendingBalance(db, row)));
   }
 
   Future<Map<String, Object?>> _loadSessionRow(
@@ -797,13 +1104,16 @@ class SqliteCashRepository implements CashRepository {
       );
     }
 
-    return rows.first;
+    return _withEmployeePendingBalance(db, rows.first);
   }
 
   String _sessionSelectSql() {
     return '''
       SELECT
         sess.*,
+        (SELECT valor_json FROM configuracoes WHERE chave = 'cash.opening:' || sess.uuid) AS cash_opening_json,
+        (SELECT valor_json FROM configuracoes WHERE chave = 'cash.closing:' || sess.uuid) AS cash_closing_json,
+        (SELECT valor_json FROM configuracoes WHERE chave = 'cash.workspace:' || sess.uuid) AS cash_workspace_json,
         usr.nome AS usuario_nome
       FROM ${TableNames.caixaSessoes} sess
       LEFT JOIN ${TableNames.usuarios} usr ON usr.id = sess.usuario_id
@@ -948,12 +1258,34 @@ class SqliteCashRepository implements CashRepository {
 
   CashSession _mapSession(Map<String, Object?> row) {
     final notesPayload = _decodeSessionNotes(row['observacao'] as String?);
+    final opening = row['cash_opening_json'] == null
+        ? <String, dynamic>{}
+        : jsonDecode(row['cash_opening_json'] as String)
+              as Map<String, dynamic>;
+    final closing =
+        row['cash_closing_json'] == null ||
+            row['status'] == CashSessionStatus.open.dbValue
+        ? <String, dynamic>{}
+        : jsonDecode(row['cash_closing_json'] as String)
+              as Map<String, dynamic>;
+    final workspace = row['cash_workspace_json'] == null
+        ? <String, dynamic>{}
+        : jsonDecode(row['cash_workspace_json'] as String)
+              as Map<String, dynamic>;
     final userName = _cleanNullable(row['usuario_nome'] as String?);
     final fallbackOperatorName =
         row['usuario_id'] == _operationalContext.currentLocalUserId
         ? _operationalContext.session.user.displayName
         : 'Operador local';
     return CashSession(
+      closingDetails: closing.isEmpty
+          ? null
+          : Map<String, dynamic>.unmodifiable(closing),
+      workspaceVersion: workspace.isEmpty ? 2 : 3,
+      employeeId: workspace['employeeId'] as String?,
+      revision: workspace['revision'] as int? ?? 0,
+      blindClosureEnabled: opening['blindClosureEnabled'] == true,
+      policyRevision: opening['policyRevision'] as int? ?? 0,
       id: row['id'] as int,
       uuid: row['uuid'] as String,
       userId: row['usuario_id'] as int?,
@@ -981,12 +1313,20 @@ class SqliteCashRepository implements CashRepository {
       fiadoReceiptsCardCents:
           row['total_recebimentos_fiado_cartao_centavos'] as int? ?? 0,
       expectedBalanceCents:
+          row['cash_workspace_expected'] as int? ??
+          closing['expectedBalanceCents'] as int? ??
           row['saldo_esperado_centavos'] as int? ??
           row['saldo_final_centavos'] as int? ??
           0,
-      countedBalanceCents: row['saldo_contado_centavos'] as int?,
-      differenceCents: row['diferenca_centavos'] as int?,
-      status: CashSessionStatusX.fromDb(row['status'] as String),
+      countedBalanceCents:
+          closing['countedBalanceCents'] as int? ??
+          row['saldo_contado_centavos'] as int?,
+      differenceCents:
+          closing['differenceCents'] as int? ??
+          row['diferenca_centavos'] as int?,
+      status: CashSessionStatusX.fromDb(
+        workspace['status'] as String? ?? row['status'] as String,
+      ),
       notes: notesPayload.visibleNotes,
     );
   }

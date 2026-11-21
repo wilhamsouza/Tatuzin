@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 
+import '../../../modules/caixa/data/cash_workspace_store.dart';
 import '../config/app_environment.dart';
 import '../constants/app_constants.dart';
 import '../errors/app_exceptions.dart';
@@ -197,6 +199,14 @@ final appDatabaseProvider = Provider<AppDatabase>((ref) {
   }
   final isolationKey = ref.watch(sessionIsolationKeyProvider);
   final database = AppDatabase.forIsolationKey(isolationKey);
+  database.configureCashPolicy(ref.read(currentCompanyContextProvider));
+  database.configureCashEmployeeContext(ref.read(appSessionProvider));
+  ref.listen<AppSession>(appSessionProvider, (_, session) {
+    database.configureCashEmployeeContext(session);
+  });
+  ref.listen<CompanyContext>(currentCompanyContextProvider, (_, company) {
+    database.configureCashPolicy(company);
+  });
   ref.onDispose(() {
     unawaited(database.close());
   });
@@ -1174,10 +1184,63 @@ class AppDatabase {
   Database? _database;
   Future<Database>? _openingDatabase;
 
+  CompanyContext? _cashPolicyCompany;
+  String? _persistedCashPolicy;
+  Map<String, dynamic>? _cashEmployeeContext;
+
+  void configureCashPolicy(CompanyContext company) {
+    _cashPolicyCompany = company;
+  }
+
+  void configureCashEmployeeContext(AppSession session) {
+    final employeeId = session.user.remoteId?.trim();
+    final companyId = session.company.remoteId?.trim();
+    if (employeeId == null ||
+        employeeId.isEmpty ||
+        companyId == null ||
+        companyId.isEmpty) {
+      return;
+    }
+    _cashEmployeeContext = {
+      'version': 3,
+      'employeeId': employeeId,
+      'localUserId': session.user.localId,
+      'companyId': companyId,
+      'clientInstanceId': session.clientInstanceId,
+    };
+  }
+
+  Future<Database> _withCashPolicy(Database db) async {
+    final company = _cashPolicyCompany;
+    if (company == null) return db;
+    final employee = _cashEmployeeContext == null
+        ? null
+        : Map<String, dynamic>.of(_cashEmployeeContext!);
+    final key =
+        '${company.cashPolicyRevision}:${company.cashBlindClosureEnabled}:${jsonEncode(employee)}';
+    if (_persistedCashPolicy == key) return db;
+    await db.transaction((txn) async {
+      if (employee != null) {
+        await CashWorkspaceStore.write(txn, 'cash.employee.context', employee);
+      }
+      final existing = await CashWorkspaceStore.read(txn, 'cash.policy');
+      final revision = existing['cashPolicyRevision'] as int? ?? 0;
+      // A cached login from an older client must not downgrade a newer policy.
+      if (revision <= company.cashPolicyRevision) {
+        await CashWorkspaceStore.write(txn, 'cash.policy', {
+          'cashBlindClosureEnabled': company.cashBlindClosureEnabled,
+          'cashPolicyRevision': company.cashPolicyRevision,
+        });
+      }
+    });
+    _persistedCashPolicy = key;
+    return db;
+  }
+
   Future<Database> get database async {
     final cachedDatabase = _database;
     if (cachedDatabase != null && cachedDatabase.isOpen) {
-      return cachedDatabase;
+      return _withCashPolicy(cachedDatabase);
     }
     if (cachedDatabase != null && !cachedDatabase.isOpen) {
       AppLogger.warn(
@@ -1189,7 +1252,7 @@ class AppDatabase {
 
     final openingDatabase = _openingDatabase;
     if (openingDatabase != null) {
-      return openingDatabase;
+      return _withCashPolicy(await openingDatabase);
     }
 
     final future = _openDatabase();
@@ -1199,7 +1262,7 @@ class AppDatabase {
       if (identical(_openingDatabase, future)) {
         _openingDatabase = null;
       }
-      return database;
+      return _withCashPolicy(database);
     } finally {
       if (identical(_openingDatabase, future) && _database == null) {
         _openingDatabase = null;

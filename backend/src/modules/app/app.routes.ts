@@ -1,3 +1,5 @@
+import { CashWorkspaceService, workspaceOpenSchema, workspaceJoinSchema, workspaceCloseSchema, workspaceAckSchema } from "../cash/cash-workspace.service";
+import { z } from "zod";
 import { Router } from 'express';
 
 import {
@@ -14,14 +16,21 @@ import { deviceRegisterSchema } from './app.schemas';
 import { companyReceiptSettingsPatchSchema } from './company-settings.schemas';
 import { CompanySettingsService } from './company-settings.service';
 import { CompanyDeviceService } from './company-device.service';
+import { CompanyOnboardingService } from './company-onboarding.service';
 
 const appBootstrapService = new AppBootstrapService();
 const appContextService = new AppContextService();
 const appSnapshotService = new AppSnapshotService();
 const companySettingsService = new CompanySettingsService();
 const companyDeviceService = new CompanyDeviceService();
+const companyOnboardingService = new CompanyOnboardingService();
 
 export const appRouter = Router();
+
+appRouter.post('/onboarding/reconcile', requireAppContext,
+  asyncHandler(async (request, response) => {
+    response.json(await companyOnboardingService.reconcile(request.appContext!));
+  }));
 
 appRouter.post(
   '/device',
@@ -102,3 +111,12 @@ appRouter.get(
     response.json(payload);
   }),
 );
+
+const cashWorkspaceService = new CashWorkspaceService();
+const cashUuid = (value: unknown) => z.string().uuid().parse(value);
+appRouter.get('/cash/workspace', requireAppContext, asyncHandler(async(request,response)=>{response.json(await cashWorkspaceService.get(request.appContext!));}));
+appRouter.post('/cash/sessions/open', requireAppContext, validateBody(workspaceOpenSchema), asyncHandler(async(request,response)=>{response.json(await cashWorkspaceService.open(request.appContext!,request.body));}));
+appRouter.post('/cash/sessions/:uuid/join', requireAppContext, validateBody(workspaceJoinSchema), asyncHandler(async(request,response)=>{response.json(await cashWorkspaceService.join(request.appContext!,cashUuid(request.params.uuid),request.body));}));
+appRouter.post('/cash/sessions/:uuid/closure-requests', requireAppContext, validateBody(workspaceCloseSchema), asyncHandler(async(request,response)=>{response.json(await cashWorkspaceService.requestClosure(request.appContext!,cashUuid(request.params.uuid),request.body));}));
+appRouter.post('/cash/sessions/:uuid/closure-requests/:requestId/ack', requireAppContext, validateBody(workspaceAckSchema), asyncHandler(async(request,response)=>{response.json(await cashWorkspaceService.acknowledge(request.appContext!,cashUuid(request.params.uuid),cashUuid(request.params.requestId),request.body));}));
+appRouter.post('/cash/sessions/:uuid/closure-requests/:requestId/reconfirm', requireAppContext, validateBody(workspaceCloseSchema), asyncHandler(async(request,response)=>{response.json(await cashWorkspaceService.requestClosure(request.appContext!,cashUuid(request.params.uuid),request.body,cashUuid(request.params.requestId)));}));

@@ -10,6 +10,7 @@ import { env } from "../config/env";
 import { prisma } from "../database/prisma";
 import { resetRateLimitStore } from "../shared/http/rate-limit";
 import { platformJobsService } from "../shared/platform/platform-jobs";
+import { assertSafeIntegrationTestDatabaseUrl } from "../shared/testing/integration-prisma";
 
 type JsonResponse = {
   status: number;
@@ -41,6 +42,7 @@ let adminUserId = "";
 let companiesPrefix = `Tatuzin Platform ${runId}`;
 
 before(async () => {
+  assertSafeIntegrationTestDatabaseUrl(process.env.DATABASE_URL ?? "");
   await prisma.$connect();
   await seedFixtures();
 
@@ -105,6 +107,33 @@ describe("platform backend hardening", () => {
       (forbidden.data as { code?: string }).code,
       "PLATFORM_ADMIN_REQUIRED",
     );
+  });
+
+  it("requires explicit platform read grants and rejects company-scoped global lists", async () => {
+    const token = await loginAsPlatformAdmin();
+    const endpoints = ["/admin/companies", "/admin/licenses", "/admin/audit/summary", "/admin/sync/summary", "/admin/sync/operational-summary"];
+    await prisma.adminUserPermission.updateMany({ where: { actorUserId: adminUserId, permissionKey: { startsWith: "admin." } }, data: { isActive: false } });
+    try {
+      for (const path of endpoints) {
+        const denied = await requestJson("GET", path, { token });
+        assert.equal(denied.status, 403, path);
+        assert.equal((denied.data as {code?: string}).code, "ADMIN_PLATFORM_PERMISSION_REQUIRED", path);
+      }
+      await prisma.adminUserPermission.create({ data: {
+        actorUserId: adminUserId, permissionKey: "admin.companies.read", scope: "company", scopeId: primaryCompanyId,
+      }});
+      const globalList = await requestJson("GET", "/admin/companies", { token });
+      assert.equal(globalList.status, 403);
+      assert.equal((globalList.data as {code?: string}).code, "ADMIN_PLATFORM_PERMISSION_REQUIRED");
+      assert.equal((await requestJson("GET", `/admin/companies/${primaryCompanyId}`, { token })).status, 200);
+      const otherCompany = await prisma.company.findFirstOrThrow({ where: { slug: observedCompanySlug } });
+      const forbidden = await requestJson("GET", `/admin/companies/${otherCompany.id}`, { token });
+      assert.equal(forbidden.status, 403);
+      assert.equal((forbidden.data as {code?: string}).code, "ADMIN_PLATFORM_PERMISSION_REQUIRED");
+    } finally {
+      await prisma.adminUserPermission.deleteMany({ where: { actorUserId: adminUserId, permissionKey: "admin.companies.read", scope: "company" } });
+      await prisma.adminUserPermission.updateMany({ where: { actorUserId: adminUserId, scope: "platform" }, data: { isActive: true } });
+    }
   });
 
   it("keeps login, refresh and logout working", async () => {
@@ -202,6 +231,9 @@ describe("platform backend hardening", () => {
     assert.equal(payload.user.email, registerEmail);
     assert.equal(payload.user.name, "Owner Self Serve");
     assert.equal(payload.user.isPlatformAdmin, false);
+    const ownerDenied = await requestJson("GET", "/admin/companies", { token: payload.accessToken });
+    assert.equal(ownerDenied.status, 403);
+    assert.equal((ownerDenied.data as {code?: string}).code, "PLATFORM_ADMIN_REQUIRED");
     assert.equal(payload.company.name, "Tatuzin Cadastro Publico");
     assert.equal(payload.company.slug, registeredSlug);
     assert.equal(payload.company.license?.plan, "FREE");
@@ -757,6 +789,11 @@ describe("platform backend hardening", () => {
   it("keeps audit summary contract stable for filters, pagination and response shape", async () => {
     const token = await loginAsPlatformAdmin();
 
+    const otherCompany = await prisma.company.findFirstOrThrow({ where: { slug: observedCompanySlug } });
+    const forbiddenLicense = await requestJson("PATCH", `/admin/licenses/${otherCompany.id}`, { token, body: { syncEnabled: false } });
+    assert.equal(forbiddenLicense.status, 403);
+    assert.equal((forbiddenLicense.data as {code?: string}).code, "ADMIN_PLATFORM_PERMISSION_REQUIRED");
+
     const patchLicense = await requestJson(
       "PATCH",
       `/admin/licenses/${primaryCompanyId}`,
@@ -1215,6 +1252,15 @@ async function seedFixtures() {
     },
   });
   adminUserId = adminUser.id;
+
+  // Platform-admin identity and granular grants are independent. This fixture
+  // needs only the read permissions exercised by the legacy global-list tests.
+  await prisma.adminUserPermission.create({ data: { actorUserId: adminUser.id, permissionKey: "support.license.update", scope: "company", scopeId: primaryCompanyId } });
+  await prisma.adminUserPermission.createMany({
+    data: ["admin.companies.read", "admin.billing.read", "admin.audit.read", "admin.sync.read"].map(
+      (permissionKey) => ({ actorUserId: adminUser.id, permissionKey, scope: "platform", scopeId: "*" }),
+    ),
+  });
 
   await prisma.membership.create({
     data: {

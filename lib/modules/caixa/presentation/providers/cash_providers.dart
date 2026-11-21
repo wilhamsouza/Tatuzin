@@ -1,3 +1,5 @@
+import '../../data/cash_workspace_remote.dart';
+import '../../domain/entities/cash_closure_preview.dart';
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +14,7 @@ import '../../../../app/core/providers/provider_context_logger.dart';
 import '../../../../app/core/providers/provider_guard.dart';
 import '../../../../app/core/providers/tenant_bootstrap_gate.dart';
 import '../../../../app/core/session/auth_token_storage.dart';
+import '../../../../app/core/telemetry/product_journey.dart';
 import '../../data/cash_event_sync_processor.dart';
 import '../../data/datasources/cash_remote_datasource.dart';
 import '../../data/real/real_cash_remote_datasource.dart';
@@ -29,6 +32,12 @@ final localCashRepositoryProvider = Provider<SqliteCashRepository>((ref) {
   return SqliteCashRepository(
     ref.watch(appDatabaseProvider),
     ref.watch(appOperationalContextProvider),
+    workspaceRemote: ref.watch(appOperationalContextProvider).hasRemoteSession
+        ? ApiCashWorkspaceRemote(
+            ref.read(realApiClientProvider),
+            ref.read(authTokenStorageProvider),
+          )
+        : null,
   );
 });
 
@@ -220,6 +229,7 @@ class CashActionController extends AsyncNotifier<void> {
   Future<CashSession> openSession({
     required int initialFloatCents,
     String? notes,
+    CashCountResult? count,
   }) async {
     state = const AsyncLoading();
     try {
@@ -227,9 +237,18 @@ class CashActionController extends AsyncNotifier<void> {
         ref,
         'CashActionController.openSession',
       );
-      final session = await ref
-          .read(openCashSessionUseCaseProvider)
-          .call(initialFloatCents: initialFloatCents, notes: notes);
+      final session = count == null
+          ? await ref
+                .read(openCashSessionUseCaseProvider)
+                .call(initialFloatCents: initialFloatCents, notes: notes)
+          : await ref
+                .read(localCashRepositoryProvider)
+                .openSession(
+                  initialFloatCents: initialFloatCents,
+                  notes: notes,
+                  count: count,
+                );
+      ref.read(productJourneyProvider).record(JourneyEvent.cashOpened);
       _notifyCashChanged();
       state = const AsyncData(null);
       return session;
@@ -241,6 +260,7 @@ class CashActionController extends AsyncNotifier<void> {
 
   Future<CashSession> confirmAutoOpenedSession({
     required int initialFloatCents,
+    CashCountResult? count,
   }) async {
     state = const AsyncLoading();
     try {
@@ -248,9 +268,17 @@ class CashActionController extends AsyncNotifier<void> {
         ref,
         'CashActionController.confirmAutoOpenedSession',
       );
-      final session = await ref
-          .read(cashRepositoryProvider)
-          .confirmAutoOpenedSession(initialFloatCents: initialFloatCents);
+      final session = count == null
+          ? await ref
+                .read(cashRepositoryProvider)
+                .confirmAutoOpenedSession(initialFloatCents: initialFloatCents)
+          : await ref
+                .read(localCashRepositoryProvider)
+                .confirmAutoOpenedSession(
+                  initialFloatCents: initialFloatCents,
+                  count: count,
+                );
+      ref.read(productJourneyProvider).record(JourneyEvent.cashOpened);
       _notifyCashChanged();
       state = const AsyncData(null);
       return session;

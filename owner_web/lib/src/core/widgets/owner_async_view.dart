@@ -19,7 +19,19 @@ class OwnerAsyncView<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     return value.when(
       data: builder,
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const Padding(
+        padding: EdgeInsets.all(24),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(semanticsLabel: 'Carregando dados'),
+              SizedBox(height: 12),
+              Text('Carregando dados…'),
+            ],
+          ),
+        ),
+      ),
       error: (error, _) =>
           OwnerErrorState(message: describeOwnerError(error), onRetry: onRetry),
     );

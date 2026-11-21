@@ -6,6 +6,8 @@ export const ALLOWED_LOCAL_FIRST_SYNC_ENTITIES = [
   'operationalOrder',
   'operationalOrderItem',
   'sale',
+  'saleCustomerAssignment',
+  'saleCustomerLock',
   'saleItem',
   'payment',
   'receipt',
