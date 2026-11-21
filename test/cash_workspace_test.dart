@@ -38,15 +38,7 @@ void main() {
       ..addFont(rootBundle.load('assets/fonts/NotoSans-Bold.ttf'));
     await noto.load();
     final material = FontLoader('MaterialIcons')
-      ..addFont(
-        Future.value(
-          ByteData.sublistView(
-            await File(
-              '/tmp/tatuzin-flutter-3.41.9/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
-            ).readAsBytes(),
-          ),
-        ),
-      );
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await material.load();
   });
   late AppDatabase appDb;
